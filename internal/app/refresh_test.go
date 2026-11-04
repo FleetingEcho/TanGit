@@ -434,6 +434,32 @@ func TestAQuietRefreshQueuesAnEventThatArrivesWhileReading(t *testing.T) {
 	}
 }
 
+// A Windows console process can briefly take and return focus while Git is
+// being read. Returning focus must not turn one snapshot into an endless
+// chain of snapshots; the read already in flight observes the current state.
+func TestFocusDuringAQuietRefreshDoesNotQueueAnotherRead(t *testing.T) {
+	s, _, updated := newShellTester(t, repository.Snapshot{Root: "/work/picker"})
+	session := &blockingSnapshotSession{
+		fakeSession: fakeSession{snapshot: repository.Snapshot{Root: "/work/repo", Branch: "main"}},
+		started:     make(chan struct{}), release: make(chan struct{}),
+	}
+	tab := readyTab(s, "/work/repo", session)
+	s.activate(s.indexOf(tab))
+	<-session.started
+
+	s.handleWindowBlurred()
+	s.handleWindowFocused()
+	if tab.app.refreshPending {
+		t.Fatal("focus during a repository read queued another refresh")
+	}
+
+	close(session.release)
+	drainRefresh(t, updated, 1)
+	if got := atomic.LoadInt32(&session.hits); got != 1 {
+		t.Fatalf("focus during a repository read caused %d reads, want 1", got)
+	}
+}
+
 // An event during an action remains pending after the action's own snapshot
 // lands. The follow-up catches edits made after that snapshot was read.
 func TestAQuietRefreshQueuesAnEventThatArrivesDuringAnAction(t *testing.T) {
