@@ -101,6 +101,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 		a.welcomeView(c)
 	}
 	a.diffFullscreenView(c, overlayTopInset)
+	a.compareModal(c)
 	a.commitActionModals(c)
 	a.branchFormModal(c)
 	a.stashFormModal(c)
@@ -724,8 +725,13 @@ func (a *app) headerView(c *ui.Context) {
 
 		ui.Row(c).Grow(1).Justify(ui.End).Gap(6).Children(func() {
 			if a.snapshot.Operation != "" {
-				iconTextButton(c, "Continue", "Continue the interrupted operation", continueIcon, false,
-					func() {
+				conflicts := conflictedFileCount(a.snapshot.Files)
+				continueTooltip := tr("Continue the interrupted operation")
+				if conflicts > 0 {
+					continueTooltip = trf("Resolve conflicts before continuing (%d remaining)", conflicts)
+				}
+				iconTextButtonState(c, "Continue", continueTooltip, continueIcon, false,
+					a.actionBusy || conflicts > 0, func() {
 						if a.actionBusy || hasConflictedFiles(a.snapshot.Files) {
 							return
 						}
@@ -742,6 +748,8 @@ func (a *app) headerView(c *ui.Context) {
 						a.confirmAbortOperation()
 					})
 			}
+			iconButton(c, "Compare refs", "Compare two branches, tags, or commits (W)", compareIcon,
+				a.actionBusy, a.openCompare)
 			iconButton(c, "Fetch", "Fetch from the remotes", fetchIcon,
 				a.actionBusy || len(a.snapshot.Remotes) == 0, func() {
 					a.beginRepositoryActionMessage(tr("Fetched from the remotes"), "",

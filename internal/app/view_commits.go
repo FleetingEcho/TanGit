@@ -76,6 +76,10 @@ func (a *app) commitActionIconsWithHistory(c *ui.Context, commit repository.Comm
 		cherryPickIcon, a.session == nil, func() {
 			a.confirmCommitActionFor(commit, false)
 		})
+	button("Compare commit with HEAD", "H · Compare this commit with HEAD",
+		compareIcon, a.session == nil, func() { a.compareCommit(commit, false) })
+	button("Compare parent with commit", "Shift+H · Compare this commit's first parent with the commit",
+		compareIcon, a.session == nil || len(commit.Parents) == 0, func() { a.compareCommit(commit, true) })
 }
 
 // commitRowMenu adds the commit actions to a row's context menu, so they are
@@ -152,6 +156,14 @@ func (a *app) commitRowMenuWithHistory(m *ui.Menu, commit repository.Commit, ser
 	}
 	if m.Item(tr("Revert commit…")).Disabled(a.actionBusy).Chosen() {
 		a.confirmCommitActionFor(commit, true)
+	}
+	m.Separator()
+	if m.Item(tr("Compare commit with HEAD")).Shortcut(0, ui.KeyH).Disabled(a.session == nil).Chosen() {
+		a.compareCommit(commit, false)
+	}
+	if m.Item(tr("Compare first parent with commit")).Shortcut(ui.Shift, ui.KeyH).
+		Disabled(a.session == nil || len(commit.Parents) == 0).Chosen() {
+		a.compareCommit(commit, true)
 	}
 }
 

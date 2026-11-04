@@ -158,6 +158,14 @@ type Diff struct {
 	Kind    string
 }
 
+// DiffOptions is an immutable snapshot of the choices a read-only comparison
+// uses. ContextLines may be zero; IgnoreWhitespace applies the same filtering
+// to the file list and to each file's patch.
+type DiffOptions struct {
+	IgnoreWhitespace bool
+	ContextLines     int
+}
+
 // ResetMode is how reset treats the index and working tree.
 type ResetMode string
 
@@ -202,7 +210,7 @@ type Session interface {
 	// first, skipping the newest skip, so History and the Graph page in
 	// below the page a snapshot carries.
 	RecentCommits(context.Context, int, int) ([]Commit, error)
-	Diff(context.Context, File) (Diff, error)
+	Diff(context.Context, File, DiffOptions) (Diff, error)
 	Stage(context.Context, File) error
 	Unstage(context.Context, File) error
 	// ApplyCachedPatch puts the lines of a partial diff into the index, or,
@@ -217,6 +225,10 @@ type Session interface {
 	Undo(context.Context) error
 	Redo(context.Context) error
 	Discard(context.Context, File) error
+	// IgnoreFile and ExcludeFile hide an untracked path through the shared
+	// .gitignore or this clone's .git/info/exclude respectively.
+	IgnoreFile(context.Context, File) error
+	ExcludeFile(context.Context, File) error
 	CheckoutBranch(context.Context, string) error
 	CheckoutCommit(context.Context, Commit) error
 	CreateBranch(context.Context, string, string) error
@@ -283,7 +295,7 @@ type Session interface {
 	StashFiles(context.Context, int) ([]CommitFile, error)
 	// StashFileDiff reads the diff of one file in a stash, so the saved work
 	// pane can show each file on its own rather than a single stitched patch.
-	StashFileDiff(context.Context, int, CommitFile) (Diff, error)
+	StashFileDiff(context.Context, int, CommitFile, DiffOptions) (Diff, error)
 	// ApplyStashFile writes one saved file's version into the working tree
 	// and leaves the saved work saved.
 	ApplyStashFile(context.Context, int, CommitFile) error
@@ -309,7 +321,15 @@ type Session interface {
 	DeleteSubmodule(context.Context, string) error
 	BlameFile(context.Context, File) (string, error)
 	CommitFiles(context.Context, Commit) ([]CommitFile, error)
-	CommitFileDiff(context.Context, Commit, CommitFile) (Diff, error)
+	CommitFileDiff(context.Context, Commit, CommitFile, DiffOptions) (Diff, error)
+	// RestoreCommitFile replaces working-tree content with the commit's
+	// version without changing the index or creating a commit.
+	RestoreCommitFile(context.Context, Commit, CommitFile) error
+	// CompareFiles lists the files whose trees differ from the first ref to
+	// the second. CompareFileDiff reads one of those files without changing
+	// the checkout, index, or working tree.
+	CompareFiles(context.Context, string, string, DiffOptions) ([]CommitFile, error)
+	CompareFileDiff(context.Context, string, string, CommitFile, DiffOptions) (Diff, error)
 	// BranchCommits reads the commits reachable from a branch without
 	// checking it out, so another branch's history is browsable from the
 	// working tree the user is on.
@@ -671,9 +691,27 @@ func (s *gitSession) RecentCommits(ctx context.Context, limit, skip int) ([]Comm
 	return commits, nil
 }
 
-func (s *gitSession) Diff(ctx context.Context, file File) (Diff, error) {
+// diffOptionArgs gives every patch read the same explicit whitespace and
+// context behavior. Context zero is meaningful and must not become Git's
+// default merely because the options' other field is false.
+func diffOptionArgs(options DiffOptions) ([]string, error) {
+	if options.ContextLines < 0 {
+		return nil, fmt.Errorf("diff context cannot be negative")
+	}
+	args := []string{fmt.Sprintf("--unified=%d", options.ContextLines)}
+	if options.IgnoreWhitespace {
+		args = append(args, "--ignore-all-space")
+	}
+	return args, nil
+}
+
+func (s *gitSession) Diff(ctx context.Context, file File, options DiffOptions) (Diff, error) {
 	if err := ctx.Err(); err != nil {
 		return Diff{}, err
+	}
+	optionArgs, err := diffOptionArgs(options)
+	if err != nil {
+		return Diff{}, fmt.Errorf("load file diff: %w", err)
 	}
 
 	paths := fileNames(file)
@@ -682,7 +720,18 @@ func (s *gitSession) Diff(ctx context.Context, file File) (Diff, error) {
 		// is asked to compare it with /dev/null: the answer is the patch that
 		// adds it, which is both what the pane shows and what a selection of
 		// its lines is built from.
-		patch := s.git.WorkingTree.WorktreeFileDiff(modelFile(file), git_commands.DiffModePlain, false)
+		args := append([]string{"git", "diff", "--no-index", "--no-color", "--no-ext-diff"}, optionArgs...)
+		args = append(args, "--", "/dev/null")
+		args = append(args, paths...)
+		outputBytes, commandErr := s.cmd.New(args).GetCmd().CombinedOutput()
+		if commandErr != nil {
+			var exitError *exec.ExitError
+			// Git uses status 1 to report that the two sides differ.
+			if !errors.As(commandErr, &exitError) || exitError.ExitCode() != 1 {
+				return Diff{}, fmt.Errorf("load untracked file diff: %w: %s", commandErr, outputBytes)
+			}
+		}
+		patch := string(outputBytes)
 		if strings.TrimSpace(patch) != "" {
 			return Diff{Patch: patch, Kind: "Untracked"}, nil
 		}
@@ -697,7 +746,9 @@ func (s *gitSession) Diff(ctx context.Context, file File) (Diff, error) {
 	}
 
 	staged := file.Staged && !file.Unstaged
-	patch, err := s.git.Diff.GetDiff(staged, append([]string{"--"}, paths...)...)
+	args := append(optionArgs, "--")
+	args = append(args, paths...)
+	patch, err := s.git.Diff.GetDiff(staged, args...)
 	if err != nil {
 		return Diff{}, fmt.Errorf("load file diff: %w", err)
 	}
@@ -1354,16 +1405,16 @@ func (s *gitSession) StashFiles(ctx context.Context, index int) ([]CommitFile, e
 	if err != nil {
 		return nil, fmt.Errorf("load stash files: %w", err)
 	}
-	files, err := parseStashNameStatus(output)
+	files, err := parseNameStatus(output)
 	if err != nil {
 		return nil, fmt.Errorf("load stash files: %w", err)
 	}
 	return files, nil
 }
 
-// parseStashNameStatus reads the NUL-separated name-status output of a stash.
-// A rename or copy carries two paths, the old then the new.
-func parseStashNameStatus(output string) ([]CommitFile, error) {
+// parseNameStatus reads Git's NUL-separated name-status output. A rename or
+// copy carries two paths, the old then the new.
+func parseNameStatus(output string) ([]CommitFile, error) {
 	fields := strings.Split(output, "\x00")
 	files := make([]CommitFile, 0, len(fields)/2)
 	for i := 0; i < len(fields); {
@@ -1390,30 +1441,40 @@ func parseStashNameStatus(output string) ([]CommitFile, error) {
 	return files, nil
 }
 
-func (s *gitSession) StashFileDiff(ctx context.Context, index int, file CommitFile) (Diff, error) {
+func (s *gitSession) StashFileDiff(ctx context.Context, index int, file CommitFile, options DiffOptions) (Diff, error) {
 	if err := ctx.Err(); err != nil {
 		return Diff{}, err
+	}
+	optionArgs, err := diffOptionArgs(options)
+	if err != nil {
+		return Diff{}, fmt.Errorf("load stash file diff: %w", err)
 	}
 	ref := fmt.Sprintf("refs/stash@{%d}", index)
 	paths := []string{file.Path}
 	if file.PreviousPath != "" && file.PreviousPath != file.Path {
 		paths = append(paths, file.PreviousPath)
 	}
-	diffArgs := append([]string{"git", "diff", "--no-color", ref + "^1", ref, "--"}, paths...)
+	diffArgs := append([]string{"git", "diff", "--no-color", "--no-ext-diff"}, optionArgs...)
+	diffArgs = append(diffArgs, ref+"^1", ref, "--")
+	diffArgs = append(diffArgs, paths...)
 	patch, err := s.cmd.New(diffArgs).RunWithOutput()
 	if err != nil {
 		return Diff{}, fmt.Errorf("load stash file diff: %w", err)
 	}
 	// Untracked files ride in the stash's third parent rather than in the
 	// commit the stash points at, so the tree-to-tree diff above leaves them
-	// empty. Ask that parent when it does.
+	// empty. Check that parent exists before reading it: an ignored
+	// whitespace-only tracked change can also produce an empty primary patch.
 	if strings.TrimSpace(patch) == "" {
-		untrackedArgs := append([]string{
-			"git", "diff", "--no-color", models.EmptyTreeCommitHash, ref + "^3", "--",
-		}, paths...)
-		patch, err = s.cmd.New(untrackedArgs).RunWithOutput()
-		if err != nil {
-			return Diff{}, fmt.Errorf("load stash file diff: %w", err)
+		untracked, revErr := s.gitText("rev-parse", "--verify", "--quiet", ref+"^3")
+		if revErr == nil && untracked != "" {
+			untrackedArgs := append([]string{"git", "diff", "--no-color", "--no-ext-diff"}, optionArgs...)
+			untrackedArgs = append(untrackedArgs, models.EmptyTreeCommitHash, ref+"^3", "--")
+			untrackedArgs = append(untrackedArgs, paths...)
+			patch, err = s.cmd.New(untrackedArgs).RunWithOutput()
+			if err != nil {
+				return Diff{}, fmt.Errorf("load stash file diff: %w", err)
+			}
 		}
 	}
 	return Diff{Patch: patch, Kind: "Stash"}, nil
@@ -1528,6 +1589,36 @@ func (s *gitSession) commitTree(tree string, parents []string, message string, a
 		return "", err
 	}
 	return strings.TrimSpace(output), nil
+}
+
+// RestoreCommitFile writes one historical file version to the working tree.
+// A path absent from that commit is removed. Like ApplyStashFile, this never
+// stages the result: the index stays exactly as the user left it.
+func (s *gitSession) RestoreCommitFile(ctx context.Context, commit Commit, file CommitFile) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(commit.Hash) == "" {
+		return fmt.Errorf("restore commit file: no commit chosen")
+	}
+	for _, name := range stashFileNames(file) {
+		_, _, present, err := s.treeEntry(commit.Hash+"^{tree}", name)
+		if err != nil {
+			return fmt.Errorf("restore commit file: %w", err)
+		}
+		if present {
+			if err := s.cmd.New([]string{
+				"git", "restore", "--source", commit.Hash, "--worktree", "--", name,
+			}).Run(); err != nil {
+				return fmt.Errorf("restore commit file: %w", err)
+			}
+			continue
+		}
+		if err := s.dropWorktreeFile(name); err != nil {
+			return fmt.Errorf("restore commit file: %w", err)
+		}
+	}
+	return nil
 }
 
 // ApplyStashFile writes one saved file's version into the working tree and
@@ -1935,6 +2026,79 @@ func (s *gitSession) BlameFile(ctx context.Context, file File) (string, error) {
 	return output, nil
 }
 
+// ignoreRule is the repository-rooted, escaped form Git expects in ignore
+// files. In particular a leading # or ! must not become a comment or negation.
+func ignoreRule(path string) string {
+	var rule strings.Builder
+	rule.Grow(len(path) + 4)
+	rule.WriteByte('/')
+	for i := 0; i < len(path); i++ {
+		char := path[i]
+		if (i == 0 && (char == '#' || char == '!')) || strings.ContainsRune("[]*", rune(char)) {
+			rule.WriteByte('\\')
+		}
+		rule.WriteByte(char)
+	}
+	return rule.String()
+}
+
+// appendIgnoreRule writes beside the repository, never relative to TanGit's
+// process working directory. Lazygit's high-level Ignore helper uses the
+// latter, which is correct in its terminal process but not in this desktop one.
+func appendIgnoreRule(filename, path string) error {
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if info, err := file.Stat(); err != nil {
+		return err
+	} else if info.Size() > 0 {
+		last := []byte{0}
+		if _, err := file.ReadAt(last, info.Size()-1); err != nil {
+			return err
+		}
+		if last[0] != '\n' {
+			if _, err := file.WriteString("\n"); err != nil {
+				return err
+			}
+		}
+	}
+	_, err = file.WriteString(ignoreRule(path) + "\n")
+	return err
+}
+
+func (s *gitSession) IgnoreFile(ctx context.Context, file File) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if file.Tracked || file.Staged {
+		return fmt.Errorf("ignore untracked, unstaged file: %s is tracked or staged", file.Path)
+	}
+	filename := filepath.Join(s.git.RepoPaths.WorktreePath(), ".gitignore")
+	if err := appendIgnoreRule(filename, file.Path); err != nil {
+		return fmt.Errorf("ignore file: %w", err)
+	}
+	return nil
+}
+
+func (s *gitSession) ExcludeFile(ctx context.Context, file File) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if file.Tracked || file.Staged {
+		return fmt.Errorf("exclude untracked, unstaged file: %s is tracked or staged", file.Path)
+	}
+	infoDir := filepath.Join(s.git.RepoPaths.RepoGitDirPath(), "info")
+	if err := os.MkdirAll(infoDir, 0o755); err != nil {
+		return fmt.Errorf("exclude file: %w", err)
+	}
+	if err := appendIgnoreRule(filepath.Join(infoDir, "exclude"), file.Path); err != nil {
+		return fmt.Errorf("exclude file: %w", err)
+	}
+	return nil
+}
+
 func (s *gitSession) currentBranch() (*models.Branch, error) {
 	branches, err := s.localBranches()
 	if err != nil {
@@ -2023,26 +2187,109 @@ func parseCommitLineStats(output string) map[string]commitLineStats {
 	return stats
 }
 
-func (s *gitSession) CommitFileDiff(ctx context.Context, commit Commit, file CommitFile) (Diff, error) {
+func (s *gitSession) CommitFileDiff(ctx context.Context, commit Commit, file CommitFile, options DiffOptions) (Diff, error) {
 	if err := ctx.Err(); err != nil {
 		return Diff{}, err
+	}
+	optionArgs, err := diffOptionArgs(options)
+	if err != nil {
+		return Diff{}, fmt.Errorf("load commit file diff: %w", err)
 	}
 	from := models.EmptyTreeCommitHash
 	if len(commit.Parents) > 0 {
 		from = commit.Parents[0]
 	}
-	patch, err := s.git.WorkingTree.ShowFileDiff(
-		from,
-		commit.Hash,
-		false,
-		file.Path,
-		file.PreviousPath,
-		git_commands.DiffModePlain,
-	)
+	args := append([]string{
+		"git", "diff", "--no-color", "--no-ext-diff", "--submodule",
+		fmt.Sprintf("--find-renames=%d%%", s.renameSimilarityThreshold),
+	}, optionArgs...)
+	args = append(args, from, commit.Hash, "--", file.Path)
+	if file.PreviousPath != "" && file.PreviousPath != file.Path {
+		args = append(args, file.PreviousPath)
+	}
+	patch, err := s.cmd.New(args).RunWithOutput()
 	if err != nil {
 		return Diff{}, fmt.Errorf("load commit file diff: %w", err)
 	}
 	return Diff{Patch: patch, Kind: "Commit"}, nil
+}
+
+// compareArgs builds the common, option-safe part of a tree-to-tree diff.
+// --end-of-options keeps a ref that starts with a dash from becoming a Git
+// option; command arguments are never interpolated into a shell command.
+func (s *gitSession) compareArgs(from, to, outputMode string, options DiffOptions) ([]string, error) {
+	from, to = strings.TrimSpace(from), strings.TrimSpace(to)
+	if from == "" || to == "" {
+		return nil, fmt.Errorf("choose both refs to compare")
+	}
+	optionArgs, err := diffOptionArgs(options)
+	if err != nil {
+		return nil, err
+	}
+	args := []string{
+		"git", "diff", "--no-color", "--no-ext-diff",
+		fmt.Sprintf("--find-renames=%d%%", s.renameSimilarityThreshold),
+	}
+	args = append(args, optionArgs...)
+	if outputMode != "" {
+		args = append(args, outputMode, "-z")
+	}
+	return append(args, "--end-of-options", from, to), nil
+}
+
+func (s *gitSession) CompareFiles(ctx context.Context, from, to string, options DiffOptions) ([]CommitFile, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	nameArgs, err := s.compareArgs(from, to, "--name-status", options)
+	if err != nil {
+		return nil, fmt.Errorf("load comparison files: %w", err)
+	}
+	output, err := s.cmd.New(nameArgs).RunWithOutput()
+	if err != nil {
+		return nil, fmt.Errorf("load comparison files: %w", err)
+	}
+	files, err := parseNameStatus(output)
+	if err != nil {
+		return nil, fmt.Errorf("load comparison files: %w", err)
+	}
+
+	statArgs, err := s.compareArgs(from, to, "--numstat", options)
+	if err != nil {
+		return nil, fmt.Errorf("load comparison line statistics: %w", err)
+	}
+	output, err = s.cmd.New(statArgs).RunWithOutput()
+	if err != nil {
+		return nil, fmt.Errorf("load comparison line statistics: %w", err)
+	}
+	stats := parseCommitLineStats(output)
+	for i := range files {
+		stat := stats[files[i].Path]
+		files[i].LinesAdded = stat.added
+		files[i].LinesDeleted = stat.deleted
+	}
+	return files, nil
+}
+
+func (s *gitSession) CompareFileDiff(ctx context.Context, from, to string, file CommitFile, options DiffOptions) (Diff, error) {
+	if err := ctx.Err(); err != nil {
+		return Diff{}, err
+	}
+	args, err := s.compareArgs(from, to, "", options)
+	if err != nil {
+		return Diff{}, fmt.Errorf("load comparison file diff: %w", err)
+	}
+	paths := []string{file.Path}
+	if file.PreviousPath != "" && file.PreviousPath != file.Path {
+		paths = append(paths, file.PreviousPath)
+	}
+	args = append(args, "--")
+	args = append(args, paths...)
+	patch, err := s.cmd.New(args).RunWithOutput()
+	if err != nil {
+		return Diff{}, fmt.Errorf("load comparison file diff: %w", err)
+	}
+	return Diff{Patch: patch, Kind: "Compare"}, nil
 }
 
 // BranchCommits reads the commits of branch with `git log <branch>`, so a

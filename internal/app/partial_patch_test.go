@@ -156,7 +156,7 @@ func TestPartialPatchRoundTripsThroughTheIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	file := repository.File{Path: "lines.txt", Tracked: true, Unstaged: true, Status: " M"}
-	diff, err := session.Diff(ctx, file)
+	diff, err := session.Diff(ctx, file, repository.DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestPartialPatchRoundTripsThroughTheIndex(t *testing.T) {
 	// Both changes are in the index, so taking one back out is a partial
 	// patch of the staged side rather than the file's whole diff.
 	runGitIn(t, dir, "add", "lines.txt")
-	stagedDiff, err := session.Diff(ctx, stagedFile)
+	stagedDiff, err := session.Diff(ctx, stagedFile, repository.DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +234,7 @@ func TestPartialPatchRoundTripsMultipleLinesAcrossHunks(t *testing.T) {
 		t.Fatal(err)
 	}
 	file := repository.File{Path: "lines.txt", Tracked: true, Unstaged: true, Status: " M"}
-	diff, err := session.Diff(ctx, file)
+	diff, err := session.Diff(ctx, file, repository.DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestPartialPatchRoundTripsMultipleLinesAcrossHunks(t *testing.T) {
 	// TWENTY in the index rather than becoming a whole-file unstage.
 	runGitIn(t, dir, "add", "lines.txt")
 	stagedFile := repository.File{Path: "lines.txt", Tracked: true, Staged: true, Status: "M "}
-	stagedDiff, err := session.Diff(ctx, stagedFile)
+	stagedDiff, err := session.Diff(ctx, stagedFile, repository.DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +327,7 @@ func TestPartialPatchStagesLinesOfANewFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	file := repository.File{Path: "new.txt", Unstaged: true, Status: "??"}
-	diff, err := session.Diff(ctx, file)
+	diff, err := session.Diff(ctx, file, repository.DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
