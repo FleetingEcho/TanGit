@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -65,17 +66,34 @@ func (a *app) lineSelectionAvailable() bool {
 	return a.diffState != nil && a.diffState.LineSelection && a.diffPatch != ""
 }
 
+// currentLineSelections returns the independent ranges picked in multiple-line
+// mode, or the viewer's one range during an ordinary selection.
+func (a *app) currentLineSelections() []editor.DiffLineRange {
+	if a.lineSelectMode && len(a.lineSelectRanges) > 0 {
+		return a.lineSelectRanges
+	}
+	if a.diffState == nil {
+		return nil
+	}
+	selection, ok := a.diffState.SelectedLines()
+	if !ok || selection.End < selection.Start {
+		return nil
+	}
+	return []editor.DiffLineRange{selection}
+}
+
 // selectedLineCount is how many lines the pane's diff has selected, and
-// whether it has any.
+// whether it has any. Disjoint lines count individually, not as their bounds.
 func (a *app) selectedLineCount() (int, bool) {
 	if !a.lineSelectionAvailable() {
 		return 0, false
 	}
-	selection, ok := a.diffState.SelectedLines()
-	if !ok || selection.End < selection.Start {
-		return 0, false
+	selections := a.currentLineSelections()
+	count := 0
+	for _, selection := range selections {
+		count += selection.End - selection.Start + 1
 	}
-	return selection.End - selection.Start + 1, true
+	return count, count > 0
 }
 
 // selectedLinesLabel says how many lines are selected, in the singular for one.
@@ -86,16 +104,20 @@ func selectedLinesLabel(count int) string {
 	return trf("%d lines selected", count)
 }
 
-// startLineSelection enters the mode where each click on a line number adds the
-// line to the selection, so a range is picked without holding Shift. It starts
-// the range afresh, so the button never adds to a selection the user has
-// forgotten.
+func (a *app) clearMultipleLineSelection() {
+	a.lineSelectRange, a.lineSelectHas = editor.DiffLineRange{}, false
+	a.lineSelectRanges = nil
+}
+
+// startLineSelection enters the mode where each plain click adds one line and
+// Shift-click adds a contiguous range. It starts afresh, so the button never
+// adds to a selection the user has forgotten.
 func (a *app) startLineSelection() {
 	if !a.lineSelectionAvailable() {
 		return
 	}
 	a.lineSelectMode = true
-	a.lineSelectRange, a.lineSelectHas = editor.DiffLineRange{}, false
+	a.clearMultipleLineSelection()
 	if a.diffState != nil {
 		a.diffState.SetSelectedLines(editor.DiffLineRange{}, false)
 	}
@@ -105,58 +127,120 @@ func (a *app) startLineSelection() {
 // Cancel button and Escape do.
 func (a *app) stopLineSelection() {
 	a.lineSelectMode = false
-	a.lineSelectRange, a.lineSelectHas = editor.DiffLineRange{}, false
+	a.clearMultipleLineSelection()
 	if a.diffState != nil {
 		a.diffState.SetSelectedLines(editor.DiffLineRange{}, false)
 	}
+	a.syncLineSelectionMarkers()
 }
 
-// syncLineSelection remembers what the pane shows, so the next click extends
-// the range the user is looking at. It is called while the frame builds, after
-// the click that changed the selection has been handled.
+// syncLineSelection preserves independent selections across frames. The native
+// viewer range remains the Shift-click anchor, not a replacement for the model.
 func (a *app) syncLineSelection() {
 	if !a.lineSelectMode || a.diffState == nil {
-		a.lineSelectRange, a.lineSelectHas = editor.DiffLineRange{}, false
+		a.clearMultipleLineSelection()
+		a.syncLineSelectionMarkers()
 		return
 	}
-	selection, ok := a.diffState.SelectedLines()
-	if !ok {
-		a.lineSelectRange, a.lineSelectHas = editor.DiffLineRange{}, false
-		return
+	if len(a.lineSelectRanges) == 0 {
+		if selection, ok := a.diffState.SelectedLines(); ok {
+			a.lineSelectRanges = []editor.DiffLineRange{selection}
+			a.lineSelectRange, a.lineSelectHas = selection, true
+		}
 	}
-	a.lineSelectRange, a.lineSelectHas = selection, true
+	a.syncLineSelectionMarkers()
 }
 
-// extendLineSelection is what the pane reports when a line number is clicked
-// while the mode is on. A plain click picks one line; a line outside the range
-// grows the range to hold it, and a line inside it starts the range there
-// again. Shift-click still builds a range of its own, and is taken as it is.
+// mergeLineSelections coalesces adjacent clicks into one range while retaining
+// gaps between independent clicks. Patch construction and the displayed count
+// therefore operate on precisely the chosen lines.
+func mergeLineSelections(ranges []editor.DiffLineRange) []editor.DiffLineRange {
+	ordered := append([]editor.DiffLineRange(nil), ranges...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].Side != ordered[j].Side {
+			return ordered[i].Side < ordered[j].Side
+		}
+		return ordered[i].Start < ordered[j].Start
+	})
+	merged := make([]editor.DiffLineRange, 0, len(ordered))
+	for _, next := range ordered {
+		if next.End < next.Start {
+			continue
+		}
+		if len(merged) > 0 {
+			last := &merged[len(merged)-1]
+			if last.Side == next.Side && next.Start <= last.End+1 {
+				last.End = max(last.End, next.End)
+				if next.Start < last.Start {
+					last.Start = next.Start
+				}
+				continue
+			}
+		}
+		merged = append(merged, next)
+	}
+	return merged
+}
+
+// extendLineSelection handles a line-number click in multiple-line mode. A
+// plain click adds just that line; only an actual Shift/drag range adds the
+// unchanged lines between its endpoints.
 func (a *app) extendLineSelection(state *editor.DiffState, clicked editor.DiffLineRange) {
 	if !a.lineSelectMode || state == nil || state != a.diffState || clicked.End < clicked.Start {
 		return
 	}
-	if clicked.Start != clicked.End {
-		// Shift-click already asked for a range from one end of the
-		// selection to the clicked line.
-		a.lineSelectRange, a.lineSelectHas = clicked, true
+	a.lineSelectRanges = mergeLineSelections(append(a.currentLineSelections(), clicked))
+	a.lineSelectRange, a.lineSelectHas = clicked, true
+	// MyGo paints one range. Keep the latest click/range as its Shift anchor;
+	// syncLineSelectionMarkers underlines every other disjoint choice instead
+	// of falsely highlighting everything between the outermost lines.
+	state.SetSelectedLines(clicked, true)
+	if len(a.lineSelectRanges) == 1 {
+		state.SetSelectedLines(a.lineSelectRanges[0], true)
+	}
+	a.syncLineSelectionMarkers()
+}
+
+// selectedLineMarker distinguishes TanGit's disjoint-selection underlines from
+// moved-line explanations already attached to the diff viewer.
+type selectedLineMarker struct{}
+
+// syncLineSelectionMarkers marks disjoint lines individually. MyGo's native
+// range painter cannot represent gaps; an underline annotation per selected
+// line can, without modifying the renderer or its surrounding diff behavior.
+func (a *app) syncLineSelectionMarkers() {
+	if a.diffState == nil {
 		return
 	}
-	line := clicked.Start
-	seen := a.lineSelectRange
-	if !a.lineSelectHas || seen.Side != clicked.Side ||
-		(line >= seen.Start && line <= seen.End) {
-		// The first line of a range, or one already in it.
-		a.lineSelectRange, a.lineSelectHas = clicked, true
-		return
+	annotations := a.diffState.Annotations[:0]
+	for _, annotation := range a.diffState.Annotations {
+		if _, selected := annotation.Key.(selectedLineMarker); !selected {
+			annotations = append(annotations, annotation)
+		}
 	}
-	grown := editor.DiffLineRange{Side: clicked.Side, Start: seen.Start, End: seen.End}
-	if line < grown.Start {
-		grown.Start = line
+	if a.lineSelectMode && len(a.lineSelectRanges) > 1 {
+		for _, selection := range a.lineSelectRanges {
+			for line := selection.Start; line <= selection.End; line++ {
+				annotations = append(annotations, editor.DiffAnnotation{
+					Side: selection.Side, Line: line, Height: 3, Key: selectedLineMarker{},
+				})
+			}
+		}
+	}
+	a.diffState.Annotations = annotations
+	if len(annotations) == 0 {
+		a.diffState.RenderAnnotation = nil
 	} else {
-		grown.End = line
+		a.diffState.RenderAnnotation = renderDiffAnnotation
 	}
-	state.SetSelectedLines(grown, true)
-	a.lineSelectRange, a.lineSelectHas = grown, true
+}
+
+func renderDiffAnnotation(c *ui.Context, annotation editor.DiffAnnotation) {
+	if _, selected := annotation.Key.(selectedLineMarker); selected {
+		ui.Box(c).Fill().Background(c.Theme().Accent).Label(tr("Selected line"))
+		return
+	}
+	renderMovedLine(c, annotation)
 }
 
 // lineSelectionControls draws what the pane says and offers about staging
@@ -174,13 +258,16 @@ func (a *app) lineSelectionControls(c *ui.Context, withHint bool) {
 				FontSize(theme.FontSize - 1)
 			a.diffLineButton(c)
 		case withHint:
-			ui.Text(c, tr("Click a line number, then another, to choose a range.")).
+			ui.Text(c, tr("Click line numbers to choose changes; Shift-click to choose a range.")).
 				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		}
 		iconButton(c, "Cancel", "Leave the selection alone and stop choosing lines",
-			abortIcon, false, a.stopLineSelection)
+			closeIcon, false, a.stopLineSelection)
 		return
 	}
+	iconButton(c, "Select multiple lines",
+		"Click line numbers to add them to one selection, then stage them together",
+		selectLinesIcon, false, a.startLineSelection)
 	if selected {
 		ui.Text(c, selectedLinesLabel(count)).TextColor(theme.Accent).
 			FontSize(theme.FontSize - 1)
@@ -189,14 +276,10 @@ func (a *app) lineSelectionControls(c *ui.Context, withHint bool) {
 		ui.Text(c, tr("Click line numbers to select lines")).
 			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 	}
-	iconButton(c, "Select multiple lines",
-		"Click line numbers to add them to one selection, then stage them together",
-		selectLinesIcon, false, a.startLineSelection)
 }
 
-// diffLineButton is the action for the lines selected in the pane's diff: it
-// stages them when the unstaged side shows, and takes them back out of the
-// index when the staged side does. The button says which way it goes.
+// diffLineButton offers staging/unstaging and stashing for exactly the lines
+// selected in the pane. Stashing belongs only to the working-tree side.
 func (a *app) diffLineButton(c *ui.Context) {
 	label := tr("Stage selected lines")
 	tooltip := tr("Stage only the selected lines, leaving the rest of the file in the working tree")
@@ -204,9 +287,61 @@ func (a *app) diffLineButton(c *ui.Context) {
 		label = tr("Unstage selected lines")
 		tooltip = tr("Take only the selected lines out of the index, leaving them in the working tree")
 	}
-	if ui.PrimaryButton(c, label).Tooltip(tooltip).Disabled(a.actionBusy).Clicked() {
+	if compactTextButton(ui.PrimaryButton(c, label)).Label(label).
+		Tooltip(tooltip).Disabled(a.actionBusy).Clicked() {
 		a.beginLineAction()
 	}
+	if a.diffKind != "Staged" {
+		if compactTextButton(ui.Button(c, tr("Stash selected lines…"))).Label(tr("Stash selected lines…")).
+			Tooltip(tr("Save only the selected lines in a stash")).Disabled(a.actionBusy).Clicked() {
+			a.openLineStash()
+		}
+	}
+}
+
+// selectedLinePatch builds the patch shared by selected-line stage and stash.
+func (a *app) selectedLinePatch(file repository.File, reverse bool) (string, bool, bool) {
+	selections := a.currentLineSelections()
+	if len(selections) == 0 {
+		return "", false, false
+	}
+	patchText, wholeFile, err := partialPatchSelections(a.diffPatch, file, selections, reverse)
+	if err != nil {
+		a.notifyError(err)
+		return "", false, false
+	}
+	if patchText == "" && !wholeFile {
+		// Only context lines were selected: there is no change to move.
+		a.notify("", tr("Nothing to move"), tr("Select changed lines, not unchanged ones."))
+		return "", false, false
+	}
+	return patchText, wholeFile, true
+}
+
+// openLineStash names the selected-line patch before saving it. Selecting the
+// whole file uses the existing selected-file path, including untracked files.
+func (a *app) openLineStash() {
+	change, ok := a.selectedChange()
+	if a.actionBusy || a.session == nil || !ok || a.diffKind == "Staged" || !a.lineSelectionAvailable() {
+		return
+	}
+	file := change.diffFile()
+	patchText, wholeFile, ok := a.selectedLinePatch(file, false)
+	if !ok {
+		return
+	}
+	if wholeFile {
+		a.openSelectedFileStash(file)
+		return
+	}
+	// Creating the stash starts from HEAD, while removing the selected work
+	// must match the actual working tree, including its unselected edits.
+	removalPatch, _, err := partialPatchSelections(a.diffPatch, file, a.currentLineSelections(), true)
+	if err != nil {
+		a.notifyError(err)
+		return
+	}
+	a.openSelectedLinesStash(file, patchText, removalPatch)
 }
 
 // beginLineAction stages or unstages the lines selected in the pane's diff,
@@ -219,24 +354,14 @@ func (a *app) beginLineAction() {
 	if a.actionBusy || a.session == nil || !ok || !a.lineSelectionAvailable() {
 		return
 	}
-	selection, selected := a.diffState.SelectedLines()
-	if !selected {
-		return
-	}
 	file := change.diffFile()
 	reverse := a.diffKind == "Staged"
-	patchText, wholeFile, err := partialPatch(a.diffPatch, file, selection, reverse)
-	if err != nil {
-		a.notifyError(err)
+	patchText, wholeFile, ok := a.selectedLinePatch(file, reverse)
+	if !ok {
 		return
 	}
 	if wholeFile {
 		a.beginStageFile(file, !reverse)
-		return
-	}
-	if patchText == "" {
-		// Only context lines were selected: there is no change to move.
-		a.notify("", tr("Nothing to move"), tr("Select changed lines, not unchanged ones."))
 		return
 	}
 	a.beginRepositoryAction(file.Path, func(ctx context.Context, session repository.Session) error {
@@ -251,7 +376,7 @@ func (a *app) confirmDiscardFile(file repository.File) {
 	a.askConfirm(confirmRequest{
 		title:        "Discard Changes",
 		message:      trf("Discard all changes to %s?", file.Path),
-		detail:       "This operation cannot be undone.",
+		detail:       "A recovery copy is kept for 7 days in Saved work. The current changes will be removed.",
 		confirmLabel: "Discard",
 		destructive:  true,
 		run: func() {
@@ -285,18 +410,13 @@ func (a *app) confirmDiscardAllChanges() {
 	a.askConfirm(confirmRequest{
 		title:        "Discard All Changes",
 		message:      trf("Discard all %d changes?", len(files)),
-		detail:       "Staged and unstaged changes are thrown away. This operation cannot be undone.",
+		detail:       "Staged and unstaged changes are removed. One recovery copy is kept for 7 days in Saved work.",
 		confirmLabel: "Discard all",
 		destructive:  true,
 		run: func() {
 			a.beginRepositoryActionMessage(tr("Discarded all changes"), "",
 				func(ctx context.Context, session repository.Session) error {
-					for _, file := range files {
-						if err := session.Discard(ctx, file); err != nil {
-							return err
-						}
-					}
-					return nil
+					return session.DiscardFiles(ctx, files)
 				}, nil)
 		},
 	})
@@ -315,6 +435,14 @@ func (a *app) fileRowMenu(m *ui.Menu, index int, services ui.Services) {
 	// view does, so the details pane follows what the menu changes.
 	a.selectedFile = index
 
+	reviewLabel := "Mark reviewed"
+	if a.reviewedFiles[file.Path] {
+		reviewLabel = "Mark unreviewed"
+	}
+	if m.Item(tr(reviewLabel)).Shortcut(0, ui.KeyR).Disabled(a.actionBusy).Chosen() {
+		a.setFileReviewed(file, !a.reviewedFiles[file.Path])
+	}
+	m.Separator()
 	if file.HasMergeConflicts {
 		if m.Item(tr("Use current")).Disabled(a.actionBusy).Chosen() {
 			a.resolveConflictFile(file, true)
@@ -350,6 +478,9 @@ func (a *app) fileRowMenu(m *ui.Menu, index int, services ui.Services) {
 				a.ignoreFile(file, true)
 			}
 			m.Separator()
+		}
+		if m.Item(tr("Stash selected file…")).Disabled(a.actionBusy).Chosen() {
+			a.openSelectedFileStash(file)
 		}
 		if m.Item(tr("Discard changes…")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
 			a.confirmDiscardFile(file)
@@ -511,6 +642,7 @@ func (a *app) fileDetailsView(c *ui.Context) {
 			a.conflictPane(c, theme)
 			return
 		}
+		a.changedFileNavigationControls(c)
 		if a.blameLoading {
 			ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
 				ui.Spinner(c).Label(tr("Loading blame"))
@@ -554,21 +686,16 @@ func (a *app) fileDetailsView(c *ui.Context) {
 			return
 		}
 		if a.diffState == nil {
-			ui.Column(c).Grow(1).Center().Children(func() {
-				ui.Text(c, tr("No textual diff")).TextColor(theme.TextMuted)
-			})
+			noTextualDiffOrMedia(c, a.diffMedia, change.file.Path)
 			return
 		}
-		// The row above already shows whether the file is staged; this names
-		// which of its two diffs the pane shows, which matters for a file
-		// that has both. Selecting lines turns the line into the stage or
-		// unstage action for just those lines.
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Text(c, trf("%s changes", tr(a.diffKind))).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-			if a.lineSelectionAvailable() {
+		// Selecting lines turns this row into the stage or unstage action for
+		// just those lines. The section and row above already name the side.
+		if a.lineSelectionAvailable() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				a.lineSelectionControls(c, true)
-			}
-		})
+			})
+		}
 		a.keyboardDiffViewer(c, a.diffState)
 	})
 }
@@ -626,6 +753,9 @@ func (a *app) fileActionsMenu(c *ui.Context, theme *ui.Theme, file repository.Fi
 			}
 			m.Separator()
 		}
+		if m.Item(tr("Stash selected file…")).Disabled(a.actionBusy).Chosen() {
+			a.openSelectedFileStash(file)
+		}
 		if m.Item(tr("Discard changes…")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
 			a.confirmDiscardSelected()
 		}
@@ -656,6 +786,10 @@ func (a *app) conflictPane(c *ui.Context, theme *ui.Theme) {
 				a.beginDiff()
 			}
 		})
+		return
+	}
+	a.conflictStageSelector(c)
+	if a.conflictStagePane(c, theme) {
 		return
 	}
 	if a.conflictSides != nil {
@@ -731,17 +865,17 @@ func (a *app) conflictSidesPane(c *ui.Context, theme *ui.Theme) {
 	ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 		ui.Badge(c, tr(conflictStatusLabel(sides.file.Status))).Background(theme.Danger).TextColor(ui.Hex("#ffffff"))
 		ui.Spacer(c).Grow(1)
-		if ui.Button(c, tr("Use current")).Tooltip(tr("Resolve with the current side")).
+		if compactTextButton(ui.Button(c, tr("Use current"))).Label(tr("Use current")).Tooltip(tr("Resolve with the current side")).
 			Disabled(a.actionBusy).Clicked() {
 			a.resolveConflictFile(sides.file, true)
 			c.Invalidate()
 		}
-		if ui.Button(c, tr("Use incoming")).Tooltip(tr("Resolve with the incoming side")).
+		if compactTextButton(ui.Button(c, tr("Use incoming"))).Label(tr("Use incoming")).Tooltip(tr("Resolve with the incoming side")).
 			Disabled(a.actionBusy).Clicked() {
 			a.resolveConflictFile(sides.file, false)
 			c.Invalidate()
 		}
-		if ui.PrimaryButton(c, tr("Mark resolved")).Tooltip(tr("Stage the file as it is")).
+		if compactTextButton(ui.PrimaryButton(c, tr("Mark resolved"))).Label(tr("Mark resolved")).Tooltip(tr("Stage the file as it is")).
 			Disabled(a.actionBusy).Clicked() {
 			a.beginStageFile(sides.file, true)
 			c.Invalidate()
@@ -760,7 +894,10 @@ func (a *app) conflictSidesPane(c *ui.Context, theme *ui.Theme) {
 			return
 		}
 		if sides.content != "" {
-			a.keyboardPane(c, "conflict-sides", editor.View(c, sides.viewState()).Grow(1))
+			view := sides.viewState()
+			view.Font = selectedBufferFont(a.settings.BufferFont, a.settings.BufferFontSize)
+			view.LineHeight = float32(a.settings.BufferLineHeight)
+			a.keyboardPane(c, "conflict-sides", editor.View(c, view).Grow(1))
 		}
 	})
 }
@@ -782,6 +919,17 @@ func (a *app) conflictToolbar(c *ui.Context, theme *ui.Theme) {
 				ui.Badge(c, tr("No conflict markers")).Background(theme.Success)
 			} else {
 				ui.Badge(c, trf("Conflict %d of %d", state.selected+1, count)).Background(theme.Danger).TextColor(ui.Hex("#ffffff"))
+			}
+			ui.Spacer(c).Grow(1)
+			// Labeled actions precede icon-only navigation and undo in mixed
+			// toolbars. Mark resolved stays on this row rather than moving
+			// into the file header above.
+			if compactTextButton(ui.PrimaryButton(c, tr("Mark resolved"))).Label(tr("Mark resolved")).Tooltip(tr("Stage the file as it is")).Disabled(a.actionBusy).Clicked() {
+				if change, ok := a.selectedChange(); ok {
+					a.beginStageFile(change.file, true)
+				}
+			}
+			if count > 0 {
 				iconButton(c, "Previous conflict", "Select the conflict above (Shift+F7)", chevronUpIcon, state.selected == 0, func() {
 					a.moveConflictSelection(-1)
 					c.Invalidate()
@@ -791,37 +939,28 @@ func (a *app) conflictToolbar(c *ui.Context, theme *ui.Theme) {
 					c.Invalidate()
 				})
 			}
-			ui.Spacer(c).Grow(1)
 			iconButton(c, "Undo resolution", "Put back the content before the last pick (Alt+Z)", revertIcon, a.actionBusy || len(state.undo) == 0, func() {
 				a.undoConflictResolution()
 				c.Invalidate()
 			})
-			// Marking the file resolved ends the resolution, so it stays on
-			// this row, at its end, beside the conflict it belongs to: the
-			// header above keeps the bar a changed file has.
-			if ui.PrimaryButton(c, tr("Mark resolved")).Tooltip(tr("Stage the file as it is")).Disabled(a.actionBusy).Clicked() {
-				if change, ok := a.selectedChange(); ok {
-					a.beginStageFile(change.file, true)
-				}
-			}
 		})
 		resolveDisabled := count == 0 || a.actionBusy
 		ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
-			if ui.Button(c, tr("Use current")).Tooltip(tr("Keep the current side's hunk") + " (Alt+1)").Disabled(resolveDisabled).Clicked() {
+			if compactTextButton(ui.Button(c, tr("Use current"))).Label(tr("Use current")).Tooltip(tr("Keep the current side's hunk") + " (Alt+1)").Disabled(resolveDisabled).Clicked() {
 				a.resolveConflictSide(conflictCurrent)
 				c.Invalidate()
 			}
 			if hasRegion && region.hasBase() {
-				if ui.Button(c, tr("Use base")).Tooltip(tr("Keep the common ancestor's hunk") + " (Alt+2)").Disabled(resolveDisabled).Clicked() {
+				if compactTextButton(ui.Button(c, tr("Use base"))).Label(tr("Use base")).Tooltip(tr("Keep the common ancestor's hunk") + " (Alt+2)").Disabled(resolveDisabled).Clicked() {
 					a.resolveConflictSide(conflictBase)
 					c.Invalidate()
 				}
 			}
-			if ui.Button(c, tr("Use incoming")).Tooltip(tr("Keep the incoming side's hunk") + " (Alt+3)").Disabled(resolveDisabled).Clicked() {
+			if compactTextButton(ui.Button(c, tr("Use incoming"))).Label(tr("Use incoming")).Tooltip(tr("Keep the incoming side's hunk") + " (Alt+3)").Disabled(resolveDisabled).Clicked() {
 				a.resolveConflictSide(conflictIncoming)
 				c.Invalidate()
 			}
-			if ui.Button(c, tr("Use both")).Tooltip(tr("Keep the hunks of both sides, without the ancestor") + " (Alt+4)").Disabled(resolveDisabled).Clicked() {
+			if compactTextButton(ui.Button(c, tr("Use both"))).Label(tr("Use both")).Tooltip(tr("Keep the hunks of both sides, without the ancestor") + " (Alt+4)").Disabled(resolveDisabled).Clicked() {
 				a.resolveConflictSide(conflictBoth)
 				c.Invalidate()
 			}

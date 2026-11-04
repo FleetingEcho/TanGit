@@ -10,6 +10,9 @@ import (
 )
 
 func (a *app) selectedCommitsForBatch() []repository.Commit {
+	if !a.commitSelectionMode {
+		return nil
+	}
 	var selected []repository.Commit
 	for _, commit := range a.visibleCommits() {
 		if a.commitSelection[commit.Hash] {
@@ -19,15 +22,51 @@ func (a *app) selectedCommitsForBatch() []repository.Commit {
 	return selected
 }
 
+// commitSelectionModeButton reveals the commit checkboxes only while batch
+// selection is wanted. Leaving the mode also clears its selection, so hidden
+// commits can never be acted on accidentally.
+func (a *app) commitSelectionModeButton(c *ui.Context) {
+	theme := c.Theme()
+	button := ui.Button(c, "").Padding(2, 3)
+	clicked := button.Label(tr("Select multiple commits")).Tooltip(tr("Show or hide commit selection checkboxes")).Disabled(a.actionBusy).Clicked()
+	button.Children(func() {
+		icon := ui.Icon(c, selectCommitsIcon).FontSize(13)
+		if a.commitSelectionMode {
+			icon.TextColor(theme.Accent)
+		}
+	})
+	if a.commitSelectionMode {
+		button.Background(theme.Accent.Alpha(0.14))
+	} else if button.Hovered() {
+		button.Background(theme.SurfaceHover)
+	}
+	if clicked {
+		a.commitSelectionMode = !a.commitSelectionMode
+		if !a.commitSelectionMode {
+			a.commitSelection = nil
+		}
+	}
+}
+
 func (a *app) commitSelectionCheckbox(c *ui.Context, commit repository.Commit) {
+	if !a.commitSelectionMode {
+		return
+	}
 	selected := a.commitSelection[commit.Hash]
 	c.Key("batch:" + commit.Hash)
 	ui.Checkbox(c, &selected, "").Label(tr("Select commit for batch actions")).Disabled(a.actionBusy).OnClick(func() {
-		if a.commitSelection == nil {
-			a.commitSelection = map[string]bool{}
-		}
-		a.commitSelection[commit.Hash] = !a.commitSelection[commit.Hash]
+		a.toggleCommitForBatch(commit)
 	})
+}
+
+// toggleCommitForBatch also enters selection mode for the context menu and
+// Ctrl+Space, keeping those alternatives usable without the toolbar button.
+func (a *app) toggleCommitForBatch(commit repository.Commit) {
+	a.commitSelectionMode = true
+	if a.commitSelection == nil {
+		a.commitSelection = map[string]bool{}
+	}
+	a.commitSelection[commit.Hash] = !a.commitSelection[commit.Hash]
 }
 
 func (a *app) commitSelectionBar(c *ui.Context) {
@@ -129,9 +168,6 @@ func (a *app) toggleSelectedCommitForBatch() {
 		return
 	}
 	if commit, ok := a.selectedVisibleCommit(); ok {
-		if a.commitSelection == nil {
-			a.commitSelection = map[string]bool{}
-		}
-		a.commitSelection[commit.Hash] = !a.commitSelection[commit.Hash]
+		a.toggleCommitForBatch(commit)
 	}
 }

@@ -9,6 +9,9 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
+
+	"lazygitapp/internal/repository"
 )
 
 // The settings dialog carries the switch that turns every shortcut off, and
@@ -83,6 +86,203 @@ func TestQuestionMarkWorksAfterReenablingShortcutsInSettings(t *testing.T) {
 	}
 }
 
+func TestFontChoicesListEveryAvailableFamily(t *testing.T) {
+	system := ui.FontFamilies()
+	choices := fontChoices("")
+	if len(system) == 0 {
+		t.Skip("the headless text stack exposes no system font families")
+	}
+	if choices[0] != "System" {
+		t.Fatalf("System must be the first choice: %q", choices)
+	}
+	for _, family := range system {
+		if !slices.Contains(choices, family.Name) {
+			t.Errorf("font choices omit available family %q", family.Name)
+		}
+	}
+}
+
+func TestFontChoicesPreserveSelectedUnavailableFamily(t *testing.T) {
+	families := []ui.FontFamily{{Name: "DejaVu Sans"}, {Name: "Noto Sans"}}
+	got := fontChoicesFrom(families, "Uninstalled Local Font")
+	want := []string{"System", "DejaVu Sans", "Noto Sans", "Uninstalled Local Font"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("font choices = %q, want %q", got, want)
+	}
+	if got := fontChoicesFrom(families, "System"); !reflect.DeepEqual(got, []string{"System", "DejaVu Sans", "Noto Sans"}) {
+		t.Fatalf("System was duplicated or local family omitted: %q", got)
+	}
+}
+
+func TestFontChoicesSortRegisteredAndSystemFamilies(t *testing.T) {
+	got := fontChoicesFrom([]ui.FontFamily{{Name: "zeta"}, {Name: "Alpha"}, {Name: "beta"}}, "")
+	if !reflect.DeepEqual(got, []string{"System", "Alpha", "beta", "zeta"}) {
+		t.Fatalf("font choices are not sorted case-insensitively: %q", got)
+	}
+}
+
+func TestSettingsSearchableFontsChooseIndependently(t *testing.T) {
+	families := ui.FontFamilies()
+	if len(families) == 0 {
+		t.Skip("the headless text stack exposes no system font families")
+	}
+	want := families[0].Name
+	h := menuTestApp(t)
+	h.app.openSettings()
+	h.tester.Frame()
+	if err := h.tester.Click("Typography settings"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+
+	// The interface picker still supports browsing and choosing with a click.
+	if err := h.tester.Click("Search interface fonts"); err != nil {
+		t.Fatalf("open interface font choices: %v", err)
+	}
+	h.tester.Frame()
+	if !h.tester.HasText(want) {
+		t.Fatalf("font menu does not offer system family %q: %q", want, h.texts())
+	}
+	if err := h.tester.Click(want); err != nil {
+		t.Fatalf("choose system family %q: %v", want, err)
+	}
+	h.tester.Frame()
+	if h.app.settings.Font != want || h.app.settings.BufferFont != "System" {
+		t.Fatalf("interface choice changed the wrong settings: %+v", h.app.settings)
+	}
+
+	// Typing replaces the selected text and filters the buffer families;
+	// Enter takes the keyboard-highlighted match without any scrolling.
+	if err := h.tester.Click("Search buffer fonts"); err != nil {
+		t.Fatalf("focus buffer font search: %v", err)
+	}
+	h.tester.Key(ui.Cmd, ui.KeyA)
+	h.tester.Type(want)
+	h.tester.Frame()
+	if err := h.tester.Click(want); err != nil {
+		// A click is also a valid choice in the filtered list, and avoids an
+		// exact full-family match leaving no highlighted suggestion for Enter.
+		t.Fatalf("choose filtered buffer family %q: %v", want, err)
+	}
+	h.tester.Frame()
+	if h.app.settings.BufferFont != want || h.app.settings.Font != want {
+		t.Fatalf("buffer search did not preserve both independent choices: %+v", h.app.settings)
+	}
+}
+
+func TestSettingsBufferFontKeyboardSelection(t *testing.T) {
+	families := ui.FontFamilies()
+	if len(families) == 0 {
+		t.Skip("the headless text stack exposes no system font families")
+	}
+	want := families[0].Name
+	h := menuTestApp(t)
+	h.app.openSettings()
+	h.tester.Frame()
+	if err := h.tester.Click("Typography settings"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.tester.Scroll(700, 400, 0, 240)
+	h.tester.Frame()
+	if err := h.tester.Click("Search buffer fonts"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Key(ui.Cmd, ui.KeyA)
+	h.tester.Type(want)
+	h.tester.Frame()
+	h.tester.Key(0, ui.KeyEnter)
+	h.tester.Frame()
+	if h.app.settings.BufferFont != want {
+		t.Fatalf("typing %q and Enter selected %q, want %q", want, h.app.settings.BufferFont, want)
+	}
+	if h.app.settings.Font != "System" {
+		t.Fatalf("buffer keyboard selection changed the interface font to %q", h.app.settings.Font)
+	}
+}
+
+func TestSettingsBufferTypographyControlsAreIndependent(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.openSettings()
+	h.tester.Frame()
+	if err := h.tester.Click("Typography settings"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	uiFontSize := h.app.settings.FontSize
+	stepUp := func(label string) {
+		t.Helper()
+		bounds, found := h.tester.Find(label)
+		if !found {
+			t.Fatalf("no stepper named %q", label)
+		}
+		if bounds.W <= 0 || bounds.H <= 0 {
+			h.tester.Scroll(700, 400, 0, 240)
+			h.tester.Frame()
+			bounds, found = h.tester.Find(label)
+			if !found || bounds.W <= 0 || bounds.H <= 0 {
+				t.Fatalf("stepper %q is not visible after scrolling", label)
+			}
+		}
+		h.tester.ClickAt(bounds.X+bounds.W/2, bounds.Y+bounds.H/4)
+		h.tester.Frame()
+	}
+	stepUp("Buffer font size settings")
+	if h.app.settings.BufferFontSize != defaultBufferFontSize+1 || h.app.settings.FontSize != uiFontSize {
+		t.Fatalf("buffer size step changed the wrong settings: buffer %v, interface %v",
+			h.app.settings.BufferFontSize, h.app.settings.FontSize)
+	}
+	stepUp("Buffer line spacing settings")
+	if h.app.settings.BufferLineHeight != defaultBufferLineHeight+0.1 {
+		t.Fatalf("buffer line spacing = %v, want %v", h.app.settings.BufferLineHeight, defaultBufferLineHeight+0.1)
+	}
+}
+
+func TestBufferFontUpdatesCodeViewsWithoutChangingTheInterface(t *testing.T) {
+	a := newApp(fakeOpener{})
+	a.settings = defaultSettings()
+	a.settings.Font = "Interface Sans"
+	a.settings.FontSize = 17
+	a.settings.Spacing = 8
+	a.settings.BufferFont = "Buffer Mono"
+	a.settings.BufferFontSize = 15
+	a.settings.BufferLineHeight = 1.8
+	a.diffState = &editor.DiffState{}
+	a.fileEditState = &editor.State{}
+	a.conflictView = &editor.State{}
+	a.conflictStageViews[1] = &editor.State{}
+	a.blameState = &editor.State{}
+	a.conflictSides = newConflictSides(repository.File{Path: "code.go"}, "package main\n")
+	a.conflictSides.viewState()
+
+	a.applyBufferFonts()
+	states := map[string]*editor.State{
+		"file editor":    a.fileEditState,
+		"conflict":       a.conflictView,
+		"conflict stage": a.conflictStageViews[1],
+		"conflict side":  a.conflictSides.view,
+		"blame":          a.blameState,
+	}
+	for name, state := range states {
+		if state.Font.Family != "Buffer Mono" || state.Font.Size != 15 || state.LineHeight != 1.8 {
+			t.Errorf("%s typography = font %+v, line height %v; want Buffer Mono at 15 and 1.8", name, state.Font, state.LineHeight)
+		}
+	}
+	if a.diffState.Font.Family != "Buffer Mono" || a.diffState.Font.Size != 15 || a.diffState.LineHeight != 1.8 {
+		t.Errorf("diff typography = font %+v, line height %v; want Buffer Mono at 15 and 1.8", a.diffState.Font, a.diffState.LineHeight)
+	}
+	theme := themeForSettings(a.settings, false)
+	if theme.Font != "Interface Sans" || theme.FontSize != 17 || theme.Spacing != 8 {
+		t.Errorf("buffer typography changed interface theme: %+v", theme)
+	}
+
+	a.settings.BufferFont = "System"
+	a.applyBufferFonts()
+	if a.diffState.Font.Family != "" || a.fileEditState.Font.Family != "" {
+		t.Fatal("System must restore MyGo's default monospaced buffer family")
+	}
+}
+
 func TestSettingsStoreRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	want := appSettings{
@@ -90,6 +290,9 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 		Accent:                 "Teal",
 		FontSize:               16,
 		Font:                   "Menlo",
+		BufferFont:             "JetBrains Mono",
+		BufferFontSize:         15,
+		BufferLineHeight:       1.8,
 		Spacing:                5,
 		Radius:                 3,
 		DiffSplit:              true,
@@ -117,7 +320,8 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 func TestSettingsStoreToleratesMissingAndDamagedFiles(t *testing.T) {
 	dir := t.TempDir()
 	missing := loadAppSettings(dir)
-	if missing.Theme != "Tokyo Night" || missing.Font != "System" {
+	if missing.Theme != "Tokyo Night" || missing.Font != "System" || missing.BufferFont != "System" ||
+		missing.BufferFontSize != defaultBufferFontSize || missing.BufferLineHeight != defaultBufferLineHeight {
 		t.Fatalf("a missing file must give the defaults, got %+v", missing)
 	}
 	if err := os.WriteFile(settingsStorePath(dir), []byte("{not json"), 0o644); err != nil {
@@ -134,11 +338,14 @@ func TestSettingsStoreToleratesMissingAndDamagedFiles(t *testing.T) {
 
 func TestNormalizeSettingsRejectsUnknownValues(t *testing.T) {
 	got := normalizeSettings(appSettings{
-		Theme:    "Not a theme",
-		FontSize: 200,
-		Font:     " ",
-		Spacing:  50,
-		Radius:   -3,
+		Theme:            "Not a theme",
+		FontSize:         200,
+		Font:             " ",
+		BufferFont:       " ",
+		BufferFontSize:   200,
+		BufferLineHeight: 0.1,
+		Spacing:          50,
+		Radius:           -3,
 	})
 	want := defaultSettings()
 	if !reflect.DeepEqual(got, want) {
@@ -307,7 +514,10 @@ func TestSettingsModalOpensAndCloses(t *testing.T) {
 		t.Fatalf("open Typography settings: %v", err)
 	}
 	h.tester.Frame()
-	for _, want := range []string{"Font size", "Font family", "Spacing", "Corner radius"} {
+	for _, want := range []string{
+		"Interface font size", "Interface font", "Interface spacing",
+		"Buffer font size", "Buffer font", "Buffer line spacing", "Corner radius",
+	} {
 		if !slices.Contains(h.texts(), want) {
 			t.Fatalf("Typography settings do not show %q: %q", want, h.texts())
 		}

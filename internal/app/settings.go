@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -23,9 +24,14 @@ type appSettings struct {
 	// FontSize, Spacing and Radius are the theme metrics; 0 keeps the
 	// palette's own value (except Radius, where 0 is a sharp corner).
 	FontSize float64 `json:"fontSize"`
-	Font     string  `json:"font"`
-	Spacing  float64 `json:"spacing"`
-	Radius   float64 `json:"radius"`
+	// Font is the interface family. The Buffer settings independently control
+	// diffs and code buffers; System means the platform's monospaced family.
+	Font             string  `json:"font"`
+	BufferFont       string  `json:"bufferFont"`
+	BufferFontSize   float64 `json:"bufferFontSize"`
+	BufferLineHeight float64 `json:"bufferLineHeight"`
+	Spacing          float64 `json:"spacing"`
+	Radius           float64 `json:"radius"`
 	// DiffSplit opens every diff side by side, DiffWrap wraps long diff
 	// lines instead of scrolling them sideways, and IgnoreUntracked leaves
 	// untracked files out of the Changes list.
@@ -68,6 +74,11 @@ const defaultTheme = "Tokyo Night"
 
 const defaultHomeBackgroundOpacity = 0.24
 
+const (
+	defaultBufferFontSize   = 13.0
+	defaultBufferLineHeight = 1.5
+)
+
 // defaultSettings starts on the Tokyo Night palette, the appearance the app
 // ships with; the settings modal tunes the theme and its metrics from there.
 func defaultSettings() appSettings {
@@ -77,6 +88,9 @@ func defaultSettings() appSettings {
 		Accent:                "",
 		FontSize:              float64(base.FontSize),
 		Font:                  "System",
+		BufferFont:            "System",
+		BufferFontSize:        defaultBufferFontSize,
+		BufferLineHeight:      defaultBufferLineHeight,
 		Spacing:               float64(base.Spacing),
 		Radius:                float64(base.Radius),
 		Language:              defaultLanguage,
@@ -100,6 +114,15 @@ func normalizeSettings(s appSettings) appSettings {
 	}
 	if strings.TrimSpace(s.Font) == "" {
 		s.Font = "System"
+	}
+	if strings.TrimSpace(s.BufferFont) == "" {
+		s.BufferFont = "System"
+	}
+	if s.BufferFontSize < 9 || s.BufferFontSize > 26 {
+		s.BufferFontSize = defaultBufferFontSize
+	}
+	if s.BufferLineHeight < 1 || s.BufferLineHeight > 2.5 {
+		s.BufferLineHeight = defaultBufferLineHeight
 	}
 	if s.Spacing < 2 || s.Spacing > 10 {
 		s.Spacing = defaultSettings().Spacing
@@ -590,19 +613,27 @@ func themeForSettings(s appSettings, systemDark bool) *ui.Theme {
 	return t
 }
 
-// fontNames are the font families the settings menu offers, System first.
-var fontNames = []string{
-	"System",
-	"Menlo",
-	"Monaco",
-	"SF Mono",
-	"JetBrains Mono",
-	"Fira Code",
-	"Cascadia Code",
-	"Consolas",
-	"Courier New",
-	"Inter",
-	"Helvetica Neue",
-	"Arial",
-	"Georgia",
+// fontChoices lists every family the text stack can use. Keep the saved
+// family when it is no longer installed so opening Settings does not silently
+// change it to another font.
+func fontChoices(selected string) []string {
+	return fontChoicesFrom(ui.FontFamilies(), selected)
+}
+
+func fontChoicesFrom(families []ui.FontFamily, selected string) []string {
+	choices := make([]string, 1, len(families)+2)
+	choices[0] = "System"
+	selected = strings.TrimSpace(selected)
+	if selected != "" && selected != "System" {
+		choices = append(choices, selected)
+	}
+	for _, family := range families {
+		if name := strings.TrimSpace(family.Name); name != "" {
+			choices = append(choices, name)
+		}
+	}
+	sort.SliceStable(choices[1:], func(i, j int) bool {
+		return strings.ToLower(choices[i+1]) < strings.ToLower(choices[j+1])
+	})
+	return slices.Compact(choices)
 }

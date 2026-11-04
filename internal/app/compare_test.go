@@ -55,10 +55,14 @@ func TestCompareRefsDialogLoadsFilesAndAppliesOptions(t *testing.T) {
 			h.app.compare.diffState != nil
 	})
 
-	// Choose zero context through the real select and its pop-up option.
-	if err := h.tester.Click("3"); err != nil {
-		t.Fatalf("open the context choices: %v", err)
+	// Choose zero context through the real select and its pop-up option. The
+	// ordinary diff toolbar also shows its context count, so target the select
+	// beside its caption rather than the shared "3" text.
+	caption, found := h.tester.Find("Context lines")
+	if !found {
+		t.Fatal("comparison context caption is missing")
 	}
+	h.tester.ClickAt(caption.X+caption.W+14, caption.Y+caption.H/2)
 	h.tester.Frame()
 	if err := h.tester.Click("0"); err != nil {
 		t.Fatalf("choose zero context: %v; texts %q", err, h.texts())

@@ -189,6 +189,20 @@ func TestTrackedLineStatisticsSurviveStageAndUnstageAll(t *testing.T) {
 				stage, file.LinesAdded, file.LinesDeleted, added, deleted)
 		}
 	}
+	assertSideStats := func(stage string, stagedAdded, stagedDeleted, unstagedAdded, unstagedDeleted int) {
+		t.Helper()
+		snapshot, err := session.Snapshot(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		file := snapshot.Files[0]
+		if file.StagedLinesAdded != stagedAdded || file.StagedLinesDeleted != stagedDeleted ||
+			file.UnstagedLinesAdded != unstagedAdded || file.UnstagedLinesDeleted != unstagedDeleted {
+			t.Errorf("%s side stats = staged +%d -%d, unstaged +%d -%d; want staged +%d -%d, unstaged +%d -%d",
+				stage, file.StagedLinesAdded, file.StagedLinesDeleted, file.UnstagedLinesAdded, file.UnstagedLinesDeleted,
+				stagedAdded, stagedDeleted, unstagedAdded, unstagedDeleted)
+		}
+	}
 	assertStats("unstaged", 2, 1)
 	if err := session.StageAll(context.Background()); err != nil {
 		t.Fatal(err)
@@ -197,9 +211,10 @@ func TestTrackedLineStatisticsSurviveStageAndUnstageAll(t *testing.T) {
 	if err := os.WriteFile(path, []byte("one\nTWO\nthree\nfour\nfive\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// One more unstaged line sits beside the staged patch. Both rows use the
-	// file's total change from HEAD rather than either side losing its counts.
+	// One more unstaged line sits beside the staged patch. The existing total
+	// remains HEAD-to-worktree, while each Changes row gets its own diff counts.
 	assertStats("staged and unstaged", 3, 1)
+	assertSideStats("staged and unstaged", 2, 1, 1, 0)
 	// Reversing two of the staged additions in the worktree must not add the
 	// cached and uncached numstats: their edits overlap, so only the final
 	// HEAD-to-worktree replacement remains.
@@ -207,6 +222,7 @@ func TestTrackedLineStatisticsSurviveStageAndUnstageAll(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertStats("overlapping staged and unstaged", 1, 1)
+	assertSideStats("overlapping staged and unstaged", 2, 1, 0, 1)
 	if err := session.UnstageAll(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -375,8 +391,9 @@ func TestCommitAndAmend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(blame, "Desktop Test") || !strings.Contains(blame, "second") {
-		t.Fatalf("unexpected blame output %q", blame)
+	if len(blame) != 1 || blame[0].Author != "Desktop Test" || blame[0].Text != "second" ||
+		blame[0].Hash != snapshot.Commits[0].Hash || blame[0].Date == "" {
+		t.Fatalf("unexpected blame output %#v", blame)
 	}
 }
 

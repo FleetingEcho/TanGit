@@ -575,6 +575,7 @@ func (a *app) resetBranchCommits() {
 	a.branchCommitFilesLoading = false
 	a.branchCommitFilesError = ""
 	a.branchCommitDiffState = nil
+	a.branchCommitDiffMedia = nil
 	a.branchCommitDiffHash = ""
 	a.branchCommitDiffPath = ""
 	a.branchCommitDiffPatch = ""
@@ -625,6 +626,7 @@ func (a *app) requestBranchCommits(branch string) {
 	a.branchCommitFilesLoading = false
 	a.branchCommitFilesError = ""
 	a.branchCommitDiffState = nil
+	a.branchCommitDiffMedia = nil
 	a.branchCommitDiffHash = ""
 	a.branchCommitDiffPath = ""
 	a.branchCommitDiffPatch = ""
@@ -646,7 +648,7 @@ func (a *app) requestBranchCommits(branch string) {
 			}
 			a.branchCommitsLoading = false
 			if err != nil {
-				a.branchCommitsError = err.Error()
+				a.branchCommitsError = safeError(err)
 				return
 			}
 			a.branchCommits = commits
@@ -691,6 +693,7 @@ func (a *app) requestBranchCommitFiles(commit repository.Commit) {
 	a.branchCommitFilesLoading = true
 	a.branchCommitFilesError = ""
 	a.branchCommitDiffState = nil
+	a.branchCommitDiffMedia = nil
 	a.branchCommitDiffHash = ""
 	a.branchCommitDiffPath = ""
 	a.branchCommitDiffPatch = ""
@@ -716,7 +719,7 @@ func (a *app) requestBranchCommitFiles(commit repository.Commit) {
 			}
 			a.branchCommitFilesLoading = false
 			if err != nil {
-				a.branchCommitFilesError = err.Error()
+				a.branchCommitFilesError = safeError(err)
 				return
 			}
 			a.branchCommitFiles = files
@@ -748,6 +751,7 @@ func (a *app) requestBranchCommitFileDiff(commit repository.Commit, file reposit
 	a.branchCommitDiffHash = commit.Hash
 	a.branchCommitDiffPath = file.Path
 	a.branchCommitDiffState = nil
+	a.branchCommitDiffMedia = nil
 	a.branchCommitDiffPatch = ""
 	a.branchCommitDiffLoading = true
 	a.branchCommitDiffError = ""
@@ -758,8 +762,14 @@ func (a *app) requestBranchCommitFileDiff(commit repository.Commit, file reposit
 		defer a.recoverBackground()
 		diff, err := session.CommitFileDiff(context.Background(), commit, file, options)
 		var state *editor.DiffState
+		var media *mediaReview
 		if err == nil {
 			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
+			if err == nil && state == nil && isMediaPath(file.Path) {
+				media, err = loadMediaReview(context.Background(), session, repository.MediaRequest{
+					Source: repository.MediaCommit, Commit: commit, CommitFile: file,
+				})
+			}
 		}
 		a.update(func() {
 			if token != a.branchCommitToken {
@@ -777,11 +787,12 @@ func (a *app) requestBranchCommitFileDiff(commit repository.Commit, file reposit
 			}
 			a.branchCommitDiffLoading = false
 			if err != nil {
-				a.branchCommitDiffError = err.Error()
+				a.branchCommitDiffError = safeError(err)
 				return
 			}
 			a.branchCommitDiffPatch = diff.Patch
 			a.branchCommitDiffState = state
+			a.branchCommitDiffMedia = media
 		})
 	}()
 }
@@ -879,6 +890,7 @@ func (a *app) selectBranchCommitFileRow(row int) {
 	a.branchCommitDiffPath = ""
 	a.branchCommitDiffPatch = ""
 	a.branchCommitDiffState = nil
+	a.branchCommitDiffMedia = nil
 	a.branchCommitDiffLoading = false
 	a.branchCommitDiffError = ""
 }
@@ -978,7 +990,7 @@ func (a *app) branchCommitDetailView(c *ui.Context, branch repository.Branch) {
 				case a.branchCommitDiffState != nil:
 					a.keyboardDiffViewer(c, a.branchCommitDiffState)
 				default:
-					ui.Text(c, tr("No textual diff")).TextColor(theme.TextMuted)
+					noTextualDiffOrMedia(c, a.branchCommitDiffMedia, a.branchCommitDiffPath)
 				}
 			})
 		}).Grow(1)
