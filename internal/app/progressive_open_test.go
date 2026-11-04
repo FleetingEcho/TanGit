@@ -91,6 +91,33 @@ func TestProgressiveOpenShowsCoreBeforeDetailsFinish(t *testing.T) {
 	}
 }
 
+func TestProgressiveOpenDefaultsHistoryAndGraphToCurrentBranch(t *testing.T) {
+	a, updated, session := progressiveOpenFixture(t, nil)
+	close(session.detailsRelease)
+	updated.waitForUpdate(t) // Install branch and commit details, then start both filtered reads.
+
+	// The core snapshot deliberately has no branches. Defaults must be applied
+	// again now, rather than being abandoned with that branchless core.
+	for _, target := range []int{sectionHistory, sectionGraph} {
+		query := a.commitQueryFor(target)
+		if !query.defaulted || query.applied.Branch != "main" || query.draft.Branch != "main" {
+			t.Errorf("target %d default = defaulted:%v applied:%+v draft:%+v, want current branch main",
+				target, query.defaulted, query.applied, query.draft)
+		}
+		if query.limit != repository.SnapshotCommitLimit {
+			t.Errorf("target %d limit = %d, want %d", target, query.limit, repository.SnapshotCommitLimit)
+		}
+	}
+	updated.waitForUpdate(t)
+	updated.waitForUpdate(t)
+	for _, target := range []int{sectionHistory, sectionGraph} {
+		query := a.commitQueryFor(target)
+		if query.loading || query.err != "" || len(query.matches) != 1 {
+			t.Errorf("target %d did not finish its current-branch read: %+v", target, query)
+		}
+	}
+}
+
 func TestProgressiveOpenRejectsDetailsSupersededByAnAction(t *testing.T) {
 	a, updated, session := progressiveOpenFixture(t, nil)
 	// An action's complete snapshot supersedes the deferred read even before

@@ -121,6 +121,10 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 		}
 		selected := a.captureSelection("")
 		a.snapshot = a.snapshot.WithDetails(details)
+		// The core has no branches, so its first default-filter attempt could
+		// not name the checked-out branch. Now that details supply it, start
+		// both commit pages on that branch as a full-snapshot open does.
+		a.applyDefaultCommitFilters(a.snapshot)
 		a.snapshotSeq++
 		a.resetCommitPaging(a.snapshot)
 		a.restoreSelection(selected)
