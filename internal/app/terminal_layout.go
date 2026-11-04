@@ -53,9 +53,10 @@ func removeTerminalLayout(n *terminalLayoutNode, sessionID uint64) *terminalLayo
 	return n
 }
 
-// orderTerminalLayoutLeaves applies a drag's insertion to the leaves without
-// changing the direction or user-adjusted ratio of any existing split.
+// orderTerminalLayoutLeaves applies a drag's insertion to the active tab's
+// leaves without disturbing another tab or any existing split ratio.
 func (a *app) orderTerminalLayoutLeaves() {
+	group := a.activeTerminalGroup()
 	var leaves []*terminalLayoutNode
 	var collect func(*terminalLayoutNode)
 	collect = func(n *terminalLayoutNode) {
@@ -70,12 +71,19 @@ func (a *app) orderTerminalLayoutLeaves() {
 		collect(n.second)
 	}
 	collect(a.term.layout)
-	if len(leaves) != len(a.term.sessions) {
+	ids := make([]uint64, 0, len(leaves))
+	for _, session := range a.term.sessions {
+		if session.groupID == group {
+			ids = append(ids, session.id)
+		}
+	}
+	if len(leaves) != len(ids) {
 		return
 	}
 	for i, leaf := range leaves {
-		leaf.sessionID = a.term.sessions[i].id
+		leaf.sessionID = ids[i]
 	}
+	a.storeTerminalLayout()
 }
 
 // terminalSessionsView renders the persistent local split tree. Each new

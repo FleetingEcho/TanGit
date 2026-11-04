@@ -291,8 +291,8 @@ func TestPickerOffersNewTab(t *testing.T) {
 }
 
 // Daily Git and utility actions have direct buttons. Settings stays in the
-// workspace header; shortcuts and the terminal share the bottom island with
-// the command log. The redundant header overflow is deliberately absent.
+// workspace header; terminal, shortcuts and the command log share the bottom
+// island. The terminal icon is the only entry to its persistent bottom dock.
 func TestWorkspaceUtilityButtonsHaveDirectHomes(t *testing.T) {
 	h := menuTestApp(t)
 	for _, label := range []string{"Fetch", "Pull", "Push", "Refresh", "Theme", "Settings"} {
@@ -308,7 +308,13 @@ func TestWorkspaceUtilityButtonsHaveDirectHomes(t *testing.T) {
 	if !found {
 		t.Fatal("the status bar lost the command log")
 	}
-	for _, label := range []string{"Keyboard shortcuts", "Toggle terminal"} {
+	terminal, found := h.tester.Find("Toggle terminal")
+	if !found {
+		t.Error("the status bar lost the docked Terminal button")
+	} else if terminal.Y+terminal.H/2 != log.Y+log.H/2 {
+		t.Errorf("the Terminal button is not centered in the bottom island: button=%+v log=%+v", terminal, log)
+	}
+	for _, label := range []string{"Keyboard shortcuts"} {
 		button, found := h.tester.Find(label)
 		if !found {
 			t.Errorf("the status bar lost %q", label)

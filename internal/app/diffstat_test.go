@@ -69,6 +69,7 @@ func TestUnstageAllRefreshesTrackedLineCounts(t *testing.T) {
 
 	a := newApp(repository.Opener{})
 	a.pathUserData = t.TempDir()
+	a.workspaceTab = sectionChanges
 	updated := newUpdates()
 	a.update = updated.update
 	a.path = dir
@@ -116,6 +117,7 @@ func TestPartialStageRefreshesRemainingUnstagedLineCounts(t *testing.T) {
 
 	a := newApp(repository.Opener{})
 	a.pathUserData = t.TempDir()
+	a.workspaceTab = sectionChanges
 	updated := newUpdates()
 	a.update = updated.update
 	a.path = dir

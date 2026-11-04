@@ -14,7 +14,7 @@ import (
 // filter while History is narrowed.
 func TestHistoryFilterNarrowsTheCommitList(t *testing.T) {
 	h := menuTestApp(t)
-	h.press(t, ui.Key2)
+	h.press(t, ui.Key3)
 	if err := h.tester.Click("Filter commits"); err != nil {
 		t.Fatalf("open the commit filter: %v", err)
 	}
@@ -55,13 +55,13 @@ func TestHistoryFilterNarrowsTheCommitList(t *testing.T) {
 
 	// The Graph keeps its own filter, so narrowing History must not hide a
 	// lane there.
-	h.press(t, ui.Key3)
+	h.press(t, ui.Key4)
 	if !slices.Contains(h.texts(), "Second commit") || !slices.Contains(h.texts(), "Initial commit") {
 		t.Fatalf("the Graph lost commits when History was filtered: %q", h.texts())
 	}
 
 	// Clear puts every commit back, still from the same filter modal.
-	h.press(t, ui.Key2)
+	h.press(t, ui.Key3)
 	if err := h.tester.Click("Filter commits"); err != nil {
 		t.Fatalf("reopen the commit filter: %v", err)
 	}
@@ -94,14 +94,14 @@ func checkOut(h *harness, name string) {
 // that is out. Each page holds its own default.
 func TestCommitPagesOpenOnTheBranchCheckedOut(t *testing.T) {
 	h := menuTestApp(t)
-	h.press(t, ui.Key2)
+	h.press(t, ui.Key3)
 	h.waitFor(t, "the branch's history", func() bool {
 		return !h.app.historyFilter.loading && len(h.app.historyFilter.matches) > 0
 	})
 	if got := h.app.historyFilter.applied.Branch; got != "main" {
 		t.Fatalf("History reads %q, want the branch checked out", got)
 	}
-	h.press(t, ui.Key3)
+	h.press(t, ui.Key4)
 	h.waitFor(t, "the graph's history", func() bool {
 		return !h.app.graphFilter.loading && len(h.app.graphFilter.matches) > 0
 	})
@@ -114,7 +114,7 @@ func TestCommitPagesOpenOnTheBranchCheckedOut(t *testing.T) {
 // the one that was when the page first opened.
 func TestTheDefaultFilterFollowsACheckout(t *testing.T) {
 	h := menuTestApp(t)
-	h.press(t, ui.Key2)
+	h.press(t, ui.Key3)
 	h.waitFor(t, "the branch's history", func() bool {
 		return !h.app.historyFilter.loading && len(h.app.historyFilter.matches) > 0
 	})
@@ -128,7 +128,7 @@ func TestTheDefaultFilterFollowsACheckout(t *testing.T) {
 // to remove and stays removed, even across a checkout.
 func TestAClearedFilterStaysCleared(t *testing.T) {
 	h := menuTestApp(t)
-	h.press(t, ui.Key2)
+	h.press(t, ui.Key3)
 	h.waitFor(t, "the branch's history", func() bool {
 		return !h.app.historyFilter.loading && len(h.app.historyFilter.matches) > 0
 	})
@@ -153,7 +153,7 @@ func TestAClearedFilterStaysCleared(t *testing.T) {
 // on screen and not behind a click.
 func TestTheFilterButtonTakesTheAccentWhileFiltered(t *testing.T) {
 	h := menuTestApp(t)
-	h.press(t, ui.Key2)
+	h.press(t, ui.Key3)
 	h.waitFor(t, "the branch's history", func() bool {
 		return !h.app.historyFilter.loading && len(h.app.historyFilter.matches) > 0
 	})
@@ -202,7 +202,7 @@ func buttonInk(t *testing.T, tt *ui.Tester, label string, fx, fy float32) color.
 // branch is already the one on screen.
 func TestBranchCommitsFilterHasNoBranchChoice(t *testing.T) {
 	h := menuTestApp(t)
-	h.press(t, ui.Key4)
+	h.press(t, ui.Key5)
 	h.settle(t)
 	if err := h.tester.Click("Filter commits"); err != nil {
 		t.Fatalf("open the branch commit filter: %v", err)
@@ -256,7 +256,7 @@ func TestBranchCommitsFilterHasNoBranchChoice(t *testing.T) {
 // graph leaves History whole, and the graph stays narrowed until cleared.
 func TestGraphFilterNarrowsTheGraph(t *testing.T) {
 	h := menuTestApp(t)
-	h.press(t, ui.Key3)
+	h.press(t, ui.Key4)
 	if err := h.tester.Click("Filter commits"); err != nil {
 		t.Fatalf("open the graph filter: %v", err)
 	}
@@ -288,7 +288,7 @@ func TestGraphFilterNarrowsTheGraph(t *testing.T) {
 	// History is a different list, so nothing of the graph's narrowing
 	// reaches it. It still holds only its own default, the branch checked
 	// out.
-	h.press(t, ui.Key2)
+	h.press(t, ui.Key3)
 	got := h.app.historyFilter.applied
 	if got.Query != "" || got.Author != "" || got.Branch != "main" {
 		t.Fatalf("the graph filter reached History: %#v", got)
@@ -298,7 +298,7 @@ func TestGraphFilterNarrowsTheGraph(t *testing.T) {
 	}
 
 	// The graph keeps its own filter across a visit to History.
-	h.press(t, ui.Key3)
+	h.press(t, ui.Key4)
 	if !h.app.graphFilter.narrows() {
 		t.Fatal("the graph lost its filter on the way back")
 	}
@@ -313,7 +313,7 @@ func TestGraphEmptyFilterClearsOnlyTheGraph(t *testing.T) {
 	h := menuTestApp(t)
 
 	// Narrow History to one commit.
-	h.press(t, ui.Key2)
+	h.press(t, ui.Key3)
 	if err := h.tester.Click("Filter commits"); err != nil {
 		t.Fatalf("open the History filter: %v", err)
 	}
@@ -333,7 +333,7 @@ func TestGraphEmptyFilterClearsOnlyTheGraph(t *testing.T) {
 	})
 
 	// A graph filter with no matches shows the empty state.
-	h.press(t, ui.Key3)
+	h.press(t, ui.Key4)
 	if err := h.tester.Click("Filter commits"); err != nil {
 		t.Fatalf("open the graph filter: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestGraphEmptyFilterClearsOnlyTheGraph(t *testing.T) {
 	}
 
 	// History's filter is untouched by the graph's empty state.
-	h.press(t, ui.Key2)
+	h.press(t, ui.Key3)
 	if !h.app.historyFilter.narrows() {
 		t.Fatal("clearing the graph filter cleared History's too")
 	}
@@ -383,7 +383,7 @@ func TestGraphEmptyFilterClearsOnlyTheGraph(t *testing.T) {
 // rows could not be reached.
 func TestCommitFilterAuthorListScrolls(t *testing.T) {
 	h := menuTestApp(t)
-	h.press(t, ui.Key2)
+	h.press(t, ui.Key3)
 	if err := h.tester.Click("Filter commits"); err != nil {
 		t.Fatalf("open the commit filter: %v", err)
 	}
@@ -433,7 +433,7 @@ func TestCommitFilterAuthorListScrolls(t *testing.T) {
 // button is there from the start to drop that default with the rest.
 func TestCommitHeaderClearsEveryFilter(t *testing.T) {
 	h := menuTestApp(t)
-	h.press(t, ui.Key2)
+	h.press(t, ui.Key3)
 	if !h.tester.HasText("Clear all filters") {
 		t.Fatalf("the header has no clear button beside the default filter: %q", h.texts())
 	}

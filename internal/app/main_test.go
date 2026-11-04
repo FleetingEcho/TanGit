@@ -714,6 +714,7 @@ func TestViewOpensRepository(t *testing.T) {
 	// This walk covers every section, including the specialist tabs the
 	// default set leaves out.
 	a.settings.VisibleSections = append([]string(nil), workspaceSectionIDs...)
+	a.workspaceTab = sectionChanges
 	a.update = updated.update
 	a.path = "/work/project"
 	tt := ui.NewTester(a.view, 960, 640)
@@ -952,6 +953,7 @@ func TestViewShowsConflictRecoveryControls(t *testing.T) {
 			{Path: "conflict.txt", Status: "UU", Unstaged: true, HasMergeConflicts: true},
 		},
 	}}})
+	a.workspaceTab = sectionChanges
 	a.update = updated.update
 	a.path = "/work/conflict"
 	tt := ui.NewTester(a.view, 960, 640)

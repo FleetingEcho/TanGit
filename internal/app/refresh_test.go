@@ -151,6 +151,7 @@ func openLiveRepo(t *testing.T, s *shell, updated *updates, path string) *app {
 func readyTab(s *shell, root string, session repository.Session) *tab {
 	t := s.newTab(root)
 	t.app.state = stateReady
+	t.app.workspaceTab = sectionChanges
 	t.app.path = root
 	snapshot := repository.Snapshot{Root: root, Branch: "main"}
 	t.app.snapshot = snapshot
@@ -188,6 +189,7 @@ func TestAQuietRefreshShowsChangesMadeByAnotherApp(t *testing.T) {
 		Commits: []repository.Commit{{Hash: "1111111", ShortHash: "1111111", Subject: "first"}},
 	}}
 	s, tt, updated := newLiveShell(t, opener)
+	s.activeApp().workspaceTab = sectionChanges
 	openShellRepo(t, s, tt, updated, "/work/repo")
 	a := s.activeApp()
 	tt.Frame()
@@ -227,6 +229,7 @@ func TestAQuietRefreshKeepsTheChosenFile(t *testing.T) {
 		Files:  []repository.File{changedFile("a.txt"), changedFile("c.txt")},
 	}}
 	s, tt, updated := newLiveShell(t, opener)
+	s.activeApp().workspaceTab = sectionChanges
 	openShellRepo(t, s, tt, updated, "/work/repo")
 	a := s.activeApp()
 	tt.Frame()
@@ -260,6 +263,7 @@ func TestAQuietRefreshStandsAsideWhileTheUserIsBusy(t *testing.T) {
 	}
 	opener := &liveOpener{snapshot: original}
 	s, tt, updated := newLiveShell(t, opener)
+	s.activeApp().workspaceTab = sectionChanges
 	openShellRepo(t, s, tt, updated, "/work/repo")
 	a := s.activeApp()
 	tt.Frame()
@@ -639,6 +643,7 @@ func TestAQuietRefreshLeavesAnUnchangedRepositoryAlone(t *testing.T) {
 		Files:  []repository.File{changedFile("a.txt")},
 	}}
 	s, tt, updated := newLiveShell(t, opener)
+	s.activeApp().workspaceTab = sectionChanges
 	openShellRepo(t, s, tt, updated, "/work/repo")
 	a := s.activeApp()
 	tt.Frame()

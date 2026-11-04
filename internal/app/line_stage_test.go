@@ -86,6 +86,7 @@ func TestStageSelectedLinesSendsEveryChangeInTheRange(t *testing.T) {
 		calls: calls,
 		patch: twoHunkPatch,
 	})
+	a.workspaceTab = sectionChanges
 	h := &harness{app: a, updates: newUpdates()}
 	h.tester = ui.NewTester(a.view, 1280, 800)
 	a.update = h.updates.update
