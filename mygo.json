@@ -1,0 +1,15 @@
+{
+  "name": "TanGit",
+  "identifier": "dev.tangit.desktop",
+  "version": "1.0.0",
+  "main": "./cmd/tangit",
+  "out": "build",
+  "updates": {
+    "publicKey": "1rrogZ62wSzE01n1qmMjC5ZWdTf18oXbVz34aN/zShw=",
+    "github": "FleetingEcho/TanGit"
+  },
+  "linux": {
+    "depends": ["libayatana-appindicator3-1"],
+    "webview": false
+  }
+}
