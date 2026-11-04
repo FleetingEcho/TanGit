@@ -880,6 +880,7 @@ func (a *app) shutdown() {
 	a.refreshPending = false
 	a.resetTerminal()
 	a.diffFullscreen = false
+	a.branchFullscreen = false
 	a.closeAllForms()
 	a.resetRepositoryState(repository.Snapshot{})
 	a.session = nil

@@ -401,7 +401,10 @@ func (a *app) branchRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) {
 }
 
 func (a *app) branchesView(c *ui.Context) {
-	theme := c.Theme()
+	if a.branchFullscreen {
+		ui.Box(c).Grow(1)
+		return
+	}
 	ui.Column(c).Grow(1).Gap(10).Children(func() {
 		// Three columns: the branches, the selected branch's commits, and the
 		// commit chosen from them. The branch, which both columns are about,
@@ -410,25 +413,71 @@ func (a *app) branchesView(c *ui.Context) {
 			"Expand list pane", func() {
 				a.branchListView(c)
 			}, func() {
-				islandCard(c, ui.Column(c).Grow(1).Gap(10).Padding(16)).Children(func() {
-					if a.selectedBranch < 0 || a.selectedBranch >= len(a.snapshot.Branches) {
-						ui.Column(c).Grow(1).Center().Children(func() {
-							ui.Text(c, tr("Select a branch")).TextColor(theme.TextMuted)
-						})
-						return
-					}
-					branch := a.snapshot.Branches[a.selectedBranch]
-					a.branchHeaderView(c, branch)
-					ui.Divider(c)
-					collapsiblePaneSplitLane(c, &a.branchCommitsWidth, &a.branchCommitsCollapsed,
-						"Expand commit list", func() {
-							a.branchCommitsView(c, branch)
-						}, func() {
-							a.branchCommitDetailView(c, branch)
-						})
-				})
+				a.branchPageView(c)
 			})
 	})
+}
+
+func (a *app) branchPageView(c *ui.Context) {
+	islandCard(c, ui.Column(c).Grow(1).Padding(16)).Children(func() {
+		if a.selectedBranch < 0 || a.selectedBranch >= len(a.snapshot.Branches) {
+			ui.Column(c).Grow(1).Center().Children(func() {
+				ui.Text(c, tr("Select a branch")).TextColor(c.Theme().TextMuted)
+			})
+			return
+		}
+		branch := a.snapshot.Branches[a.selectedBranch]
+		paneSplitVertical(c, &a.branchHeaderHeight, func() {
+			ui.Scroll(c).Fill().Label(tr("Branch summary")).Children(func() {
+				ui.Column(c).FillWidth().Gap(10).Padding(0, 12, 8, 0).Children(func() {
+					a.branchHeaderView(c, branch)
+				})
+			})
+		}, func() {
+			ui.Column(c).Fill().Padding(10, 0, 0, 0).Children(func() {
+				collapsiblePaneSplitLane(c, &a.branchCommitsWidth, &a.branchCommitsCollapsed,
+					"Expand commit list", func() {
+						a.branchCommitsView(c, branch)
+					}, func() {
+						a.branchCommitDetailView(c, branch)
+					})
+			})
+		}).Fill()
+	})
+}
+
+func (a *app) branchFullscreenView(c *ui.Context, topInset float32) {
+	if !a.branchFullscreen {
+		return
+	}
+	if a.state != stateReady || a.workspaceTab != sectionBranches || a.selectedBranch < 0 || a.selectedBranch >= len(a.snapshot.Branches) {
+		a.branchFullscreen = false
+		return
+	}
+	ui.Overlay(c, func() {
+		panel := ui.Column(c).Absolute().Left(0).Top(topInset).Right(0).Bottom(0).
+			Padding(islandGap / 2).Background(islandBackdrop(c.Theme())).Modal()
+		if !a.settings.DisableShortcuts {
+			panel.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
+			panel.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })
+		}
+		panel.Children(func() {
+			a.branchPageView(c)
+		})
+		if panel.OverlayShortcut(0, ui.KeyEscape) {
+			a.escapeBranchFullscreen()
+		}
+	})
+}
+
+func (a *app) closeBranchFullscreen() { a.branchFullscreen = false }
+
+func (a *app) escapeBranchFullscreen() {
+	if a.showRenameForm {
+		a.showRenameForm = false
+	} else {
+		a.closeBranchFullscreen()
+	}
 }
 
 // branchListView is the first column: the local branches. It takes the
@@ -496,12 +545,22 @@ func (a *app) branchListView(c *ui.Context) {
 func (a *app) branchHeaderView(c *ui.Context, branch repository.Branch) {
 	theme := c.Theme()
 	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-		ui.Text(c, branchDisplay(branch)).FontSize(18).Bold().Grow(1)
+		ui.Text(c, branchDisplay(branch)).FontSize(18).Bold().Grow(1).SingleLine().Tooltip(branchDisplay(branch))
 		if ui.Button(c, tr("Rename…")).Disabled(a.actionBusy).Clicked() {
 			a.showRenameForm = true
 			a.renameBranch = branch.Name
 		}
-		if !branch.Head {
+
+		label, icon := "Expand branch page", expandIcon
+		if a.branchFullscreen {
+			label, icon = "Restore branch page", shrinkIcon
+		}
+		button := compactIconButton(ui.Button(c, "")).Label(tr(label)).Tooltip(tr(label))
+		button.Children(func() { ui.Icon(c, icon).FontSize(14) })
+		button.OnClick(func() { a.branchFullscreen = !a.branchFullscreen })
+	})
+	if !branch.Head {
+		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
 			if branch.UpstreamRemote != "" {
 				if ui.Button(c, tr("Pull latest")).Disabled(a.actionBusy).Clicked() {
 					a.beginPullBranch(branch)
@@ -519,8 +578,9 @@ func (a *app) branchHeaderView(c *ui.Context, branch repository.Branch) {
 			if ui.Button(c, tr("Delete…")).Disabled(a.actionBusy).Clicked() {
 				a.confirmDeleteSelectedBranch()
 			}
-		}
-	})
+		})
+	}
+
 	if a.showRenameForm {
 		ui.Row(c).Gap(8).AlignItems(ui.End).Children(func() {
 			ui.TextInput(c, &a.renameBranch).Label(tr("New branch name")).Grow(1)
