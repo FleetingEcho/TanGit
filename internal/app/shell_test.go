@@ -82,6 +82,7 @@ func TestShellStartsOnThePicker(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Home", "Open a repository", "New tab", "Check for updates",
+		"tangit <path>", "Terminal: open a repository path directly in TanGit",
 		"Minimize window", "Maximize window", "Full screen", "Close window",
 	} {
 		if _, found := tt.Find(want); !found {
@@ -117,6 +118,14 @@ func TestShellUpdateButtonAdvertisesAndOpensAnAvailableUpdate(t *testing.T) {
 	}
 	if checks != 1 {
 		t.Fatalf("clicking the update icon checked %d times, want 1", checks)
+	}
+	if !rectHasColor(tt, "Update available", themeForSettings(s.settings, false).Danger) {
+		t.Error("the available-update button has no red reminder badge")
+	}
+	s.availableUpdate = ""
+	tt.Frame()
+	if rectHasColor(tt, "Check for updates", themeForSettings(s.settings, false).Danger) {
+		t.Error("the red update badge survived after the available version was cleared")
 	}
 }
 

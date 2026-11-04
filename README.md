@@ -71,11 +71,12 @@ every action reachable from both the keyboard and the mouse.
 ### History, graph, and filtering
 
 - Browse commits with their author, age, branches, and tags, paging older
-  history as you scroll.
+  history as you scroll. **History and Graph start on the current branch**;
+  clear the branch filter to browse all refs.
 - **Filter commits** by message, author, and branch, with a match count.
   While a filter is active, one small **×** clears every field at once.
-- The Graph draws every branch as lanes, newest first, in the same list you
-  already use.
+- The Graph draws the filtered history as branch lanes, newest first, in the
+  same list you already use.
 - Per-commit actions: copy hash, soft, mixed, or hard reset, create a tag or
   branch there, cherry-pick onto the current branch, or revert.
 - Edit history without leaving the app: reword, drop, reorder, squash, fix up,
@@ -110,6 +111,8 @@ every action reachable from both the keyboard and the mouse.
 
 - Open several repositories in **tabs** (`Ctrl+T`, `Ctrl+W`, `Ctrl+Tab`), with
   a picker that remembers recent repositories.
+- Open a repository directly from a terminal with **`tangit <path>`**, including
+  relative paths such as `tangit ./` and quoted paths containing spaces.
 - A **tabbed title bar** that drags the window: the system's traffic lights on
   the left on macOS, and minimize, full screen, and close drawn on the right on
   Linux and Windows.
@@ -131,11 +134,13 @@ every action reachable from both the keyboard and the mouse.
   available.
 - Accent colors (17 muted tones plus the palette's own), font family and size,
   spacing, and corner radius.
-- English (default) and Simplified Chinese.
-- No telemetry. TanGit checks its signed GitHub releases in the background;
-  when a newer version is available, the title bar's update icon lights up and
-  opens the release notes and install flow. **Settings → Updates** also shows
-  the running version and links to the GitHub releases page.
+- English (default), Simplified Chinese, Traditional Chinese, Japanese,
+  Spanish, and French.
+- No telemetry. Installed copies check signed GitHub releases in the background
+  after every launch; when a newer version is available, the title bar's update
+  icon lights up with a **red badge** and opens the release notes and install
+  flow. **Settings → Updates** also shows the running version and links to the
+  GitHub releases page.
 
 ### Screenshots
 
@@ -189,11 +194,29 @@ go tool mygo dev
 # Build for the host platform.
 go tool mygo build
 
-# Build every release target for v1.0.0.
+# Build every release target for v1.0.1.
 go tool mygo build -platform darwin/universal,windows/amd64,windows/arm64,linux/amd64,linux/arm64
 
 # Install on Debian or Ubuntu.
-sudo apt install ./build/linux-amd64/tangit_1.0.0_amd64.deb
+sudo apt install ./build/linux-amd64/tangit_1.0.1_amd64.deb
+```
+
+### Open a repository from the terminal
+
+Linux packages install a `tangit` command on `PATH` (the standalone installer
+uses `~/.local/bin`). Pass the repository to open, just as you would with a
+terminal editor: **`tangit <path>`**. Relative paths are resolved from the
+directory where you run the command.
+
+```sh
+# Open the current repository from inside it.
+tangit ./
+
+# Open another repository, quoting paths that contain spaces.
+tangit "./path with spaces/repo"
+
+# Development equivalent, run from the TanGit source tree.
+go run ./cmd/tangit .
 ```
 
 ### Release artifacts
@@ -204,15 +227,15 @@ Each target gets its own directory under `build/`:
 build/
 ├── darwin-universal/
 │   ├── TanGit.app                  # arm64 + Intel, one bundle
-│   └── tangit-1.0.0.dmg            # on macOS, signed when configured
+│   └── tangit-1.0.1.dmg            # on macOS, signed when configured
 ├── windows-amd64/  windows-arm64/
 │   ├── TanGit.exe
 │   ├── ghostty-vt.dll
-│   └── tangit-setup-1.0.0-<arch>.exe   # when NSIS is installed
+│   └── tangit-setup-1.0.1-<arch>.exe   # when NSIS is installed
 ├── linux-amd64/    linux-arm64/
 │   ├── tangit
-│   ├── tangit_1.0.0_<arch>.deb
-│   ├── tangit-1.0.0-linux-<arch>.tar.gz
+│   ├── tangit_1.0.1_<arch>.deb
+│   ├── tangit-1.0.1-linux-<arch>.tar.gz
 │   ├── PKGBUILD                    # Arch package recipe
 │   └── install.sh
 └── ...
@@ -240,7 +263,7 @@ gh secret set MYGO_UPDATER_PRIVATE_KEY \
 ```
 
 For each release, bump `version` in `mygo.json`, commit it, then push the
-matching tag (for example, `v1.0.0`). After the workflow finishes, review and
+matching tag (for example, `v1.0.1`). After the workflow finishes, review and
 publish its draft release. Installed copies will then discover the signed
 update automatically.
 
@@ -286,7 +309,7 @@ more menu opens the same full reference.
 | `internal/app/view_*.go` | One file per section or pane (changes, history, graph, branches, …) |
 | `internal/app/actions.go` | Git actions, confirmations, and background work |
 | `internal/repository` | Lazygit's Git commands behind a small session interface |
-| `internal/app/settings.go`, `i18n.go`, `notifications.go` | Preferences, translations, and toasts |
+| `internal/app/settings.go`, `i18n*.go`, `notifications.go` | Preferences, translations, and toasts |
 | `internal/app/*_test.go` | Headless UI tests, including `screenshot_test.go` |
 
 The `internal/repository` package wraps Lazygit's command layer and models in
@@ -318,8 +341,9 @@ MYGO_SHOTS=/tmp/tangit-shots go test ./internal/app -run TestScreenshot
 ```
 
 There is no separate lint configuration: `gofmt` and `go vet` are the
-standard. Wrap new interface strings in `tr(...)` and add a Simplified Chinese
-entry to `internal/app/i18n.go`; the English catalog is the source text itself.
+standard. Wrap new interface strings in `tr(...)` and add the same English key
+to every catalog in `internal/app/i18n*.go`; the English catalog is the source
+text itself.
 
 ## Contributing
 

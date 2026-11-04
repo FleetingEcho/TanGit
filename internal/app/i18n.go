@@ -19,6 +19,10 @@ const defaultLanguage = "en"
 var languageChoices = []languageChoice{
 	{Code: "en", Name: "English"},
 	{Code: "zh-Hans", Name: "简体中文"},
+	{Code: "zh-Hant", Name: "繁體中文"},
+	{Code: "ja", Name: "日本語"},
+	{Code: "es", Name: "Español"},
+	{Code: "fr", Name: "Français"},
 }
 
 // currentLanguage is the language the frame being built is drawn in. MyGo
@@ -66,10 +70,14 @@ func trf(format string, args ...any) string {
 	return fmt.Sprintf(tr(format), args...)
 }
 
-// translations holds the Simplified Chinese catalog, keyed by the English
-// string the code writes. The English catalog is the code itself.
+// translations holds every localized catalog, keyed by language code and the
+// English string the code writes. The English catalog is the code itself.
 var translations = map[string]map[string]string{
 	"zh-Hans": zhHans,
+	"zh-Hant": zhHant,
+	"ja":      japanese,
+	"es":      spanish,
+	"fr":      french,
 }
 
 var zhHans = map[string]string{
@@ -103,20 +111,21 @@ var zhHans = map[string]string{
 	"Point at a folder and press Enter, or browse to one.": "指向一个文件夹并按回车，或浏览选择一个。",
 	"YOUR GIT WORKSPACE":                                   "你的 Git 工作区",
 	"Your changes, history, branches, and remotes — all in one focused place.": "你的变更、历史、分支和远程，尽在一个专注的工作空间。",
-	"Open %s in editor":                           "在编辑器中打开 %s",
-	"Search recent repositories":                  "搜索最近的仓库",
-	"Filter by name or path…":                     "按名称或路径筛选…",
-	"No repositories match your search":           "没有匹配搜索条件的仓库",
-	"Try a different name or path.":               "请尝试其他名称或路径。",
-	"Repository folder":                           "仓库文件夹",
-	"Browse…":                                     "浏览…",
-	"Choose a folder — it opens once you pick it": "选择一个文件夹 — 选中后即打开",
-	"Enter opens the path":                        "回车打开该路径",
-	"A card opens it":                             "单击卡片打开",
-	"Settings":                                    "设置",
-	"Keyboard shortcuts":                          "键盘快捷键",
-	"Recent repositories":                         "最近的仓库",
-	"Open a Git repository to begin":              "打开一个 Git 仓库以开始",
+	"Open %s in editor":                                   "在编辑器中打开 %s",
+	"Search recent repositories":                          "搜索最近的仓库",
+	"Filter by name or path…":                             "按名称或路径筛选…",
+	"No repositories match your search":                   "没有匹配搜索条件的仓库",
+	"Try a different name or path.":                       "请尝试其他名称或路径。",
+	"Repository folder":                                   "仓库文件夹",
+	"Browse…":                                             "浏览…",
+	"Choose a folder — it opens once you pick it":         "选择一个文件夹 — 选中后即打开",
+	"Enter opens the path":                                "回车打开该路径",
+	"Terminal: open a repository path directly in TanGit": "终端：直接在 TanGit 中打开指定路径的仓库",
+	"A card opens it":                                     "单击卡片打开",
+	"Settings":                                            "设置",
+	"Keyboard shortcuts":                                  "键盘快捷键",
+	"Recent repositories":                                 "最近的仓库",
+	"Open a Git repository to begin":                      "打开一个 Git 仓库以开始",
 	"Changes, history, branches, remotes, stash, tags, worktrees, and submodules in one window.": "在一个窗口中查看变更、历史、分支、远程、贮藏、标签、工作树和子模块。",
 	"Removed from the recent list":           "已从最近列表中移除",
 	"Remove from the recent list":            "从最近列表中移除",
@@ -262,10 +271,10 @@ var zhHans = map[string]string{
 	"Added %s to .gitignore":               "已将 %s 添加到 .gitignore",
 	"Added %s to .git/info/exclude":        "已将 %s 添加到 .git/info/exclude",
 	"Restore Historical File":              "恢复历史文件",
-	"Replace %s with its version from %s?": "用 %2$s 中的版本替换 %1$s？",
+	"Replace %s with its version from %s?": "用 %[2]s 中的版本替换 %[1]s？",
 	"Current working-tree content at this path will be overwritten. The index will not change.": "此路径当前的工作树内容将被覆盖，暂存区不会更改。",
 	"Restore file":                  "恢复文件",
-	"Restored %s from %s":           "已从 %2$s 恢复 %1$s",
+	"Restored %s from %s":           "已从 %[2]s 恢复 %[1]s",
 	"Restore this historical file…": "恢复此历史文件…",
 	"previous result":               "上一个结果",
 	"next result":                   "下一个结果",
@@ -848,7 +857,7 @@ var zhHans = map[string]string{
 	"Delete remote branch…":                               "删除远程分支…",
 	"Delete remote branch":                                "删除远程分支",
 	"Delete Remote Branch":                                "删除远程分支",
-	"Delete %s on %s?":                                    "删除 %2$s 上的 %1$s？",
+	"Delete %s on %s?":                                    "删除 %[2]s 上的 %[1]s？",
 	"This deletes the branch on the remote. Local branch %s is kept, but anyone tracking the remote branch will lose it.": "此操作会删除远程分支。本地分支 %s 将保留，但跟踪该远程分支的其他人将失去它。",
 	"Deleted remote branch %s":                   "已删除远程分支 %s",
 	"Add submodule…":                             "添加子模块…",
