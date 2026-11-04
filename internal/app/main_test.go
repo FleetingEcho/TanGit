@@ -25,6 +25,7 @@ type fakeOpener struct {
 	result  openResult
 	release <-chan struct{}
 	calls   *callRecorder
+	patch   string
 	// initErr makes the picker's offer to initialize a folder fail, as a
 	// folder the user may not write to does.
 	initErr error
@@ -42,7 +43,7 @@ func (f fakeOpener) Open(context.Context, string) (repository.Session, error) {
 	if f.result.err != nil {
 		return nil, f.result.err
 	}
-	return fakeSession{snapshot: f.result.snapshot, calls: f.calls}, nil
+	return fakeSession{snapshot: f.result.snapshot, calls: f.calls, patch: f.patch}, nil
 }
 
 // openFixture submits the picker's path field with Enter, which is how a
@@ -57,6 +58,7 @@ func openFixture(t *testing.T, tt *ui.Tester) {
 
 type fakeSession struct {
 	snapshot repository.Snapshot
+	patch    string
 	// calls records what the fake was asked to do, for tests that click an
 	// action and assert it reached the session. Nil records nothing.
 	calls *callRecorder
@@ -116,6 +118,13 @@ func (f fakeSession) Diff(_ context.Context, file repository.File) (repository.D
 	f.calls.record("diff:" + file.Path + ":" + side)
 	if !file.Tracked {
 		return repository.Diff{Patch: fakeNewFilePatch, Kind: "Untracked"}, nil
+	}
+	if f.patch != "" {
+		kind := "Unstaged"
+		if side == "staged" {
+			kind = "Staged"
+		}
+		return repository.Diff{Patch: f.patch, Kind: kind}, nil
 	}
 	kind := "Unstaged"
 	if side == "staged" {
