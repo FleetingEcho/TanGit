@@ -6,7 +6,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// confirmRequest is a question a destructive action asks before it runs:
+// confirmRequest is a question an operation asks before it runs:
 // what it is about to do, why, and the label of the button that does it.
 type confirmRequest struct {
 	title        string
@@ -31,6 +31,16 @@ func (a *app) askConfirm(request confirmRequest) {
 	request.message = tr(request.message)
 	request.detail = tr(request.detail)
 	request.confirmLabel = tr(request.confirmLabel)
+	run := request.run
+	generation, root, branch := a.generation, a.snapshot.Root, a.snapshot.Branch
+	request.run = func() {
+		if a.generation != generation || a.snapshot.Root != root || a.snapshot.Branch != branch {
+			return
+		}
+		if run != nil {
+			run()
+		}
+	}
 	a.confirm = &request
 }
 
@@ -48,6 +58,7 @@ func (a *app) confirmModal(c *ui.Context) {
 	theme := c.Theme()
 	icon, color := confirmIcon(theme, request.destructive)
 	ui.Overlay(c, func() {
+		c.Key("confirm-modal")
 		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 			Justify(ui.Center).AlignItems(ui.Center).
 			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()

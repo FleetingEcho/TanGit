@@ -28,7 +28,7 @@ type keyBindingGroup struct {
 // its parts: the gestures that work everywhere, the window-wide navigation,
 // then each workspace section, and finally the forms.
 func keyBindingGroups() []keyBindingGroup {
-	return []keyBindingGroup{
+	groups := []keyBindingGroup{
 		{
 			title: "Everywhere",
 			icon:  keyboardIcon,
@@ -43,7 +43,10 @@ func keyBindingGroups() []keyBindingGroup {
 				{"F3 / Shift+F3", "Move to the next / previous quick-search result"},
 				{"Ctrl+Z", "Undo the latest eligible Git operation"},
 				{"Ctrl+Shift+Z", "Redo the latest undone Git operation"},
-				{"Tab / Shift+Tab", "Move focus between controls"},
+				{"Tab / Shift+Tab", "Move between panels"},
+				{"F6 / Shift+F6", "Move between panels"},
+				{"j / k", "Move through a list"},
+				{"Shift+F10", "Open the selected item’s context menu"},
 				{"Escape", "Close a dialog or cancel the current step"},
 			},
 		},
@@ -51,8 +54,8 @@ func keyBindingGroups() []keyBindingGroup {
 			title: "Tabs",
 			icon:  newWindowIcon,
 			bindings: []keyBinding{
-				{"Ctrl+T", "Open a new tab or the picker"},
-				{"Ctrl+W", "Close the active tab"},
+				{"Cmd/Ctrl+T", "Open a new tab or the picker"},
+				{"Cmd/Ctrl+W", "Close the active tab"},
 				{"Ctrl+Tab", "Switch to the next tab"},
 				{"Ctrl+Shift+Tab", "Switch to the previous tab"},
 			},
@@ -72,113 +75,52 @@ func keyBindingGroups() []keyBindingGroup {
 				{"Alt+U", "Cycle ordinary diff context lines"},
 			},
 		},
-		{
-			title: "Changes",
-			icon:  stageIcon,
-			bindings: []keyBinding{
-				{"Space", "Stage or unstage the chosen file, or the lines picked in its diff"},
-				{"C", "Write a commit message"},
-				{"Ctrl+Enter", "Commit the staged changes"},
-				{"B", "Blame the chosen file"},
-				{"I / Shift+I", "Ignore file in .gitignore / .git/info/exclude"},
-				{"D", "Discard the chosen file's changes"},
-				{"F7 / Shift+F7", "Move to the next / previous conflict"},
-				{"Alt+1 / Alt+2", "Keep the current / ancestor conflict hunk"},
-				{"Alt+3 / Alt+4", "Keep the incoming conflict hunk / both hunks"},
-				{"Alt+Z", "Undo the last conflict resolution"},
-			},
-		},
-		{
-			title: "History and graph",
-			icon:  historyIcon,
-			bindings: []keyBinding{
-				{"H / Shift+H", "Compare commit with HEAD / first parent with commit"},
-				{"Shift+R", "Restore the chosen historical file after confirmation"},
-				{"P", "Cherry-pick the chosen commit"},
-				{"V", "Revert the chosen commit"},
-				{"R", "Reword the chosen commit"},
-				{"A", "Amend the chosen commit with staged changes"},
-				{"S", "Squash the chosen commit into its older neighbor"},
-				{"F", "Fix up the chosen commit into its older neighbor"},
-				{"D", "Drop the chosen commit"},
-				{"Ctrl+K / Ctrl+J", "Move the chosen commit toward newer / older history"},
-			},
-		},
-		{
-			title: "Branches",
-			icon:  branchesIcon,
-			bindings: []keyBinding{
-				{"H / Shift+H", "Compare branch commit with HEAD / its first parent"},
-				{"Shift+R", "Restore the chosen branch-commit file after confirmation"},
-				{"Space", "Check out the chosen branch"},
-				{"N", "Create a branch"},
-				{"M", "Merge the chosen branch into the current one"},
-				{"U", "Unset the chosen branch's upstream"},
-				{"D", "Delete the chosen branch"},
-			},
-		},
-		{
-			title: "Remotes",
-			icon:  remotesIcon,
-			bindings: []keyBinding{
-				{"N", "Add a remote"},
-				{"F", "Fetch the chosen remote"},
-				{"E", "Edit the chosen remote's name or URL"},
-				{"Space", "Check out the chosen remote branch as a local branch"},
-				{"Shift+Space", "Check out the chosen remote branch detached"},
-				{"M", "Merge the chosen remote branch into the current one"},
-				{"R", "Rebase the current branch onto the chosen remote branch"},
-				{"U", "Set the current branch to track the chosen remote branch"},
-				{"C", "Copy the full remote branch name"},
-				{"Shift+D", "Delete the chosen branch on its remote"},
-				{"D", "Remove the chosen remote"},
-			},
-		},
-		{
-			title: "Stash",
-			icon:  stashIcon,
-			bindings: []keyBinding{
-				{"Space", "Apply the chosen stash"},
-				{"P", "Pop the chosen stash"},
-				{"D", "Drop the chosen stash"},
-			},
-		},
-		{
-			title: "Tags",
-			icon:  tagsIcon,
-			bindings: []keyBinding{
-				{"N", "Create a tag"},
-				{"P", "Push the chosen tag"},
-				{"D", "Delete the chosen tag"},
-			},
-		},
-		{
-			title: "Worktrees",
-			icon:  worktreesIcon,
-			bindings: []keyBinding{
-				{"N", "Create a worktree"},
-				{"O", "Open the chosen worktree"},
-				{"D", "Remove the chosen worktree"},
-			},
-		},
-		{
-			title: "Submodules",
-			icon:  submodulesIcon,
-			bindings: []keyBinding{
-				{"N", "Add a submodule"},
-				{"U", "Initialize or update the chosen submodule"},
-				{"D", "Delete the chosen submodule"},
-			},
-		},
+		{title: "Changes", icon: stageIcon, bindings: []keyBinding{
+			{"F7 / Shift+F7", "Move to the next / previous conflict"},
+			{"Alt+1 / Alt+2", "Keep the current / ancestor conflict hunk"},
+			{"Alt+3 / Alt+4", "Keep the incoming conflict hunk / both hunks"},
+			{"Alt+Z", "Undo the last conflict resolution"},
+		}},
+		{title: "History and graph", icon: historyIcon},
+		{title: "Branches", icon: branchesIcon},
+		{title: "Remotes", icon: remotesIcon},
+		{title: "Stash", icon: stashIcon},
+		{title: "Tags", icon: tagsIcon},
+		{title: "Worktrees", icon: worktreesIcon},
+		{title: "Submodules", icon: submodulesIcon},
+
 		{
 			title: "Forms",
 			icon:  commitIcon,
 			bindings: []keyBinding{
+				{"Tab / Shift+Tab", "Move focus between controls"},
 				{"Enter", "Submit the form"},
 				{"Escape", "Cancel the form"},
 			},
 		},
 	}
+	// Operation keys come from the same definitions that dispatch them.
+	replacements := map[string][]keyBinding{}
+	for _, command := range keyboardCommands() {
+		replacements[command.group] = append(replacements[command.group], keyBinding{command.keys, command.label})
+	}
+	for i := range groups {
+		if bindings, ok := replacements[groups[i].title]; ok {
+			if groups[i].title == "Everywhere" {
+				groups[i].bindings = append(groups[i].bindings, bindings...)
+			} else {
+				if groups[i].title == "Changes" {
+					bindings = append(bindings, groups[i].bindings...)
+				}
+				groups[i].bindings = bindings
+			}
+			delete(replacements, groups[i].title)
+		}
+	}
+	// Remote branches have their own scope rather than acting on the selected remote.
+	groups = append(groups, keyBindingGroup{title: "Remote branches", icon: remotesIcon, bindings: replacements["Remote branches"]}, keyBindingGroup{title: "Historical files", icon: historyIcon, bindings: replacements["Historical files"]})
+	return groups
+
 }
 
 func (a *app) openKeybindings() {
@@ -189,6 +131,7 @@ func (a *app) openKeybindings() {
 func (a *app) openCurrentKeybindings() {
 	a.keybindingFilter = ""
 	a.keybindingsCurrentOnly = true
+	a.keybindingsScope = a.keyboardCurrentGroup
 	a.keybindingsOpen = true
 }
 
@@ -229,7 +172,7 @@ func (a *app) keybindingsModal(c *ui.Context) {
 			// Overlay commands, unlike the window registrations, keep working in
 			// the modal's focus scope. This makes ? and F1 respond immediately
 			// after the dialog's switch re-enables the keyboard.
-			if !a.settings.DisableShortcuts {
+			if !a.settings.DisableShortcuts && !c.FocusTakesText() {
 				if back.OverlayShortcut(ui.Shift, ui.KeySlash) {
 					a.openCurrentKeybindings()
 				}
@@ -290,9 +233,20 @@ func (a *app) visibleKeyBindingGroups() []keyBindingGroup {
 			active = workspaceSections[a.workspaceTab]
 		}
 	}
+	if a.keybindingsScope != "" {
+		active = a.keybindingsScope
+	}
 	visible := make([]keyBindingGroup, 0, 4)
 	for i, group := range groups {
 		if i < 2 || (a.state == stateReady && (i == 2 || group.title == active)) {
+			if group.title == "Diff review" && !a.keyboardDiffCanSelect {
+				group.bindings = nil
+				for _, command := range diffKeyboardCommands() {
+					if !command.selection {
+						group.bindings = append(group.bindings, keyBinding{command.keys, command.label})
+					}
+				}
+			}
 			visible = append(visible, group)
 		}
 	}
@@ -363,12 +317,7 @@ func (a *app) keyBindingRow(c *ui.Context, binding keyBinding) {
 func (a *app) keybindingsFooter(c *ui.Context) {
 	theme := c.Theme()
 	ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
-		disable := ui.Checkbox(c, &a.settings.DisableShortcuts, tr("Disable all keyboard shortcuts")).
-			Label(tr("Disable all keyboard shortcuts"))
-		if disable.Changed() {
-			a.saveSettings()
-			c.Invalidate()
-		}
+		a.hotkeysSwitch(c)
 		ui.Text(c, tr("The header icons keep every action reachable.")).
 			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1)
 		if ui.PrimaryButton(c, tr("Done")).Clicked() {

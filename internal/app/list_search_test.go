@@ -122,6 +122,7 @@ func TestFilteredStashMenuUsesTheSourceStash(t *testing.T) {
 	if err := h.tester.Click("Apply to working tree"); err != nil {
 		t.Fatal(err)
 	}
+	h.confirmAttentionForTest(t)
 	h.waitFor(t, "the filtered stash apply", func() bool { return calls.has("stash-apply:7:false") })
 	if calls.has("stash-apply:3:false") {
 		t.Fatal("the filtered row applied the stash that was hidden above it")

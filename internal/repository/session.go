@@ -239,6 +239,9 @@ type Session interface {
 	FetchRemote(context.Context, string) error
 	Pull(context.Context) error
 	Push(context.Context) error
+	ForcePushWithLease(context.Context) error
+	CherryPickCommits(context.Context, []Commit) error
+	EditCommitRange(context.Context, []Commit, CommitRangeAction) error
 	// PullBranch brings the latest upstream changes into the named local
 	// branch: a pull while it is checked out, a fetch and a fast-forward of
 	// its ref while it is not.
@@ -1057,6 +1060,14 @@ func (s *gitSession) Pull(ctx context.Context) error {
 }
 
 func (s *gitSession) Push(ctx context.Context) error {
+	return s.push(ctx, false)
+}
+
+func (s *gitSession) ForcePushWithLease(ctx context.Context) error {
+	return s.push(ctx, true)
+}
+
+func (s *gitSession) push(ctx context.Context, force bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -1085,9 +1096,10 @@ func (s *gitSession) Push(ctx context.Context) error {
 	}
 
 	if err := s.git.Sync.Push(nil, git_commands.PushOpts{
-		SetUpstream: setUpstream,
-		Remote:      remote,
-		Refspecs:    []string{fmt.Sprintf("refs/heads/%s:refs/heads/%s", branch.Name, target)},
+		ForceWithLease: force,
+		SetUpstream:    setUpstream,
+		Remote:         remote,
+		Refspecs:       []string{fmt.Sprintf("refs/heads/%s:refs/heads/%s", branch.Name, target)},
 	}); err != nil {
 		return fmt.Errorf("push: %w", err)
 	}

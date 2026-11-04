@@ -1,9 +1,13 @@
 package app
 
-import "testing"
+import (
+	"runtime"
+	"testing"
 
-// Linux gets the physical ? key through GTK's accelerator mapping, rather than
-// MyGo's key-event mapping, which drops this shifted punctuation in v0.7.4.
+	"github.com/egoist/mygo"
+)
+
+// Native accelerators bypass logical-key mapping of shifted punctuation.
 func TestNativeHelpMenuUsesQuestionMarkAccelerator(t *testing.T) {
 	s := newShell(nil)
 	s.tabs = []*tab{{app: newApp(nil)}}
@@ -12,8 +16,12 @@ func TestNativeHelpMenuUsesQuestionMarkAccelerator(t *testing.T) {
 		t.Fatal("the native Help menu does not contain exactly one shortcut action")
 	}
 	item := menus[0].Submenu[0]
-	if item.Accelerator != "Shift+/" {
-		t.Fatalf("the native help accelerator is %q, want Shift+/", item.Accelerator)
+	want := "Shift+/"
+	if runtime.GOOS == "darwin" {
+		want = "Shift+?"
+	}
+	if item.Accelerator != want {
+		t.Fatalf("the native help accelerator is %q, want %s", item.Accelerator, want)
 	}
 	if item.Click == nil {
 		t.Fatal("the native help accelerator has no action")
@@ -41,6 +49,10 @@ func TestNativeHelpShortcutRespectsShortcutScope(t *testing.T) {
 		wantCurrent   bool
 		wantFormStill bool
 	}{
+		{
+			name:    "text input keeps punctuation",
+			prepare: func(a *app) { a.keyboardTextFocus = true },
+		},
 		{
 			name: "shortcuts disabled",
 			prepare: func(a *app) {
@@ -94,5 +106,21 @@ func TestNativeHelpShortcutRespectsShortcutScope(t *testing.T) {
 				t.Errorf("commit form open = %v, want %v", a.showCommitForm, test.wantFormStill)
 			}
 		})
+	}
+}
+
+func TestNativeApplicationHelpMenuPreservesExistingMenus(t *testing.T) {
+	s := newShell(nil)
+	existing := mygo.NewMenu([]*mygo.MenuItem{{ID: "app", Label: "App", Submenu: []*mygo.MenuItem{{Role: "quit"}}}, {ID: "edit", Label: "Edit", Submenu: []*mygo.MenuItem{{Role: "copy"}}}})
+	menu := nativeApplicationHelpMenu(existing, s)
+	result := nativeApplicationHelpMenu(menu, s).Items()
+	if len(result) != 3 || result[0].ID != "app" || result[1].ID != "edit" {
+		t.Fatal("native help replaced standard menus")
+	}
+	if result[0].Submenu[0].Role != "quit" || result[1].Submenu[0].Role != "copy" {
+		t.Fatal("standard actions were lost")
+	}
+	if result[2].Submenu[0].Accelerator == "" {
+		t.Fatal("help has no native accelerator")
 	}
 }

@@ -93,12 +93,14 @@ func (a *app) beginPushTag() {
 	}
 	name := a.snapshot.Tags[a.selectedTag].Name
 	remote := strings.TrimSpace(a.tagRemote)
-	a.beginRepositoryActionMessage(trf("Pushed tag %s to %s", name, remote), "",
-		func(ctx context.Context, session repository.Session) error {
-			return session.PushTag(ctx, remote, name)
-		}, func() {
-			a.showTagPushForm = false
-		})
+	a.confirmAttention("Push tag", name+" → "+remote, "This publishes a tag to the selected remote. Other users may rely on this published reference.", func() {
+		a.beginRepositoryActionMessage(trf("Pushed tag %s to %s", name, remote), "",
+			func(ctx context.Context, session repository.Session) error {
+				return session.PushTag(ctx, remote, name)
+			}, func() {
+				a.showTagPushForm = false
+			})
+	})
 }
 
 func (a *app) confirmDeleteSelectedTag() {
@@ -135,7 +137,7 @@ func (a *app) tagRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) {
 	}
 	item := rows[row.Index]
 	tag := item.tag
-	if m.Item(tr("Push tag…")).Shortcut(0, ui.KeyP).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Chosen() {
+	if m.Item(tr("Push tag…")).Shortcut(ui.Shift, ui.KeyP).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Chosen() {
 		a.selectedTag, a.selectedTagRow = item.source, row.Index
 		if a.tagRemote == "" && len(a.snapshot.Remotes) > 0 {
 			a.tagRemote = a.snapshot.Remotes[0].Name
@@ -211,7 +213,7 @@ func (a *app) tagsView(c *ui.Context) {
 						listSearchEmpty(c, "No repository tags match this search")
 						return
 					}
-					list := ui.List(c, &a.tagList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
+					list := a.keyboardList(c, &a.tagList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
 						tag := visible[row.Index].tag
 						services := row.Context.Services()
 						ui.Column(row.Context).Gap(2).Padding(7, 8).Children(func() {
@@ -221,7 +223,7 @@ func (a *app) tagsView(c *ui.Context) {
 							}
 						}).PopoverMenu(func(m *ui.Menu) { a.tagRowMenu(m, row, services) })
 					})
-					if list.Changed() {
+					if a.keyboardListChanged(&a.tagList, list) {
 						a.selectTagRow(a.selectedTagRow)
 						a.showTagPushForm = false
 					}

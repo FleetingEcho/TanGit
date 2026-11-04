@@ -9,15 +9,6 @@ import (
 	"lazygitapp/internal/repository"
 )
 
-// diffViewer draws a diff of the read-only kind every page shows: a commit's,
-// a stash's, a branch's or the working tree's. A diff is read, not typed into,
-// so the viewer keeps the keyboard where it is: a click that focused it would
-// draw a caret in text the pane only shows. The line numbers still take their
-// clicks and the wheel still scrolls, as neither needs the focus.
-func diffViewer(c *ui.Context, state *editor.DiffState) ui.Element {
-	return editor.DiffView(c, state).Grow(1).KeepFocus()
-}
-
 // buildDiffState turns a diff into the editor's viewer state, laid out the
 // way the diff toggles choose: unified or side by side, and long lines
 // wrapped or scrolled sideways.
@@ -434,6 +425,10 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 	ui.Overlay(c, func() {
 		panel := ui.Column(c).Absolute().Left(0).Top(overlayTopInset).Right(0).Bottom(0).
 			Padding(islandGap / 2).Gap(0).Background(islandBackdrop(theme)).Modal()
+		if !a.settings.DisableShortcuts {
+			panel.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
+			panel.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })
+		}
 		panel.Children(func() {
 			islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(10, 14)).Children(func() {
 				ui.Icon(c, diffSplitIcon).FontSize(18).TextColor(theme.Accent)
@@ -595,7 +590,7 @@ func (a *app) diffFullscreenFilesView(c *ui.Context, theme *ui.Theme, target sho
 				// The list's choice follows the file the diff shows, so the
 				// accent marks the one being read.
 				a.diffFullscreenFile = current
-				list := ui.List(c, &a.diffFullscreenFileList, len(files)).Grow(1).Rows(func(row ui.ListRow) {
+				list := a.keyboardList(c, &a.diffFullscreenFileList, len(files)).Grow(1).Rows(func(row ui.ListRow) {
 					file := files[row.Index]
 					style := diffFileStyle(theme, file.status)
 					ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(6, 8).Children(func() {
@@ -617,7 +612,7 @@ func (a *app) diffFullscreenFilesView(c *ui.Context, theme *ui.Theme, target sho
 				})
 				// The keys move the list too, and the row they land on is the
 				// file to read.
-				if list.Changed() && a.diffFullscreenFile >= 0 && a.diffFullscreenFile < len(files) {
+				if a.keyboardListChanged(&a.diffFullscreenFileList, list) && a.diffFullscreenFile >= 0 && a.diffFullscreenFile < len(files) {
 					files[a.diffFullscreenFile].choose()
 				}
 			})
@@ -634,7 +629,7 @@ func (a *app) diffFullscreenFilesView(c *ui.Context, theme *ui.Theme, target sho
 func (a *app) diffFullscreenDiff(c *ui.Context, theme *ui.Theme, target shownDiff) {
 	switch {
 	case target.state != nil:
-		diffViewer(c, target.state)
+		a.keyboardDiffViewerWithID(c, target.state, "fullscreen-diff")
 	case a.activeDiffLoading():
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Spinner(c).Label(tr("Loading diff"))

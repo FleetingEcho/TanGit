@@ -892,6 +892,7 @@ func TestStagedBarStashesOnlyTheIndex(t *testing.T) {
 	if err := h.tester.Click("Stash staged changes"); err != nil {
 		t.Fatalf("stash the staged files: %v", err)
 	}
+	h.confirmAttentionForTest(t)
 	h.waitFor(t, "the index to be stashed", func() bool {
 		for _, call := range calls.all() {
 			if strings.HasPrefix(call, "stash-staged:WIP on main at ") {

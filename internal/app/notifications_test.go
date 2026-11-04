@@ -58,6 +58,7 @@ func TestFailedActionOffersTheCommandLog(t *testing.T) {
 	if err := h.tester.Click("Push"); err != nil {
 		t.Fatal(err)
 	}
+	h.confirmAttentionForTest(t)
 	h.waitFor(t, "the push to fail", func() bool {
 		return slices.Contains(h.texts(), "Git action failed")
 	})
@@ -216,6 +217,7 @@ func TestBranchMenuSyncsAndForcesCheckout(t *testing.T) {
 	h.rightClick(t, "main (local)")
 	h.requireMenuLabels(t, "Pull latest", "Fast-forward")
 	h.chooseMenuItem(t, "Fast-forward")
+	h.confirmAttentionForTest(t)
 	h.waitFor(t, "the fast-forward", func() bool { return calls.has("fast-forward:main") })
 
 	// Another branch can be checked out over the work in the way, once the
@@ -312,6 +314,7 @@ func TestLongActionErrorStaysOnOneStatusLine(t *testing.T) {
 	if err := h.tester.Click("Push"); err != nil {
 		t.Fatal(err)
 	}
+	h.confirmAttentionForTest(t)
 	h.waitFor(t, "the push to fail", func() bool {
 		return slices.Contains(h.texts(), "Git action failed")
 	})
