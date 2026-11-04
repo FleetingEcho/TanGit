@@ -42,9 +42,11 @@ func TestRemoteKeyboardShortcuts(t *testing.T) {
 	}
 	h.tester.Key(0, ui.KeyEscape)
 	h.tester.Frame()
+	h.tester.Key(0, ui.KeyEnter)
+	h.tester.Frame()
 	h.tester.Key(ui.Shift, ui.KeySpace)
 	if h.app.confirm == nil || !strings.Contains(h.app.confirm.message, "origin/main") {
-		t.Fatal("Shift+Space did not ask to check out the selected remote branch detached")
+		t.Fatalf("Shift+Space did not ask to check out the selected remote branch detached: remotes=%v branches=%v group=%s pending=%s", h.tester.Focused("Remotes"), h.tester.Focused("Remote branches"), h.app.keyboardCurrentGroup, h.app.keyboardFocus)
 	}
 	if err := h.tester.Click("Checkout commit"); err != nil {
 		t.Fatal(err)
@@ -54,6 +56,7 @@ func TestRemoteKeyboardShortcuts(t *testing.T) {
 	})
 	h.settle(t)
 	h.press(t, ui.KeyU)
+	h.confirmAttentionForTest(t)
 	h.waitFor(t, "the keyboard upstream update", func() bool {
 		return calls.has("set-upstream:origin:main:main")
 	})
@@ -92,6 +95,7 @@ func TestEditRemoteUsesTheFilteredMenuRow(t *testing.T) {
 	if err := h.tester.Click("Save changes"); err != nil {
 		t.Fatalf("save edited remote: %v", err)
 	}
+	h.confirmAttentionForTest(t)
 	h.waitFor(t, "the edited remote", func() bool {
 		return calls.has("update-remote:upstream:backup:https://example.com/backup.git")
 	})
@@ -103,6 +107,7 @@ func TestUnsetUpstreamFromLocalBranchMenu(t *testing.T) {
 	h.tester.Frame()
 	h.rightClick(t, "main (local)")
 	h.chooseMenuItem(t, "Unset upstream")
+	h.confirmAttentionForTest(t)
 	h.waitFor(t, "the upstream removal", func() bool {
 		return calls.has("unset-upstream:main")
 	})
@@ -134,6 +139,7 @@ func TestRemoteBranchSetsUpstreamForCurrentBranch(t *testing.T) {
 	h.tester.Frame()
 	h.rightClick(t, "feature/menus")
 	h.chooseMenuItem(t, "Set as upstream of main")
+	h.confirmAttentionForTest(t)
 	h.waitFor(t, "the upstream update", func() bool {
 		return calls.has("set-upstream:origin:feature/menus:main")
 	})

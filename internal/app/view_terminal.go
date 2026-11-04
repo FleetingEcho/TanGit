@@ -169,7 +169,7 @@ func (a *app) terminalPaneView(c *ui.Context) {
 			return
 		}
 		if a.term.pane != nil {
-			terminal.View(c, a.term.pane).Grow(1).AutoFocus()
+			a.keyboardPane(c, "terminal", terminal.View(c, a.term.pane).Grow(1).AutoFocus())
 		}
 	})
 }

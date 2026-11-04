@@ -93,6 +93,19 @@ func (a *app) commitRowMenu(m *ui.Menu, commit repository.Commit, services ui.Se
 // browsed without checkout, where its commits still support the commit-local
 // actions but not a rebase or reset of the branch that happens to be current.
 func (a *app) commitRowMenuWithHistory(m *ui.Menu, commit repository.Commit, services ui.Services, historyEditable bool) {
+	if a.workspaceTab == sectionHistory || a.workspaceTab == sectionGraph {
+		if m.Item(tr("Toggle batch selection")).Shortcut(ui.Ctrl, ui.KeySpace).Disabled(a.actionBusy).Chosen() {
+			if a.commitSelection == nil {
+				a.commitSelection = map[string]bool{}
+			}
+			a.commitSelection[commit.Hash] = !a.commitSelection[commit.Hash]
+		}
+		if a.commitSelection[commit.Hash] {
+			a.commitBatchMenu(m)
+		}
+		m.Separator()
+	}
+
 	if m.Item(tr("Copy commit hash")).Chosen() {
 		a.notifyCopied(services, "commit hash", commit.Hash)
 	}
@@ -101,7 +114,7 @@ func (a *app) commitRowMenuWithHistory(m *ui.Menu, commit repository.Commit, ser
 		if m.Item(tr("Reword commit…")).Disabled(a.actionBusy).Chosen() {
 			a.openCommitRewordForm(commit)
 		}
-		if m.Item(tr("Amend with staged changes…")).Shortcut(0, ui.KeyA).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Amend with staged changes…")).Shortcut(ui.Shift, ui.KeyA).Disabled(a.actionBusy).Chosen() {
 			a.confirmAmendCommit(commit)
 		}
 		if m.Item(tr("Create fixup commit from staged changes…")).Disabled(a.actionBusy).Chosen() {

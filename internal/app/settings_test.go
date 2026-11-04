@@ -22,10 +22,10 @@ func TestSettingsDisableShortcutsSwitchesEveryKeyOff(t *testing.T) {
 		t.Fatalf("open Behavior settings: %v", err)
 	}
 	h.tester.Frame()
-	if !slices.Contains(h.texts(), "Disable all keyboard shortcuts") {
+	if !slices.Contains(h.texts(), "Enable keyboard shortcuts") {
 		t.Fatalf("the settings do not offer the switch: %q", h.texts())
 	}
-	if err := h.tester.Click("Disable all keyboard shortcuts"); err != nil {
+	if err := h.tester.Click("Enable keyboard shortcuts"); err != nil {
 		t.Fatalf("click the disable switch: %v", err)
 	}
 	h.tester.Frame()
@@ -66,7 +66,7 @@ func TestQuestionMarkWorksAfterReenablingShortcutsInSettings(t *testing.T) {
 	}
 	h.tester.Frame()
 	for i := 0; i < 2; i++ {
-		if err := h.tester.Click("Disable all keyboard shortcuts"); err != nil {
+		if err := h.tester.Click("Enable keyboard shortcuts"); err != nil {
 			t.Fatalf("toggle the shortcut switch: %v", err)
 		}
 		h.tester.Frame()

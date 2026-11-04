@@ -100,7 +100,7 @@ func (a *app) settingsModal(c *ui.Context) {
 				})
 			// Help belongs to the workspace underneath Settings. Opening it here
 			// closes Settings first so two modal overlays never compete for input.
-			if !a.settings.DisableShortcuts {
+			if !a.settings.DisableShortcuts && !c.FocusTakesText() {
 				if back.OverlayShortcut(ui.Shift, ui.KeySlash) {
 					a.closeSettings()
 					a.openCurrentKeybindings()
@@ -358,13 +358,7 @@ func (a *app) behaviorSettings(c *ui.Context) {
 				c.Invalidate()
 			}
 			ui.Divider(c)
-			shortcuts := ui.Checkbox(c, &a.settings.DisableShortcuts, tr("Disable all keyboard shortcuts")).
-				Label(tr("Disable all keyboard shortcuts")).
-				Tooltip(tr("The header icons keep every action reachable."))
-			if shortcuts.Changed() {
-				a.applySettingsChange()
-				c.Invalidate()
-			}
+			a.hotkeysSwitch(c)
 		})
 	})
 }

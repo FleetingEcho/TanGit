@@ -37,6 +37,9 @@ every action reachable from both the keyboard and the mouse.
 - The working tree keeps itself current: changes, commits, and branches made
   in another app appear within seconds without pressing `F5`, and the file or
   commit you were reading stays chosen.
+- Confirmation modals explain the target and consequences before publishing,
+  pulling, switching branches, applying or saving stashes, changing tracking,
+  updating submodules, resolving entire conflict files, or rewriting history.
 - Stage, unstage, or discard everything at once, with a confirmation before
   anything is thrown away.
 - Switch Changes, commit, branch-commit, and stash file lists between flat
@@ -79,6 +82,14 @@ every action reachable from both the keyboard and the mouse.
   same list you already use.
 - Per-commit actions: copy hash, soft, mixed, or hard reset, create a tag or
   branch there, cherry-pick onto the current branch, or revert.
+- Select multiple commits in History or Graph using their checkboxes or `Ctrl+Space`.
+  **Batch actions** and the selected rows’ context menus offer cherry-pick,
+  squash, fixup, drop, and moving the selection toward newer or older history.
+  Rewrites require consecutive commits on the current branch; squash and fixup
+  retain the oldest selected commit.
+- **Push options → Force push with lease** publishes rewritten branch history
+  after confirmation. The current branch’s context menu offers the same action.
+  Git refuses the push if the remote differs from its remote-tracking reference.
 - Edit history without leaving the app: reword, drop, reorder, squash, fix up,
   amend older commits, and create or apply fixup commits. Git's todo-file editor
   handoff runs inside the TanGit executable rather than a terminal editor.
@@ -319,33 +330,46 @@ update automatically.
 TanGit is keyboard-first. Press **?** for the shortcuts available on the
 current page, or **F1** for the complete, filterable shortcut list; the header's
 more menu opens the same full reference.
+The switch in the shortcut reference and Settings enables or disables keyboard
+shortcuts immediately and saves the choice. The keyboard icon in the bottom
+status card opens the reference, even when shortcuts are disabled.
 
-| Everywhere | |
-| --- | --- |
-| `F1` | Open the complete shortcut list |
-| `?` | Show shortcuts for the current page |
-| `Ctrl+,` | Open settings |
-| `Ctrl+L` | Show the command log |
-| `` Ctrl+` `` | Toggle the terminal |
-| `F5` | Refresh the repository |
-| `/` | Search the active panel; History and Graph open their commit filter |
-| `F3` / `Shift+F3` | Next / previous quick-search result |
-| `Alt+W` / `Alt+U` | Toggle whitespace-only diff changes / cycle ordinary diff context |
-| `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo an eligible Git operation through the reflog |
-| `Escape` | Close a dialog or cancel the current step |
+The repository path receives focus on launch. Tab also reaches each recent
+repository's Open action. In workspace lists and read-only diffs, Tab moves to
+the next panel rather than through every row’s controls. Git action shortcuts
+follow the focused list or diff;
+text fields and the terminal keep ordinary typing. Dangerous actions still ask
+for confirmation, and dialogs return focus to the workspace when closed.
+Uppercase letters below mean **Shift + letter**.
 
-| Section | Keys |
+| Navigation | Keys |
 | --- | --- |
-| Workspace | `1`–`9`, `0` switch sections; arrows, `Home`/`End`, `PageUp`/`PageDown` move; `Enter` opens |
-| Changes | `Space` stage/unstage, `C` write a commit message, `Ctrl+Enter` commit, `B` blame, `I`/`Shift+I` ignore/exclude, `D` discard |
-| History / Graph | `H` compare with HEAD, `Shift+H` compare parent with commit, `Shift+R` restore selected historical file, `P` cherry-pick, `V` revert |
-| File history | `H` compare with HEAD, `Shift+H` compare parent with commit, `Shift+R` restore selected historical file |
-| Branches | `H`/`Shift+H` compare selected commit, `Shift+R` restore selected file, `Space` check out, `N` create, `M` merge, `U` unset upstream, `D` delete |
-| Remotes | `N` add, `F` fetch, `E` edit, `Space` check out as local branch, `Shift+Space` check out detached, `M` merge, `R` rebase, `U` set upstream, `C` copy branch name, `Shift+D` delete remote branch, `D` remove remote |
-| Stash | `Space` apply, `P` pop, `D` drop |
-| Tags | `N` create, `P` push, `D` delete |
-| Worktrees | `N` create, `O` open, `D` remove |
-| Submodules | `N` add, `U` update, `D` delete |
+| Toolbar and dialog controls | `Tab` / `Shift+Tab`; `Enter` or `Space` activates |
+| Panels | `Tab` / `Shift+Tab` from lists and diffs; `F6` / `Shift+F6` also work; `Enter` moves into details; `Escape` returns |
+| Lists | Arrows or `j` / `k`; `Home` / `End`; `Shift+F10` opens the selected row's menu |
+| Sections | `1`–`9`, `0` switch visible workspace sections |
+| Repository tabs | `Cmd/Ctrl+T`, `Cmd/Ctrl+W`, `Ctrl+Tab`, `Ctrl+Shift+Tab` |
+| Help and search | `?` current context, `F1` complete reference, `/` search, `F3` / `Shift+F3` next / previous match |
+| Preferences and tools | `Ctrl+,` settings, `Ctrl+L` command log, ``Ctrl+` `` terminal |
+
+| Git operations | Keys |
+| --- | --- |
+| Global | `p` pull, `P` push, `z` / `Z` undo / redo; `Ctrl+Z` / `Ctrl+Shift+Z` remain aliases; `F5` refresh |
+| Changes | `Space` stage/unstage, `a` stage all, `c` compose, `A` amend, `s` stash, `f` fetch, `i` / `I` ignore/exclude, `d` discard, `b` blame |
+| Commit form | `Enter` submits the summary; `Ctrl+Enter` commits from either message field; `Escape` closes |
+| History / Graph | `r` reword, `s` squash, `f` fixup, `F` create fixup, `S` apply fixups, `A` amend, `d` drop, `t` revert; `Ctrl+J` / `Ctrl+K` reorder |
+| Cherry-pick | `C` copies selected commits; `V` confirms applying copied commits to the current branch |
+| Historical files | `h` compare with HEAD, `H` compare parent with commit, `Shift+R` restore selected file |
+| Branches | `Space` checkout, `n` create, `M` merge, `r` rebase onto, `u` unset upstream, `d` delete |
+| Remotes | `n` add, `f` fetch, `e` edit, `d` remove; Enter focuses remote branches |
+| Remote branches | `Space` checkout as local, `Shift+Space` checkout detached, `M` merge, `r` rebase, `u` upstream, `d` delete |
+| Stash | `Space` apply, `g` pop, `d` drop |
+| Tags | `n` create, `P` push, `d` delete |
+| Worktrees | `n` create, `o` open, `d` remove |
+| Submodules | `n` add, `u` update, `d` delete |
+| Diff review | `[` / `]` previous / next hunk; `j` / `k` move; in Changes, `v` starts line selection, `Shift+Up/Down` or `j` / `k` extend it, `Space` stages/unstages selected lines |
+| Diff display | `W` compare refs, `Alt+W` ignore whitespace, `Alt+U` cycle context |
+| Conflicts | `F7` / `Shift+F7` navigate; `Alt+1`–`Alt+4` keep current/ancestor/incoming/both; `Alt+Z` undo a choice |
 
 ## How it works
 

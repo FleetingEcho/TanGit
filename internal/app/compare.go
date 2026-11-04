@@ -226,6 +226,10 @@ func (a *app) compareModal(c *ui.Context) {
 		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 			Justify(ui.Center).AlignItems(ui.Center).
 			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
+		if !a.settings.DisableShortcuts {
+			back.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
+			back.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })
+		}
 		back.Children(func() {
 			panel := ui.Column(c).Width(1100).Height(700).MaxWidthPercent(94).MaxHeightPercent(92).
 				Padding(18).Gap(12).Background(theme.Background).
@@ -329,7 +333,7 @@ func (a *app) compareResults(c *ui.Context, theme *ui.Theme) {
 				ui.Spacer(c).Grow(1)
 				ui.Badge(c, strconv.Itoa(len(a.compare.files)))
 			})
-			list := ui.List(c, &a.compare.list, len(a.compare.files)).Grow(1).Rows(func(row ui.ListRow) {
+			list := a.keyboardList(c, &a.compare.list, len(a.compare.files)).Grow(1).Rows(func(row ui.ListRow) {
 				file := a.compare.files[row.Index]
 				ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(7, 8).Children(func() {
 					fileTypeMark(row.Context, file.Path, 13, row.Selected())
@@ -338,7 +342,7 @@ func (a *app) compareResults(c *ui.Context, theme *ui.Theme) {
 					statusSlot(row.Context, statusLetter(file.Status), theme.Warning)
 				})
 			})
-			if list.Changed() {
+			if a.keyboardListChanged(&a.compare.list, list) {
 				a.compare.diffKey = ""
 				a.compare.diffState = nil
 				a.compare.diffLoading = false
@@ -365,7 +369,7 @@ func (a *app) compareResults(c *ui.Context, theme *ui.Theme) {
 			case a.compare.diffError != "":
 				ui.Text(c, a.compare.diffError).TextColor(theme.Danger)
 			case a.compare.diffState != nil:
-				diffViewer(c, a.compare.diffState)
+				a.keyboardDiffViewer(c, a.compare.diffState)
 			default:
 				ui.Column(c).Grow(1).Center().Children(func() {
 					ui.Text(c, tr("No textual diff")).TextColor(theme.TextMuted)

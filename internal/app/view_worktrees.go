@@ -167,7 +167,7 @@ func (a *app) worktreesView(c *ui.Context) {
 						listSearchEmpty(c, "No worktrees match this search")
 						return
 					}
-					list := ui.List(c, &a.worktreeList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
+					list := a.keyboardList(c, &a.worktreeList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
 						worktree, _ := sourceRow(visible, a.snapshot.Worktrees, row.Index)
 						services := row.Context.Services()
 						ui.Row(row.Context).Gap(8).Padding(7, 8).Children(func() {
@@ -180,7 +180,7 @@ func (a *app) worktreesView(c *ui.Context) {
 							}
 						}).PopoverMenu(func(m *ui.Menu) { a.worktreeRowMenu(m, row, services) })
 					})
-					if list.Changed() {
+					if a.keyboardListChanged(&a.worktreeList, list) {
 						a.selectWorktreeRow(a.selectedWorktreeRow)
 					}
 					normalizeFilteredRow(visible, &a.selectedWorktreeRow, &a.selectedWorktree)
