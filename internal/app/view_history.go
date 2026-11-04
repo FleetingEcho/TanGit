@@ -87,6 +87,7 @@ func (a *app) resetCommitDetails() {
 	a.commitDiffPath = ""
 	a.commitDiffPatch = ""
 	a.commitDiffState = nil
+	a.commitDiffMedia = nil
 	a.commitDiffLoading = false
 	a.commitDiffError = ""
 }
@@ -113,6 +114,7 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 	a.commitDiffLoading = false
 	a.commitDiffError = ""
 	a.commitDiffState = nil
+	a.commitDiffMedia = nil
 
 	go func() {
 		defer a.recoverBackground()
@@ -132,7 +134,7 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 			}
 			a.commitFilesLoading = false
 			if err != nil {
-				a.commitFilesError = err.Error()
+				a.commitFilesError = safeError(err)
 				return
 			}
 			a.commitFiles = files
@@ -162,6 +164,7 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 	a.commitDiffError = ""
 	a.commitDiffPatch = ""
 	a.commitDiffState = nil
+	a.commitDiffMedia = nil
 
 	layout, wrap := a.diffLayout(), a.diffWrap
 	options := a.diffOptions
@@ -169,8 +172,14 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 		defer a.recoverBackground()
 		diff, err := session.CommitFileDiff(context.Background(), commit, file, options)
 		var state *editor.DiffState
+		var media *mediaReview
 		if err == nil {
 			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
+			if err == nil && state == nil && isMediaPath(file.Path) {
+				media, err = loadMediaReview(context.Background(), session, repository.MediaRequest{
+					Source: repository.MediaCommit, Commit: commit, CommitFile: file,
+				})
+			}
 		}
 		a.update(func() {
 			if repositoryGeneration != a.generation {
@@ -189,11 +198,12 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 			}
 			a.commitDiffLoading = false
 			if err != nil {
-				a.commitDiffError = err.Error()
+				a.commitDiffError = safeError(err)
 				return
 			}
 			a.commitDiffPatch = diff.Patch
 			a.commitDiffState = state
+			a.commitDiffMedia = media
 		})
 	}()
 }
@@ -225,7 +235,7 @@ func (a *app) requestMoreCommits() {
 			}
 			a.commitsLoading = false
 			if err != nil {
-				a.commitsError = err.Error()
+				a.commitsError = safeError(err)
 				return
 			}
 			a.commitsMore = len(commits) == repository.SnapshotCommitLimit
@@ -363,7 +373,7 @@ func (a *app) historyView(c *ui.Context) {
 }
 
 // historyListHeader is the commit list's title, its match count while a
-// filter narrows it, and the control that opens the filter.
+// filter narrows it, and its multi-select and filter controls.
 func (a *app) historyListHeader(c *ui.Context) {
 	// History opens on the branch checked out, and follows a checkout while
 	// it holds that default. Keeping it here reads it as the pane draws.
@@ -380,6 +390,7 @@ func (a *app) historyListHeader(c *ui.Context) {
 			ui.Badge(c, commitFilterSummary(a.historyFilter.applied))
 		}
 		ui.Spacer(c).Grow(1)
+		a.commitSelectionModeButton(c)
 		commitFilterButton(c, "Search and filter the commit list", filtered, func() {
 			a.openCommitFilter(sectionHistory)
 		})
@@ -461,6 +472,7 @@ func (a *app) selectCommitFileRow(row int) {
 	a.commitDiffPath = ""
 	a.commitDiffPatch = ""
 	a.commitDiffState = nil
+	a.commitDiffMedia = nil
 	a.commitDiffLoading = false
 	a.commitDiffError = ""
 }
@@ -578,7 +590,7 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 				case a.commitDiffState != nil:
 					a.keyboardDiffViewer(c, a.commitDiffState)
 				default:
-					ui.Text(c, tr("No textual diff")).TextColor(theme.TextMuted)
+					noTextualDiffOrMedia(c, a.commitDiffMedia, a.commitDiffPath)
 				}
 			})
 		}).Grow(1)

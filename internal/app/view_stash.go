@@ -18,13 +18,35 @@ func (a *app) beginStashChanges() {
 		message = a.defaultStashMessage()
 	}
 	includeUntracked := a.stashIncludeUntracked
-	a.confirmAttention("Stash", message, "This saves changes in a stash and removes them from the working tree or index.", func() {
-		a.beginRepositoryActionMessage(tr("Stashed changes"), "",
+	selection := append([]repository.File(nil), a.stashSelection...)
+	patchText := a.stashPatch
+	removalPatch := a.stashRemovalPatch
+	detail := "This saves changes in a stash and removes them from the working tree or index."
+	success := "Stashed changes"
+	if patchText != "" {
+		detail = "Only the selected lines are saved and removed. The rest of this file and the index stay unchanged."
+		success = "Stashed selected lines"
+	} else if len(selection) > 0 {
+		detail = "Only the selected file is saved and removed. Other changed files stay exactly as they are."
+		success = "Stashed selected file"
+	}
+	a.confirmAttention("Stash", message, detail, func() {
+		a.beginRepositoryActionMessage(tr(success), "",
 			func(ctx context.Context, session repository.Session) error {
-				return session.StashChanges(ctx, message, includeUntracked)
+				switch {
+				case patchText != "":
+					return session.StashPatch(ctx, message, patchText, removalPatch)
+				case len(selection) > 0:
+					return session.StashSelectedFiles(ctx, message, selection, includeUntracked)
+				default:
+					return session.StashChanges(ctx, message, includeUntracked)
+				}
 			}, func() {
 				a.stashMessage = ""
 				a.stashIncludeUntracked = false
+				a.stashSelection = nil
+				a.stashPatch = ""
+				a.stashRemovalPatch = ""
 				a.showStashForm = false
 			})
 	})
@@ -69,7 +91,45 @@ func (a *app) openStashForm() {
 	}
 	a.stashMessage = ""
 	a.stashIncludeUntracked = false
+	a.stashSelection = nil
+	a.stashPatch = ""
+	a.stashRemovalPatch = ""
 	a.showStashForm = true
+}
+
+func (a *app) openSelectedFileStash(file repository.File) {
+	if a.actionBusy || a.session == nil || file.HasMergeConflicts {
+		return
+	}
+	a.stashMessage = ""
+	a.stashIncludeUntracked = !file.Tracked
+	a.stashSelection = []repository.File{file}
+	a.stashPatch = ""
+	a.stashRemovalPatch = ""
+	a.showStashForm = true
+}
+
+func (a *app) openSelectedLinesStash(file repository.File, patchText, removalPatch string) {
+	if a.actionBusy || a.session == nil || file.HasMergeConflicts || patchText == "" || removalPatch == "" {
+		return
+	}
+	a.stashMessage = ""
+	a.stashIncludeUntracked = !file.Tracked
+	a.stashSelection = nil
+	a.stashPatch = patchText
+	a.stashRemovalPatch = removalPatch
+	a.showStashForm = true
+}
+
+// stashFormDescription keeps scope explicit before the confirmation dialog.
+func (a *app) stashFormDescription() string {
+	if a.stashPatch != "" {
+		return "Save only the selected lines to restore them later."
+	}
+	if len(a.stashSelection) > 0 {
+		return "Save only the selected file to restore it later."
+	}
+	return "Save the working tree away to restore it later."
 }
 
 // stashFormModal names the stash the working tree is saved as. The form is
@@ -97,7 +157,7 @@ func (a *app) stashFormModal(c *ui.Context) {
 						})
 						ui.Column(c).Gap(2).Grow(1).Children(func() {
 							ui.Text(c, tr("Stash Changes")).FontSize(17).Bold()
-							ui.Text(c, tr("Save the working tree away to restore it later.")).
+							ui.Text(c, tr(a.stashFormDescription())).
 								TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 						})
 						iconButton(c, "Close stash form", "Escape", closeIcon, false,
@@ -110,7 +170,9 @@ func (a *app) stashFormModal(c *ui.Context) {
 					if input.Submitted() {
 						a.beginStashChanges()
 					}
-					ui.Checkbox(c, &a.stashIncludeUntracked, tr("Include untracked"))
+					if a.stashPatch == "" {
+						ui.Checkbox(c, &a.stashIncludeUntracked, tr("Include untracked"))
+					}
 					ui.Text(c, tr("Leave the message empty for a timestamped name.")).
 						TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 					ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
@@ -167,6 +229,7 @@ func (a *app) resetStashDetails() {
 	a.stashDiffPath = ""
 	a.stashDiffPatch = ""
 	a.stashDiffState = nil
+	a.stashDiffMedia = nil
 	a.stashDiffLoading = false
 	a.stashDiffError = ""
 }
@@ -180,6 +243,7 @@ func (a *app) selectStashFileRow(row int) {
 	a.stashDiffPath = ""
 	a.stashDiffPatch = ""
 	a.stashDiffState = nil
+	a.stashDiffMedia = nil
 	a.stashDiffLoading = false
 	a.stashDiffError = ""
 }
@@ -204,6 +268,7 @@ func (a *app) requestStashDetails(stash repository.Stash) {
 	a.stashDiffPath = ""
 	a.stashDiffPatch = ""
 	a.stashDiffState = nil
+	a.stashDiffMedia = nil
 	a.stashDiffLoading = false
 	a.stashDiffError = ""
 
@@ -225,7 +290,7 @@ func (a *app) requestStashDetails(stash repository.Stash) {
 			}
 			a.stashFilesLoading = false
 			if err != nil {
-				a.stashFilesError = err.Error()
+				a.stashFilesError = safeError(err)
 				return
 			}
 			a.stashFiles = files
@@ -256,6 +321,7 @@ func (a *app) requestStashFileDiff(stash repository.Stash, file repository.Commi
 	a.stashDiffError = ""
 	a.stashDiffPatch = ""
 	a.stashDiffState = nil
+	a.stashDiffMedia = nil
 
 	layout, wrap := a.diffLayout(), a.diffWrap
 	options := a.diffOptions
@@ -263,8 +329,14 @@ func (a *app) requestStashFileDiff(stash repository.Stash, file repository.Commi
 		defer a.recoverBackground()
 		diff, err := session.StashFileDiff(context.Background(), stash.Index, file, options)
 		var state *editor.DiffState
+		var media *mediaReview
 		if err == nil {
 			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
+			if err == nil && state == nil && isMediaPath(file.Path) {
+				media, err = loadMediaReview(context.Background(), session, repository.MediaRequest{
+					Source: repository.MediaStash, StashIndex: stash.Index, CommitFile: file,
+				})
+			}
 		}
 		a.update(func() {
 			if repositoryGeneration != a.generation {
@@ -283,11 +355,12 @@ func (a *app) requestStashFileDiff(stash repository.Stash, file repository.Commi
 			}
 			a.stashDiffLoading = false
 			if err != nil {
-				a.stashDiffError = err.Error()
+				a.stashDiffError = safeError(err)
 				return
 			}
 			a.stashDiffPatch = diff.Patch
 			a.stashDiffState = state
+			a.stashDiffMedia = media
 		})
 	}()
 }
@@ -443,6 +516,7 @@ func (a *app) stashRowMenu(m *ui.Menu, row ui.ListRow) {
 func (a *app) stashView(c *ui.Context) {
 	theme := c.Theme()
 	ui.Column(c).Grow(1).Gap(10).Children(func() {
+		a.recoveryPanel(c)
 		a.collapsibleContentPaneSplit(c, &a.filePaneWidth, &a.workspacePaneCollapsed[sectionStash],
 			"Expand list pane", func() {
 				islandCard(c, ui.Column(c).Grow(1).Gap(8).Padding(12)).Children(func() {
@@ -635,6 +709,8 @@ func (a *app) stashView(c *ui.Context) {
 								})
 							case a.stashDiffState != nil:
 								a.keyboardDiffViewer(c, a.stashDiffState)
+							default:
+								noTextualDiffOrMedia(c, a.stashDiffMedia, a.stashDiffPath)
 							}
 						})
 					}).Grow(1)

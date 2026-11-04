@@ -36,6 +36,26 @@ func TestCopyAnnouncesWhatWasCopied(t *testing.T) {
 	}
 }
 
+func TestErrorsAndToastsRedactCredentials(t *testing.T) {
+	a := &app{}
+	err := errors.New("fetch https://alice:super-secret@example.com/private.git failed: Authorization: Bearer toast-secret")
+	a.actionError = safeError(err)
+	a.notifyError(err)
+
+	if len(a.pendingToasts) != 1 {
+		t.Fatalf("%d error toasts, want 1", len(a.pendingToasts))
+	}
+	presented := a.actionError + "\n" + a.pendingToasts[0].description
+	for _, secret := range []string{"alice", "super-secret", "toast-secret"} {
+		if strings.Contains(presented, secret) {
+			t.Fatalf("presented error contains %q: %q", secret, presented)
+		}
+	}
+	if !strings.Contains(presented, "[redacted]") || !strings.Contains(presented, "example.com/private.git") {
+		t.Fatalf("redaction removed the useful failure context: %q", presented)
+	}
+}
+
 func TestFailedActionOffersTheCommandLog(t *testing.T) {
 	session := failingSession{fakeSession{
 		snapshot: repository.Snapshot{

@@ -298,38 +298,83 @@ func (a *app) homeBackgroundPreview(c *ui.Context) {
 	})
 }
 
+// typographyGroup keeps one typography domain inside its own card. The small
+// inner indent makes the controls belong to the heading without flattening
+// interface, code, and shared layout into one long form.
+func typographyGroup(c *ui.Context, title, hint string, content func()) {
+	theme := c.Theme()
+	ui.Column(c).Gap(12).Padding(14).Background(theme.Surface.Alpha(0.55)).
+		Border(1, theme.Border).Radius(theme.Radius + 5).Children(func() {
+		ui.Column(c).Gap(2).Children(func() {
+			ui.Text(c, tr(title)).Bold().TextColor(theme.Accent)
+			ui.Text(c, tr(hint)).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
+		})
+		ui.Column(c).Gap(12).Padding(0, 4).Children(content)
+	})
+}
+
 func (a *app) typographySettings(c *ui.Context) {
 	settingsSection(c, func() {
 		settingsGroup(c, fontIcon, "Typography and layout", "Comfortable text and spacing, everywhere")
-		settingRow(c, "Font size", "Text size in every pane", func() {
-			ui.Text(c, fmt.Sprintf("%.0f pt", a.settings.FontSize)).
-				TextColor(c.Theme().TextMuted).Width(48)
-			stepper := ui.Stepper(c, &a.settings.FontSize, 9, 26, 1).Label(tr("Font size"))
-			if stepper.Changed() {
-				a.settingsChanged(c)
-			}
+		typographyGroup(c, "Interface", "Menus, labels, and controls", func() {
+			settingRow(c, "Interface font size", "Text size in controls and panes", func() {
+				ui.Text(c, fmt.Sprintf("%.0f pt", a.settings.FontSize)).
+					TextColor(c.Theme().TextMuted).Width(48)
+				stepper := ui.Stepper(c, &a.settings.FontSize, 9, 26, 1).Label(trf("%s settings", tr("Interface font size")))
+				if stepper.Changed() {
+					a.settingsChanged(c)
+				}
+			})
+			settingRow(c, "Interface font", "System is the desktop's font", func() {
+				selects := ui.Combobox(c, &a.settings.Font, fontChoices(a.settings.Font)).Grow(1).
+					Label(tr("Search interface fonts"))
+				if selects.Changed() {
+					a.settingsChanged(c)
+				}
+			})
+			settingRow(c, "Interface spacing", "Padding inside and between controls", func() {
+				ui.Text(c, fmt.Sprintf("%.0f", a.settings.Spacing)).
+					TextColor(c.Theme().TextMuted).Width(28)
+				stepper := ui.Stepper(c, &a.settings.Spacing, 2, 10, 1).Label(trf("%s settings", tr("Interface spacing")))
+				if stepper.Changed() {
+					a.settingsChanged(c)
+				}
+			})
 		})
-		settingRow(c, "Font family", "System is the desktop's font", func() {
-			selects := ui.Select(c, &a.settings.Font, fontNames).Grow(1)
-			if selects.Changed() {
-				a.settingsChanged(c)
-			}
+		typographyGroup(c, "Code buffers", "Diffs, source files, conflicts, and blame", func() {
+			settingRow(c, "Buffer font size", "Text size in diffs and code buffers", func() {
+				ui.Text(c, fmt.Sprintf("%.0f pt", a.settings.BufferFontSize)).
+					TextColor(c.Theme().TextMuted).Width(48)
+				stepper := ui.Stepper(c, &a.settings.BufferFontSize, 9, 26, 1).Label(trf("%s settings", tr("Buffer font size")))
+				if stepper.Changed() {
+					a.settingsChanged(c)
+				}
+			})
+			settingRow(c, "Buffer font", "Diffs and code buffers; System is monospaced", func() {
+				selects := ui.Combobox(c, &a.settings.BufferFont, fontChoices(a.settings.BufferFont)).Grow(1).
+					Label(tr("Search buffer fonts"))
+				if selects.Changed() {
+					a.settingsChanged(c)
+				}
+			})
+			settingRow(c, "Buffer line spacing", "Line height as a multiple of font size", func() {
+				ui.Text(c, fmt.Sprintf("%.1f ×", a.settings.BufferLineHeight)).
+					TextColor(c.Theme().TextMuted).Width(48)
+				stepper := ui.Stepper(c, &a.settings.BufferLineHeight, 1, 2.5, 0.1).Label(trf("%s settings", tr("Buffer line spacing")))
+				if stepper.Changed() {
+					a.settingsChanged(c)
+				}
+			})
 		})
-		settingRow(c, "Spacing", "Padding inside and between", func() {
-			ui.Text(c, fmt.Sprintf("%.0f", a.settings.Spacing)).
-				TextColor(c.Theme().TextMuted).Width(28)
-			stepper := ui.Stepper(c, &a.settings.Spacing, 2, 10, 1).Label(tr("Spacing"))
-			if stepper.Changed() {
-				a.settingsChanged(c)
-			}
-		})
-		settingRow(c, "Corner radius", "Button and panel rounding", func() {
-			ui.Text(c, fmt.Sprintf("%.0f", a.settings.Radius)).
-				TextColor(c.Theme().TextMuted).Width(28)
-			stepper := ui.Stepper(c, &a.settings.Radius, 0, 20, 1).Label(tr("Corner radius"))
-			if stepper.Changed() {
-				a.settingsChanged(c)
-			}
+		typographyGroup(c, "Layout", "Button and panel rounding", func() {
+			settingRow(c, "Corner radius", "Button and panel rounding", func() {
+				ui.Text(c, fmt.Sprintf("%.0f", a.settings.Radius)).
+					TextColor(c.Theme().TextMuted).Width(28)
+				stepper := ui.Stepper(c, &a.settings.Radius, 0, 20, 1).Label(trf("%s settings", tr("Corner radius")))
+				if stepper.Changed() {
+					a.settingsChanged(c)
+				}
+			})
 		})
 	})
 }

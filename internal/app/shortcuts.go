@@ -26,8 +26,8 @@ var sectionKeys = []ui.Key{
 // unregistered is what lets the list type-ahead and every other key press
 // reach the form.
 func (a *app) registerShortcuts(c *ui.Context) {
-	// An open question owns Escape: it is how a destructive action is
-	// called off, whether or not the shortcuts themselves are switched on.
+	// An open question owns Escape, whether or not the shortcuts themselves
+	// are switched on. Its modal owns Enter, ahead of the focused button.
 	if a.confirm != nil {
 		c.OnShortcut(0, ui.KeyEscape, a.cancelConfirm)
 		return
@@ -109,14 +109,20 @@ func (a *app) registerShortcuts(c *ui.Context) {
 	// Ctrl+` is always live: it is how the terminal's keyboard is given back.
 	c.OnShortcut(ui.Ctrl, ui.KeyBackquote, a.toggleTerminal)
 	if a.term.open {
-		// The shell owns the keyboard while its pane shows, so digits and
+		c.OnShortcut(ui.Ctrl, ui.KeyF, a.openTerminalSearch)
+		if active := a.activeTerminal(); active != nil && active.searchOpen {
+			c.OnShortcut(0, ui.KeyEscape, a.closeActiveTerminalSearch)
+			c.OnShortcut(0, ui.KeyF3, func() { a.navigateTerminalSearch(1) })
+			c.OnShortcut(ui.Shift, ui.KeyF3, func() { a.navigateTerminalSearch(-1) })
+		}
+		// The shell owns the other keys while its pane shows, so digits and
 		// letters reach it instead of switching sections or acting on rows.
 		return
 	}
 
 	// The pane's editor owns the keyboard while it shows: the letters it
 	// takes are text, not section switches or actions on the chosen file.
-	if a.fileEditing || (a.workspaceTab == sectionChanges && a.conflictState != nil) {
+	if a.fileEditing || (a.workspaceTab == sectionChanges && a.conflictState != nil && a.conflictStageTab == 3) {
 		if a.fileEditing {
 			c.OnShortcut(0, ui.KeyEscape, a.closeFileEdit)
 		} else {
@@ -144,6 +150,10 @@ func (a *app) registerShortcuts(c *ui.Context) {
 	c.OnShortcut(0, ui.KeyW, a.openCompare)
 	c.OnShortcut(ui.Alt, ui.KeyW, a.toggleDiffWhitespace)
 	c.OnShortcut(ui.Alt, ui.KeyU, a.cycleDiffContext)
+	if a.workspaceTab == sectionChanges {
+		c.OnShortcut(ui.Alt, ui.KeyJ, func() { a.changedFileNavigation(1) })
+		c.OnShortcut(ui.Alt, ui.KeyK, func() { a.changedFileNavigation(-1) })
+	}
 	c.OnShortcut(0, ui.KeySlash, a.focusActiveSearch)
 	c.OnShortcut(ui.Ctrl, ui.KeyZ, a.confirmUndo)
 	c.OnShortcut(ui.Ctrl|ui.Shift, ui.KeyZ, a.confirmRedo)

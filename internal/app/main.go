@@ -40,6 +40,7 @@ type app struct {
 	// Keyboard state belongs to the UI thread; only stable handles survive builds.
 	keyboardDiffCanSelect bool
 	keyboardTextFocus     bool
+	keyboardFocusVisible  bool
 	keyboardModalWasOpen  bool
 	keyboardModalReturn   string
 	keyboardLastPane      string
@@ -203,7 +204,14 @@ type app struct {
 	// leaves untracked files out of it.
 	fileSearch      string
 	ignoreUntracked bool
-	fileTreeMode    bool
+	// reviewedFiles is the content-current review state read from the local
+	// repository. The sequence/token guards reject obsolete asynchronous reads.
+	reviewedFiles      map[string]bool
+	reviewRequestedSeq uint64
+	reviewRequestToken uint64
+	reviewLoading      bool
+	reviewFilter       bool
+	fileTreeMode       bool
 	// fileTreeCollapsed scopes directory folds by pane, so the same path in
 	// Changes and a commit can be expanded independently.
 	fileTreeCollapsed map[string]bool
@@ -229,11 +237,12 @@ type app struct {
 	workspaceTab     int
 	// navSelected is the sidebar row the active section shows, which differs
 	// from workspaceTab once sections are hidden.
-	navSelected     int
-	navList         ui.ListState
-	commitList      ui.ListState
-	selectedCommit  int
-	commitSelection map[string]bool
+	navSelected         int
+	navList             ui.ListState
+	commitList          ui.ListState
+	selectedCommit      int
+	commitSelectionMode bool
+	commitSelection     map[string]bool
 	// commitsMore says the commit list has another page below it; loading
 	// and error are that read's own state, and token drops one a newer
 	// snapshot or page replaced.
@@ -294,6 +303,7 @@ type app struct {
 	branchCommitFilesError   string
 	branchCommitFilesHash    string
 	branchCommitDiffState    *editor.DiffState
+	branchCommitDiffMedia    *mediaReview
 	branchCommitDiffLoading  bool
 	branchCommitDiffError    string
 	branchCommitDiffHash     string
@@ -313,6 +323,8 @@ type app struct {
 	selectedRemoteBranchRow  int
 	selectedRemoteBranch     int
 	stashList                ui.ListState
+	workSnapshotList         ui.ListState
+	selectedWorkSnapshotRow  int
 	stashFilter              string
 	selectedStashRow         int
 	selectedStash            int
@@ -343,6 +355,7 @@ type app struct {
 	selectedReflog           int
 
 	diffState *editor.DiffState
+	diffMedia *mediaReview
 	diffKey   string
 	diffKind  string
 	// diffPatch is the diff the pane shows, kept so a selection of its lines
@@ -361,6 +374,11 @@ type app struct {
 	// in place, so the pane needs the file's text rather than a diff.
 	conflictState *conflictState
 	conflictView  *editor.State
+	// conflictStages are immutable index-stage buffers. conflictStageTab is
+	// 0 Base, 1 Current, 2 Incoming, 3 editable working-tree Result.
+	conflictStages     repository.ConflictStages
+	conflictStageViews [3]*editor.State
+	conflictStageTab   int
 	// conflictSides is the conflict Git wrote without markers, where one side
 	// deleted the file and the pane shows the side it kept instead of a merge.
 	conflictSides *conflictSides
@@ -408,16 +426,15 @@ type app struct {
 	diffFullscreenRows           []fullscreenFile
 	diffFullscreenFilesWidth     float32
 	diffFullscreenFilesCollapsed bool
-	// lineSelectMode is the mode in which clicking line numbers adds them to
-	// the selection instead of starting it over, so a range is picked without
-	// holding Shift. lineSelectRange and lineSelectHas are the selection the
-	// pane showed before the click being handled, which is what a click
-	// extends.
-	lineSelectMode  bool
-	lineSelectRange editor.DiffLineRange
-	lineSelectHas   bool
-	actionBusy      bool
-	actionError     string
+	// lineSelectMode adds independently clicked lines to lineSelectRanges;
+	// adjacent ones coalesce, while gaps stay unselected. lineSelectRange and
+	// lineSelectHas retain the viewer's latest range as the Shift-click anchor.
+	lineSelectMode   bool
+	lineSelectRange  editor.DiffLineRange
+	lineSelectHas    bool
+	lineSelectRanges []editor.DiffLineRange
+	actionBusy       bool
+	actionError      string
 	// repositoryDetailsLoading is the deferred history/ancillary read of a
 	// progressive open. refreshBusy is a quiet refresh reading the repository
 	// in the background; there is one at a time, and refreshToken rejects an
@@ -446,11 +463,16 @@ type app struct {
 	showRemoteCheckoutForm bool
 	remoteLocalBranch      string
 	showStashForm          bool
+	stashSelection         []repository.File
+	stashPatch             string
+	stashRemovalPatch      string
 	stashMessage           string
 	stashIncludeUntracked  bool
+	checkpointName         string
 	showStashRenameForm    bool
 	stashRename            string
 	stashDiffState         *editor.DiffState
+	stashDiffMedia         *mediaReview
 	stashDiffHash          string
 	stashDiffPath          string
 	stashDiffOptions       repository.DiffOptions
@@ -518,6 +540,7 @@ type app struct {
 	commitDiffLoading bool
 	commitDiffError   string
 	commitDiffState   *editor.DiffState
+	commitDiffMedia   *mediaReview
 
 	// diffSplit shows diffs side by side instead of unified, and diffWrap
 	// wraps long diff lines instead of scrolling them sideways; both are
@@ -561,6 +584,7 @@ type app struct {
 	fileHistoryFilesToken   uint64
 
 	fileHistoryDiffState   *editor.DiffState
+	fileHistoryDiffMedia   *mediaReview
 	fileHistoryDiffLoading bool
 	fileHistoryDiffError   string
 	fileHistoryDiffHash    string
@@ -586,6 +610,8 @@ func newApp(opener repositoryOpener) *app {
 		checkForUpdates:             func() {},
 		updateInfo:                  func() appUpdateInfo { return appUpdateInfo{} },
 		selectedFile:                -1,
+		reviewedFiles:               map[string]bool{},
+		fileTreeMode:                true,
 		filePaneWidth:               340,
 		navPaneWidth:                navPaneDefault,
 		selectedCommit:              -1,
@@ -598,6 +624,7 @@ func newApp(opener repositoryOpener) *app {
 		selectedRemoteBranchRow:     -1,
 		selectedRemoteBranch:        -1,
 		selectedStashRow:            -1,
+		selectedWorkSnapshotRow:     -1,
 		selectedStash:               -1,
 		selectedStashFileRow:        -1,
 		selectedTagRow:              -1,
@@ -768,6 +795,19 @@ func newApp(opener repositoryOpener) *app {
 			return ""
 		}
 		return branch.Name
+	}
+	a.workSnapshotList.Selected = &a.selectedWorkSnapshotRow
+	a.workSnapshotList.Key = func(row int) any {
+		if row >= 0 && row < len(a.snapshot.WorkSnapshots) {
+			return a.snapshot.WorkSnapshots[row].ID
+		}
+		return row
+	}
+	a.workSnapshotList.Label = func(row int) string {
+		if row >= 0 && row < len(a.snapshot.WorkSnapshots) {
+			return a.snapshot.WorkSnapshots[row].Name
+		}
+		return ""
 	}
 	a.stashList.Selected = &a.selectedStashRow
 	a.stashList.Key = func(row int) any {
@@ -974,7 +1014,11 @@ func appWindowOptions(content *ui.Content) mygo.WindowOptions {
 		// room for them on the left. Elsewhere the bar draws the controls
 		// itself, on the right, so the system's are hidden.
 		HideWindowButtons: !systemWindowControls,
-		Content:           content,
+		// The native frame keeps its platform resize behavior. Transparency
+		// lets the root surface below draw the same rounded corners on Linux,
+		// where MyGo has no native CornerRadius for framed windows.
+		Transparent: true,
+		Content:     content,
 	}
 	if systemWindowControls {
 		// AppKit puts the lights in the top corner; give them the bar's

@@ -47,7 +47,7 @@ func (a *app) exportDiff() {
 		path, err := chooseSavePath(opts)
 		if err != nil {
 			a.update(func() {
-				a.notify("error", "Could not save the diff", err.Error())
+				a.notify("error", "Could not save the diff", safeError(err))
 			})
 			return
 		}
@@ -57,7 +57,7 @@ func (a *app) exportDiff() {
 		}
 		if err := os.WriteFile(path, []byte(patch), 0o644); err != nil {
 			a.update(func() {
-				a.notify("error", "Could not save the diff", err.Error())
+				a.notify("error", "Could not save the diff", safeError(err))
 			})
 			return
 		}
