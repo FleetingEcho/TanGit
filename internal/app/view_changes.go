@@ -604,12 +604,7 @@ func (a *app) changeSectionView(c *ui.Context, title string, icon *ui.SVG, count
 // the resolution actions are findable before Continue can run.
 func (a *app) conflictBanner(c *ui.Context) {
 	theme := c.Theme()
-	conflicts := 0
-	for _, file := range a.snapshot.Files {
-		if file.HasMergeConflicts {
-			conflicts++
-		}
-	}
+	conflicts := conflictedFileCount(a.snapshot.Files)
 	ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(8, 10).
 		Background(theme.Danger.Alpha(0.12)).Border(1, theme.Danger.Alpha(0.5)).
 		Radius(theme.Radius).Children(func() {
@@ -747,6 +742,7 @@ func (a *app) changesFilter(c *ui.Context) {
 			Label(tr("Search files")).
 			Placeholder(tr("Search files")).
 			Grow(1)
+		a.searchNavigationButtons(c, strings.TrimSpace(a.fileSearch) != "")
 		ui.Checkbox(c, &a.ignoreUntracked, tr("Untracked")).
 			Tooltip(tr("Leave untracked files out of the changes"))
 	})

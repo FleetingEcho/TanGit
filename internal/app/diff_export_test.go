@@ -157,6 +157,6 @@ func TestCancelingTheSaveWritesNothing(t *testing.T) {
 // repository does, so the export path can be driven from History.
 type patchCommitSession struct{ fakeSession }
 
-func (s patchCommitSession) CommitFileDiff(context.Context, repository.Commit, repository.CommitFile) (repository.Diff, error) {
+func (s patchCommitSession) CommitFileDiff(context.Context, repository.Commit, repository.CommitFile, repository.DiffOptions) (repository.Diff, error) {
 	return repository.Diff{Patch: fakeWorkingTreePatch, Kind: "Commit"}, nil
 }

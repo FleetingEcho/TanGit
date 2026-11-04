@@ -31,7 +31,7 @@ func TestDiffWrapTogglesEveryDiff(t *testing.T) {
 		t.Fatal("the diff on screen still scrolls sideways")
 	}
 	state, err := buildDiffState(h.app.diffLayout(), h.app.diffWrap,
-		repository.File{Path: "later.go"}, repository.Diff{NewText: "package later\n"})
+		repository.File{Path: "later.go"}, repository.Diff{NewText: "package later\n"}, h.app.diffOptions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestDiffWrapSettingReachesTheOpenDiff(t *testing.T) {
 	a := newApp(fakeOpener{})
 	a.settings.DiffWrap = true
 	state, err := buildDiffState(a.diffLayout(), false,
-		repository.File{Path: "open.go"}, repository.Diff{NewText: "package open\n"})
+		repository.File{Path: "open.go"}, repository.Diff{NewText: "package open\n"}, a.diffOptions)
 	if err != nil {
 		t.Fatal(err)
 	}

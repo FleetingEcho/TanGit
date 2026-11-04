@@ -443,7 +443,7 @@ func (a *app) remotesView(c *ui.Context) {
 					visible := a.visibleRemotes()
 					listSearchField(c, &a.sectionSearch[sectionRemotes], &a.remoteFilter,
 						"Search remotes", "Filter by name or URL", "Clear remote search",
-						len(visible), len(a.snapshot.Remotes), func() { a.selectRemoteRow(0) })
+						len(visible), len(a.snapshot.Remotes), func() { a.selectRemoteRow(0) }, a.navigateRemoteSearch)
 					visible = a.visibleRemotes()
 					if len(visible) == 0 {
 						listSearchEmpty(c, "No remotes match this search")
@@ -506,7 +506,7 @@ func (a *app) remotesView(c *ui.Context) {
 						len(visible), len(remote.Branches), func() {
 							a.selectRemoteBranchRow(0)
 							a.showRemoteCheckoutForm = false
-						})
+						}, a.navigateRemoteBranchSearch)
 					visible = a.visibleRemoteBranches()
 					if len(visible) == 0 {
 						listSearchEmpty(c, "No remote branches match this search")

@@ -163,12 +163,20 @@ func (s screenshotSession) Snapshot(context.Context) (repository.Snapshot, error
 	return s.snapshot, nil
 }
 
-func (s screenshotSession) Diff(_ context.Context, file repository.File) (repository.Diff, error) {
+func (s screenshotSession) Diff(_ context.Context, file repository.File, options repository.DiffOptions) (repository.Diff, error) {
 	if !file.Tracked {
 		// A file git does not know is shown as the patch that adds it.
 		return repository.Diff{Patch: screenshotNewFilePatch, Kind: "Untracked"}, nil
 	}
 	return repository.Diff{Patch: screenshotPatch, Kind: "Staged"}, nil
+}
+
+func (s screenshotSession) CompareFiles(context.Context, string, string, repository.DiffOptions) ([]repository.CommitFile, error) {
+	return []repository.CommitFile{{Path: "changed.txt", Status: "M", LinesAdded: 2, LinesDeleted: 1}}, nil
+}
+
+func (s screenshotSession) CompareFileDiff(context.Context, string, string, repository.CommitFile, repository.DiffOptions) (repository.Diff, error) {
+	return repository.Diff{Patch: screenshotPatch, Kind: "Compare"}, nil
 }
 
 func (s screenshotSession) Stage(context.Context, repository.File) error         { return nil }
@@ -200,6 +208,8 @@ func (s screenshotSession) ApplyFixupCommits(context.Context, repository.Commit)
 	return nil
 }
 func (s screenshotSession) Discard(context.Context, repository.File) error     { return nil }
+func (s screenshotSession) IgnoreFile(context.Context, repository.File) error  { return nil }
+func (s screenshotSession) ExcludeFile(context.Context, repository.File) error { return nil }
 func (s screenshotSession) CheckoutBranch(context.Context, string) error       { return nil }
 func (s screenshotSession) CreateBranch(context.Context, string, string) error { return nil }
 func (s screenshotSession) DeleteBranch(context.Context, string, bool) error   { return nil }
@@ -242,7 +252,7 @@ func (s screenshotSession) StashFiles(context.Context, int) ([]repository.Commit
 		{Path: "docs/saved-work.md", Status: "A"},
 	}, nil
 }
-func (s screenshotSession) StashFileDiff(context.Context, int, repository.CommitFile) (repository.Diff, error) {
+func (s screenshotSession) StashFileDiff(context.Context, int, repository.CommitFile, repository.DiffOptions) (repository.Diff, error) {
 	return repository.Diff{Patch: screenshotPatch, Kind: "Stash"}, nil
 }
 func (s screenshotSession) ApplyStashFile(context.Context, int, repository.CommitFile) error {
@@ -288,7 +298,11 @@ func (s screenshotSession) CommitFiles(context.Context, repository.Commit) ([]re
 		{Path: "docs/notes.md", Status: "A", LinesAdded: 24},
 	}, nil
 }
-func (s screenshotSession) CommitFileDiff(context.Context, repository.Commit, repository.CommitFile) (repository.Diff, error) {
+func (s screenshotSession) RestoreCommitFile(context.Context, repository.Commit, repository.CommitFile) error {
+	return nil
+}
+
+func (s screenshotSession) CommitFileDiff(context.Context, repository.Commit, repository.CommitFile, repository.DiffOptions) (repository.Diff, error) {
 	return repository.Diff{Patch: screenshotPatch, Kind: "Commit"}, nil
 }
 

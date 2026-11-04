@@ -161,7 +161,7 @@ func (a *app) worktreesView(c *ui.Context) {
 					visible := a.visibleWorktrees()
 					listSearchField(c, &a.sectionSearch[sectionWorktrees], &a.worktreeFilter,
 						"Search worktrees", "Filter by name, path, branch, or commit", "Clear worktree search",
-						len(visible), len(a.snapshot.Worktrees), func() { a.selectWorktreeRow(0) })
+						len(visible), len(a.snapshot.Worktrees), func() { a.selectWorktreeRow(0) }, a.navigateWorktreeSearch)
 					visible = a.visibleWorktrees()
 					if len(visible) == 0 {
 						listSearchEmpty(c, "No worktrees match this search")

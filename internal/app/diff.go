@@ -21,10 +21,10 @@ func diffViewer(c *ui.Context, state *editor.DiffState) ui.Element {
 // buildDiffState turns a diff into the editor's viewer state, laid out the
 // way the diff toggles choose: unified or side by side, and long lines
 // wrapped or scrolled sideways.
-func buildDiffState(layout editor.DiffLayout, wrap bool, file repository.File, diff repository.Diff) (*editor.DiffState, error) {
+func buildDiffState(layout editor.DiffLayout, wrap bool, file repository.File, diff repository.Diff, options repository.DiffOptions) (*editor.DiffState, error) {
 	state := &editor.DiffState{
 		Layout:       layout,
-		ContextLines: 3,
+		ContextLines: options.ContextLines,
 		Wrap:         wrap,
 	}
 	if diff.Patch != "" {
@@ -106,6 +106,7 @@ func (a *app) liveDiffs() []*editor.DiffState {
 		a.branchCommitDiffState,
 		a.fileHistoryDiffState,
 		a.conflictDiffState,
+		a.compare.diffState,
 	}
 }
 
@@ -333,10 +334,88 @@ func (a *app) expandDiffButton(c *ui.Context) {
 // them with the diff they change, instead of the window's top bar, puts them
 // where the user looks while reading the diff.
 func (a *app) diffViewOptions(c *ui.Context) {
+	a.diffWhitespaceButton(c)
+	a.diffContextButton(c)
 	a.diffLayoutButton(c)
 	a.diffWrapButton(c)
 	a.exportDiffButton(c)
 	a.expandDiffButton(c)
+}
+
+// toggleDiffWhitespace changes the patch, rather than just its presentation.
+// Every ordinary diff is invalidated so its next read uses the same options.
+func (a *app) toggleDiffWhitespace() {
+	a.diffOptions.IgnoreWhitespace = !a.diffOptions.IgnoreWhitespace
+	a.reloadOrdinaryDiffs()
+}
+
+// cycleDiffContext keeps the control compact in six diff headers while
+// offering the useful no-context, narrow, default and generous readings.
+func (a *app) cycleDiffContext() {
+	choices := []int{0, 1, 3, 5, 10}
+	next := 3
+	for i, choice := range choices {
+		if a.diffOptions.ContextLines == choice {
+			next = choices[(i+1)%len(choices)]
+			break
+		}
+	}
+	a.diffOptions.ContextLines = next
+	a.reloadOrdinaryDiffs()
+}
+
+func canonicalDiffOptions(options repository.DiffOptions) bool {
+	return !options.IgnoreWhitespace && options.ContextLines == 3
+}
+
+// reloadOrdinaryDiffs drops only patches, never the file/commit lists around
+// them. Existing identity checks and tokens reject every superseded response.
+func (a *app) reloadOrdinaryDiffs() {
+	a.lineSelectMode = false
+	if change, ok := a.selectedChange(); !ok || !change.file.HasMergeConflicts {
+		a.beginDiff()
+	}
+	a.commitDiffHash, a.commitDiffPath = "", ""
+	a.commitDiffPatch, a.commitDiffError = "", ""
+	a.commitDiffState = nil
+	a.commitDiffLoading = false
+
+	a.branchCommitToken++
+	a.branchCommitDiffHash, a.branchCommitDiffPath = "", ""
+	a.branchCommitDiffPatch, a.branchCommitDiffError = "", ""
+	a.branchCommitDiffState = nil
+	a.branchCommitDiffLoading = false
+
+	a.stashDiffHash, a.stashDiffPath = "", ""
+	a.stashDiffPatch, a.stashDiffError = "", ""
+	a.stashDiffState = nil
+	a.stashDiffLoading = false
+
+	if a.fileHistoryOpen && a.fileHistorySelected >= 0 &&
+		a.fileHistorySelected < len(a.fileHistoryCommits) &&
+		a.fileHistorySelectedFile >= 0 && a.fileHistorySelectedFile < len(a.fileHistoryFiles) {
+		a.loadFileHistoryDiff(a.fileHistoryCommits[a.fileHistorySelected],
+			a.fileHistoryFiles[a.fileHistorySelectedFile], true)
+	}
+}
+
+func (a *app) diffWhitespaceButton(c *ui.Context) {
+	button := ui.Button(c, tr("Ignore space"))
+	if a.diffOptions.IgnoreWhitespace {
+		button = ui.PrimaryButton(c, tr("Ignore space"))
+	}
+	if button.Label(tr("Toggle whitespace-only diff changes")).
+		Tooltip(tr("Alt+W · Hide or show whitespace-only changes")).Clicked() {
+		a.toggleDiffWhitespace()
+	}
+}
+
+func (a *app) diffContextButton(c *ui.Context) {
+	if ui.Button(c, fmt.Sprintf("%s: %d", tr("Context"), a.diffOptions.ContextLines)).
+		Label(tr("Change diff context lines")).
+		Tooltip(tr("Alt+U · Cycle through 0, 1, 3, 5, and 10 context lines")).Clicked() {
+		a.cycleDiffContext()
+	}
 }
 
 // diffFullscreenView draws the active diff over the workspace, with the way
@@ -363,6 +442,8 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 				if a.workspaceTab == sectionChanges && a.lineSelectionAvailable() {
 					a.lineSelectionControls(c, false)
 				}
+				a.diffWhitespaceButton(c)
+				a.diffContextButton(c)
 				a.diffLayoutButton(c)
 				a.diffWrapButton(c)
 				a.exportDiffButton(c)
