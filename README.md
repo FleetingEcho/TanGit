@@ -280,17 +280,17 @@ TANGIT_APP="$HOME/Applications/TanGit.app" tangit .
 
 #### Windows
 
-The installer puts `TanGit.exe` in `%LOCALAPPDATA%\Programs\TanGit` but does not
-add that folder to `PATH`. PowerShell can open the current repository without
-changing `PATH`:
+The installer puts `TanGit.exe` in `%LOCALAPPDATA%\Programs\TanGit` and adds
+that folder to your user `PATH`. Open a new terminal after installing, then use
+`tangit <path>` directly:
 
 ```powershell
-& "$env:LOCALAPPDATA\Programs\TanGit\TanGit.exe" .
-& "$env:LOCALAPPDATA\Programs\TanGit\TanGit.exe" "C:\Projects\Repository with spaces"
+tangit .
+tangit "C:\Projects\Repository with spaces"
 ```
 
-To enable `tangit <path>`, add the install folder to your user `PATH`. This
-also updates the current PowerShell session, so you can test it immediately:
+Installations made with an older installer can enable the command without
+reinstalling by adding the existing install folder to the user `PATH` once:
 
 ```powershell
 $dir = Join-Path $env:LOCALAPPDATA 'Programs\TanGit'
@@ -306,16 +306,15 @@ if (($env:Path -split ';') -notcontains $dir) {
     $env:Path = "$env:Path;$dir"
 }
 Get-Command tangit
-tangit .
-tangit "C:\Projects\Repository with spaces"
 ```
 
 For a custom installation folder or an extracted archive, set `$dir` to the
 folder containing `TanGit.exe` and its bundled files. Windows command lookup
 is case-insensitive, so `tangit` resolves `TanGit.exe`. If the command is not
-recognized, check `Get-Command tangit` in PowerShell or `where tangit` in
-Command Prompt and reopen the terminal after changing `PATH`. Each invocation
-with a repository path starts an app window for that repository.
+recognized after installing, reopen the terminal and check `Get-Command
+tangit` in PowerShell or `where tangit` in Command Prompt. Each invocation with
+a repository path starts an app window for that repository. Uninstalling
+TanGit removes its install folder from the user `PATH`.
 
 For development on any platform, this equivalent runs from the TanGit source
 tree:
