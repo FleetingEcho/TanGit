@@ -34,32 +34,37 @@ func stubEditor(t *testing.T, run func(command, path string, line int) error) *[
 }
 
 // The top bar's editor button opens the repository itself, not a file in it,
-// so the editor starts with the whole project; the list it opens chooses which
-// editor runs, and the choice is stored for the next click.
+// so one click launches the configured editor without opening a chooser or
+// changing the saved editor command.
 func TestEditorButtonOpensTheRepositoryWithTheChosenEditor(t *testing.T) {
 	h, _ := changesTestApp(t, unstagedTrackedFile())
 	opened := stubEditor(t, nil)
+	h.app.settings.EditorCommand = editorPresets[1].Command
 
 	if err := h.tester.Click("Open in editor"); err != nil {
 		t.Fatalf("the header has no editor button: %v", err)
 	}
 	h.tester.Frame()
-	for _, want := range []string{"VS Code", "Zed", "Neovim", "Custom command…"} {
-		if !slices.Contains(h.texts(), want) {
-			t.Fatalf("the editor menu is missing %q: %q", want, h.texts())
+	for _, unwanted := range []string{"VS Code", "Zed", "Neovim", "Custom command…"} {
+		if slices.Contains(h.texts(), unwanted) {
+			t.Fatalf("clicking the launch action opened an editor chooser: %q", h.texts())
 		}
 	}
-	if err := h.tester.Click("Zed"); err != nil {
-		t.Fatalf("choose Zed: %v", err)
-	}
-	h.tester.Frame()
 	h.settle(t)
 
 	if !slices.Equal(*opened, []launchedEditor{{command: "zed {{filename}}", path: "/work/project"}}) {
 		t.Fatalf("opened %+v, want the repository root in Zed", *opened)
 	}
 	if got := h.app.settings.EditorCommand; got != "zed {{filename}}" {
-		t.Fatalf("the menu stored %q, want Zed's command", got)
+		t.Fatalf("launching changed the setting to %q, want Zed's command", got)
+	}
+	button, _ := h.tester.Find("Open in editor")
+	h.tester.Move(0, 0)
+	h.tester.Frame()
+	h.tester.Move(button.X+button.W/2, button.Y+button.H/2)
+	h.tester.Advance(time.Second)
+	if !h.tester.HasText("Open this repository in your editor\nConfigure your editor in Settings → Editor.") {
+		t.Fatal("the editor tooltip does not explain where to configure the editor")
 	}
 }
 
@@ -125,10 +130,6 @@ func TestFilePaneEditorButtonOpensTheFile(t *testing.T) {
 		t.Fatalf("the file pane has no editor button: %v", err)
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("VS Code"); err != nil {
-		t.Fatalf("choose VS Code: %v", err)
-	}
-	h.tester.Frame()
 	h.settle(t)
 
 	want := launchedEditor{command: defaultEditorCommand, path: "/work/project/changed.txt"}
@@ -164,10 +165,6 @@ func TestMissingEditorSaysHowToInstallIt(t *testing.T) {
 
 	if err := h.tester.Click("Open in editor"); err != nil {
 		t.Fatalf("the header has no editor button: %v", err)
-	}
-	h.tester.Frame()
-	if err := h.tester.Click("VS Code"); err != nil {
-		t.Fatalf("choose VS Code: %v", err)
 	}
 	h.tester.Frame()
 	h.settle(t)
@@ -220,25 +217,17 @@ func TestEditorFindsVSCodeOutsideTheMacOSGUIPath(t *testing.T) {
 	t.Fatal("the VS Code fallback did not pass on the file arguments")
 }
 
-// The editor list's custom entry is the way to a command the app does not know:
-// it opens the settings, where the command is a plain string.
-func TestCustomEditorOpensTheSettings(t *testing.T) {
+// The editor command remains reachable through the Editor settings page.
+func TestEditorConfigurationLivesInSettings(t *testing.T) {
 	h, _ := changesTestApp(t, unstagedTrackedFile())
+	h.app.openSettings()
 	h.tester.Frame()
-
-	if err := h.tester.Click("Open in editor"); err != nil {
+	if err := h.tester.Click("Editor settings"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Custom command…"); err != nil {
-		t.Fatal(err)
-	}
-	h.tester.Frame()
-	if !h.app.settingsOpen {
-		t.Fatal("the custom entry did not open the settings")
-	}
 	if h.app.settingsPage != settingsPageEditor || !h.tester.HasText("Editor command") {
-		t.Fatal("the custom entry did not lead directly to Editor settings")
+		t.Fatal("the Editor settings page does not show its command")
 	}
 }
 

@@ -22,7 +22,7 @@ const (
 	linePlaceholder     = "{{line}}"
 )
 
-// editorPreset is one editor the menus offer, with the command its own
+// editorPreset is one editor Settings offers, with the command its own
 // installer puts on the PATH; choosing it stores the command, so the setting
 // stays one plain string the user can edit as they like.
 type editorPreset struct {
@@ -30,7 +30,7 @@ type editorPreset struct {
 	Command string
 }
 
-// editorPresets are the editors the one-click menus offer, in the order they
+// editorPresets are the editors Settings offers, in the order they
 // draw them. They follow the commands their own installers write: VS Code's
 // `code`, Zed's `zed` and Neovim's `nvim`.
 var editorPresets = []editorPreset{
@@ -67,6 +67,13 @@ var runEditorTemplate = func(command, path string, line int) error {
 		return err
 	}
 	cmd := exec.Command(resolveEditorProgram(args[0]), args[1:]...)
+	if terminalEditorProgram(args[0]) {
+		args[0] = resolveEditorProgram(args[0])
+		cmd, err = terminalEditorCommand(editorGOOS, args, path, exec.LookPath)
+		if err != nil {
+			return err
+		}
+	}
 	if err := cmd.Start(); err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
 			return errEditorMissing
@@ -80,20 +87,27 @@ var runEditorTemplate = func(command, path string, line int) error {
 }
 
 // resolveEditorProgram keeps PATH as the first choice. Finder does not give a
-// macOS app every PATH entry from the user's shell, so an installed VS Code
-// also gets its documented app-bundle CLI as a fallback. A custom command that
-// already names a path, and every other platform, stays exactly as configured.
+// macOS app every PATH entry from the user's shell, so installed editors also
+// get their app-bundle or Homebrew executables as fallbacks. Explicit paths and
+// every other platform stay exactly as configured.
 func resolveEditorProgram(program string) string {
-	if editorGOOS != "darwin" || program != "code" {
+	if editorGOOS != "darwin" || strings.ContainsAny(program, `/\`) {
 		return program
 	}
 	if _, err := exec.LookPath(program); err == nil {
 		return program
 	}
-	const bundleCLI = "Visual Studio Code.app/Contents/Resources/app/bin/code"
-	candidates := []string{filepath.Join("/Applications", bundleCLI)}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		candidates = append(candidates, filepath.Join(home, "Applications", bundleCLI))
+	var candidates []string
+	if program == "code" {
+		const bundleCLI = "Visual Studio Code.app/Contents/Resources/app/bin/code"
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			candidates = append(candidates, filepath.Join(home, "Applications", bundleCLI))
+		}
+		candidates = append(candidates, filepath.Join("/Applications", bundleCLI))
+	} else if terminalEditorProgram(program) {
+		for _, dir := range []string{"/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"} {
+			candidates = append(candidates, filepath.Join(dir, program))
+		}
 	}
 	for _, candidate := range candidates {
 		info, err := os.Stat(candidate)
@@ -208,36 +222,17 @@ func (a *app) launchEditor(path string, line int) {
 	}
 }
 
-// editorMenuItems writes the editor catalog into a menu, marking the command
-// in use, and opens path with the one chosen. The repository header's editor
-// button and the file pane's share it, so both offer the same editors.
-func (a *app) editorMenuItems(m *ui.Menu, path string, line int) {
-	current := effectiveEditorCommand(a.settings.EditorCommand)
-	for _, preset := range editorPresets {
-		if m.Item(preset.Name).Radio(current == preset.Command).Chosen() {
-			a.settings.EditorCommand = preset.Command
-			a.saveSettings()
-			a.launchEditor(path, line)
-		}
-	}
-	m.Separator()
-	if m.Item(tr("Custom command…")).Chosen() {
-		a.openEditorSettings()
-	}
-}
-
-// editorMenuButton is the icon button that opens a path in the chosen editor:
-// its own icon opens the list rather than launching at once, so the editor in
-// use is one click away and can be changed without leaving the work.
-func (a *app) editorMenuButton(c *ui.Context, label, tooltip, path string, line int) {
+// editorLaunchButton opens the path immediately with the configured command.
+// Editor selection belongs in Settings, not in the launch action.
+func (a *app) editorLaunchButton(c *ui.Context, label, tooltip, path string, line int) {
 	button := compactIconButton(ui.Button(c, ""))
-	button.Label(tr(label)).Tooltip(tr(tooltip))
+	button.Label(tr(label)).Tooltip(tr(tooltip) + "\n" + tr("Configure your editor in Settings → Editor."))
 	button.Children(func() {
 		ui.Icon(c, vscodeIcon).FontSize(14)
 	})
-	button.PopoverMenuButton(func(m *ui.Menu) {
-		a.editorMenuItems(m, path, line)
-	})
+	if button.Clicked() {
+		a.launchEditor(path, line)
+	}
 }
 
 // editorButton opens the repository in the chosen editor, where its files are
@@ -246,7 +241,7 @@ func (a *app) editorButton(c *ui.Context) {
 	if a.snapshot.Root == "" {
 		return
 	}
-	a.editorMenuButton(c, "Open in editor", "Open this repository in your editor", a.snapshot.Root, 0)
+	a.editorLaunchButton(c, "Open in editor", "Open this repository in your editor", a.snapshot.Root, 0)
 }
 
 // fileEditorButton opens the selected file in the chosen editor, from the
@@ -256,5 +251,5 @@ func (a *app) fileEditorButton(c *ui.Context, file repository.File) {
 	if path == "" {
 		return
 	}
-	a.editorMenuButton(c, "Open file in editor", "Open this file in your editor", path, 0)
+	a.editorLaunchButton(c, "Open file in editor", "Open this file in your editor", path, 0)
 }

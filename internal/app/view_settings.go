@@ -29,13 +29,6 @@ func (a *app) openSettings() {
 	a.settingsOpen = true
 }
 
-// openEditorSettings takes an editor action straight to its own settings
-// page instead of leaving the user to find the command among appearance rows.
-func (a *app) openEditorSettings() {
-	a.settingsPage = settingsPageEditor
-	a.openSettings()
-}
-
 // themeButton is the header's theme control. Its icon shows the appearance in
 // use — a sun on a light theme, a moon on a dark one — and a click opens the
 // list of themes to choose from, with the current one marked.

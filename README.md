@@ -34,7 +34,10 @@ every action reachable from both the keyboard and the mouse.
 ### Changes and commits
 
 - Stage and unstage whole files, or **select lines inside a diff** to stage
-  only part of a file.
+  only part of a file. Clicking a line number enters multiple-line selection;
+  further clicks add lines, Shift-click selects a range, and Cancel or Escape
+  clears the selection. The compact toolbar stages, unstages, or stashes the
+  selected lines.
 - The working tree keeps itself current: changes, commits, and branches made
   in another app appear within seconds without pressing `F5`, and the file or
   commit you were reading stays chosen.
@@ -45,7 +48,8 @@ every action reachable from both the keyboard and the mouse.
   anything is thrown away.
 - Switch Changes, commit, branch-commit, and stash file lists between flat
   paths and sorted, collapsible directory trees. Directory folding never
-  changes which source file a diff or row action targets.
+  changes which source file a diff or row action targets. The folder button
+  stays highlighted while directory grouping is enabled.
 - Commit with a one-line subject, expand it into a description, or amend the
   last commit.
 - Stash the working tree or only the staged files, then apply, pop, or drop
@@ -81,8 +85,10 @@ every action reachable from both the keyboard and the mouse.
   While a filter is active, one small **×** clears every field at once.
 - The Graph draws the filtered history as branch lanes, newest first, in the
   same list you already use.
-- Per-commit actions: copy hash, soft, mixed, or hard reset, create a tag or
-  branch there, cherry-pick onto the current branch, or revert.
+- Commit detail panels and right-click menus offer copying the hash, soft,
+  mixed, or hard reset, creating a tag or branch, cherry-picking, and reverting.
+  Commit rows show the subject and metadata; action toolbars wrap within
+  narrow detail panes.
 - Select multiple commits in History or Graph using their checkboxes or `Ctrl+Space`.
   **Batch actions** and the selected rows’ context menus offer cherry-pick,
   squash, fixup, drop, and moving the selection toward newer or older history.
@@ -134,8 +140,14 @@ every action reachable from both the keyboard and the mouse.
 - A **command log** recording every Git command and the output it printed.
 - Close the window and TanGit stays in the menu bar or notification area:
   click its icon to reopen the window or quit for good.
-- Open the repository or a file in your editor: presets for VS Code, Zed, and
-  Neovim, or a custom command with `{{filename}}` and `{{line}}` placeholders.
+- Click an editor button to open the repository or file immediately with the
+  command configured in **Settings → Editor**. Choose the VS Code, Zed, or
+  Neovim preset there, or enter a custom command with `{{filename}}` and
+  `{{line}}` placeholders.
+  Neovim opens in a terminal window (Terminal on macOS), with the repository
+  or file's directory as its working directory. Quitting Neovim on macOS
+  returns to that terminal's shell. macOS also checks the standard Homebrew
+  locations when the app's PATH does not include Neovim.
 - Toasts for actions and failures; a failed UI frame falls back to a safe
   screen instead of taking the window down.
 
@@ -218,6 +230,13 @@ sudo apt install ./build/linux-amd64/tangit_1.0.2_amd64.deb
 
 TanGit accepts a repository path on every platform. Relative paths are resolved
 from the directory where you run the command; quote paths containing spaces.
+After the platform-specific setup below, use:
+
+```sh
+tangit .
+tangit /absolute/path/to/repository
+tangit "./repository with spaces"
+```
 
 #### Linux
 
@@ -226,27 +245,38 @@ standalone installer uses `~/.local/bin`). An in-app update from v1.0.0 does
 not add the newly introduced launcher, so reinstall a v1.0.2 or later package
 once when upgrading that installation.
 
-```sh
-# Open the current repository from inside it.
-tangit ./
-
-# Open another repository, quoting paths that contain spaces.
-tangit "./path with spaces/repo"
-```
-
 #### macOS
 
-The DMG installs `TanGit.app` but does not install a shell command. To create
-a `tangit` launcher on the standard `/usr/local/bin` path, run this once:
+Move `TanGit.app` from the DMG into Applications. Builds from this source
+include a terminal launcher in the app bundle. Install it once to enable
+`tangit <path>` on the standard `/usr/local/bin` path:
 
 ```sh
 sudo mkdir -p /usr/local/bin
-sudo ln -sf "/Applications/TanGit.app/Contents/MacOS/TanGit" /usr/local/bin/tangit
+sudo install -m 755 "/Applications/TanGit.app/Contents/Resources/tangit" /usr/local/bin/tangit
 ```
 
-If the app is in your user Applications folder, replace `/Applications` in the
-command with `"$HOME/Applications"`. Open a new terminal afterwards. The link
-continues to work after in-place updates while the app stays in that folder.
+The launcher resolves relative paths before opening the app, returns to the
+terminal immediately, and opens the requested repository in a new window even
+when TanGit is already running. It finds the app in `/Applications` or
+`~/Applications`; set `TANGIT_APP` for another location.
+
+The published v1.0.2 DMG predates the bundled launcher. For that release,
+install the launcher from a checkout of this source instead:
+
+```sh
+sudo mkdir -p /usr/local/bin
+sudo install -m 755 resources/darwin/tangit /usr/local/bin/tangit
+```
+
+For an installation without administrator access, use `~/.local/bin` instead
+of `/usr/local/bin` if it is on your `PATH`. Check command lookup with
+`command -v tangit`, then run `tangit .` inside a repository. For another app
+location, for example:
+
+```sh
+TANGIT_APP="$HOME/Applications/TanGit.app" tangit .
+```
 
 #### Windows
 
@@ -256,20 +286,36 @@ changing `PATH`:
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\TanGit\TanGit.exe" .
+& "$env:LOCALAPPDATA\Programs\TanGit\TanGit.exe" "C:\Projects\Repository with spaces"
 ```
 
-To enable `tangit <path>` in new PowerShell and Command Prompt windows, add
-the install folder to your user `PATH`:
+To enable `tangit <path>`, add the install folder to your user `PATH`. This
+also updates the current PowerShell session, so you can test it immediately:
 
 ```powershell
 $dir = Join-Path $env:LOCALAPPDATA 'Programs\TanGit'
+if (-not (Test-Path -LiteralPath (Join-Path $dir 'TanGit.exe'))) {
+    throw "TanGit.exe was not found in $dir; set the correct installation folder."
+}
 $oldPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if (($oldPath -split ';') -notcontains $dir) {
-    [Environment]::SetEnvironmentVariable('Path', "$oldPath;$dir", 'User')
+    $newPath = if ($oldPath) { "$oldPath;$dir" } else { $dir }
+    [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
 }
+if (($env:Path -split ';') -notcontains $dir) {
+    $env:Path = "$env:Path;$dir"
+}
+Get-Command tangit
+tangit .
+tangit "C:\Projects\Repository with spaces"
 ```
 
-For a custom installation folder, use that folder instead of the default above.
+For a custom installation folder or an extracted archive, set `$dir` to the
+folder containing `TanGit.exe` and its bundled files. Windows command lookup
+is case-insensitive, so `tangit` resolves `TanGit.exe`. If the command is not
+recognized, check `Get-Command tangit` in PowerShell or `where tangit` in
+Command Prompt and reopen the terminal after changing `PATH`. Each invocation
+with a repository path starts an app window for that repository.
 
 For development on any platform, this equivalent runs from the TanGit source
 tree:
@@ -377,6 +423,7 @@ Uppercase letters below mean **Shift + letter**.
 | Path | Responsibility |
 | --- | --- |
 | `cmd/tangit` | Thin executable entry point |
+| `resources/darwin/tangit` | macOS terminal launcher; resolves repository paths before opening the app |
 | `internal/app/main.go`, `shell.go`, `view_shell.go` | Window, tabs, picker, and workspace chrome |
 | `internal/app/view_*.go` | One file per section or pane (changes, history, graph, branches, …) |
 | `internal/app/actions.go` | Git actions, confirmations, and background work |
