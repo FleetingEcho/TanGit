@@ -61,6 +61,9 @@ type terminalState struct {
 	layout         *terminalLayoutNode
 	layouts        map[uint64]*terminalLayoutNode
 	activeSessions map[uint64]uint64
+	// Top-level custom names belong to the group, not whichever split is
+	// selected. A split's name never implicitly renames its parent tab.
+	groupNames map[uint64]string
 	// Group selection is deferred so a tab is never replaced halfway through
 	// the build that owns its terminal handles.
 	pendingGroup uint64
@@ -69,10 +72,12 @@ type terminalState struct {
 	// that terminal's persistent handle to two views in the same frame.
 	pendingMoveID     uint64
 	pendingMoveTarget int
-	// renameID identifies the terminal in the app-owned rename modal. Stable
-	// identity keeps reordering and shell-title callbacks out of the form.
-	renameID   uint64
-	renameName string
+	// renameID and renameGroup identify the split or top-level tab in the
+	// app-owned rename modal. Stable identities keep reordering and shell-title
+	// callbacks out of the form.
+	renameID    uint64
+	renameGroup uint64
+	renameName  string
 }
 
 func (a *app) activeTerminal() *terminalSessionState {
@@ -441,6 +446,12 @@ func (a *app) closeTerminalAt(index int) {
 	}
 	layout = removeTerminalLayout(layout, session.id)
 	a.term.sessions = append(a.term.sessions[:index], a.term.sessions[index+1:]...)
+	if a.terminalGroupSize(session.groupID) == 0 {
+		delete(a.term.groupNames, session.groupID)
+		if a.term.renameGroup == session.groupID {
+			a.closeTerminalRename()
+		}
+	}
 	if len(a.term.sessions) == 0 {
 		a.term.active = 0
 		a.term.pendingMoveID = 0
@@ -449,6 +460,7 @@ func (a *app) closeTerminalAt(index int) {
 		a.term.layout = nil
 		a.term.layouts = nil
 		a.term.activeSessions = nil
+		a.term.groupNames = nil
 		a.term.panelOpen = false
 		a.leaveTerminal()
 		return
@@ -580,6 +592,7 @@ func (a *app) resetTerminal() {
 	a.term.layout = nil
 	a.term.layouts = nil
 	a.term.activeSessions = nil
+	a.term.groupNames = nil
 	a.closeTerminalRename()
 }
 
@@ -618,7 +631,6 @@ func (a *app) terminalPaneView(c *ui.Context) {
 	}
 	ui.Column(c).Grow(1).Gap(0).Label(tr("Terminal pane")).Children(func() {
 		islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(4).Padding(4, 8)).Label(tr("Terminal actions")).Children(func() {
-			ui.Icon(c, terminalIcon).FontSize(13).TextColor(c.Theme().TextMuted)
 			a.terminalTabsView(c)
 			active := a.activeTerminal()
 			splitDisabled := active == nil || active.pane == nil
@@ -647,7 +659,7 @@ func (a *app) terminalPaneView(c *ui.Context) {
 }
 
 // terminalTabsView puts top-level selection, renaming and closing in the main
-// toolbar. Each tab is identified by its selected shell, not its group number.
+// toolbar. Group names are independent; defaults use the selected shell.
 func (a *app) terminalTabsView(c *ui.Context) {
 	theme := c.Theme()
 	activeGroup := a.activeTerminalGroup()
@@ -668,7 +680,7 @@ func (a *app) terminalTabsView(c *ui.Context) {
 				button.PopoverMenu(func(m *ui.Menu) { a.terminalGroupMenu(m, group) })
 				button.Children(func() {
 					ui.Icon(c, terminalIcon).FontSize(13).TextColor(theme.TextMuted)
-					ui.Text(c, terminalSessionLabel(session)).Bold().SingleLine()
+					ui.Text(c, a.terminalGroupLabel(group, session)).Bold().SingleLine()
 					if detail := terminalSessionDetail(session); detail != "" {
 						ui.Text(c, detail).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).SingleLine().Grow(1).MinWidth(0)
 					} else {
@@ -683,7 +695,7 @@ func (a *app) terminalTabsView(c *ui.Context) {
 				}
 				renameLabel := fmt.Sprintf("%s %d", tr("Rename tab"), group)
 				flatIconButton(c, renameLabel, renameLabel, editIcon, 12, 2, false, func() {
-					a.openTerminalRename(session.id)
+					a.openTerminalGroupRename(group)
 				})
 				closeLabel := fmt.Sprintf("%s %d", tr("Close terminal tab"), group)
 				flatIconButton(c, closeLabel, closeLabel, closeIcon, 12, 2, false, func() {
@@ -700,7 +712,7 @@ func (a *app) terminalGroupMenu(m *ui.Menu, group uint64) {
 		return
 	}
 	if m.Item(tr("Rename tab")).Chosen() {
-		a.openTerminalRename(session.id)
+		a.openTerminalGroupRename(group)
 	}
 	m.Separator()
 	if m.Item(tr("Close terminal tab")).Chosen() {

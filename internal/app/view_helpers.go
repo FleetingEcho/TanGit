@@ -553,7 +553,7 @@ func (a *app) anyFormOpen() bool {
 		a.showCommitRewordForm ||
 		a.showRenameRecent ||
 		a.code.fileForm != codeFileFormNone ||
-		a.term.renameID != 0
+		a.term.renameID != 0 || a.term.renameGroup != 0
 }
 
 // modalOpen reports whether a dialog or a full-window view owns the keyboard,
