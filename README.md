@@ -65,7 +65,7 @@ undo/redo operations, and reflog recovery help you manage changes deliberately.
 | **History & graph** | Filter commits, inspect file history, cherry-pick batches, reword, squash, and reorder commits. |
 | **Branches & recovery** | Manage remotes, tags, stashes, worktrees, and submodules; inspect the reflog and undo eligible operations. |
 | **Conflict resolution** | Review base, current, and incoming versions; choose hunks, edit the result, and stage the resolution. |
-| **Editor workspace** | Browse the repository tree, keep multiple editor tabs, quick-open files, and search tracked and non-ignored content. |
+| **Editor workspace** | Browse the repository tree, keep multiple editor tabs, fuzzy quick-open files with fzf, and search tracked and non-ignored content. |
 | **Your workspace** | Repository tabs, directory trees, resizable panels, expanded branch/diff views, a terminal, and external editors. |
 | **Your preferences** | Themes, fonts, six interface languages, configurable visible sections, and signed in-app updates. |
 
@@ -79,6 +79,12 @@ number to start multiple-line selection; Shift-click selects a range.
 1. Install [Git](https://git-scm.com/) and download a [TanGit release](https://github.com/FleetingEcho/TanGit/releases).
 2. Use the **DMG** on macOS, the **setup executable** on Windows, or the matching **`.deb` / archive** on Linux.
 3. Open a repository, review its changes, stage what you need, and commit.
+
+Install [ripgrep](https://github.com/BurntSushi/ripgrep) for faster Editor content searches in large repositories. TanGit uses its built-in search when `rg` is unavailable and ranks Quick Open paths and content results with [fzf](https://github.com/junegunn/fzf).
+
+Edit **Workspace folder** and press Enter, or use its folder button, to open a repository subfolder as the Editor root. The Explorer then lists only that folder and its descendants (without ancestor or outside rows), Quick Open and content search use the same scope, root-level file creation or drops target the opened folder, and the external-editor menu opens that folder too. Unsubmitted text remains a draft and does not change the workspace; the clear button restores the entire repository. Optional include/exclude globs stay collapsed under **File filters**. Common generated and dependency folders are excluded before searching. In **Settings → Editor → Search exclusions**, add folder names, remove any default, clear the list, or restore the defaults. Exclusions match at any depth; source folders such as `vendor` remain searchable unless you add them.
+
+Changing branches refreshes the Explorer, reloads clean open documents, and reruns active searches against the new tree. Unsaved editor buffers remain open with a previous-branch warning until you explicitly save them.
 
 **From the terminal**, after [setting up the command for your platform](docs/guide.md#open-a-repository-from-the-terminal):
 

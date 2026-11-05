@@ -456,11 +456,21 @@ func (a *app) mergeSectionSplit(c *ui.Context, sections changeSections) {
 
 // mergeSectionView is the merge changes section, when the branch has one: it
 // is only there while files are conflicted.
+func changeSectionFileCount(rows []changeRow) int {
+	count := 0
+	for _, row := range rows {
+		if row.isFile() {
+			count++
+		}
+	}
+	return count
+}
+
 func (a *app) mergeSectionView(c *ui.Context, sections changeSections, fill bool) {
 	if sections.mergeBase < 0 {
 		return
 	}
-	merge := a.changeSectionView(c, "Merge Changes", conflictIcon, len(a.mergeRows),
+	merge := a.changeSectionView(c, "Merge Changes", conflictIcon, changeSectionFileCount(a.mergeRows),
 		a.mergeRows, &a.mergeList, sections.mergeBase, a.mergeExpanded, changeSectionMerge, fill)
 	if a.keyboardListChanged(&a.mergeList, merge) && a.mergeSelected >= 0 {
 		a.selectedFile = sections.mergeBase + a.mergeSelected
@@ -470,7 +480,7 @@ func (a *app) mergeSectionView(c *ui.Context, sections changeSections, fill bool
 // stagedSectionView is the staged changes section, which always shows its
 // header even with no file.
 func (a *app) stagedSectionView(c *ui.Context, sections changeSections, fill bool) {
-	staged := a.changeSectionView(c, "Staged Changes", stageIcon, len(a.stagedRows),
+	staged := a.changeSectionView(c, "Staged Changes", stageIcon, changeSectionFileCount(a.stagedRows),
 		a.stagedRows, &a.stagedList, sections.stagedBase, a.stagedExpanded, changeSectionStaged, fill)
 	if a.keyboardListChanged(&a.stagedList, staged) && a.stagedSelected >= 0 {
 		a.selectedFile = sections.stagedBase + a.stagedSelected
@@ -480,7 +490,7 @@ func (a *app) stagedSectionView(c *ui.Context, sections changeSections, fill boo
 // changesSectionView is the changes section, which always shows its header
 // even with no file.
 func (a *app) changesSectionView(c *ui.Context, sections changeSections, fill bool) {
-	changes := a.changeSectionView(c, "Changes", folderIcon, len(a.changesRows),
+	changes := a.changeSectionView(c, "Changes", folderIcon, changeSectionFileCount(a.changesRows),
 		a.changesRows, &a.fileList, sections.changesBase, a.changesExpanded, changeSectionChanges, fill)
 	if a.keyboardListChanged(&a.fileList, changes) && a.changesSelected >= 0 {
 		a.selectedFile = sections.changesBase + a.changesSelected
@@ -888,12 +898,10 @@ func (a *app) changeFileRow(row ui.ListRow, change changeRow, index int) {
 		})
 		if reveal {
 			reviewLabel := "Mark reviewed " + file.Path
-			reviewIcon := commitIcon
+			reviewIcon := markReviewedIcon
 			if a.reviewedFiles[file.Path] {
-				// The action removes the existing mark, so it must not look like
-				// another check that marks the file reviewed again.
 				reviewLabel = "Mark unreviewed " + file.Path
-				reviewIcon = closeIcon
+				reviewIcon = markUnreviewedIcon
 			}
 			rowIconButton(row.Context, reviewLabel, reviewActionTooltip(), reviewIcon, func() {
 				a.setFileReviewed(file, !a.reviewedFiles[file.Path])

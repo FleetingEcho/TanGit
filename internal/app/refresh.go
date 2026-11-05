@@ -67,6 +67,9 @@ func (a *app) requestQuietRefresh() {
 			}
 			was, now := signSnapshot(a.snapshot), signSnapshot(snapshot)
 			if was == now {
+				// Empty directories do not alter the Git signature. Their matching
+				// quiet snapshot still completes the operation's refresh cycle.
+				a.code.filesOperationRefresh = false
 				return
 			}
 			a.applyQuietSnapshot(snapshot, was, now)
@@ -151,6 +154,8 @@ func (a *app) quietRefreshAllowed() bool {
 // again on their own when their choice moves, and never for a snapshot that
 // left them alone.
 func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshotSigns) {
+	operationRefreshed := a.code.filesOperationRefresh
+	a.code.filesOperationRefresh = false
 	old := a.snapshot
 	refsChanged := was.refs != now.refs
 	filesChanged := was.files != now.files
@@ -167,7 +172,8 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 	}
 	a.snapshot = snapshot
 	a.snapshotSeq++
-	if codeFilesChanged && a.code.filesLoaded {
+	checkout := a.refreshCodeAfterCheckout(old, snapshot)
+	if codeFilesChanged && a.code.filesLoaded && !checkout && !operationRefreshed {
 		a.code.filesLoaded = false
 		a.requestCodeFiles()
 	}

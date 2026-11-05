@@ -57,6 +57,11 @@ func buildFileTreeRows(paths []string, tree bool, collapsed map[string]bool, sco
 func buildFileTreeRowsWithDirectories(paths, directories []string, tree bool, collapsed map[string]bool, scope string) []fileTreeRow {
 	rows := make([]fileTreeRow, 0, len(paths)+len(directories))
 	if !tree {
+		for _, directory := range directories {
+			if directory != "" {
+				rows = append(rows, fileTreeRow{source: -1, path: directory, name: directory})
+			}
+		}
 		for source, path := range paths {
 			rows = append(rows, fileTreeRow{source: source, path: path, name: path})
 		}
@@ -65,27 +70,43 @@ func buildFileTreeRowsWithDirectories(paths, directories []string, tree bool, co
 
 	type entry struct {
 		path      string
+		parts     []string
 		source    int
 		directory bool
 	}
 	ordered := make([]entry, 0, len(paths)+len(directories))
 	for source, path := range paths {
-		ordered = append(ordered, entry{path: path, source: source})
+		ordered = append(ordered, entry{path: path, parts: strings.Split(path, "/"), source: source})
 	}
 	for _, directory := range directories {
-		ordered = append(ordered, entry{path: directory, source: -1, directory: true})
+		ordered = append(ordered, entry{path: directory, parts: strings.Split(directory, "/"), source: -1, directory: true})
 	}
 	sort.SliceStable(ordered, func(i, j int) bool {
-		if ordered[i].path == ordered[j].path {
-			return ordered[i].directory && !ordered[j].directory
+		left, right := ordered[i], ordered[j]
+		if left.path == right.path {
+			return left.directory && !right.directory
 		}
-		return ordered[i].path < ordered[j].path
+		// Compare the first differing component at its actual tree level. A
+		// component with descendants is a directory even when the entry itself
+		// is a file, so sibling folders sort before sibling files at every depth.
+		for depth := 0; depth < min(len(left.parts), len(right.parts)); depth++ {
+			if left.parts[depth] == right.parts[depth] {
+				continue
+			}
+			leftDirectory := left.directory || depth < len(left.parts)-1
+			rightDirectory := right.directory || depth < len(right.parts)-1
+			if leftDirectory != rightDirectory {
+				return leftDirectory
+			}
+			return left.parts[depth] < right.parts[depth]
+		}
+		return len(left.parts) < len(right.parts)
 	})
 	seenDirectories := make(map[string]bool)
 	for _, entry := range ordered {
 		path := entry.path
 		source := entry.source
-		parts := strings.Split(path, "/")
+		parts := entry.parts
 		hidden := false
 		directoryDepth := len(parts) - 1
 		if entry.directory {

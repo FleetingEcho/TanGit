@@ -212,10 +212,6 @@ func TestTerminalClosingLastActiveSplitStaysInItsTopLevelTab(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Close shell"); err != nil {
-		t.Fatal(err)
-	}
-	h.tester.Frame()
 
 	active := h.app.activeTerminal()
 	if active == nil || active.groupID != 2 || active.pane != secondPane {
@@ -526,7 +522,7 @@ func TestTerminalMaximizeRestoresPanelHeightAndSessions(t *testing.T) {
 	}
 }
 
-func TestTerminalIndividualCloseConfirmsUntilOnlyOneShellRemains(t *testing.T) {
+func TestTerminalIndividualCloseNeverRequiresConfirmation(t *testing.T) {
 	h, peers, first := monitoredTerminalTestApp(t)
 	if err := h.tester.Click("New terminal tab"); err != nil {
 		t.Fatal(err)
@@ -542,20 +538,11 @@ func TestTerminalIndividualCloseConfirmsUntilOnlyOneShellRemains(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if h.app.confirm == nil || h.app.confirm.title != tr("Close terminal") || !h.app.confirm.destructive {
-		t.Fatalf("closing one of two terminals did not ask for confirmation: %+v", h.app.confirm)
+	if h.app.confirm != nil {
+		t.Fatalf("closing one exact terminal unexpectedly asked for confirmation: %+v", h.app.confirm)
 	}
-	if want := trf("%d terminals are still running.", 2); h.app.confirm.message != want {
-		t.Fatalf("individual close confirmation has the wrong count: got %q, want %q", h.app.confirm.message, want)
-	}
-	requireTerminalRunning(t, first)
-	requireTerminalRunning(t, second)
-	if err := h.tester.Click("Close shell"); err != nil {
-		t.Fatal(err)
-	}
-	h.tester.Frame()
 	if h.app.terminalSessionCount() != 1 || h.app.activeTerminalGroup() != 1 {
-		t.Fatalf("confirmed individual close disturbed the other tab: %+v", h.app.term)
+		t.Fatalf("individual close disturbed the other tab: %+v", h.app.term)
 	}
 	requireTerminalRunning(t, first)
 	requireTerminalClosed(t, second)
@@ -570,7 +557,7 @@ func TestTerminalIndividualCloseConfirmsUntilOnlyOneShellRemains(t *testing.T) {
 	requireTerminalClosed(t, first)
 }
 
-func TestTerminalCloseAllAndIndividualSplitCloseRequireConfirmation(t *testing.T) {
+func TestTerminalCloseAllRequiresConfirmationButIndividualSplitCloseDoesNot(t *testing.T) {
 	h, peers, first := monitoredTerminalTestApp(t)
 	second := splitMonitoredTerminal(t, h, peers, false)
 
@@ -594,15 +581,9 @@ func TestTerminalCloseAllAndIndividualSplitCloseRequireConfirmation(t *testing.T
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if h.app.confirm == nil || h.app.confirm.title != tr("Close terminal") {
-		t.Fatalf("closing one of two splits did not ask for confirmation: %+v", h.app.confirm)
+	if h.app.confirm != nil {
+		t.Fatalf("closing one exact split unexpectedly asked for confirmation: %+v", h.app.confirm)
 	}
-	requireTerminalRunning(t, first)
-	requireTerminalRunning(t, second)
-	if err := h.tester.Click("Close shell"); err != nil {
-		t.Fatal(err)
-	}
-	h.tester.Frame()
 	requireTerminalClosed(t, second)
 	requireTerminalRunning(t, first)
 	if !h.app.term.panelOpen || h.app.term.active != 0 || h.app.terminalSessionCount() != 1 {
@@ -688,10 +669,6 @@ func TestTerminalSplitsSubdivideOnlyActiveCardInMixedDirections(t *testing.T) {
 		t.Fatalf("drag replaced the mixed split structure: %+v", h.app.term.layout)
 	}
 	if err := h.tester.Click("Close terminal 3"); err != nil {
-		t.Fatal(err)
-	}
-	h.tester.Frame()
-	if err := h.tester.Click("Close shell"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
@@ -989,10 +966,6 @@ func TestTerminalSplitHideAndCloseHaveIndependentLifetimes(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Close shell"); err != nil {
-		t.Fatal(err)
-	}
-	h.tester.Frame()
 	requireTerminalClosed(t, second)
 	requireTerminalRunning(t, first)
 	if !h.app.term.panelOpen || h.app.term.active != 0 || h.app.terminalSessionCount() != 1 || h.app.term.sessions[0].pane != firstPane {
@@ -1120,9 +1093,6 @@ func TestClosingAStartingSplitDiscardsItsLateShell(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Close shell"); err != nil {
-		t.Fatal(err)
-	}
 	close(release)
 	second := <-peers
 	defer second.Close()
