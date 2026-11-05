@@ -523,7 +523,7 @@ func TestDiffExpandsToTheWholeWindow(t *testing.T) {
 	if !h.app.diffFullscreen {
 		t.Fatal("the expand icon did not open the full-window diff")
 	}
-	if !containsText(h.texts(), "Close full-window diff") {
+	if !containsText(h.texts(), "Restore diff view") {
 		t.Fatalf("the full-window diff has no close control: %q", h.texts())
 	}
 
