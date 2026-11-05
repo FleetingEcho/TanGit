@@ -16,7 +16,8 @@ import (
 // The workspace sections, in tab order; the indices match a.workspaceTab and
 // the digit shortcuts.
 const (
-	sectionChanges = iota
+	sectionCode = iota
+	sectionChanges
 	sectionHistory
 	sectionGraph
 	sectionBranches
@@ -26,10 +27,11 @@ const (
 	sectionWorktrees
 	sectionSubmodules
 	sectionReflog
+	workspaceSectionCount
 )
 
 var workspaceSections = []string{
-	"Changes", "History", "Graph", "Branches", "Remotes", "Stash", "Tags",
+	"Editor", "Changes", "History", "Graph", "Branches", "Remotes", "Stash", "Tags",
 	"Worktrees", "Submodules", "Reflog",
 }
 
@@ -37,15 +39,13 @@ var workspaceSections = []string{
 // store, in the order of workspaceSections. A stored id keeps working if the
 // sections are ever reordered.
 var workspaceSectionIDs = []string{
-	"changes", "history", "graph", "branches", "remotes", "stash", "tags",
+	"code", "changes", "history", "graph", "branches", "remotes", "stash", "tags",
 	"worktrees", "submodules", "reflog",
 }
 
-// defaultVisibleSections are the sections a fresh workspace shows: the ones
-// used every day, leaving the specialist tabs for the section picker.
-var defaultVisibleSections = []string{
-	"changes", "history", "graph", "branches", "stash",
-}
+// defaultVisibleSections shows every workspace section on a fresh install.
+// Users can still hide specialist sections in Settings.
+var defaultVisibleSections = slices.Clone(workspaceSectionIDs)
 
 // navPaneDefault is the section sidebar's width, until its divider moves it.
 const navPaneDefault = 172
@@ -113,6 +113,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.worktreeFormModal(c)
 	a.submoduleFormModal(c)
 	a.recentRenameModal(c)
+	a.codeFileFormModal(c)
 	a.terminalRenameModal(c)
 	a.commandLogModal(c)
 	a.settingsModal(c)
@@ -519,7 +520,7 @@ func (a *app) recentCardView(c *ui.Context, i int, services ui.Services) {
 				editor.Background(theme.SurfacePressed)
 			}
 			editor.Children(func() {
-				ui.Icon(c, vscodeIcon).FontSize(17).TextColor(theme.TextMuted)
+				ui.Icon(c, fileCodeIcon).FontSize(17).TextColor(theme.TextMuted)
 			})
 			if editor.Clicked() {
 				a.launchEditor(repo.Path, 0)
@@ -620,9 +621,8 @@ func (a *app) emptyRecentView(c *ui.Context) {
 }
 
 // appView is the workspace chrome once a repository is open: a compact
-// header, the section sidebar beside the active section, the terminal pane
-// under them, and a status bar, each an island floating on the window's
-// backdrop with the rest of the panes.
+// header, the section sidebar beside the active section, and a status bar,
+// each an island floating on the window's backdrop with the rest of the panes.
 func (a *app) appView(c *ui.Context, overlayTopInset float32) {
 	ui.Box(c).Fill().Background(islandBackdrop(c.Theme())).Children(func() {
 		ui.Column(c).Fill().Padding(islandGap / 2).Children(func() {
@@ -634,14 +634,15 @@ func (a *app) appView(c *ui.Context, overlayTopInset float32) {
 	a.fileHistoryDrawer(c, overlayTopInset)
 }
 
-// mainArea is the workspace, with the terminal pane under it while the pane
-// shows. Every divider drags: the sidebar's width, then the pane's height.
+// mainArea docks the terminal below the workspace. Maximizing temporarily
+// gives it the whole content area without changing the height restored later.
 func (a *app) mainArea(c *ui.Context) {
-	// The pane slides in and out, so the box is built every frame, open or
-	// not: its first value is the closed height, and opening animates from it.
 	target := float32(0)
-	if a.term.open {
+	if a.term.panelOpen {
 		target = a.term.percent
+		if a.term.panelMaximized {
+			target = 100
+		}
 	}
 	box := ui.Box(c)
 	height := box.Animate("terminal-height", target, 200*time.Millisecond)
@@ -649,9 +650,9 @@ func (a *app) mainArea(c *ui.Context) {
 	switch {
 	case height <= 0.5:
 		a.workspaceView(c)
+	case a.term.panelOpen && a.term.panelMaximized && box.Settled("terminal-height"):
+		a.terminalPaneView(c)
 	case box.Settled("terminal-height"):
-		// At rest the panes share the room through a split, whose divider
-		// drags the terminal's height. The split sizes the workspace, first.
 		a.term.shown = 100 - a.term.percent
 		paneSplitVerticalPercent(c, &a.term.shown, func() {
 			a.workspaceView(c)
@@ -659,14 +660,10 @@ func (a *app) mainArea(c *ui.Context) {
 			a.terminalPaneView(c)
 		}).Grow(1)
 		if a.term.shown != 100-a.term.percent {
-			// The drag moved the divider: keep that height, and put the
-			// animation at it so it does not slide towards it again.
 			a.term.percent = 100 - a.term.shown
 			box.Jump("terminal-height", a.term.percent)
 		}
 	default:
-		// Sliding: the workspace keeps its place at the top while the pane
-		// grows from the bottom, without a divider to drag mid-slide.
 		ui.Column(c).Grow(1).Children(func() {
 			ui.Column(c).Grow(1).Children(func() {
 				a.workspaceView(c)
@@ -872,7 +869,11 @@ func (a *app) navView(c *ui.Context) {
 				return
 			}
 			ui.Row(row.Context).Gap(8).Padding(7, 10).Children(func() {
-				ui.Icon(row.Context, sectionIcons[section]).FontSize(14).TextColor(theme.TextMuted)
+				iconColor := theme.TextMuted
+				if row.Selected() {
+					iconColor = theme.AccentText
+				}
+				ui.Icon(row.Context, sectionIcons[section]).FontSize(14).TextColor(iconColor)
 				ui.Text(row.Context, tr(workspaceSections[section])).Grow(1).SingleLine()
 				if count := a.sectionCount(section); count > 0 {
 					ui.Badge(row.Context, fmt.Sprintf("%d", count))
@@ -961,6 +962,8 @@ func (a *app) contentView(c *ui.Context) {
 		a.submodulesView(c)
 	case sectionReflog:
 		a.reflogView(c)
+	case sectionCode:
+		a.codeView(c)
 	}
 }
 
@@ -1104,6 +1107,7 @@ func (a *app) recentRenameModal(c *ui.Context) {
 		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 			Justify(ui.Center).AlignItems(ui.Center).
 			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
+		a.registerTerminalModalShortcuts(back)
 		back.Children(func() {
 			panel := ui.Column(c).Width(500).MaxWidthPercent(92).
 				Padding(22).Gap(16).Background(theme.Background).

@@ -74,8 +74,8 @@ func (s *gitSession) Stage(ctx context.Context, file File) error {
 }
 `
 
-// screenshotEditableFile is a new file the pane shows as an editor, the state
-// the Edit button gives a changed or untracked file.
+// screenshotEditableFile is a new file shown by the retained in-pane editor,
+// entered directly by this fixture after its redundant header button was removed.
 const screenshotEditableFile = `{
     "data_source": [
         "data_timestamp",
@@ -461,6 +461,7 @@ func newScreenshotHarnessFor(t *testing.T, dark bool, snapshot repository.Snapsh
 	// The app now ships on Tokyo Night; the light and dark shots still come
 	// from System, so the pair shows both appearances.
 	a.settings.Theme = "System"
+	a.workspaceTab = sectionChanges
 	a.path = "/work/project"
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.SetDark(dark)
@@ -649,24 +650,132 @@ func TestScreenshot(t *testing.T) {
 		saveScreenshot(t, dir, "02c-directory-selection-tokyo-night", tt)
 	})
 
-	t.Run("terminal-divider-light", func(t *testing.T) {
+	t.Run("code-workspace-dark", func(t *testing.T) {
+		stubCodeWorkspace(t, map[string]string{
+			"README.md":                 "# TanGit\n\nPrecise commits. Visual history.\n",
+			"internal/app/code.go":      "package app\n\nimport \"fmt\"\n\n// codeDocument owns one persistent editor buffer.\ntype codeDocument struct {\n\tpath  string\n\ttitle string\n}\n\nfunc (d *codeDocument) Label() string {\n\treturn fmt.Sprintf(\"%s — %s\", d.title, d.path)\n}\n",
+			"internal/app/view_code.go": "package app\n\nfunc (a *app) codeView() {\n\t// Render the repository explorer and editor tabs.\n}\n",
+		})
+		a, tt, updated := newScreenshotHarness(t, true)
+		a.setWorkspaceTab(sectionCode)
+		settleShot(t, tt, updated, func() bool { return a.code.filesLoaded && !a.code.filesLoading })
+		a.openCodeFile("internal/app/code.go", 0)
+		settleShot(t, tt, updated, func() bool {
+			document := a.code.documents["internal/app/code.go"]
+			return document != nil && document.state != nil
+		})
+		a.openCodeFile("README.md", 0)
+		settleShot(t, tt, updated, func() bool {
+			document := a.code.documents["README.md"]
+			return document != nil && document.state != nil
+		})
+		a.openCodeFile("internal/app/code.go", 8)
+		saveScreenshot(t, dir, "67-code-workspace-dark", tt)
+
+		if err := tt.RightClick("Editor tab internal/app/code.go"); err != nil {
+			t.Fatal(err)
+		}
+		saveScreenshot(t, dir, "69-code-tab-menu-dark", tt)
+		tt.Key(0, ui.KeyEscape)
+		tt.Frame()
+		if err := tt.RightClick("Open internal/app/code.go"); err != nil {
+			t.Fatal(err)
+		}
+		saveScreenshot(t, dir, "70-code-explorer-menu-dark", tt)
+		tt.Key(0, ui.KeyEscape)
+		tt.Frame()
+
+		a.openCodeFileForm(codeFileFormNewFile, "internal/app", "")
+		a.code.fileFormName = "new_file.go"
+		saveScreenshot(t, dir, "71-code-new-file-dark", tt)
+		a.closeCodeFileForm()
+		tt.Frame()
+
+		source, ok := tt.Find("Open README.md")
+		if !ok {
+			t.Fatal("the drag fixture has no README source")
+		}
+		target, ok := tt.Find("Collapse directory internal/app")
+		if !ok {
+			t.Fatal("the drag fixture has no destination folder")
+		}
+		tt.Press(source.X+source.W/2, source.Y+source.H/2)
+		tt.Move(target.X+target.W/2, target.Y+target.H/2)
+		saveScreenshot(t, dir, "72-code-drag-dark", tt)
+		tt.Key(0, ui.KeyEscape)
+		tt.Release(target.X+target.W/2, target.Y+target.H/2)
+		tt.Frame()
+
+		a.code.sidebar = codeSidebarSearch
+		a.code.searchQuery, a.code.searchSubmitted = "code", "code"
+		a.code.searchResults = []workspaceSearchMatch{
+			{Path: "internal/app/code.go", Line: 5, Column: 4, Text: "// codeDocument owns one persistent editor buffer."},
+			{Path: "internal/app/code.go", Line: 6, Column: 6, Text: "type codeDocument struct {"},
+			{Path: "internal/app/view_code.go", Line: 3, Column: 14, Text: "func (a *app) codeView() {"},
+			{Path: "internal/app/view_code.go", Line: 4, Column: 15, Text: "// Render the code explorer and editor tabs."},
+		}
+		a.code.searchSelected = 0
+		a.rebuildCodeSearchRows()
+		saveScreenshot(t, dir, "68-code-search-dark", tt)
+	})
+
+	t.Run("terminal-dock-light", func(t *testing.T) {
 		original := newTerminal
-		peers := make(chan monitoredTerminalPeer, 1)
+		peers := make(chan monitoredTerminalPeer, 2)
 		newTerminal = func(options terminal.Options) (*terminal.Terminal, error) {
 			return newMonitoredTerminal(options, peers)
 		}
 		defer func() { newTerminal = original }()
 		a, tt, updated := newScreenshotHarness(t, false)
-		if err := tt.Click("Toggle terminal"); err != nil {
-			t.Fatal(err)
-		}
+		a.openTerminal()
 		tt.Frame()
 		settleShot(t, tt, updated, func() bool { return a.term.sessions[0].pane != nil })
 		first := <-peers
 		defer first.Close()
 		tt.Advance(250 * time.Millisecond)
 		tt.Frame()
-		saveScreenshot(t, dir, "66-terminal-divider-light", tt)
+		saveScreenshot(t, dir, "66-terminal-dock-light", tt)
+		if err := tt.Click("New terminal tab"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		settleShot(t, tt, updated, func() bool { return a.activeTerminal().pane != nil })
+		second := <-peers
+		defer second.Close()
+		tt.Frame()
+		saveScreenshot(t, dir, "73-terminal-tabs-light", tt)
+		if err := tt.Click("Maximize terminal"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Advance(250 * time.Millisecond)
+		tt.Frame()
+		saveScreenshot(t, dir, "74-terminal-maximized-light", tt)
+		if err := tt.Click("Restore terminal size"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Advance(250 * time.Millisecond)
+		tt.Frame()
+		saveScreenshot(t, dir, "75-terminal-restored-light", tt)
+		tab, found := tt.Find("Terminal tab 2")
+		if !found {
+			t.Fatal("the second terminal tab is missing")
+		}
+		tt.RightClickAt(tab.X+tab.W/2, tab.Y+tab.H/2)
+		saveScreenshot(t, dir, "76-terminal-tab-menu-light", tt)
+		if !tt.HasText("Rename tab") || !tt.HasText("Close terminal tab") {
+			t.Fatalf("the terminal tab menu did not open: %q", tt.Texts())
+		}
+		tt.Key(0, ui.KeyEscape)
+		tt.Frame()
+		if err := tt.Click("Close terminal tab 2"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		saveScreenshot(t, dir, "77-terminal-close-tab-confirmation-light", tt)
+		if err := tt.Click("Cancel"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
 	})
 
 	t.Run("terminal-split-dark", func(t *testing.T) {
@@ -677,9 +786,7 @@ func TestScreenshot(t *testing.T) {
 		}
 		defer func() { newTerminal = original }()
 		a, tt, updated := newScreenshotHarness(t, true)
-		if err := tt.Click("Toggle terminal"); err != nil {
-			t.Fatal(err)
-		}
+		a.openTerminal()
 		tt.Frame()
 		settleShot(t, tt, updated, func() bool { return a.term.sessions[0].pane != nil })
 		first := <-peers
@@ -774,9 +881,7 @@ func TestScreenshot(t *testing.T) {
 				_ = peer.Close()
 			}
 		}()
-		if err := tt.Click("Toggle terminal"); err != nil {
-			t.Fatal(err)
-		}
+		a.openTerminal()
 		tt.Frame()
 		settleShot(t, tt, updated, func() bool { return a.term.sessions[0].pane != nil })
 		opened = append(opened, <-peers)
@@ -1119,10 +1224,15 @@ func TestScreenshot(t *testing.T) {
 	t.Run("settings-accent-tokyo-night", func(t *testing.T) {
 		a, tt := newScreenshotApp(t, true)
 		a.settings.Theme = defaultTheme
-		a.settings.Accent = "Teal"
+		a.settings.Accent = "#7c3aed"
 		a.openSettings()
 		tt.Frame()
 		saveScreenshot(t, dir, "49-settings-accent-tokyo-night", tt)
+		if err := tt.Click("Custom accent color"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		saveScreenshot(t, dir, "49b-settings-custom-accent-tokyo-night", tt)
 	})
 
 	// Notifications sit at the window's top right, under the tab bar, with
@@ -1310,9 +1420,7 @@ func TestScreenshot(t *testing.T) {
 			{Path: "examples/server/analytics/core/data_mapping.json", Status: "??", Unstaged: true, Added: true},
 		}
 		a, tt, updated := newScreenshotHarnessFor(t, false, snapshot)
-		if err := tt.Click("Edit"); err != nil {
-			t.Fatal(err)
-		}
+		a.openFileEdit()
 		settleShot(t, tt, updated, func() bool {
 			return !a.fileEditLoading && a.fileEditState != nil
 		})
@@ -1678,6 +1786,7 @@ func newShellShot(t *testing.T, dark bool, theme string) (*shell, *ui.Tester, *u
 	tt := ui.NewTester(s.view, 1280, 800)
 	tt.SetDark(dark)
 	s.start("/work/project")
+	s.activeApp().workspaceTab = sectionChanges
 	settleShot(t, tt, updated, func() bool {
 		a := s.activeApp()
 		return a != nil && a.state == stateReady &&

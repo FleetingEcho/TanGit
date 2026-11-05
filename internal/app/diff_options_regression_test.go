@@ -37,6 +37,7 @@ func (s *diffOptionsRecordingSession) diffReads() []recordedDiffRead {
 func diffOptionsHarness(t *testing.T, session *diffOptionsRecordingSession, configure ...func(*app)) *harness {
 	t.Helper()
 	a := newApp(fixedSessionOpener{session: session})
+	a.workspaceTab = sectionChanges
 	for _, apply := range configure {
 		apply(a)
 	}

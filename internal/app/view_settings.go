@@ -79,6 +79,7 @@ func (a *app) settingsModal(c *ui.Context) {
 		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 			Justify(ui.Center).AlignItems(ui.Center).
 			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
+		a.registerTerminalModalShortcuts(back)
 		back.Children(func() {
 			panel := ui.Column(c).Width(860).Height(660).MaxWidthPercent(94).MaxHeightPercent(92).
 				Padding(22).Gap(18).Background(theme.Background).
@@ -172,7 +173,7 @@ func (a *app) settingsBody(c *ui.Context) {
 				a.settingsPageButton(c, settingsPageAppearance, themeIcon, "Appearance")
 				a.settingsPageButton(c, settingsPageTypography, fontIcon, "Typography")
 				a.settingsPageButton(c, settingsPageBehavior, commitIcon, "Behavior")
-				a.settingsPageButton(c, settingsPageEditor, vscodeIcon, "Editor")
+				a.settingsPageButton(c, settingsPageEditor, fileCodeIcon, "Editor")
 				a.settingsPageButton(c, settingsPageWorkspace, worktreesIcon, "Workspace")
 				a.settingsPageButton(c, settingsPageUpdates, updateIcon, "Updates")
 			})
@@ -403,23 +404,26 @@ func (a *app) behaviorSettings(c *ui.Context) {
 
 func (a *app) editorSettings(c *ui.Context) {
 	settingsSection(c, func() {
-		settingsGroup(c, vscodeIcon, "Editor", "The program the editor buttons launch")
-		settingRow(c, "Editor command", "Fills in {{filename}} and {{line}}", func() {
-			input := ui.TextInput(c, &a.settings.EditorCommand).
-				Label(tr("Editor command")).
-				Placeholder(defaultEditorCommand).Grow(1)
-			if input.Changed() {
-				a.settingsChanged(c)
-			}
-		})
-		settingRow(c, "Presets", "Fill in a command this app knows", func() {
+		settingsGroup(c, fileCodeIcon, "Editor", "Built-in Code or an external program")
+		builtIn := effectiveEditorCommand(a.settings.EditorCommand) == builtInEditorCommand
+		if !builtIn {
+			settingRow(c, "Editor command", "Fills in {{filename}} and {{line}}", func() {
+				input := ui.TextInput(c, &a.settings.EditorCommand).
+					Label(tr("Editor command")).
+					Placeholder(vsCodeEditorCommand).Grow(1)
+				if input.Changed() {
+					a.settingsChanged(c)
+				}
+			})
+		}
+		settingRow(c, "Presets", "Choose the editor buttons' destination", func() {
 			for _, preset := range editorPresets {
 				chosen := effectiveEditorCommand(a.settings.EditorCommand) == preset.Command
 				var button ui.Element
 				if chosen {
-					button = ui.PrimaryButton(c, preset.Name)
+					button = ui.PrimaryButton(c, tr(preset.Name))
 				} else {
-					button = ui.Button(c, preset.Name)
+					button = ui.Button(c, tr(preset.Name))
 				}
 				if button.Tooltip(preset.Command).Clicked() {
 					a.settings.EditorCommand = preset.Command
@@ -427,8 +431,11 @@ func (a *app) editorSettings(c *ui.Context) {
 				}
 			}
 		})
-		ui.Text(c, tr("Repository cards and file actions use this command without changing your open repository.")).
-			TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).MaxWidth(480)
+		explanation := "Repository cards and file actions use this command without changing your open repository."
+		if builtIn {
+			explanation = "Editor buttons open the Code page; file actions also open and reveal the selected file."
+		}
+		ui.Text(c, tr(explanation)).TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).MaxWidth(480)
 	})
 }
 
@@ -498,8 +505,8 @@ func (a *app) workspaceSectionsSelect(c *ui.Context) {
 		a.sectionsOpen = !a.sectionsOpen
 	}
 	ui.Popover(c, field, &a.sectionsOpen, func() {
-		// All ten rows fit in the panel, but scroll if a smaller window or
-		// a larger font makes them too tall.
+		// The rows fit in the panel at the default size, but scroll if a
+		// smaller window or a larger font makes them too tall.
 		ui.Scroll(c).MaxHeight(theme.Space(80)).Children(func() {
 			visible := a.visibleSections()
 			for section := range workspaceSectionIDs {
@@ -583,6 +590,20 @@ func (a *app) accentPicker(c *ui.Context) {
 		a.accentThemeSwatch(c, palette)
 		for _, name := range accentNames {
 			a.accentSwatch(c, name)
+		}
+		color := palette
+		if chosen, ok := accentColor(a.settings.Accent); ok {
+			color = chosen
+		}
+		if a.customAccent != color {
+			a.customAccent = color
+		}
+		well := ui.ColorWell(c, &a.customAccent).
+			Label(tr("Custom accent color")).Tooltip(tr("Choose a custom accent color"))
+		if well.Changed() {
+			a.customAccent = ui.RGB(a.customAccent.R, a.customAccent.G, a.customAccent.B)
+			a.settings.Accent = formatCustomAccent(a.customAccent)
+			a.settingsChanged(c)
 		}
 	})
 }

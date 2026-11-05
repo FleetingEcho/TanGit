@@ -34,14 +34,19 @@ type editorPreset struct {
 // draw them. They follow the commands their own installers write: VS Code's
 // `code`, Zed's `zed` and Neovim's `nvim`.
 var editorPresets = []editorPreset{
-	{Name: "VS Code", Command: "code --wait " + filenamePlaceholder},
+	{Name: builtInEditorCommand, Command: builtInEditorCommand},
+	{Name: "VS Code", Command: vsCodeEditorCommand},
 	{Name: "Zed", Command: "zed " + filenamePlaceholder},
 	{Name: "Neovim", Command: "nvim +" + linePlaceholder + " " + filenamePlaceholder},
 }
 
-// defaultEditorCommand is what a fresh install opens files with, and the
-// fallback for an emptied setting.
-const defaultEditorCommand = "code --wait " + filenamePlaceholder
+// Built-in uses TanGit's Code page. The external command remains a plain
+// setting so existing VS Code, Zed, Neovim, and custom configurations keep working.
+const (
+	builtInEditorCommand = "Built-in"
+	vsCodeEditorCommand  = "code --wait " + filenamePlaceholder
+	defaultEditorCommand = builtInEditorCommand
+)
 
 var (
 	// errEditorMissing is what the launcher reports when the editor's
@@ -209,6 +214,10 @@ func effectiveEditorCommand(command string) string {
 // what to do when the machine cannot.
 func (a *app) launchEditor(path string, line int) {
 	command := effectiveEditorCommand(a.settings.EditorCommand)
+	if command == builtInEditorCommand {
+		a.openBuiltInEditor(path, line)
+		return
+	}
 	if err := runEditorTemplate(command, path, line); err != nil {
 		description := safeError(err)
 		switch {
@@ -222,13 +231,63 @@ func (a *app) launchEditor(path string, line int) {
 	}
 }
 
+// openBuiltInEditor opens Code for the current repository and, when path names
+// a file in it, reveals that file in the explorer. From Home, the repository is
+// opened first; Code is already its destination when loading finishes.
+func (a *app) openBuiltInEditor(path string, line int) {
+	if a.snapshot.Root == "" {
+		if !a.sectionVisible(sectionCode) {
+			a.setSectionVisible(sectionCode, true)
+			a.saveSettings()
+		}
+		a.workspaceTab = sectionCode
+		a.openRecent(path)
+		return
+	}
+	relative, ok := codeEditorRelativePath(a.snapshot.Root, path)
+	if !ok {
+		a.notify("error", tr("Could not open the file"), tr("The built-in editor can only open files in this repository."))
+		return
+	}
+	if !a.sectionVisible(sectionCode) {
+		a.setSectionVisible(sectionCode, true)
+		a.saveSettings()
+	}
+	a.setWorkspaceTab(sectionCode)
+	if relative == "" {
+		return
+	}
+	a.openCodeFile(relative, line)
+	a.revealCodeFile(relative)
+}
+
+func codeEditorRelativePath(root, name string) (string, bool) {
+	root, rootErr := filepath.Abs(root)
+	name, nameErr := filepath.Abs(name)
+	if rootErr != nil || nameErr != nil {
+		return "", false
+	}
+	relative, err := filepath.Rel(root, name)
+	if err != nil {
+		return "", false
+	}
+	if relative == "." {
+		return "", true
+	}
+	relative = filepath.ToSlash(relative)
+	if !validCodeRelativePath(relative) {
+		return "", false
+	}
+	return relative, true
+}
+
 // editorLaunchButton opens the path immediately with the configured command.
 // Editor selection belongs in Settings, not in the launch action.
 func (a *app) editorLaunchButton(c *ui.Context, label, tooltip, path string, line int) {
 	button := compactIconButton(ui.Button(c, ""))
 	button.Label(tr(label)).Tooltip(tr(tooltip) + "\n" + tr("Configure your editor in Settings → Editor."))
 	button.Children(func() {
-		ui.Icon(c, vscodeIcon).FontSize(14)
+		ui.Icon(c, fileCodeIcon).FontSize(14)
 	})
 	if button.Clicked() {
 		a.launchEditor(path, line)

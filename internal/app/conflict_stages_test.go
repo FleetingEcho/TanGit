@@ -25,6 +25,7 @@ func TestThreeWayConflictTabsKeepStagesImmutable(t *testing.T) {
 		}}}},
 		conflictStages: stages,
 	})
+	a.workspaceTab = sectionChanges
 	h := &harness{app: a, updates: newUpdates()}
 	h.tester = ui.NewTester(a.view, 1280, 800)
 	a.update = h.updates.update
@@ -83,6 +84,7 @@ func TestThreeWayConflictMissingStageExplainsDeletion(t *testing.T) {
 			Base: repository.ConflictStage{Present: true, Content: "base\n"}, Incoming: repository.ConflictStage{Present: true, Content: "incoming\n"},
 		},
 	})
+	a.workspaceTab = sectionChanges
 	h := &harness{app: a, updates: newUpdates()}
 	h.tester = ui.NewTester(a.view, 1280, 800)
 	a.update = h.updates.update

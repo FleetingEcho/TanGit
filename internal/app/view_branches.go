@@ -72,6 +72,7 @@ func (a *app) branchFormModal(c *ui.Context) {
 		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 			Justify(ui.Center).AlignItems(ui.Center).
 			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
+		a.registerTerminalModalShortcuts(back)
 		back.Children(func() {
 			panel := ui.Column(c).Width(500).MaxWidthPercent(92).
 				Padding(22).Gap(16).Background(theme.Background).
@@ -457,6 +458,7 @@ func (a *app) branchFullscreenView(c *ui.Context, topInset float32) {
 	ui.Overlay(c, func() {
 		panel := ui.Column(c).Absolute().Left(0).Top(topInset).Right(0).Bottom(0).
 			Padding(islandGap / 2).Background(islandBackdrop(c.Theme())).Modal()
+		a.registerTerminalModalShortcuts(panel)
 		if !a.settings.DisableShortcuts {
 			panel.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
 			panel.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })

@@ -275,6 +275,7 @@ func (a *app) fileHistoryDrawer(c *ui.Context, overlayTopInset float32) {
 	ui.Overlay(c, func() {
 		back := ui.Row(c).Absolute().Left(0).Top(overlayTopInset).Right(0).Bottom(0).
 			Background(ui.RGBA(0, 0, 0, 0.3)).Modal()
+		a.registerTerminalModalShortcuts(back)
 		back.Children(func() {
 			// The drawer's share of the width, and the dimmed page it
 			// leaves on the left for the divider to move.

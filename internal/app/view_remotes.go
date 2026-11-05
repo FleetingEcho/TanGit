@@ -406,7 +406,7 @@ func (a *app) remoteFormModal(c *ui.Context) {
 	if editing {
 		title, subtitle, submit = "Edit Remote", "Change this remote's name or fetch URL.", "Save changes"
 	}
-	repositoryFormModal(c, &a.showRemoteForm, 560, title, subtitle, remotesIcon, func() {
+	a.repositoryFormModal(c, &a.showRemoteForm, 560, title, subtitle, remotesIcon, func() {
 		ui.Column(c).Gap(10).Children(func() {
 			ui.TextInput(c, &a.remoteName).Label(tr("Remote name")).
 				Placeholder(tr("origin")).AutoFocus()

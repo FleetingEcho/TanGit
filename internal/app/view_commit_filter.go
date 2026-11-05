@@ -433,6 +433,7 @@ func (a *app) commitFilterModal(c *ui.Context) {
 		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 			Justify(ui.Center).AlignItems(ui.Center).
 			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
+		a.registerTerminalModalShortcuts(back)
 		back.Children(func() {
 			panel := ui.Column(c).Width(560).MaxWidthPercent(92).MaxHeightPercent(94).
 				Padding(22).Gap(16).Background(theme.Background).

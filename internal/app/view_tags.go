@@ -156,7 +156,7 @@ func (a *app) tagRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) {
 }
 
 func (a *app) tagFormModal(c *ui.Context) {
-	repositoryFormModal(c, &a.showTagForm, 560, "Create Tag",
+	a.repositoryFormModal(c, &a.showTagForm, 560, "Create Tag",
 		"Name a fixed point in repository history.", tagsIcon, func() {
 			ui.Row(c).Gap(10).AlignItems(ui.End).Children(func() {
 				ui.TextInput(c, &a.tagName).Label(tr("Tag name")).

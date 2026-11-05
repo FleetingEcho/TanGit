@@ -511,9 +511,9 @@ func TestConflictReviewShowsBothSidesAsADiff(t *testing.T) {
 	if !h.app.conflictReview {
 		t.Fatal("the review did not open")
 	}
-	// The way back to the markers, and the Edit icon that opens the whole
-	// file, are both there: the review is a diff, the markers are the file.
-	for _, label := range []string{"Show conflict markers", "Edit"} {
+	// The way back to the markers remains: the review is a diff, the markers
+	// are the file, and the Code action replaces the old pencil.
+	for _, label := range []string{"Show conflict markers"} {
 		if !slices.Contains(h.texts(), label) {
 			t.Fatalf("the review is missing %q: %q", label, h.texts())
 		}
@@ -579,7 +579,6 @@ func TestAConflictedFileHeaderCarriesTheDiffControls(t *testing.T) {
 	h.tester.Frame()
 
 	for _, label := range []string{
-		"Edit",
 		"Open file in editor",
 		"Review both sides",
 		"Toggle diff line wrapping",
@@ -670,9 +669,8 @@ func TestAConflictedFileMenuHoldsTheResolutionActions(t *testing.T) {
 	}
 }
 
-// The Edit icon opens the conflicted file whole in the pane's editor, as it
-// does for any changed file, and Done reads the conflict again so the markers
-// show what was typed.
+// The legacy pane editor remains covered through its internal action after its
+// redundant header button was removed. Done still rereads the conflict markers.
 func TestEditingAConflictedFileWholeReturnsToItsMarkers(t *testing.T) {
 	const content = "one\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> feature\nlast\n"
 	// The pane reads and writes the same text, as it does on disk, so the
@@ -700,15 +698,14 @@ func TestEditingAConflictedFileWholeReturnsToItsMarkers(t *testing.T) {
 		return !h.app.diffLoading && h.app.conflictState != nil
 	})
 	h.tester.Frame()
-	if err := h.tester.Click("Edit"); err != nil {
-		t.Fatalf("open the file editor: %v", err)
-	}
+	h.app.openFileEdit()
+	h.tester.Frame()
 	h.waitFor(t, "the file read", func() bool {
 		return !h.app.fileEditLoading && h.app.fileEditState != nil
 	})
 	h.tester.Frame()
 	if !h.app.fileEditing {
-		t.Fatal("the Edit icon did not open the editor")
+		t.Fatal("the internal edit action did not open the editor")
 	}
 	// The editor owns the file whole: the conflict actions step aside while
 	// it shows, so a click meant for the file cannot mark it resolved half
@@ -746,7 +743,7 @@ func TestEditingAConflictedFileWholeReturnsToItsMarkers(t *testing.T) {
 }
 
 // A conflicted file's header is a changed file's bar, with the way to review
-// its sides where a changed file keeps its Edit icon, and the way to mark it
+// its sides beside the Code action, and the way to mark it
 // resolved on the conflict toolbar under it rather than beside the name. At
 // the window's default width every control must still show: none may be laid
 // out past the pane's edge with no width, and the name must keep room to read.
@@ -765,6 +762,7 @@ func TestAConflictedFileFitsItsControlsInTheDefaultWindow(t *testing.T) {
 			{Path: path, Status: "UU", Unstaged: true, Tracked: true, HasMergeConflicts: true},
 		},
 	}}, calls: calls})
+	a.workspaceTab = sectionChanges
 	h := &harness{app: a, updates: newUpdates()}
 	opts := appWindowOptions(nil)
 	h.tester = ui.NewTester(a.view, opts.Width, opts.Height)
@@ -778,7 +776,6 @@ func TestAConflictedFileFitsItsControlsInTheDefaultWindow(t *testing.T) {
 	h.tester.Frame()
 
 	for _, label := range []string{
-		"Edit",
 		"Open file in editor",
 		"Review both sides",
 		"Toggle diff line wrapping",
@@ -808,9 +805,9 @@ func TestAConflictedFileFitsItsControlsInTheDefaultWindow(t *testing.T) {
 	// Mark resolved ends the resolution, so it shares the conflict toolbar's
 	// row rather than the header beside the name: the header is then the bar
 	// a changed file has, on one row.
-	edit, _ := h.tester.Find("Edit")
+	editor, _ := h.tester.Find("Open file in editor")
 	mark, _ := h.tester.Find("Mark resolved")
-	if mark.Y <= edit.Y {
-		t.Fatalf("Mark resolved sits on the header row at %.0f, as Edit at %.0f", mark.Y, edit.Y)
+	if mark.Y <= editor.Y {
+		t.Fatalf("Mark resolved sits on the header row at %.0f, as the editor action at %.0f", mark.Y, editor.Y)
 	}
 }
