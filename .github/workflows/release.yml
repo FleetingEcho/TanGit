@@ -39,13 +39,18 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Cache Windows terminal libraries
-        if: matrix.name == 'Windows'
+      - name: Cache terminal libraries
         env:
           GH_TOKEN: ${{ github.token }}
+          MYGO_PLATFORM: ${{ matrix.name }}
         run: |
           mygo_dir="$(go list -m -f '{{.Dir}}' github.com/egoist/mygo)"
           manifest="$mygo_dir/plugins/terminal/mygo-plugin.json"
+          case "$MYGO_PLATFORM" in
+            macOS) prefix='darwin-' ;;
+            Windows) prefix='windows-' ;;
+            Linux) prefix='linux-' ;;
+          esac
           while IFS=$'\t' read -r name url sha; do
             asset="${url##*/}"
             release="${url%/*}"
@@ -58,9 +63,9 @@ jobs:
             gh api -H 'Accept: application/octet-stream' \
               "repos/egoist/mygo/releases/assets/$asset_id" > "$cache/$name"
             echo "$sha  $cache/$name" | sha256sum -c -
-          done < <(jq -r '
+          done < <(jq -r --arg prefix "$prefix" '
             .libraries[] | select(.name == "libghostty-vt") | .files |
-            to_entries[] | select(.key | startswith("windows-")) |
+            to_entries[] | select(.key | startswith($prefix)) |
             [.value.name, .value.url, .value.sha256] | @tsv
           ' "$manifest")
       - name: Install NSIS for Windows installers
