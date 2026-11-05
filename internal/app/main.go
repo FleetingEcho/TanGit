@@ -744,18 +744,12 @@ func newApp(opener repositoryOpener) *app {
 		match := a.code.searchResults[item.match]
 		return fmt.Sprintf("%s:%d: %s", match.Path, match.Line, match.Text)
 	}
-	a.compare.list.Selected = &a.compare.selected
+	a.compare.list.Selected = &a.compare.selectedRow
 	a.compare.list.Key = func(row int) any {
-		if row < 0 || row >= len(a.compare.files) {
-			return row
-		}
-		return a.compare.files[row].Path
+		return fileTreeKey(a.compare.fileRows, row)
 	}
 	a.compare.list.Label = func(row int) string {
-		if row < 0 || row >= len(a.compare.files) {
-			return ""
-		}
-		return a.compare.files[row].Path
+		return fileTreeLabel(a.compare.fileRows, row)
 	}
 	a.navList.Selected = &a.navSelected
 	a.navList.Key = func(row int) any {

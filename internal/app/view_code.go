@@ -140,7 +140,6 @@ func (a *app) codeFileExplorer(c *ui.Context) {
 	if a.keyboardListChanged(&a.code.list, list) {
 		a.selectCodeRow(a.code.selectedRow)
 	}
-	normalizeFileTreeRow(a.code.rows, &a.code.selectedRow, &a.code.selectedSource)
 }
 
 // codeRepositoryRootRow makes the opened workspace root a real creation and

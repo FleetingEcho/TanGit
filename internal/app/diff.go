@@ -289,6 +289,18 @@ func (a *app) activeDiff() (shownDiff, bool) {
 			state:    a.branchCommitDiffState,
 			media:    a.branchCommitDiffMedia,
 		}, true
+	case sectionCompare:
+		if a.compare.selected < 0 || a.compare.selected >= len(a.compare.files) {
+			return shownDiff{}, false
+		}
+		file := a.compare.files[a.compare.selected]
+		return shownDiff{
+			title:    file.Path,
+			subtitle: a.compare.appliedFrom + " → " + a.compare.appliedTo,
+			path:     file.Path,
+			patch:    a.compare.diffPatch,
+			state:    a.compare.diffState,
+		}, true
 	case sectionStash:
 		if a.selectedStash < 0 || a.selectedStash >= len(a.snapshot.Stashes) ||
 			a.selectedStashFile < 0 || a.selectedStashFile >= len(a.stashFiles) {
@@ -321,6 +333,8 @@ func (a *app) activeDiffLoading() bool {
 		return a.branchCommitDiffLoading
 	case sectionStash:
 		return a.stashDiffLoading
+	case sectionCompare:
+		return a.compare.diffLoading
 	}
 	return false
 }
@@ -340,6 +354,8 @@ func (a *app) activeDiffError() string {
 		return a.branchCommitDiffError
 	case sectionStash:
 		return a.stashDiffError
+	case sectionCompare:
+		return a.compare.diffError
 	}
 	return ""
 }
@@ -391,9 +407,18 @@ func (a *app) diffViewOptions(c *ui.Context) {
 	})
 }
 
+func (a *app) compareDiffControlsActive() bool {
+	return a.workspaceTab == sectionCompare && !a.fileHistoryOpen
+}
+
 // toggleDiffWhitespace changes the patch, rather than just its presentation.
-// Every ordinary diff is invalidated so its next read uses the same options.
+// Compare owns independent options; every ordinary diff shares the others.
 func (a *app) toggleDiffWhitespace() {
+	if a.compareDiffControlsActive() {
+		a.compare.options.IgnoreWhitespace = !a.compare.options.IgnoreWhitespace
+		a.refreshAppliedCompare()
+		return
+	}
 	a.diffOptions.IgnoreWhitespace = !a.diffOptions.IgnoreWhitespace
 	a.reloadOrdinaryDiffs()
 }
@@ -402,12 +427,22 @@ func (a *app) toggleDiffWhitespace() {
 // offering the useful no-context, narrow, default and generous readings.
 func (a *app) cycleDiffContext() {
 	choices := []int{0, 1, 3, 5, 10}
+	current := a.diffOptions.ContextLines
+	if a.compareDiffControlsActive() {
+		current = a.compare.options.ContextLines
+	}
 	next := 3
 	for i, choice := range choices {
-		if a.diffOptions.ContextLines == choice {
+		if current == choice {
 			next = choices[(i+1)%len(choices)]
 			break
 		}
+	}
+	if a.compareDiffControlsActive() {
+		a.compare.options.ContextLines = next
+		a.compare.context = fmt.Sprintf("%d", next)
+		a.refreshAppliedCompare()
+		return
 	}
 	a.diffOptions.ContextLines = next
 	a.reloadOrdinaryDiffs()
@@ -454,8 +489,12 @@ func (a *app) reloadOrdinaryDiffs() {
 func (a *app) diffWhitespaceButton(c *ui.Context) {
 	// A constructor appends its button, so choose the active look before
 	// building it rather than replacing a plain button with a primary one.
+	options := a.diffOptions
+	if a.compareDiffControlsActive() {
+		options = a.compare.options
+	}
 	var button ui.Element
-	if a.diffOptions.IgnoreWhitespace {
+	if options.IgnoreWhitespace {
 		button = compactIconButton(ui.PrimaryButton(c, ""))
 	} else {
 		button = compactIconButton(ui.Button(c, ""))
@@ -471,6 +510,10 @@ func (a *app) diffWhitespaceButton(c *ui.Context) {
 }
 
 func (a *app) diffContextButton(c *ui.Context) {
+	options := a.diffOptions
+	if a.compareDiffControlsActive() {
+		options = a.compare.options
+	}
 	button := compactIconButton(ui.Button(c, ""))
 	clicked := button.Label(tr("Change diff context lines")).
 		Tooltip(tr("Alt+U · Cycle through 0, 1, 3, 5, and 10 context lines")).Clicked()
@@ -479,7 +522,7 @@ func (a *app) diffContextButton(c *ui.Context) {
 		// the icon toolbar.
 		ui.Row(c).Gap(3).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, diffContextIcon).FontSize(14)
-			ui.Text(c, fmt.Sprintf("%d", a.diffOptions.ContextLines)).FontSize(c.Theme().FontSize - 2)
+			ui.Text(c, fmt.Sprintf("%d", options.ContextLines)).FontSize(c.Theme().FontSize - 2)
 		})
 	})
 	if clicked {
@@ -513,12 +556,16 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 							FontSize(theme.FontSize - 1).SingleLine()
 					}
 				})
-				a.diffWhitespaceButton(c)
-				a.diffContextButton(c)
-				a.diffLayoutButton(c)
-				a.diffWrapButton(c)
-				a.exportDiffButton(c)
-				iconButton(c, "Restore diff view", "Restore diff view", shrinkIcon, false, a.closeDiffFullscreen)
+				if a.compareDiffControlsActive() {
+					a.compareDiffViewOptions(c, true)
+				} else {
+					a.diffWhitespaceButton(c)
+					a.diffContextButton(c)
+					a.diffLayoutButton(c)
+					a.diffWrapButton(c)
+					a.exportDiffButton(c)
+					iconButton(c, "Restore diff view", "Restore diff view", shrinkIcon, false, a.closeDiffFullscreen)
+				}
 			})
 			if a.workspaceTab == sectionChanges && a.lineSelectionAvailable() {
 				ui.Column(c).Padding(10, 14).Children(func() {
@@ -624,6 +671,19 @@ func (a *app) fullscreenDiffFiles() []fullscreenFile {
 				status:  file.Status,
 				current: i == a.selectedBranchCommitFile,
 				choose:  func() { a.selectedBranchCommitFile = i },
+			})
+		}
+		return files
+	case sectionCompare:
+		files := make([]fullscreenFile, 0, len(a.compare.files))
+		for i, file := range a.compare.files {
+			files = append(files, fullscreenFile{
+				id:       "compare\x00" + file.Path,
+				label:    file.Path,
+				status:   file.Status,
+				previous: file.PreviousPath,
+				current:  i == a.compare.selected,
+				choose:   func() { a.selectCompareSource(i) },
 			})
 		}
 		return files
