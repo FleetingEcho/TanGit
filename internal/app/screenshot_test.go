@@ -721,7 +721,7 @@ func TestScreenshot(t *testing.T) {
 
 	t.Run("terminal-dock-light", func(t *testing.T) {
 		original := newTerminal
-		peers := make(chan monitoredTerminalPeer, 2)
+		peers := make(chan monitoredTerminalPeer, 3)
 		newTerminal = func(options terminal.Options) (*terminal.Terminal, error) {
 			return newMonitoredTerminal(options, peers)
 		}
@@ -756,6 +756,16 @@ func TestScreenshot(t *testing.T) {
 		tt.Advance(250 * time.Millisecond)
 		tt.Frame()
 		saveScreenshot(t, dir, "75-terminal-restored-light", tt)
+		if err := tt.Click("Split terminal right"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		settleShot(t, tt, updated, func() bool {
+			return len(a.term.sessions) == 3 && a.term.sessions[2].pane != nil
+		})
+		third := <-peers
+		defer third.Close()
+		tt.Frame()
 		tab, found := tt.Find("Terminal tab 2")
 		if !found {
 			t.Fatal("the second terminal tab is missing")
