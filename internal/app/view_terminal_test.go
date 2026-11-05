@@ -419,6 +419,40 @@ func TestTerminalTopLevelTabRenameAndContextMenu(t *testing.T) {
 	requireTerminalClosed(t, second)
 }
 
+func TestTerminalHideAndRestoreKeepShellDimensionsStable(t *testing.T) {
+	h, _, first := monitoredTerminalTestApp(t)
+	pane := h.app.term.sessions[0].pane
+	wantCols, wantRows := pane.Size()
+	if wantCols <= 1 || wantRows <= 1 {
+		t.Fatalf("the initial terminal has no useful grid: %dx%d", wantCols, wantRows)
+	}
+	requireSize := func(stage string) {
+		t.Helper()
+		if cols, rows := pane.Size(); cols != wantCols || rows != wantRows {
+			t.Fatalf("%s resized the hidden shell from %dx%d to %dx%d", stage, wantCols, wantRows, cols, rows)
+		}
+	}
+
+	for cycle := 1; cycle <= 3; cycle++ {
+		if err := h.tester.Click("Hide terminal"); err != nil {
+			t.Fatal(err)
+		}
+		for step := 0; step < 14; step++ {
+			h.tester.Advance(20 * time.Millisecond)
+			h.tester.Frame()
+			requireSize(fmt.Sprintf("hide cycle %d frame %d", cycle, step))
+		}
+		requireTerminalRunning(t, first)
+		h.app.openTerminal()
+		for step := 0; step < 14; step++ {
+			h.tester.Advance(20 * time.Millisecond)
+			h.tester.Frame()
+			requireSize(fmt.Sprintf("restore cycle %d frame %d", cycle, step))
+		}
+		requireTerminalRunning(t, first)
+	}
+}
+
 func TestTerminalMaximizeRestoresPanelHeightAndSessions(t *testing.T) {
 	h, peers, first := monitoredTerminalTestApp(t)
 	if err := h.tester.Click("New terminal tab"); err != nil {
@@ -890,6 +924,7 @@ func TestTerminalSplitHideAndCloseHaveIndependentLifetimes(t *testing.T) {
 	requireTerminalRunning(t, first)
 	requireTerminalRunning(t, second)
 	h.app.openTerminal()
+	h.tester.Advance(250 * time.Millisecond)
 	h.tester.Frame()
 	if h.app.term.sessions[0].pane != firstPane || h.app.term.sessions[1].pane != secondPane {
 		t.Fatal("reopening replaced the hidden terminals")
