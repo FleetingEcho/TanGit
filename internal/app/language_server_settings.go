@@ -1,0 +1,195 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os/exec"
+	"strings"
+	"time"
+
+	"github.com/egoist/mygo/ui"
+)
+
+const goLanguageServerID = "go"
+
+var runLanguageServerVersion = func(program string, arguments []string) (string, error) {
+	return runLanguageServerVersionArguments(program, arguments, []string{"version"})
+}
+
+func runLanguageServerVersionArguments(program string, arguments, versionArguments []string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, program, append(append([]string(nil), arguments...), versionArguments...)...)
+	output, err := command.CombinedOutput()
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return "", errors.New("the language server did not respond within 5 seconds")
+	}
+	text := strings.TrimSpace(string(output))
+	if err != nil {
+		if text != "" {
+			return "", fmt.Errorf("%s: %w", text, err)
+		}
+		return "", err
+	}
+	return text, nil
+}
+
+type languageServerDraft struct {
+	Enabled   bool
+	Path      string
+	Arguments string
+}
+
+func (a *app) loadGoLanguageServerDraft() {
+	a.invalidateLanguageServerTest()
+	server := a.settings.LanguageServers[goLanguageServerID]
+	a.goLanguageServerEnabled = !server.Disabled
+	a.goLanguageServerPath = server.Path
+	a.goLanguageServerArgs = strings.Join(server.Arguments, "\n")
+	a.loadAdditionalLanguageServerDrafts()
+}
+
+func (a *app) loadAdditionalLanguageServerDrafts() {
+	a.languageServerDrafts = make(map[string]*languageServerDraft)
+	for _, profile := range languageServerProfiles {
+		if profile.ID == goLanguageServerID {
+			continue
+		}
+		server, configured := a.settings.LanguageServers[profile.ID]
+		a.languageServerDrafts[profile.ID] = &languageServerDraft{
+			Enabled: configured && !server.Disabled, Path: server.Path, Arguments: strings.Join(server.Arguments, "\n"),
+		}
+	}
+}
+
+func (a *app) storeAdditionalLanguageServerDraft(c *ui.Context, id string) {
+	profile, ok := languageServerProfileByID(id)
+	draft := a.languageServerDrafts[id]
+	if !ok || profile.ID == goLanguageServerID || draft == nil {
+		return
+	}
+	if server := a.additionalLanguageServers[id]; server != nil {
+		a.stopManagedLanguageServer(server)
+		delete(a.additionalLanguageServers, id)
+	}
+	if a.settings.LanguageServers == nil {
+		a.settings.LanguageServers = make(map[string]languageServerSettings)
+	}
+	if !draft.Enabled {
+		delete(a.settings.LanguageServers, id)
+	} else {
+		a.settings.LanguageServers[id] = languageServerSettings{
+			Path: strings.TrimSpace(draft.Path), Arguments: languageServerArguments(draft.Arguments),
+		}
+	}
+	a.settingsChanged(c)
+}
+
+func (a *app) invalidateLanguageServerTest() {
+	a.languageServerTestSeq++
+	a.languageServerTestBusy = false
+	a.languageServerTestResult = ""
+	a.languageServerTestOK = false
+}
+
+func languageServerArguments(text string) []string {
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	arguments := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if line = strings.TrimSpace(line); line != "" {
+			arguments = append(arguments, line)
+		}
+	}
+	return arguments
+}
+
+func (a *app) storeGoLanguageServerDraft(c *ui.Context) {
+	a.invalidateLanguageServerTest()
+	a.stopGoLanguageServer()
+	server := languageServerSettings{
+		Disabled:  !a.goLanguageServerEnabled,
+		Path:      strings.TrimSpace(a.goLanguageServerPath),
+		Arguments: languageServerArguments(a.goLanguageServerArgs),
+	}
+	if a.settings.LanguageServers == nil {
+		a.settings.LanguageServers = make(map[string]languageServerSettings)
+	}
+	if !server.Disabled && server.Path == "" && len(server.Arguments) == 0 {
+		delete(a.settings.LanguageServers, goLanguageServerID)
+	} else {
+		a.settings.LanguageServers[goLanguageServerID] = server
+	}
+	if len(a.settings.LanguageServers) == 0 {
+		a.settings.LanguageServers = nil
+	}
+	a.settingsChanged(c)
+}
+
+func (a *app) goLanguageServerSettings() languageServerSettings {
+	return a.settings.LanguageServers[goLanguageServerID]
+}
+
+func (a *app) testGoLanguageServer() {
+	a.testLanguageServerProfile(goLanguageServerID)
+}
+
+func (a *app) testLanguageServerProfile(id string) {
+	if a.languageServerTestBusy {
+		return
+	}
+	profile, ok := languageServerProfileByID(id)
+	if !ok {
+		return
+	}
+	program, arguments := languageServerProgram(a.settings.LanguageServers, profile)
+	probeArguments := profile.VersionArguments
+	if id != goLanguageServerID {
+		// Transport flags such as --stdio and --lsp start the long-running
+		// server; a version probe needs only the user's explicit global flags.
+		arguments = append([]string(nil), a.settings.LanguageServers[id].Arguments...)
+		if managedProbe := a.settings.LanguageServers[id].ProbeArguments; len(managedProbe) > 0 {
+			arguments = nil
+			probeArguments = managedProbe
+		}
+	}
+	a.languageServerTestSeq++
+	sequence := a.languageServerTestSeq
+	a.languageServerTestID = id
+	a.languageServerTestBusy = true
+	a.languageServerTestResult = ""
+	a.languageServerTestOK = false
+	go func() {
+		defer a.recoverBackground()
+		var output string
+		var err error
+		if id == goLanguageServerID {
+			output, err = runLanguageServerVersion(program, arguments)
+		} else {
+			output, err = runLanguageServerVersionArguments(program, arguments, probeArguments)
+		}
+		a.update(func() {
+			if sequence != a.languageServerTestSeq {
+				return
+			}
+			a.languageServerTestBusy = false
+			if err != nil {
+				name := profile.Name
+				if id == goLanguageServerID {
+					name = "gopls"
+				}
+				a.languageServerTestResult = "Could not start " + name + ": " + safeError(err)
+				return
+			}
+			a.languageServerTestOK = true
+			if output == "" {
+				if id == goLanguageServerID {
+					output = "gopls started successfully"
+				} else {
+					output = profile.Name + " started successfully"
+				}
+			}
+			a.languageServerTestResult = output
+		})
+	}()
+}

@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"image/color"
 	"slices"
 	"strings"
 	"testing"
@@ -109,6 +110,27 @@ func TestFilePaneRefusesABinaryFile(t *testing.T) {
 	}
 	if h.app.fileEditState != nil {
 		t.Fatal("a binary file was opened in the editor")
+	}
+}
+
+func TestFilePanePreviewsAnImageWithoutEditingIt(t *testing.T) {
+	stubWorkingFile(t, string(testPNG(t, 7, 5, color.RGBA{R: 255, A: 255})))
+
+	h, _ := changesTestApp(t, []repository.File{
+		{Path: "picture.png", Status: "??", Unstaged: true, Added: true},
+	})
+	h.tester.Frame()
+	h.app.openFileEdit()
+	h.tester.Frame()
+	h.waitFor(t, "the image preview", func() bool {
+		return !h.app.fileEditLoading && h.app.fileEditPreview != nil
+	})
+	h.tester.Frame()
+	if !h.tester.HasText("7 × 5") || !h.tester.HasText("This file is binary and cannot be edited here.") {
+		t.Fatalf("the image preview is missing its dimensions or read-only explanation: %q", h.texts())
+	}
+	if h.app.fileEditState != nil {
+		t.Fatal("an image was opened in the text editor")
 	}
 }
 
