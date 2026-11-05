@@ -195,13 +195,11 @@ func (a *app) resetFileEdit() {
 	a.fileEditToken++
 }
 
-// flushEdits writes what the pane's editors hold but the frame has not yet
-// saved. It runs at the top of every page frame, so switching sections saves
-// the last key, and again as a page or the window closes, when no frame is
-// left to do it.
+// flushEdits synchronizes the existing Changes/conflict editors and pins dirty
+// Editor preview tabs. Code documents are saved only by explicit user actions.
 func (a *app) flushEdits() {
 	a.saveFileEdits()
-	a.saveCodeEdits()
+	a.pinModifiedCodePreview()
 	a.syncConflictEdits()
 }
 

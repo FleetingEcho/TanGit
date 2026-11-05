@@ -293,6 +293,11 @@ func (a *app) codeFileStatus(path string) string {
 func (a *app) codeEditorPane(c *ui.Context) {
 	theme := c.Theme()
 	pane := islandCard(c, ui.Column(c).Grow(1)).Clip()
+	pane.OnShortcut(ui.Cmd, ui.KeyS, func() { a.saveCodeDocument(a.activeCodeDocument()) })
+	if ui.Cmd != ui.Ctrl {
+		pane.OnShortcut(ui.Ctrl, ui.KeyS, func() { a.saveCodeDocument(a.activeCodeDocument()) })
+	}
+	pane.OnShortcut(ui.Cmd|ui.Shift, ui.KeyS, a.saveCodeEdits)
 	pane.OnShortcut(ui.Alt, ui.KeyLeft, func() { a.navigateCodeHistory(true) })
 	pane.OnShortcut(ui.Alt, ui.KeyRight, func() { a.navigateCodeHistory(false) })
 	pane.Children(func() {
@@ -304,7 +309,6 @@ func (a *app) codeEditorPane(c *ui.Context) {
 			a.code.activeTab = max(0, min(len(a.code.tabs)-1, a.code.activeTab))
 		}
 		if a.code.tabs[a.code.activeTab] != a.code.active {
-			a.saveCodeEdits()
 			a.code.active = a.code.tabs[a.code.activeTab]
 		}
 		a.codeTabs(c)
@@ -348,8 +352,6 @@ func (a *app) codeEditorPane(c *ui.Context) {
 				ui.Text(c, tr("Could not save")+": "+document.saveError).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
 			} else if document.readOnly {
 				ui.Text(c, tr("Read only")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-			} else if document.state != nil {
-				ui.Text(c, tr("Saved automatically")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 			}
 		})
 		ui.Box(c).Height(1).Background(theme.Border)
@@ -391,7 +393,11 @@ func (a *app) codeTabs(c *ui.Context) {
 					close := compactIconButton(ui.ButtonBase(c)).Label(tr("Close") + " " + path).
 						Tooltip(tr("Close tab")).Disabled(a.code.fileOperationBusy)
 					close.Children(func() {
-						ui.Icon(c, closeIcon).FontSize(11).TextColor(theme.TextMuted)
+						if codeDocumentModified(document) && !close.Hovered() {
+							ui.Text(c, "●").FontSize(10).TextColor(theme.Text).Label(tr("Unsaved changes"))
+						} else {
+							ui.Icon(c, closeIcon).FontSize(11).TextColor(theme.TextMuted)
+						}
 					})
 					if close.Clicked() {
 						closePath = path

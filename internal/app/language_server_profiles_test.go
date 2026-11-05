@@ -49,6 +49,15 @@ func TestLanguageServerProfilesMatchLanguagesAndDefaults(t *testing.T) {
 }
 
 func TestMultipleLanguageServersShareATypeScriptDocument(t *testing.T) {
+	dataDir := t.TempDir()
+	tsserverPath := filepath.Join(dataDir, "tools", "node", "node_modules", "typescript", "lib", "tsserver.js")
+	if err := os.MkdirAll(filepath.Dir(tsserverPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tsserverPath, []byte("// managed TypeScript"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	typescript := newFakeLanguageServerConnection()
 	tailwind := newFakeLanguageServerConnection()
 	typescript.request = func(method string, _ any, result func(json.RawMessage, error)) {
@@ -70,8 +79,15 @@ func TestMultipleLanguageServersShareATypeScriptDocument(t *testing.T) {
 	stubLanguageServerConnection(t, func(launch languageServerLaunch) (languageServerConnection, error) {
 		switch launch.Program {
 		case "typescript-language-server":
+			want := map[string]any{"tsserver": map[string]any{"fallbackPath": tsserverPath}}
+			if !reflect.DeepEqual(launch.InitializationOptions, want) {
+				t.Errorf("TypeScript initialization = %#v, want %#v", launch.InitializationOptions, want)
+			}
 			return typescript, nil
 		case "tailwindcss-language-server":
+			if launch.InitializationOptions != nil {
+				t.Errorf("TypeScript fallback leaked into Tailwind: %#v", launch.InitializationOptions)
+			}
 			return tailwind, nil
 		default:
 			t.Fatalf("unexpected language server %q", launch.Program)
@@ -83,6 +99,7 @@ func TestMultipleLanguageServersShareATypeScriptDocument(t *testing.T) {
 		"target.ts": "export const value = 1\nexport const target = value\n",
 	})
 	h := menuTestApp(t)
+	h.app.pathUserData = dataDir
 	h.app.settings.LanguageServers = map[string]languageServerSettings{"go": {Disabled: true}, "typescript": {}, "tailwind": {}}
 	openCodePageForTest(t, h, 2)
 	h.app.openCodeFile("main.ts", 0)
@@ -96,6 +113,7 @@ func TestMultipleLanguageServersShareATypeScriptDocument(t *testing.T) {
 	document.state.Insert("// changed\n")
 	h.tester.Frame()
 	h.tester.Frame()
+	h.app.saveCodeDocument(document)
 	for name, events := range map[string][]languageServerDocumentEvent{
 		"TypeScript": typescript.snapshot(), "Tailwind": tailwind.snapshot(),
 	} {
@@ -153,71 +171,102 @@ func TestRealRustAnalyzerHoverAndDefinition(t *testing.T) {
 	if err != nil {
 		t.Skip("rust-analyzer is not installed")
 	}
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
-		t.Fatal(err)
+	for _, mode := range []string{"root", "nested", "standalone"} {
+		t.Run(mode, func(t *testing.T) {
+			workspace := t.TempDir()
+			workspace, err = filepath.EvalSymlinks(workspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := workspace
+			if mode == "nested" {
+				root = filepath.Join(workspace, "apps", "native")
+			}
+			if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if mode != "standalone" {
+				if err := os.WriteFile(filepath.Join(root, "Cargo.toml"), []byte("[package]\nname = \"editor-check\"\nversion = \"0.1.0\"\nedition = \"2024\"\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			const source = "fn helper(value: i32) -> i32 { value + 1 }\nfn main() { let result = helper(1); println!(\"{result}\"); }\n"
+			name := filepath.Join(root, "src", "main.rs")
+			if err := os.WriteFile(name, []byte(source), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			connection, err := connectStdioLanguageServer(languageServerLaunch{Program: program, Root: workspace, InitializationOptions: rustLanguageServerInitializationOptions(workspace, nil, []string{filepath.ToSlash(mustRelForTest(t, workspace, name))})})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				connection.Close()
+				time.Sleep(300 * time.Millisecond)
+			})
+			uri := languageServerFileURI(name)
+			connection.DidOpen(uri, "rust", source, 1)
+			request := func(method string, offset int) json.RawMessage {
+				t.Helper()
+				answer := make(chan languageServerResponse, 1)
+				connection.Request(method, languageServerTextPosition{
+					TextDocument: languageServerTextDocument{URI: uri}, Position: languageServerPositionAt(source, offset),
+				}, func(raw json.RawMessage, err error) { answer <- languageServerResponse{result: raw, err: err} })
+				select {
+				case response := <-answer:
+					if response.err != nil {
+						return nil
+					}
+					return response.result
+				case <-time.After(15 * time.Second):
+					t.Fatalf("%s timed out", method)
+					return nil
+				}
+			}
+			var hoverRaw json.RawMessage
+			var hover string
+			var ok bool
+			for range 20 {
+				hoverRaw = request("textDocument/hover", strings.LastIndex(source, "result"))
+				hover, _, ok = parseLanguageServerHover(hoverRaw)
+				if ok && strings.Contains(hover, "result") {
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+			if !ok || !strings.Contains(hover, "result") {
+				t.Fatalf("rust-analyzer hover = %s", hoverRaw)
+			}
+			var definitionRaw json.RawMessage
+			var location languageServerLocation
+			for range 20 {
+				definitionRaw = request("textDocument/definition", strings.Index(source, "helper(1)"))
+				location, ok = firstLanguageServerLocation(definitionRaw)
+				if ok {
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+			definitionPath, pathOK := languageServerFilePath(location.URI)
+			if !ok || !pathOK || !strings.EqualFold(filepath.Clean(definitionPath), filepath.Clean(name)) || location.Range.Start.Line != 0 {
+				t.Fatalf("rust-analyzer definition = %s", definitionRaw)
+			}
+		})
 	}
-	if err := os.WriteFile(filepath.Join(root, "Cargo.toml"), []byte("[package]\nname = \"editor-check\"\nversion = \"0.1.0\"\nedition = \"2024\"\n"), 0o644); err != nil {
-		t.Fatal(err)
+}
+
+func TestTypeScriptInitializationWithoutManagedInstallation(t *testing.T) {
+	for _, dataDir := range []string{"", t.TempDir()} {
+		if options := languageServerInitializationOptions("typescript", dataDir); options != nil {
+			t.Fatalf("missing managed installation supplied options: %#v", options)
+		}
 	}
-	const source = "fn helper(value: i32) -> i32 { value + 1 }\nfn main() { let result = helper(1); println!(\"{result}\"); }\n"
-	name := filepath.Join(root, "src", "main.rs")
-	if err := os.WriteFile(name, []byte(source), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	connection, err := connectStdioLanguageServer(languageServerLaunch{Program: program, Root: root})
+}
+
+func mustRelForTest(t *testing.T, root, path string) string {
+	t.Helper()
+	relative, err := filepath.Rel(root, path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		connection.Close()
-		time.Sleep(300 * time.Millisecond)
-	})
-	uri := languageServerFileURI(name)
-	connection.DidOpen(uri, "rust", source, 1)
-	request := func(method string, offset int) json.RawMessage {
-		t.Helper()
-		answer := make(chan languageServerResponse, 1)
-		connection.Request(method, languageServerTextPosition{
-			TextDocument: languageServerTextDocument{URI: uri}, Position: languageServerPositionAt(source, offset),
-		}, func(raw json.RawMessage, err error) { answer <- languageServerResponse{result: raw, err: err} })
-		select {
-		case response := <-answer:
-			if response.err != nil {
-				return nil
-			}
-			return response.result
-		case <-time.After(15 * time.Second):
-			t.Fatalf("%s timed out", method)
-			return nil
-		}
-	}
-	var hoverRaw json.RawMessage
-	var hover string
-	var ok bool
-	for range 20 {
-		hoverRaw = request("textDocument/hover", strings.LastIndex(source, "result"))
-		hover, _, ok = parseLanguageServerHover(hoverRaw)
-		if ok && strings.Contains(hover, "result") {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !ok || !strings.Contains(hover, "result") {
-		t.Fatalf("rust-analyzer hover = %s", hoverRaw)
-	}
-	var definitionRaw json.RawMessage
-	var location languageServerLocation
-	for range 20 {
-		definitionRaw = request("textDocument/definition", strings.Index(source, "helper(1)"))
-		location, ok = firstLanguageServerLocation(definitionRaw)
-		if ok {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	definitionPath, pathOK := languageServerFilePath(location.URI)
-	if !ok || !pathOK || !strings.EqualFold(filepath.Clean(definitionPath), filepath.Clean(name)) || location.Range.Start.Line != 0 {
-		t.Fatalf("rust-analyzer definition = %s", definitionRaw)
-	}
+	return relative
 }

@@ -690,6 +690,27 @@ func (s *shell) canClose(t *tab) bool {
 // closeTab closes a page. The last page is never dropped to nothing: a lone
 // repository leaves the picker behind, and a lone picker stays.
 func (s *shell) closeTab(t *tab) {
+	s.confirmCodeTabs([]*tab{t}, func() { s.closeTabConfirmed(t) })
+}
+
+// confirmCodeTabs visits each affected repository, showing its unsaved prompt
+// before any page is removed. Cancelling leaves every page intact.
+func (s *shell) confirmCodeTabs(tabs []*tab, run func()) {
+	for index, candidate := range tabs {
+		if s.indexOf(candidate) < 0 || len(candidate.app.dirtyCodePaths()) == 0 {
+			continue
+		}
+		s.activate(s.indexOf(candidate))
+		candidate.app.confirmCodeChanges(candidate.app.dirtyCodePaths(), func() {
+			s.confirmCodeTabs(tabs[index+1:], run)
+		})
+		s.invalidate()
+		return
+	}
+	run()
+}
+
+func (s *shell) closeTabConfirmed(t *tab) {
 	i := s.indexOf(t)
 	if i < 0 {
 		return
@@ -716,6 +737,16 @@ func (s *shell) closeTab(t *tab) {
 // closeOthers closes every page that can be closed besides t, keeping pinned
 // pages as Chrome does.
 func (s *shell) closeOthers(t *tab) {
+	var closing []*tab
+	for _, candidate := range s.tabs {
+		if candidate != t && !candidate.pinned {
+			closing = append(closing, candidate)
+		}
+	}
+	s.confirmCodeTabs(closing, func() { s.closeOthersConfirmed(t) })
+}
+
+func (s *shell) closeOthersConfirmed(t *tab) {
 	if s.indexOf(t) < 0 {
 		return
 	}
@@ -740,6 +771,20 @@ func (s *shell) closeOthers(t *tab) {
 
 // closeRight closes the pages after t that can be closed, leaving pinned ones.
 func (s *shell) closeRight(t *tab) {
+	index := s.indexOf(t)
+	if index < 0 {
+		return
+	}
+	var closing []*tab
+	for _, candidate := range s.tabs[index+1:] {
+		if !candidate.pinned {
+			closing = append(closing, candidate)
+		}
+	}
+	s.confirmCodeTabs(closing, func() { s.closeRightConfirmed(t) })
+}
+
+func (s *shell) closeRightConfirmed(t *tab) {
 	i := s.indexOf(t)
 	if i < 0 {
 		return
@@ -760,6 +805,10 @@ func (s *shell) closeRight(t *tab) {
 
 // closeAll closes every page and leaves the picker in the window.
 func (s *shell) closeAll() {
+	s.confirmCodeTabs(append([]*tab(nil), s.tabs...), s.closeAllConfirmed)
+}
+
+func (s *shell) closeAllConfirmed() {
 	for _, t := range s.tabs {
 		t.app.shutdown()
 	}

@@ -322,10 +322,22 @@ func installNodeLanguageServer(ctx context.Context, toolsDir string, profile lan
 	prefix := filepath.Join(toolsDir, "node")
 	arguments := []string{"install", "--no-audit", "--no-fund", "--prefix", prefix}
 	for _, name := range packages {
-		arguments = append(arguments, name+"@latest")
+		version := "@latest"
+		if name == "typescript" {
+			// typescript-language-server wraps the JS tsserver API. TypeScript
+			// 7 no longer ships it; upstream requires TypeScript 6 instead.
+			version = "@6"
+		}
+		arguments = append(arguments, name+version)
 	}
 	if err := runLanguageServerInstaller(ctx, npm, arguments, nil); err != nil {
 		return languageServerInstallation{}, err
+	}
+	if profile.ID == "typescript" {
+		path := filepath.Join(prefix, "node_modules", "typescript", "lib", "tsserver.js")
+		if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
+			return languageServerInstallation{}, errors.New("installed TypeScript has no tsserver.js; reinstall TypeScript Language Server with TypeScript 6")
+		}
 	}
 	binPath, err := nodePackageExecutable(prefix, packages[0], profile.Program)
 	if err != nil {

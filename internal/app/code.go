@@ -48,7 +48,6 @@ type codeDocument struct {
 	imagePreview        *mediaPreview
 	loadError           string
 	saveError           string
-	triedVersion        uint64
 	pendingLine         int
 	pendingColumn       int
 	pendingUTF16        bool
@@ -239,7 +238,21 @@ func (a *app) syncCodeTree() {
 			directories = append(directories, directory)
 		}
 	}
-	a.code.rows = buildFileTreeRowsWithDirectories(a.code.visiblePaths, directories, true, a.fileTreeCollapsed, codeFileTreeScope)
+	if a.fileTreeCollapsed == nil {
+		a.fileTreeCollapsed = make(map[string]bool)
+	}
+	for _, directory := range append(fileTreeDirectories(a.code.files), directories...) {
+		key := fileTreeCollapseKey(codeFileTreeScope, directory)
+		if _, known := a.fileTreeCollapsed[key]; !known {
+			a.fileTreeCollapsed[key] = true
+		}
+	}
+	collapsed := a.fileTreeCollapsed
+	// Filtering reveals matches without changing the user's folder choices.
+	if filter != "" {
+		collapsed = nil
+	}
+	a.code.rows = buildFileTreeRowsWithDirectories(a.code.visiblePaths, directories, true, collapsed, codeFileTreeScope)
 	a.code.selectedRow, a.code.selectedSource = -1, -1
 	if selectedPath != "" {
 		for row, item := range a.code.rows {
@@ -372,7 +385,7 @@ func (a *app) openCodeLocationMode(path string, line, column int, pinned bool) {
 }
 
 func (a *app) openCodeDocumentLocation(path, diskPath string, readOnly bool, line, column int, pinned bool) {
-	a.saveCodeEdits()
+	a.pinModifiedCodePreview()
 	if a.code.documents == nil {
 		a.code.documents = make(map[string]*codeDocument)
 	}
@@ -446,7 +459,6 @@ func (a *app) requestCodeDocument(document *codeDocument) {
 	document.imagePreview = nil
 	document.loadError = ""
 	document.saveError = ""
-	document.triedVersion = 0
 	go func() {
 		defer a.recoverBackground()
 		content, err := readWorkingFile(onDisk)
@@ -513,20 +525,11 @@ func (a *app) saveCodeDocument(document *codeDocument) {
 	if document != nil && document.readOnly {
 		return
 	}
-	if document != nil && document.state != nil && document.state.Buffer != nil && document.state.Buffer.Modified() &&
-		a.code.preview == document.path {
-		a.code.preview = ""
-	}
 	// Structural file operations rename or remove paths off the UI thread.
 	// Saving during one could recreate the source after it has moved.
 	if a.code.fileOperationBusy || document == nil || document.state == nil || document.state.Buffer == nil || !document.state.Buffer.Modified() {
 		return
 	}
-	version := document.state.Buffer.Version()
-	if document.saveError != "" && version == document.triedVersion {
-		return
-	}
-	document.triedVersion = version
 	var content bytes.Buffer
 	if _, err := document.state.Buffer.WriteTo(&content); err != nil {
 		document.saveError = safeError(err)
@@ -555,22 +558,74 @@ func (a *app) saveCodeEdits() {
 	}
 }
 
-func (a *app) closeCodeFile(path string) {
-	document := a.code.documents[path]
-	if document == nil || a.code.fileOperationBusy {
-		return
-	}
-	// An explicit close retries a previous failed write; ordinary frames avoid
-	// rewriting the same failed version over and over.
-	document.saveError = ""
-	a.saveCodeDocument(document)
-	// A close is not permission to discard text the OS could not save. Keep
-	// the tab and its error visible so the user can retry or copy the buffer.
-	if document.state != nil && document.state.Buffer != nil && document.state.Buffer.Modified() {
-		return
-	}
-	a.removeCodeDocument(path)
+func codeDocumentModified(document *codeDocument) bool {
+	return document != nil && !document.readOnly && document.state != nil && document.state.Buffer != nil && document.state.Buffer.Modified()
 }
+
+func (a *app) pinModifiedCodePreview() {
+	if codeDocumentModified(a.code.documents[a.code.preview]) {
+		a.code.preview = ""
+	}
+}
+
+// confirmCodeChanges never writes implicitly: Save, Don't Save and Cancel are
+// explicit choices. The continuation owns removal of the approved documents.
+func (a *app) confirmCodeChanges(paths []string, run func()) {
+	var dirty []*codeDocument
+	for _, path := range paths {
+		if document := a.code.documents[path]; codeDocumentModified(document) {
+			dirty = append(dirty, document)
+		}
+	}
+	if len(dirty) == 0 {
+		run()
+		return
+	}
+	names := make([]string, len(dirty))
+	for i, document := range dirty {
+		names[i] = document.path
+	}
+	a.askConfirm(confirmRequest{
+		title: "Unsaved changes", message: "Save your changes before closing?",
+		detail: strings.Join(names, "\n"), confirmLabel: "Save", alternativeLabel: "Don't Save",
+		alternative: run,
+		run: func() {
+			for _, document := range dirty {
+				if a.code.documents[document.path] != document {
+					return
+				}
+				a.saveCodeDocument(document)
+				if codeDocumentModified(document) {
+					return
+				}
+			}
+			run()
+		},
+	})
+}
+
+func (a *app) dirtyCodePaths() []string {
+	var paths []string
+	for _, path := range a.code.tabs {
+		if codeDocumentModified(a.code.documents[path]) {
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
+func (a *app) closeCodeFiles(paths []string) {
+	if a.code.fileOperationBusy {
+		return
+	}
+	a.confirmCodeChanges(paths, func() {
+		for _, path := range paths {
+			a.removeCodeDocument(path)
+		}
+	})
+}
+
+func (a *app) closeCodeFile(path string) { a.closeCodeFiles([]string{path}) }
 
 // discardCodeDocument removes a document after its on-disk file was deleted.
 // It deliberately does not autosave: doing so could recreate a deleted file.
