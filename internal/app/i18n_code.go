@@ -5,6 +5,11 @@ package app
 // in every language without disturbing the larger Git catalogs.
 var codeWorkspaceTranslations = map[string]map[string]string{
 	"zh-Hans": {
+		"Unsaved changes":                   "未保存的更改",
+		"Save your changes before closing?": "关闭前要保存更改吗？",
+		"Save":                              "保存",
+		"Don't Save":                        "不保存",
+
 		"Code": "代码", "Files": "文件", "Search results": "搜索结果",
 		"Expand file explorer": "展开文件资源管理器", "Collapse file explorer": "折叠文件资源管理器",
 		"Refresh files": "刷新文件", "Reload the repository file list": "重新加载仓库文件列表",
@@ -40,6 +45,11 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Code editor": "代码编辑器", "Editor tab": "编辑器标签页",
 	},
 	"zh-Hant": {
+		"Unsaved changes":                   "未儲存的變更",
+		"Save your changes before closing?": "關閉前要儲存變更嗎？",
+		"Save":                              "儲存",
+		"Don't Save":                        "不要儲存",
+
 		"Code": "程式碼", "Files": "檔案", "Search results": "搜尋結果",
 		"Expand file explorer": "展開檔案總管", "Collapse file explorer": "摺疊檔案總管",
 		"Refresh files": "重新整理檔案", "Reload the repository file list": "重新載入儲存庫檔案清單",
@@ -75,6 +85,11 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Code editor": "程式碼編輯器", "Editor tab": "編輯器分頁",
 	},
 	"ja": {
+		"Unsaved changes":                   "未保存の変更",
+		"Save your changes before closing?": "閉じる前に変更を保存しますか？",
+		"Save":                              "保存",
+		"Don't Save":                        "保存しない",
+
 		"Code": "コード", "Files": "ファイル", "Search results": "検索結果",
 		"Expand file explorer": "ファイルエクスプローラーを展開", "Collapse file explorer": "ファイルエクスプローラーを折りたたむ",
 		"Refresh files": "ファイルを更新", "Reload the repository file list": "リポジトリのファイル一覧を再読み込み",
@@ -110,6 +125,11 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Code editor": "コードエディター", "Editor tab": "エディタータブ",
 	},
 	"es": {
+		"Unsaved changes":                   "Cambios sin guardar",
+		"Save your changes before closing?": "¿Guardar los cambios antes de cerrar?",
+		"Save":                              "Guardar",
+		"Don't Save":                        "No guardar",
+
 		"Code": "Código", "Files": "Archivos", "Search results": "Resultados de búsqueda",
 		"Expand file explorer": "Expandir explorador de archivos", "Collapse file explorer": "Contraer explorador de archivos",
 		"Refresh files": "Actualizar archivos", "Reload the repository file list": "Recargar la lista de archivos del repositorio",
@@ -145,6 +165,11 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Code editor": "Editor de código", "Editor tab": "Pestaña del editor",
 	},
 	"fr": {
+		"Unsaved changes":                   "Modifications non enregistrées",
+		"Save your changes before closing?": "Enregistrer les modifications avant de fermer ?",
+		"Save":                              "Enregistrer",
+		"Don't Save":                        "Ne pas enregistrer",
+
 		"Code": "Code", "Files": "Fichiers", "Search results": "Résultats de recherche",
 		"Expand file explorer": "Développer l’explorateur de fichiers", "Collapse file explorer": "Réduire l’explorateur de fichiers",
 		"Refresh files": "Actualiser les fichiers", "Reload the repository file list": "Recharger la liste des fichiers du dépôt",

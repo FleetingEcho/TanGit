@@ -72,11 +72,11 @@ func TestCodePageOpensFiltersAndClosesPersistentTabs(t *testing.T) {
 	})
 	h := menuTestApp(t)
 	openCodePageForTest(t, h, 2)
-	if !h.tester.HasText("main.go") || !h.tester.HasText("internal") || !h.tester.HasText("app") {
-		t.Fatalf("the explorer does not show files and subdirectories: %q", h.texts())
+	if !h.tester.HasText("main.go") || !h.tester.HasText("internal") || h.tester.HasText("app") {
+		t.Fatalf("the explorer does not start with collapsed directories: %q", h.texts())
 	}
 
-	h.tester.Key(ui.Ctrl, ui.KeyP)
+	h.tester.Key(ui.Cmd, ui.KeyP)
 	if !h.tester.Focused("Quick open") {
 		t.Fatal("Ctrl+P did not focus Quick open")
 	}
@@ -92,8 +92,12 @@ func TestCodePageOpensFiltersAndClosesPersistentTabs(t *testing.T) {
 	if h.app.code.preview != "" {
 		t.Fatalf("editing left %q as a temporary preview tab", h.app.code.preview)
 	}
-	if got := written[document.path]; !strings.Contains(got, "/* kept */") {
-		t.Fatalf("the Code buffer was not saved automatically: %q", got)
+	if len(written) != 0 || !document.state.Buffer.Modified() {
+		t.Fatal("typing saved the buffer implicitly")
+	}
+	h.tester.Key(ui.Cmd, ui.KeyS)
+	if got := written[document.path]; !strings.Contains(got, "/* kept */") || document.state.Buffer.Modified() {
+		t.Fatalf("explicit save failed: %q", got)
 	}
 
 	h.app.openCodeFile("main.go", 0)
@@ -185,7 +189,7 @@ func TestCodeWorkspaceSearchOpensTheMatchedLine(t *testing.T) {
 	h := menuTestApp(t)
 	h.app.snapshot.Root = root
 	openCodePageForTest(t, h, 2)
-	h.tester.Key(ui.Ctrl|ui.Shift, ui.KeyF)
+	h.tester.Key(ui.Cmd|ui.Shift, ui.KeyF)
 	if !h.tester.Focused("Search in files") {
 		t.Fatal("Ctrl+Shift+F did not focus workspace search")
 	}
@@ -356,8 +360,14 @@ func TestCodeLargeTreeIsReusedAcrossStableFrames(t *testing.T) {
 	stubCodeWorkspace(t, files)
 	h := menuTestApp(t)
 	openCodePageForTest(t, h, 1500)
+	if len(h.app.code.rows) != 1 {
+		t.Fatalf("initial folders are not collapsed: %d rows", len(h.app.code.rows))
+	}
+	h.app.setAllFileTreeDirectories(codeFileTreeScope, h.app.code.files, false)
+	h.app.syncCodeTree()
+	h.tester.Frame()
 	if len(h.app.code.rows) != 1551 {
-		t.Fatalf("1,500 files produced %d rows, want 1,551", len(h.app.code.rows))
+		t.Fatalf("expanded tree has %d rows", len(h.app.code.rows))
 	}
 	rows := h.app.code.rows
 	for range 3 {

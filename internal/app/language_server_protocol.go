@@ -27,11 +27,12 @@ type languageServerConnection interface {
 }
 
 type languageServerLaunch struct {
-	Program   string
-	Arguments []string
-	Root      string
-	Env       []string
-	Notify    func(method string, params json.RawMessage)
+	Program               string
+	Arguments             []string
+	Root                  string
+	Env                   []string
+	InitializationOptions map[string]any
+	Notify                func(method string, params json.RawMessage)
 }
 
 var connectLanguageServer = connectStdioLanguageServer
@@ -78,6 +79,7 @@ type stdioLanguageServer struct {
 
 func connectStdioLanguageServer(launch languageServerLaunch) (languageServerConnection, error) {
 	command := exec.Command(launch.Program, launch.Arguments...)
+	command.Dir = launch.Root
 	if len(launch.Env) > 0 {
 		command.Env = append(os.Environ(), launch.Env...)
 	}
@@ -126,6 +128,9 @@ func connectStdioLanguageServer(launch languageServerLaunch) (languageServerConn
 			"general": map[string]any{"positionEncodings": []string{"utf-16"}},
 		},
 		"workspaceFolders": []map[string]string{{"uri": rootURI, "name": filepathBase(launch.Root)}},
+	}
+	if launch.InitializationOptions != nil {
+		params["initializationOptions"] = launch.InitializationOptions
 	}
 	if _, err := server.request("initialize", params, 8*time.Second); err != nil {
 		server.Close()
