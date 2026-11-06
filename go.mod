@@ -8,6 +8,7 @@ require (
 	github.com/egoist/mygo v0.8.3
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/jesseduffield/lazygit v0.66.3-0.20261106162857-bbca3df2cd06
+	github.com/junegunn/fzf v0.75.0
 	github.com/sirupsen/logrus v1.10.2
 	github.com/stefanhaller/git-todo-parser v0.0.7-0.20250905083220-c50528f08304
 )
@@ -31,10 +32,12 @@ require (
 	github.com/go-text/typesetting v0.3.5 // indirect
 	github.com/gookit/color v1.6.3 // indirect
 	github.com/jesseduffield/generics v0.0.0-20250517122708-b0b4a53a6f5c // indirect
+	github.com/junegunn/go-shellwords v0.0.0-20250127100254-2aa3b3277741 // indirect
 	github.com/karimkhaleel/jsonschema v0.0.0-20231105093532-44bdb914ed9c // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mailru/easyjson v0.9.2 // indirect
+	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mgutz/str v1.2.0 // indirect
 	github.com/petermattis/goid v0.0.0-20261102161117-2a3fffa09998 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect

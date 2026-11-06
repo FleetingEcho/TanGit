@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -66,6 +67,7 @@ func (a *app) themeMenuItems(m *ui.Menu, c *ui.Context) {
 func (a *app) closeSettings() {
 	a.sectionsOpen = false
 	a.settingsOpen = false
+	a.closeCustomEditorForm()
 	a.saveSettings()
 }
 
@@ -313,10 +315,8 @@ func (a *app) typographySettings(c *ui.Context) {
 		settingsGroup(c, fontIcon, "Typography and layout", "Comfortable text and spacing, everywhere")
 		typographyGroup(c, "Interface", "Menus, labels, and controls", func() {
 			settingRow(c, "Interface font size", "Text size in controls and panes", func() {
-				ui.Text(c, fmt.Sprintf("%.0f pt", a.settings.FontSize)).
-					TextColor(c.Theme().TextMuted).Width(48)
-				stepper := ui.Stepper(c, &a.settings.FontSize, 9, 26, 1).Label(trf("%s settings", tr("Interface font size")))
-				if stepper.Changed() {
+				input := ui.NumberInput(c, &a.settings.FontSize, 9, 26, 1).Label(trf("%s settings", tr("Interface font size")))
+				if input.Changed() {
 					a.settingsChanged(c)
 				}
 			})
@@ -328,20 +328,16 @@ func (a *app) typographySettings(c *ui.Context) {
 				}
 			})
 			settingRow(c, "Interface spacing", "Padding inside and between controls", func() {
-				ui.Text(c, fmt.Sprintf("%.0f", a.settings.Spacing)).
-					TextColor(c.Theme().TextMuted).Width(28)
-				stepper := ui.Stepper(c, &a.settings.Spacing, 2, 10, 1).Label(trf("%s settings", tr("Interface spacing")))
-				if stepper.Changed() {
+				input := ui.NumberInput(c, &a.settings.Spacing, 2, 10, 1).Label(trf("%s settings", tr("Interface spacing")))
+				if input.Changed() {
 					a.settingsChanged(c)
 				}
 			})
 		})
 		typographyGroup(c, "Code buffers", "Diffs, source files, conflicts, and blame", func() {
 			settingRow(c, "Buffer font size", "Text size in diffs and code buffers", func() {
-				ui.Text(c, fmt.Sprintf("%.0f pt", a.settings.BufferFontSize)).
-					TextColor(c.Theme().TextMuted).Width(48)
-				stepper := ui.Stepper(c, &a.settings.BufferFontSize, 9, 26, 1).Label(trf("%s settings", tr("Buffer font size")))
-				if stepper.Changed() {
+				input := ui.NumberInput(c, &a.settings.BufferFontSize, 9, 26, 1).Label(trf("%s settings", tr("Buffer font size")))
+				if input.Changed() {
 					a.settingsChanged(c)
 				}
 			})
@@ -353,20 +349,16 @@ func (a *app) typographySettings(c *ui.Context) {
 				}
 			})
 			settingRow(c, "Buffer line spacing", "Line height as a multiple of font size", func() {
-				ui.Text(c, fmt.Sprintf("%.1f ×", a.settings.BufferLineHeight)).
-					TextColor(c.Theme().TextMuted).Width(48)
-				stepper := ui.Stepper(c, &a.settings.BufferLineHeight, 1, 2.5, 0.1).Label(trf("%s settings", tr("Buffer line spacing")))
-				if stepper.Changed() {
+				input := ui.NumberInput(c, &a.settings.BufferLineHeight, 1, 2.5, 0.1).Label(trf("%s settings", tr("Buffer line spacing")))
+				if input.Changed() {
 					a.settingsChanged(c)
 				}
 			})
 		})
 		typographyGroup(c, "Layout", "Button and panel rounding", func() {
 			settingRow(c, "Corner radius", "Button and panel rounding", func() {
-				ui.Text(c, fmt.Sprintf("%.0f", a.settings.Radius)).
-					TextColor(c.Theme().TextMuted).Width(28)
-				stepper := ui.Stepper(c, &a.settings.Radius, 0, 20, 1).Label(trf("%s settings", tr("Corner radius")))
-				if stepper.Changed() {
+				input := ui.NumberInput(c, &a.settings.Radius, 0, 20, 1).Label(trf("%s settings", tr("Corner radius")))
+				if input.Changed() {
 					a.settingsChanged(c)
 				}
 			})
@@ -403,6 +395,80 @@ func (a *app) behaviorSettings(c *ui.Context) {
 	})
 }
 
+func (a *app) openCustomEditorForm() {
+	a.customEditorFormOpen = true
+	a.customEditorFormName = ""
+	a.customEditorFormCommand = ""
+	a.customEditorFormError = ""
+}
+
+func (a *app) closeCustomEditorForm() {
+	a.customEditorFormOpen = false
+	a.customEditorFormName = ""
+	a.customEditorFormCommand = ""
+	a.customEditorFormError = ""
+}
+
+func (a *app) submitCustomEditorForm(c *ui.Context) {
+	editor := editorPreset{
+		Name:    strings.TrimSpace(a.customEditorFormName),
+		Command: strings.TrimSpace(a.customEditorFormCommand),
+	}
+	if editor.Name == "" || editor.Command == "" {
+		a.customEditorFormError = tr("Enter an editor name and command line.")
+		return
+	}
+	for _, preset := range a.allEditorPresets() {
+		if strings.EqualFold(editor.Name, preset.Name) {
+			a.customEditorFormError = tr("Enter a unique editor name.")
+			return
+		}
+	}
+	if !validExternalEditor(editor) {
+		a.customEditorFormError = tr("Enter a valid single-line command.")
+		return
+	}
+	a.settings.ExternalEditors = append(a.settings.ExternalEditors, editor)
+	a.closeCustomEditorForm()
+	a.settingsChanged(c)
+}
+
+func (a *app) customEditorForm(c *ui.Context) {
+	if !a.customEditorFormOpen {
+		return
+	}
+	theme := c.Theme()
+	ui.Column(c).Gap(12).Padding(15).Background(theme.Surface.Alpha(0.55)).
+		Border(1, theme.Border).Radius(theme.Radius + 5).Children(func() {
+		ui.Text(c, tr("New external editor")).Bold()
+		settingRow(c, "Editor name", "Shown in the external-editor menu", func() {
+			ui.TextInput(c, &a.customEditorFormName).Label(tr("Custom editor name")).
+				Placeholder(tr("Editor name")).Grow(1).AutoFocus()
+		})
+		settingRow(c, "Command line", "Command and arguments", func() {
+			input := ui.TextInput(c, &a.customEditorFormCommand).Label(tr("Custom editor command line")).
+				Placeholder("my-editor --wait {{filename}}").Grow(1)
+			if input.Submitted() {
+				a.submitCustomEditorForm(c)
+			}
+		})
+		if a.customEditorFormError != "" {
+			ui.Text(c, a.customEditorFormError).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
+		} else {
+			ui.Text(c, tr("Use {{filename}} for the repository path and {{line}} for a line number.")).
+				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+		}
+		ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
+			if ui.Button(c, tr("Cancel")).Clicked() {
+				a.closeCustomEditorForm()
+			}
+			if ui.PrimaryButton(c, tr("Add editor")).Clicked() {
+				a.submitCustomEditorForm(c)
+			}
+		})
+	})
+}
+
 func (a *app) editorSettings(c *ui.Context) {
 	settingsSection(c, func() {
 		settingsGroup(c, fileCodeIcon, "Editor", "Built-in Code or an external program")
@@ -418,7 +484,7 @@ func (a *app) editorSettings(c *ui.Context) {
 			})
 		}
 		settingRow(c, "Presets", "Choose the editor buttons' destination", func() {
-			for _, preset := range editorPresets {
+			for _, preset := range a.allEditorPresets() {
 				chosen := effectiveEditorCommand(a.settings.EditorCommand) == preset.Command
 				var button ui.Element
 				if chosen {
@@ -431,53 +497,91 @@ func (a *app) editorSettings(c *ui.Context) {
 					a.settingsChanged(c)
 				}
 			}
+			flatIconButton(c, "Add editor…", "Add a custom external editor", plusIcon, 14, 4,
+				a.customEditorFormOpen, a.openCustomEditorForm)
 		})
+		a.customEditorForm(c)
 		explanation := "Repository cards and file actions use this command without changing your open repository."
 		if builtIn {
 			explanation = "Editor buttons open the Code page; file actions also open and reveal the selected file."
 		}
 		ui.Text(c, tr(explanation)).TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).MaxWidth(480)
 		ui.Divider(c)
-		ui.Text(c, tr("Go language server")).Bold().FontSize(c.Theme().FontSize + 1)
-		ui.Text(c, tr("Hover, definitions, diagnostics, and other Go code intelligence")).
-			TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).MaxWidth(480)
-		settingRow(c, "Language server", "Start gopls for Go files", func() {
-			toggle := ui.Checkbox(c, &a.goLanguageServerEnabled, tr("Enable gopls")).Label(tr("Enable gopls"))
-			if toggle.Changed() {
-				a.storeGoLanguageServerDraft(c)
-			}
-		})
-		settingRow(c, "Executable", "Leave empty to find gopls on PATH", func() {
-			input := ui.TextInput(c, &a.goLanguageServerPath).Label(tr("gopls executable path")).
-				Placeholder(tr("Auto-detect gopls on PATH")).Grow(1)
-			if input.Changed() {
-				a.storeGoLanguageServerDraft(c)
-			}
-		})
-		settingRow(c, "Arguments", "One argument per line; no shell is used", func() {
-			input := ui.TextArea(c, &a.goLanguageServerArgs).Label(tr("gopls arguments")).
-				Placeholder("-remote=auto").Lines(2, 5).Grow(1)
-			if input.Changed() {
-				a.storeGoLanguageServerDraft(c)
-			}
-		})
-		settingRow(c, "Connection test", "Run gopls version with this configuration", func() {
-			iconTextButtonState(c, "Test server", "Check that gopls can start", terminalIcon, false,
-				a.languageServerTestBusy, a.testGoLanguageServer)
-			if a.languageServerTestBusy {
-				ui.Spinner(c).Label(tr("Testing language server"))
-			}
-		})
-		if a.languageServerTestResult != "" && a.languageServerTestID == goLanguageServerID {
-			color := c.Theme().Danger
-			if a.languageServerTestOK {
-				color = c.Theme().Success
-			}
-			ui.Text(c, a.languageServerTestResult).TextColor(color).
-				FontSize(c.Theme().FontSize - 1).MaxWidth(480)
-		}
+		a.searchExclusionSettings(c)
 		ui.Divider(c)
 		a.languageServerCatalog(c)
+	})
+}
+
+// searchExclusionSettings edits one durable list shared by content search.
+// Entries are folder names rather than globs, which makes their behavior
+// consistent at every repository depth and across both backends.
+func (a *app) searchExclusionSettings(c *ui.Context) {
+	theme := c.Theme()
+	ui.Text(c, tr("Search exclusions")).Bold().FontSize(theme.FontSize + 1)
+	ui.Text(c, tr("Folder names skipped by content search")).
+		TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).MaxWidth(480)
+	settingRow(c, "Excluded folder name", "Match this folder at any depth", func() {
+		input := ui.TextInput(c, &a.searchExcludedDirectoryDraft).
+			Label(tr("New excluded folder")).Placeholder("node_modules").Grow(1)
+		submitted := input.Submitted()
+		added := false
+		iconTextButtonState(c, "Add", "Add this folder to the search exclusions", plusIcon, false,
+			len(normalizeWorkspaceSearchExcludedDirectories([]string{a.searchExcludedDirectoryDraft})) == 0,
+			func() { added = true })
+		if !submitted && !added {
+			return
+		}
+		name := normalizeWorkspaceSearchExcludedDirectories([]string{a.searchExcludedDirectoryDraft})
+		if len(name) == 0 {
+			return
+		}
+		a.settings.SearchExcludedDirectories = normalizeWorkspaceSearchExcludedDirectories(
+			append(a.settings.SearchExcludedDirectories, name[0]))
+		a.searchExcludedDirectoryDraft = ""
+		a.settingsChanged(c)
+	})
+	settingRow(c, "Excluded folders", "Applied before searching", func() {
+		if len(a.settings.SearchExcludedDirectories) == 0 {
+			ui.Text(c, tr("No excluded folders")).TextColor(theme.TextMuted)
+			return
+		}
+		for _, directory := range a.settings.SearchExcludedDirectories {
+			c.Key("search-exclusion:" + directory)
+			button := ui.ButtonBase(c).Height(28).Padding(3, 8).Gap(6).Radius(theme.Radius).
+				Background(theme.Surface).Border(1, theme.Border).
+				Label(trf("Remove excluded folder %s", directory)).
+				Tooltip(trf("Stop excluding %s from content search", directory))
+			button.Children(func() {
+				ui.Text(c, directory).SingleLine()
+				ui.Icon(c, closeIcon).FontSize(12).TextColor(theme.TextMuted)
+			})
+			if button.Hovered() {
+				button.Background(theme.SurfaceHover)
+			}
+			if button.Clicked() {
+				kept := make([]string, 0, len(a.settings.SearchExcludedDirectories)-1)
+				for _, candidate := range a.settings.SearchExcludedDirectories {
+					if candidate != directory {
+						kept = append(kept, candidate)
+					}
+				}
+				a.settings.SearchExcludedDirectories = kept
+				a.settingsChanged(c)
+			}
+		}
+	})
+	ui.Row(c).Gap(8).Wrap().Children(func() {
+		if len(a.settings.SearchExcludedDirectories) > 0 {
+			iconTextButton(c, "Clear list", "Allow content search in every folder", closeIcon, false, func() {
+				a.settings.SearchExcludedDirectories = []string{}
+				a.settingsChanged(c)
+			})
+		}
+		iconTextButton(c, "Restore defaults", "Restore the common generated and dependency folder exclusions", refreshIcon, false, func() {
+			a.settings.SearchExcludedDirectories = defaultWorkspaceSearchExcludedDirectories()
+			a.settingsChanged(c)
+		})
 	})
 }
 

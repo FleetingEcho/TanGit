@@ -50,6 +50,13 @@ type appSettings struct {
 	// {{filename}} where the file goes and {{line}} where the line does.
 	// An empty value keeps the default editor.
 	EditorCommand string `json:"editorCommand"`
+	// ExternalEditors contains additional named commands offered by Settings
+	// and the Editor header's direct-launch menu.
+	ExternalEditors []editorPreset `json:"externalEditors,omitempty"`
+	// SearchExcludedDirectories contains folder names skipped by workspace
+	// content search. Nil in an older settings file selects the
+	// defaults; a saved empty slice deliberately disables every exclusion.
+	SearchExcludedDirectories []string `json:"searchExcludedDirectories"`
 	// LanguageServers keeps per-language executable choices. An absent entry
 	// means the built-in default: enabled and discovered on PATH.
 	LanguageServers map[string]languageServerSettings `json:"languageServers,omitempty"`
@@ -74,6 +81,9 @@ type languageServerSettings struct {
 	Path           string   `json:"path,omitempty"`
 	Arguments      []string `json:"arguments,omitempty"`
 	ProbeArguments []string `json:"probeArguments,omitempty"`
+	// Custom is present only for user-defined servers. Keeping the definition
+	// with its launch settings preserves the profile while it is disabled.
+	Custom *customLanguageServerDefinition `json:"custom,omitempty"`
 }
 
 // settingsFile is the name of the settings inside MyGo's user data directory,
@@ -96,19 +106,20 @@ const (
 func defaultSettings() appSettings {
 	base := themeChoices[defaultTheme].build()
 	return appSettings{
-		Theme:                 defaultTheme,
-		Accent:                "",
-		FontSize:              float64(base.FontSize),
-		Font:                  "System",
-		BufferFont:            "System",
-		BufferFontSize:        defaultBufferFontSize,
-		BufferLineHeight:      defaultBufferLineHeight,
-		Spacing:               float64(base.Spacing),
-		Radius:                float64(base.Radius),
-		Language:              defaultLanguage,
-		EditorCommand:         defaultEditorCommand,
-		HomeBackgroundOpacity: defaultHomeBackgroundOpacity,
-		VisibleSections:       slices.Clone(defaultVisibleSections),
+		Theme:                     defaultTheme,
+		Accent:                    "",
+		FontSize:                  float64(base.FontSize),
+		Font:                      "System",
+		BufferFont:                "System",
+		BufferFontSize:            defaultBufferFontSize,
+		BufferLineHeight:          defaultBufferLineHeight,
+		Spacing:                   float64(base.Spacing),
+		Radius:                    float64(base.Radius),
+		Language:                  defaultLanguage,
+		EditorCommand:             defaultEditorCommand,
+		SearchExcludedDirectories: defaultWorkspaceSearchExcludedDirectories(),
+		HomeBackgroundOpacity:     defaultHomeBackgroundOpacity,
+		VisibleSections:           slices.Clone(defaultVisibleSections),
 	}
 }
 
@@ -148,6 +159,12 @@ func normalizeSettings(s appSettings) appSettings {
 	}
 	s.Language = normalizeLanguage(s.Language)
 	s.EditorCommand = effectiveEditorCommand(s.EditorCommand)
+	s.ExternalEditors = normalizeExternalEditors(s.ExternalEditors)
+	if s.SearchExcludedDirectories == nil {
+		s.SearchExcludedDirectories = defaultWorkspaceSearchExcludedDirectories()
+	} else {
+		s.SearchExcludedDirectories = normalizeWorkspaceSearchExcludedDirectories(s.SearchExcludedDirectories)
+	}
 	s.LanguageServers = normalizeLanguageServerSettings(s.LanguageServers)
 	s.HomeBackgroundOpacity = normalizeHomeBackgroundOpacity(s.HomeBackgroundOpacity)
 	s.VisibleSections = normalizeVisibleSections(s.VisibleSections)
@@ -185,8 +202,24 @@ func normalizeLanguageServerSettings(servers map[string]languageServerSettings) 
 			probeArguments = nil
 		}
 		server.ProbeArguments = probeArguments
+		if server.Custom != nil {
+			server.Custom.Name = strings.TrimSpace(server.Custom.Name)
+			server.Custom.Description = strings.TrimSpace(server.Custom.Description)
+			server.Custom.DownloadURL = strings.TrimSpace(server.Custom.DownloadURL)
+			extensions := make(map[string]string, len(server.Custom.Extensions))
+			for extension, id := range server.Custom.Extensions {
+				extension, id = strings.ToLower(strings.TrimSpace(extension)), strings.ToLower(strings.TrimSpace(id))
+				if strings.HasPrefix(extension, ".") && len(extension) > 1 && id != "" {
+					extensions[extension] = id
+				}
+			}
+			server.Custom.Extensions = extensions
+			if server.Custom.Name == "" || server.Path == "" || len(extensions) == 0 || !validCustomLanguageServerDownload(server.Custom.DownloadURL) {
+				continue
+			}
+		}
 		profile, knownProfile := languageServerProfileByID(language)
-		if !server.Disabled && server.Path == "" && len(server.Arguments) == 0 &&
+		if server.Custom == nil && !server.Disabled && server.Path == "" && len(server.Arguments) == 0 &&
 			(!knownProfile || profile.EnabledByDefault) {
 			continue
 		}

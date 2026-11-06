@@ -29,6 +29,23 @@ func openGoDocumentWithLanguageServer(t *testing.T, files map[string]string,
 	return h, connection, document
 }
 
+func TestCustomOnlyExtensionInstallsEditorLanguageCallbacks(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.settings.LanguageServers = map[string]languageServerSettings{
+		"custom-example": {
+			Disabled: true, Path: "example-ls",
+			Custom: &customLanguageServerDefinition{
+				Name: "Example", Extensions: map[string]string{".example": "example"},
+			},
+		},
+	}
+	document := &codeDocument{path: "main.example", state: &editor.State{Buffer: editor.NewBuffer("example\n")}}
+	h.app.configureGoLanguageDocument(document)
+	if document.state.OnHover == nil || document.state.OnDefinition == nil || document.state.OnCompletion == nil || document.state.RenderHover == nil {
+		t.Fatal("a custom-only extension did not install the editor language callbacks")
+	}
+}
+
 func TestLanguageServerUTF16PositionsRoundTrip(t *testing.T) {
 	text := "first\nA😀界Z\n"
 	for _, offset := range []int{0, 3, 6, 7, 11, 14, 15, len(text)} {
@@ -84,7 +101,35 @@ func TestGoLanguageServerHoverAndCompletionsReachTheEditor(t *testing.T) {
 	}
 }
 
-func TestGoLanguageServerHoverScrollsAndHighlightsMarkdown(t *testing.T) {
+func TestLanguageServerHoverUnwrapsSingleCodeBlock(t *testing.T) {
+	code := "(property) DnDContextType.abortControllerRef: React.MutableRefObject<AbortControllerMap<string>>"
+	response, _ := json.Marshal(map[string]any{
+		"contents": map[string]string{"kind": "markdown", "value": "```typescript\n" + code + "\n```"},
+	})
+	h, _, document := openGoDocumentWithLanguageServer(t, map[string]string{
+		"main.go": "package main\nvar abortControllerRef int\n",
+	}, func(method string, _ any, result func(json.RawMessage, error)) {
+		if method == "textDocument/hover" {
+			result(response, nil)
+		}
+	})
+	offset := strings.Index(document.state.Buffer.String(), "abortControllerRef")
+	document.state.Select(offset, offset)
+	document.state.Run(editor.ShowHover)
+	h.updates.waitForUpdate(t)
+	h.tester.Frame()
+	if document.hoverState == nil {
+		t.Fatal("the hover response was not adopted")
+	}
+	if got := document.hoverState.Buffer.String(); got != code {
+		t.Fatalf("hover still contains its Markdown fence: %q", got)
+	}
+	if language := document.hoverState.Buffer.Language(); language == nil || language.Name != "TypeScript" {
+		t.Fatalf("unwrapped hover language = %#v, want TypeScript", language)
+	}
+}
+
+func TestGoLanguageServerHoverScrollsAndHighlightsCode(t *testing.T) {
 	code := strings.Repeat("var result int\n", 80)
 	response, _ := json.Marshal(map[string]any{
 		"contents": map[string]string{"kind": "markdown", "value": "```go\n" + code + "```"},
@@ -106,8 +151,11 @@ func TestGoLanguageServerHoverScrollsAndHighlightsMarkdown(t *testing.T) {
 	h.tester.Frame()
 	h.tester.Frame()
 	if document.hoverState == nil || document.hoverState.Buffer.Language() == nil ||
-		document.hoverState.Buffer.Language().Name != "Markdown" {
-		t.Fatal("the hover content is not using the Markdown syntax highlighter")
+		document.hoverState.Buffer.Language().Name != "Go" {
+		t.Fatal("the unwrapped hover code is not using the Go syntax highlighter")
+	}
+	if strings.Contains(document.hoverState.Buffer.String(), "```") {
+		t.Fatalf("the long hover still contains Markdown fences: %.80q", document.hoverState.Buffer.String())
 	}
 	if document.hoverScroll.MaxY <= 0 {
 		t.Fatalf("long hover is not scrollable: max Y = %v", document.hoverScroll.MaxY)
@@ -120,6 +168,33 @@ func TestGoLanguageServerHoverScrollsAndHighlightsMarkdown(t *testing.T) {
 	h.tester.Frame()
 	if document.hoverScroll.Y <= 0 {
 		t.Fatalf("the hover ignored scrolling: Y = %v", document.hoverScroll.Y)
+	}
+}
+
+func TestLanguageServerHoverRemovesFencesFromMixedMarkdown(t *testing.T) {
+	content := "```xml\n<class 'EMSBaseOperator'>\n```\n\n---\nEMS Base Operator\n\n```python\noperator.run()\n```"
+	response, _ := json.Marshal(map[string]any{
+		"contents": map[string]string{"kind": "markdown", "value": content},
+	})
+	h, _, document := openGoDocumentWithLanguageServer(t, map[string]string{
+		"main.go": "package main\nvar operator int\n",
+	}, func(method string, _ any, result func(json.RawMessage, error)) {
+		if method == "textDocument/hover" {
+			result(response, nil)
+		}
+	})
+	offset := strings.Index(document.state.Buffer.String(), "operator")
+	document.state.Select(offset, offset)
+	document.state.Run(editor.ShowHover)
+	h.updates.waitForUpdate(t)
+	h.tester.Frame()
+	if document.hoverState == nil {
+		t.Fatal("the mixed Markdown hover was not adopted")
+	}
+	got := document.hoverState.Buffer.String()
+	if strings.Contains(got, "```") || !strings.Contains(got, "<class 'EMSBaseOperator'>") ||
+		!strings.Contains(got, "EMS Base Operator") || !strings.Contains(got, "operator.run()") {
+		t.Fatalf("mixed hover was not cleaned without dropping content: %q", got)
 	}
 }
 
@@ -232,8 +307,27 @@ func TestGoLanguageServerReportsWorkspaceErrors(t *testing.T) {
 	if !strings.Contains(h.app.goLanguageServerError, "Update gopls") {
 		t.Fatalf("workspace error = %q", h.app.goLanguageServerError)
 	}
-	if !h.tester.HasText("gopls issue") || !h.tester.HasText("gopls cannot analyze this workspace") {
-		t.Fatalf("workspace error is not visible: %q", h.texts())
+	if h.tester.HasText("gopls issue") || !h.tester.HasText("gopls cannot analyze this workspace") {
+		t.Fatalf("workspace error notification changed: %q", h.texts())
+	}
+	button, ok := h.tester.Find("Language servers")
+	if !ok {
+		t.Fatal("the workspace error has no language-server status icon")
+	}
+	h.tester.Move(button.X+button.W/2, button.Y+button.H/2)
+	h.tester.Frame()
+	if !h.tester.HasText("Go (gopls)") || !h.tester.HasText("Error") {
+		t.Fatalf("the status panel does not identify the failed server: %q", h.texts())
+	}
+	row, ok := h.tester.Find("Language servers: Go (gopls)")
+	if !ok {
+		t.Fatal("the failed server row is missing")
+	}
+	h.tester.Move(row.X+row.W/2, row.Y+row.H/2)
+	h.tester.Advance(700 * time.Millisecond)
+	h.tester.Frame()
+	if !h.tester.HasText("Update gopls") {
+		t.Fatalf("the status panel does not expose the workspace error detail: %q", h.texts())
 	}
 }
 

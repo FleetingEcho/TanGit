@@ -83,6 +83,13 @@ func (a *app) codeExplorerMenu(m *ui.Menu, item fileTreeRow, services ui.Service
 		return
 	}
 	a.selectCodeTreePath(item.path, item.isDirectory())
+	if item.isDirectory() && m.Item(tr("Open folder as workspace")).Chosen() {
+		a.openCodeWorkspaceFolder(item.path)
+		a.focusCodeSearch()
+		if strings.TrimSpace(a.code.searchQuery) != "" {
+			a.beginCodeSearch()
+		}
+	}
 	directory := item.path
 	if !item.isDirectory() {
 		directory = path.Dir(item.path)
@@ -130,7 +137,7 @@ func (a *app) selectCodeTreePath(path string, directory bool) {
 
 func (a *app) selectedCodeDirectory() string {
 	if a.code.selectedRow < 0 || a.code.selectedRow >= len(a.code.rows) {
-		return ""
+		return a.code.searchFolder
 	}
 	item := a.code.rows[a.code.selectedRow]
 	if item.isDirectory() {
@@ -268,6 +275,10 @@ func (a *app) beginCodeFileOperation(kind codeFileOperationKind, source, destina
 			a.code.filesToken++
 			a.code.filesLoading = false
 			a.code.filesLoaded = false
+			a.code.filesOperationRefresh = true
+			// A repository read that started before this mutation is stale. Let the
+			// operation queue its replacement rather than applying the old snapshot.
+			a.snapshotSeq++
 			a.requestCodeFiles()
 			a.requestQuietRefresh()
 			title := "Created file"
@@ -421,6 +432,7 @@ func (a *app) revealCodeDirectory(directory string) {
 func (a *app) clearCodeSearchResults() {
 	a.code.searchSubmitted = ""
 	a.code.searchResults = nil
+	a.code.searchBackend = workspaceSearchBackendNone
 	a.code.searchSelected, a.code.searchSelectedRow = -1, -1
 	a.rebuildCodeSearchRows()
 }

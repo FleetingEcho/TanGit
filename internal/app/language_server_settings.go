@@ -17,6 +17,19 @@ var runLanguageServerVersion = func(program string, arguments []string) (string,
 	return runLanguageServerVersionArguments(program, arguments, []string{"version"})
 }
 
+// languageServerLookPath distinguishes a managed download or configured system
+// executable from a catalog entry that has not been installed yet.
+var languageServerLookPath = exec.LookPath
+
+func (a *app) languageServerExecutableAvailable(profile languageServerProfile) bool {
+	for _, program := range languageServerExecutableCandidates(a.settings.LanguageServers[profile.ID].Path, profile.Program) {
+		if _, err := languageServerLookPath(program); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 func runLanguageServerVersionArguments(program string, arguments, versionArguments []string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -52,7 +65,7 @@ func (a *app) loadGoLanguageServerDraft() {
 
 func (a *app) loadAdditionalLanguageServerDrafts() {
 	a.languageServerDrafts = make(map[string]*languageServerDraft)
-	for _, profile := range languageServerProfiles {
+	for _, profile := range languageServerProfilesWithSettings(a.settings.LanguageServers) {
 		if profile.ID == goLanguageServerID {
 			continue
 		}
@@ -64,7 +77,7 @@ func (a *app) loadAdditionalLanguageServerDrafts() {
 }
 
 func (a *app) storeAdditionalLanguageServerDraft(c *ui.Context, id string) {
-	profile, ok := languageServerProfileByID(id)
+	profile, ok := a.customLanguageServerProfileByID(id)
 	draft := a.languageServerDrafts[id]
 	if !ok || profile.ID == goLanguageServerID || draft == nil {
 		return
@@ -76,12 +89,14 @@ func (a *app) storeAdditionalLanguageServerDraft(c *ui.Context, id string) {
 	if a.settings.LanguageServers == nil {
 		a.settings.LanguageServers = make(map[string]languageServerSettings)
 	}
-	if !draft.Enabled {
+	server := a.settings.LanguageServers[id]
+	server.Disabled = !draft.Enabled
+	server.Path = strings.TrimSpace(draft.Path)
+	server.Arguments = languageServerArguments(draft.Arguments)
+	if !draft.Enabled && server.Custom == nil {
 		delete(a.settings.LanguageServers, id)
 	} else {
-		a.settings.LanguageServers[id] = languageServerSettings{
-			Path: strings.TrimSpace(draft.Path), Arguments: languageServerArguments(draft.Arguments),
-		}
+		a.settings.LanguageServers[id] = server
 	}
 	a.settingsChanged(c)
 }
@@ -138,11 +153,12 @@ func (a *app) testLanguageServerProfile(id string) {
 	if a.languageServerTestBusy {
 		return
 	}
-	profile, ok := languageServerProfileByID(id)
+	profile, ok := a.customLanguageServerProfileByID(id)
 	if !ok {
 		return
 	}
-	program, arguments := languageServerProgram(a.settings.LanguageServers, profile)
+	_, arguments := languageServerProgram(a.settings.LanguageServers, profile)
+	programs := languageServerExecutableCandidates(a.settings.LanguageServers[id].Path, profile.Program)
 	probeArguments := profile.VersionArguments
 	if id != goLanguageServerID {
 		// Transport flags such as --stdio and --lsp start the long-running
@@ -163,10 +179,15 @@ func (a *app) testLanguageServerProfile(id string) {
 		defer a.recoverBackground()
 		var output string
 		var err error
-		if id == goLanguageServerID {
-			output, err = runLanguageServerVersion(program, arguments)
-		} else {
-			output, err = runLanguageServerVersionArguments(program, arguments, probeArguments)
+		for _, program := range programs {
+			if id == goLanguageServerID {
+				output, err = runLanguageServerVersion(program, arguments)
+			} else {
+				output, err = runLanguageServerVersionArguments(program, arguments, probeArguments)
+			}
+			if err == nil {
+				break
+			}
 		}
 		a.update(func() {
 			if sequence != a.languageServerTestSeq {

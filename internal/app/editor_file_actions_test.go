@@ -141,6 +141,43 @@ func TestCodeTabMenuClosesTabsAndCopiesPaths(t *testing.T) {
 	}
 }
 
+func TestCodeFileOperationDoesNotReindexAgainForItsQuietSnapshot(t *testing.T) {
+	h := menuTestApp(t)
+	useRealCodeWorkspace(t, h, map[string]string{"old.txt": "old\n"})
+	// Isolate the operation's explicit refresh from a real background snapshot;
+	// the matching quiet snapshot is applied deterministically below.
+	h.app.session = nil
+	h.app.beginCodeFileOperation(codeFileCreateFile, "", "created.txt")
+	waitForCodeFileOperation(t, h)
+	token := h.app.code.filesToken
+
+	changed := h.app.snapshot
+	changed.Files = append([]repository.File(nil), changed.Files...)
+	changed.Files = append(changed.Files, repository.File{Path: "created.txt", Status: "??", Added: true})
+	was, now := signSnapshot(h.app.snapshot), signSnapshot(changed)
+	if was.codeFiles == now.codeFiles {
+		t.Fatal("the fixture does not model the created file's Git signature")
+	}
+	h.app.applyQuietSnapshot(changed, was, now)
+	if h.app.code.filesToken != token || !h.app.code.filesLoaded || h.app.code.filesLoading {
+		t.Fatalf("one creation reindexed twice: token %d->%d loaded=%v loading=%v",
+			token, h.app.code.filesToken, h.app.code.filesLoaded, h.app.code.filesLoading)
+	}
+
+	external := changed
+	external.Files = append([]repository.File(nil), changed.Files...)
+	external.Files = append(external.Files, repository.File{Path: "external.txt", Status: "??", Added: true})
+	was, now = signSnapshot(changed), signSnapshot(external)
+	h.app.applyQuietSnapshot(external, was, now)
+	if h.app.code.filesToken != token+1 || !h.app.code.filesLoading {
+		t.Fatalf("a later external change was not reindexed: token %d->%d loading=%v",
+			token, h.app.code.filesToken, h.app.code.filesLoading)
+	}
+	h.waitFor(t, "the later external file index", func() bool {
+		return h.app.code.filesLoaded && !h.app.code.filesLoading
+	})
+}
+
 func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 	h := menuTestApp(t)
 	root := useRealCodeWorkspace(t, h, map[string]string{
@@ -238,6 +275,45 @@ func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 	}
 	waitForCodeFileOperation(t, h)
 	assertCodeFileMissing(t, root, "source/renamed.txt")
+}
+
+func TestCodeFolderSearchUsesLiteralScopeAndRetainsRename(t *testing.T) {
+	h := menuTestApp(t)
+	folder := "roles[old]*?"
+	useRealCodeWorkspace(t, h, map[string]string{
+		folder + "/inside.txt":  "needle\n",
+		"rolesXabc/outside.txt": "needle\n",
+	})
+	h.app.setAllFileTreeDirectories(codeFileTreeScope, h.app.code.files, false)
+	h.app.syncCodeTree()
+	h.tester.Frame()
+	h.app.code.searchQuery = "needle"
+
+	h.rightClick(t, "Collapse directory "+folder)
+	h.requireMenuLabels(t, "Open folder as workspace", "Rename…")
+	h.chooseMenuItem(t, "Open folder as workspace")
+	if h.app.code.searchInclude != "" || h.app.code.searchFolder != folder {
+		t.Fatalf("folder search scope include=%q literal=%q, want an independent %q", h.app.code.searchInclude, h.app.code.searchFolder, folder)
+	}
+	h.waitFor(t, "the literal folder search", func() bool {
+		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 1
+	})
+	if got := h.app.code.searchResults[0].Path; got != folder+"/inside.txt" {
+		t.Fatalf("folder search returned %q", got)
+	}
+
+	// The visible scope is editable, so a deep folder can be changed without
+	// turning a literal folder name into an include glob.
+	h.tester.Frame()
+	if err := h.tester.Click("Workspace folder"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Key(ui.Cmd, ui.KeyA)
+	h.tester.Type("rolesXabc")
+	h.tester.Key(0, ui.KeyEnter)
+	h.waitFor(t, "search in the edited folder", func() bool {
+		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 1 && h.app.code.searchResults[0].Path == "rolesXabc/outside.txt"
+	})
 }
 
 func TestCodeExplorerDragMovesFileAndPreservesOpenDocument(t *testing.T) {
@@ -542,6 +618,46 @@ func TestCodeRepositoryRootCreatesAndAcceptsDrops(t *testing.T) {
 	if h.app.code.documents["note.txt"] == nil {
 		t.Fatal("the open document did not follow its move to the repository root")
 	}
+}
+
+func TestCodeNestedWorkspaceRootCreatesAndAcceptsDrops(t *testing.T) {
+	h := menuTestApp(t)
+	root := useRealCodeWorkspace(t, h, map[string]string{
+		"nested/deep/sub/note.txt": "note\n",
+		"nested/other/skip.txt":    "skip\n",
+		"root.txt":                 "root\n",
+	})
+	if !h.app.openCodeWorkspaceFolder("nested/deep") {
+		t.Fatal("the nested workspace was rejected")
+	}
+	h.app.setAllFileTreeDirectories(codeFileTreeScope, h.app.code.files, false)
+	h.app.syncCodeTree()
+	h.tester.Frame()
+
+	h.rightClick(t, "Workspace root nested/deep")
+	h.chooseMenuItem(t, "New File…")
+	if got := h.app.code.fileFormDirectory; got != "nested/deep" {
+		t.Fatalf("workspace-root New File targets %q", got)
+	}
+	h.app.closeCodeFileForm()
+	h.tester.Frame()
+
+	source, ok := h.tester.Find("Open nested/deep/sub/note.txt")
+	if !ok {
+		t.Fatal("the nested workspace source row is missing")
+	}
+	target, ok := h.tester.Find("Workspace root nested/deep")
+	if !ok {
+		t.Fatal("the nested workspace drop target is missing")
+	}
+	h.tester.Press(source.X+source.W/2, source.Y+source.H/2)
+	h.tester.Move(target.X+target.W/2, target.Y+target.H/2)
+	h.tester.Frame()
+	h.tester.Release(target.X+target.W/2, target.Y+target.H/2)
+	h.tester.Frame()
+	waitForCodeFileOperation(t, h)
+	assertCodeFileMissing(t, root, "nested/deep/sub/note.txt")
+	assertCodeFileContent(t, root, "nested/deep/note.txt", "note\n")
 }
 
 func TestCodeEmptyDirectoriesFilterAndPrune(t *testing.T) {
