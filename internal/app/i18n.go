@@ -358,7 +358,6 @@ var zhHans = map[string]string{
 	"Refresh comparison": "刷新比较",
 	"Cancel comparison":  "取消比较",
 	"Compare two refs":   "比较两个引用",
-	"Compare two branches, tags, or commits (W)":                                "比较两个分支、标签或提交 (W)",
 	"Review two branches, tags, or commits without changing your working tree.": "比较两个分支、标签或提交，而不更改工作树。",
 	"Close comparison":                       "关闭比较",
 	"From ref":                               "起始引用",
