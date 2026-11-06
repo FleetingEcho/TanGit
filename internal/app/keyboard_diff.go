@@ -36,7 +36,11 @@ func diffKeyboardCommands() []diffKeyboardCommand {
 			if _, ok := s.SelectedLines(); !ok {
 				a.selectKeyboardDiffLines(s, 0, false)
 			}
-			a.beginLineAction()
+			if s == a.commitDiffState {
+				a.addCustomPatchSelectedLines()
+			} else {
+				a.beginLineAction()
+			}
 		}},
 		{"]", "Go to the next diff hunk", 0, ui.KeyBracketRight, false, func(a *app, s *editor.DiffState) { h, _ := s.CurrentHunk(); s.GoToHunk(min(h+1, len(s.Hunks())-1)) }},
 		{"[", "Go to the previous diff hunk", 0, ui.KeyBracketLeft, false, func(a *app, s *editor.DiffState) { h, _ := s.CurrentHunk(); s.GoToHunk(max(0, h-1)) }},

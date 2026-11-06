@@ -212,6 +212,16 @@ func (f fakeSession) ApplyWorkingTreePatch(_ context.Context, patchText string, 
 	return nil
 }
 
+func (f fakeSession) PreviewPatch(_ context.Context, path string) (repository.PatchPreview, error) {
+	f.calls.record("preview-patch:" + path)
+	return repository.PatchPreview{Path: path, Clean: true}, nil
+}
+
+func (f fakeSession) ApplyPatch(_ context.Context, preview repository.PatchPreview) error {
+	f.calls.record("apply-patch-file:" + preview.Path)
+	return nil
+}
+
 func (f fakeSession) StageAll(context.Context) error {
 	f.calls.record("stage-all")
 	return nil
@@ -568,6 +578,15 @@ func (f fakeSession) CommitFiles(_ context.Context, commit repository.Commit) ([
 func (f fakeSession) CommitFileDiff(_ context.Context, commit repository.Commit, file repository.CommitFile, options repository.DiffOptions) (repository.Diff, error) {
 	f.calls.record("commit-file-diff:" + commit.Hash + ":" + file.Path)
 	return repository.Diff{NewText: "changed\n", Kind: "Commit"}, nil
+}
+
+func (f fakeSession) CommitFilePatch(_ context.Context, commit repository.Commit, file repository.CommitFile) (string, error) {
+	f.calls.record("commit-file-patch:" + commit.Hash + ":" + file.Path)
+	return fakeWorkingTreePatch, nil
+}
+
+func (f fakeSession) PreviewPatchText(context.Context, string) (repository.PatchPreview, error) {
+	return repository.PatchPreview{}, errors.New("in-memory patch preview is not configured")
 }
 
 func (f fakeSession) RestoreCommitFile(_ context.Context, commit repository.Commit, file repository.CommitFile) error {

@@ -157,6 +157,7 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 	}
 	session := a.session
 	repositoryGeneration := a.generation
+	a.stopLineSelection()
 	a.commitDiffHash = commit.Hash
 	a.commitDiffPath = file.Path
 	a.commitDiffOptions = a.diffOptions
@@ -168,6 +169,7 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 
 	layout, wrap := a.diffLayout(), a.diffWrap
 	options := a.diffOptions
+	customPatchSelection := isCommitSection(a.workspaceTab)
 	go func() {
 		defer a.recoverBackground()
 		diff, err := session.CommitFileDiff(context.Background(), commit, file, options)
@@ -175,6 +177,12 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 		var media *mediaReview
 		if err == nil {
 			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
+			if err == nil && state != nil && customPatchSelection {
+				state.LineSelection = true
+				state.OnLineSelection = func(clicked editor.DiffLineRange) {
+					a.extendLineSelection(state, clicked)
+				}
+			}
 			if err == nil && state == nil && isMediaPath(file.Path) {
 				media, err = loadMediaReview(context.Background(), session, repository.MediaRequest{
 					Source: repository.MediaCommit, Commit: commit, CommitFile: file,
@@ -484,6 +492,7 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(4).Wrap().Children(func() { actionIcons(c, *commit) })
 		}
 		a.diffViewOptions(c)
+		a.customPatchBar(c)
 		copyLabel := "Copy commit hash"
 		if a.workspaceTab == sectionReflog {
 			copyLabel = "Copy reflog commit hash"
@@ -583,6 +592,7 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 				case a.commitDiffError != "":
 					ui.Text(c, a.commitDiffError).TextColor(theme.Danger)
 				case a.commitDiffState != nil:
+					a.customPatchSelectionControls(c)
 					a.keyboardDiffViewer(c, a.commitDiffState)
 				default:
 					noTextualDiffOrMedia(c, a.commitDiffMedia, a.commitDiffPath)

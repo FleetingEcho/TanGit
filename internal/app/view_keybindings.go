@@ -62,6 +62,14 @@ func keyBindingGroups() []keyBindingGroup {
 			},
 		},
 		{
+			title: "Home",
+			icon:  folderOpenIcon,
+			bindings: []keyBinding{
+				{"C", "Clone a remote repository"},
+				{"Escape", "Cancel cloning or close the clone form"},
+			},
+		},
+		{
 			title: "Workspace",
 			icon:  folderIcon,
 			bindings: []keyBinding{
@@ -118,8 +126,19 @@ func keyBindingGroups() []keyBindingGroup {
 			delete(replacements, groups[i].title)
 		}
 	}
+	// Diff selection has its own focused-pane scope. Current-page help changes
+	// Space's label for Custom Patch and hides its commands elsewhere.
+	diffBindings := make([]keyBinding, 0, len(diffKeyboardCommands())+2)
+	for _, command := range diffKeyboardCommands() {
+		diffBindings = append(diffBindings, keyBinding{command.keys, command.label})
+	}
+	diffBindings = append(diffBindings, keyBinding{"A", "Add hunk"}, keyBinding{"B", "Review Custom Patch"})
 	// Remote branches have their own scope rather than acting on the selected remote.
-	groups = append(groups, keyBindingGroup{title: "Remote branches", icon: remotesIcon, bindings: replacements["Remote branches"]}, keyBindingGroup{title: "Historical files", icon: historyIcon, bindings: replacements["Historical files"]})
+	groups = append(groups,
+		keyBindingGroup{title: "Remote branches", icon: remotesIcon, bindings: replacements["Remote branches"]},
+		keyBindingGroup{title: "Historical files", icon: historyIcon, bindings: replacements["Historical files"]},
+		keyBindingGroup{title: "Diff review", icon: selectLinesIcon, bindings: diffBindings},
+	)
 	return groups
 
 }
@@ -132,7 +151,10 @@ func (a *app) openKeybindings() {
 func (a *app) openCurrentKeybindings() {
 	a.keybindingFilter = ""
 	a.keybindingsCurrentOnly = true
-	a.keybindingsScope = a.keyboardCurrentGroup
+	a.keybindingsScope = ""
+	if a.state == stateReady {
+		a.keybindingsScope = a.keyboardCurrentGroup
+	}
 	a.keybindingsOpen = true
 }
 
@@ -240,13 +262,23 @@ func (a *app) visibleKeyBindingGroups() []keyBindingGroup {
 	}
 	visible := make([]keyBindingGroup, 0, 4)
 	for i, group := range groups {
-		if i < 2 || (a.state == stateReady && (i == 2 || group.title == active)) {
-			if group.title == "Diff review" && !a.keyboardDiffCanSelect {
+		if i < 2 || (a.state != stateReady && group.title == "Home") ||
+			(a.state == stateReady && (group.title == "Workspace" || group.title == active)) {
+			if group.title == "Diff review" {
+				custom := a.customPatchActive()
 				group.bindings = nil
 				for _, command := range diffKeyboardCommands() {
-					if !command.selection {
-						group.bindings = append(group.bindings, keyBinding{command.keys, command.label})
+					if command.selection && !a.keyboardDiffCanSelect {
+						continue
 					}
+					label := command.label
+					if custom && command.key == ui.KeySpace {
+						label = "Add selected lines"
+					}
+					group.bindings = append(group.bindings, keyBinding{command.keys, label})
+				}
+				if custom {
+					group.bindings = append(group.bindings, keyBinding{"A", "Add hunk"}, keyBinding{"B", "Review Custom Patch"})
 				}
 			}
 			visible = append(visible, group)

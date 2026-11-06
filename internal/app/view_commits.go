@@ -99,6 +99,13 @@ func (a *app) commitRowMenu(m *ui.Menu, commit repository.Commit, services ui.Se
 // actions but not a rebase or reset of the branch that happens to be current.
 func (a *app) commitRowMenuWithHistory(m *ui.Menu, commit repository.Commit, services ui.Services, historyEditable bool) {
 	if a.workspaceTab == sectionHistory || a.workspaceTab == sectionGraph {
+		if m.Item(tr("Add all files to Custom Patch")).Shortcut(ui.Ctrl, ui.KeyB).Disabled(a.actionBusy).Chosen() {
+			a.beginAddCustomPatchCommit(commit)
+		}
+		if len(a.customPatch.entries) > 0 && m.Item(tr("Review Custom Patch")).Shortcut(ui.Shift, ui.KeyB).Disabled(a.actionBusy).Chosen() {
+			a.openCustomPatchBuilder()
+		}
+		m.Separator()
 		if m.Item(tr("Toggle batch selection")).Shortcut(ui.Ctrl, ui.KeySpace).Disabled(a.actionBusy).Chosen() {
 			a.toggleCommitForBatch(commit)
 		}

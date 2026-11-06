@@ -117,6 +117,9 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.recentRenameModal(c)
 	a.codeFileFormModal(c)
 	a.terminalRenameModal(c)
+	a.cloneModal(c)
+	a.patchPreviewModal(c)
+	a.customPatchModal(c)
 	a.commandLogModal(c)
 	a.settingsModal(c)
 	a.keybindingsModal(c)
@@ -201,6 +204,10 @@ func (a *app) applySettingsFor(c *ui.Context, systemDark bool) {
 // history as cards. While a repository opens it gives way to the loading page,
 // so the picker is never shown as if it were ready to use.
 func (a *app) welcomeView(c *ui.Context) {
+	if a.state == stateCloning {
+		a.cloneProgressView(c)
+		return
+	}
 	if a.state == stateLoading {
 		a.loadingView(c)
 		return
@@ -325,8 +332,13 @@ func (a *app) pickerHeroView(c *ui.Context) {
 				a.browse()
 			}
 		})
+		ui.Row(c).Justify(ui.End).Children(func() {
+			iconTextButton(c, "Clone remote repository…",
+				"Clone an HTTPS or SSH repository and open it (C)", downloadIcon, false, a.openCloneForm)
+		})
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(16).Wrap().Children(func() {
 			pickerHint(c, "↵", "Enter opens the path")
+			pickerHint(c, "C", "Clone a remote repository")
 			pickerHint(c, "Ctrl+,", "Settings")
 			pickerHint(c, "tangit <path>", "Terminal: open a repository path directly in TanGit")
 		})
