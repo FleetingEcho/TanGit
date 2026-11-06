@@ -376,9 +376,10 @@ type Session interface {
 	// version without changing the index or creating a commit.
 	RestoreCommitFile(context.Context, Commit, CommitFile) error
 	// CompareFiles lists the files whose trees differ from the first ref to
-	// the second. CompareFileDiff reads one of those files without changing
-	// the checkout, index, or working tree.
+	// the second. CompareDiff reads their whole patch and CompareFileDiff reads
+	// one file without changing the checkout, index, or working tree.
 	CompareFiles(context.Context, string, string, DiffOptions) ([]CommitFile, error)
+	CompareDiff(context.Context, string, string, DiffOptions) (Diff, error)
 	CompareFileDiff(context.Context, string, string, CommitFile, DiffOptions) (Diff, error)
 	// BranchCommits reads the commits reachable from a branch without
 	// checking it out, so another branch's history is browsable from the
@@ -2604,7 +2605,10 @@ func (s *gitSession) CompareFiles(ctx context.Context, from, to string, options 
 	if err != nil {
 		return nil, fmt.Errorf("load comparison files: %w", err)
 	}
-	output, err := s.cmd.New(nameArgs).RunWithOutput()
+	// Rename-limit warnings are written to stderr even when Git succeeds.
+	// Keeping stderr separate prevents those warnings from corrupting the
+	// NUL-delimited name-status records.
+	output, _, err := s.cmd.New(nameArgs).RunWithOutputs()
 	if err != nil {
 		return nil, fmt.Errorf("load comparison files: %w", err)
 	}
@@ -2617,7 +2621,7 @@ func (s *gitSession) CompareFiles(ctx context.Context, from, to string, options 
 	if err != nil {
 		return nil, fmt.Errorf("load comparison line statistics: %w", err)
 	}
-	output, err = s.cmd.New(statArgs).RunWithOutput()
+	output, _, err = s.cmd.New(statArgs).RunWithOutputs()
 	if err != nil {
 		return nil, fmt.Errorf("load comparison line statistics: %w", err)
 	}
@@ -2628,6 +2632,21 @@ func (s *gitSession) CompareFiles(ctx context.Context, from, to string, options 
 		files[i].LinesDeleted = stat.deleted
 	}
 	return files, nil
+}
+
+func (s *gitSession) CompareDiff(ctx context.Context, from, to string, options DiffOptions) (Diff, error) {
+	if err := ctx.Err(); err != nil {
+		return Diff{}, err
+	}
+	args, err := s.compareArgs(from, to, "", options)
+	if err != nil {
+		return Diff{}, fmt.Errorf("load comparison diff: %w", err)
+	}
+	patch, err := s.cmd.New(args).RunWithOutput()
+	if err != nil {
+		return Diff{}, fmt.Errorf("load comparison diff: %w", err)
+	}
+	return Diff{Patch: patch, Kind: "Compare"}, nil
 }
 
 func (s *gitSession) CompareFileDiff(ctx context.Context, from, to string, file CommitFile, options DiffOptions) (Diff, error) {

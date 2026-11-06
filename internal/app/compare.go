@@ -11,11 +11,10 @@ import (
 	"lazygitapp/internal/repository"
 )
 
-// comparisonState owns the dialog's drafts, applied read options, and results.
+// comparisonState owns the page's drafts, applied read options, and results.
 // Applied values never alias the editable form: a background read keeps the
 // refs and options it started with even when the user changes the next one.
 type comparisonState struct {
-	open    bool
 	from    string
 	to      string
 	context string
@@ -28,25 +27,34 @@ type comparisonState struct {
 	filesLoading   bool
 	filesError     string
 
-	selected  int
-	list      ui.ListState
-	listWidth float32
+	fileSearch  string
+	fileRows    []fileTreeRow
+	selected    int
+	selectedRow int
+	list        ui.ListState
+	listWidth   float32
 
-	diffKey     string
-	diffState   *editor.DiffState
-	diffLoading bool
-	diffError   string
-	token       uint64
+	diffKey          string
+	diffPatch        string
+	diffState        *editor.DiffState
+	diffLoading      bool
+	diffError        string
+	wholeDiffLoading bool
+	token            uint64
 }
 
-// openCompare opens the ref picker without disturbing the selection or diff
-// underneath it. The latest commit is a useful default only when it has a
-// parent; a root-only repository asks for its starting ref explicitly.
+// openCompare switches to the comparison page without disturbing another
+// section's selection or diff. The latest commit is a useful default only when
+// it has a parent; a root-only repository asks for its starting ref explicitly.
 func (a *app) openCompare() {
 	if a.state != stateReady || a.session == nil {
 		return
 	}
-	a.compare.open = true
+	if !a.sectionVisible(sectionCompare) {
+		a.settings.VisibleSections = append(a.settings.VisibleSections, workspaceSectionIDs[sectionCompare])
+		a.settings.VisibleSections = normalizeVisibleSections(a.settings.VisibleSections)
+	}
+	a.setWorkspaceTab(sectionCompare)
 	if a.compare.context == "" {
 		a.compare.context = "3"
 	}
@@ -58,13 +66,13 @@ func (a *app) openCompare() {
 	}
 }
 
-// closeCompare hides the dialog and rejects anything its reads still have in
-// flight. Completed results remain so reopening the dialog is inexpensive.
+// closeCompare rejects anything the comparison page's reads still have in
+// flight. Completed results remain so a new comparison can reuse its options.
 func (a *app) closeCompare() {
-	a.compare.open = false
 	a.compare.token++
 	a.compare.filesLoading = false
 	a.compare.diffLoading = false
+	a.compare.wholeDiffLoading = false
 	a.compare.diffKey = ""
 }
 
@@ -80,15 +88,27 @@ func (a *app) resetComparison() {
 	a.compare.appliedOptions = repository.DiffOptions{}
 	a.compare.files = nil
 	a.compare.filesError = ""
+	a.compare.fileSearch = ""
+	a.compare.fileRows = nil
 	a.compare.selected = -1
+	a.compare.selectedRow = -1
+	a.compare.diffKey = ""
+	a.compare.diffPatch = ""
 	a.compare.diffState = nil
 	a.compare.diffError = ""
+	a.compare.wholeDiffLoading = false
+}
+
+// resetComparePage restores the initial controls without reloading results.
+func (a *app) resetComparePage() {
+	a.resetComparison()
+	a.openCompare()
 }
 
 // beginCompare applies the current drafts and starts a new file-list read.
 // Changing either refs or an option invalidates both the list and file diff.
 func (a *app) beginCompare() {
-	if a.session == nil || !a.compare.open || a.compare.filesLoading {
+	if a.session == nil || a.compare.filesLoading {
 		return
 	}
 	from, to := strings.TrimSpace(a.compare.from), strings.TrimSpace(a.compare.to)
@@ -113,10 +133,13 @@ func (a *app) beginCompare() {
 	a.compare.filesLoading = true
 	a.compare.filesError = ""
 	a.compare.selected = -1
+	a.compare.selectedRow = -1
 	a.compare.diffKey = ""
+	a.compare.diffPatch = ""
 	a.compare.diffState = nil
 	a.compare.diffLoading = false
 	a.compare.diffError = ""
+	a.compare.wholeDiffLoading = false
 	a.compare.token++
 
 	session := a.session
@@ -126,7 +149,7 @@ func (a *app) beginCompare() {
 		defer a.recoverBackground()
 		files, err := session.CompareFiles(context.Background(), from, to, options)
 		a.update(func() {
-			if generation != a.generation || token != a.compare.token || !a.compare.open {
+			if generation != a.generation || token != a.compare.token {
 				return
 			}
 			a.compare.filesLoading = false
@@ -170,11 +193,75 @@ func (a *app) swapCompare() {
 	}
 }
 
+// syncCompareFileRows filters without losing the source index Git actions use,
+// then adds the shared directory hierarchy. Filtering or changing modes moves
+// the selection to the first visible file when its previous file is hidden.
+func (a *app) syncCompareFileRows() []fileTreeRow {
+	previous := a.compare.selected
+	visible := filteredSourceRows(len(a.compare.files), a.compare.fileSearch, func(index int) string {
+		file := a.compare.files[index]
+		return file.Path + "\n" + file.PreviousPath
+	})
+	paths := make([]string, len(visible))
+	for index, source := range visible {
+		paths[index] = a.compare.files[source].Path
+	}
+	rows := a.fileTreeRows(fileTreeCompareScope, paths)
+	for index := range rows {
+		if !rows[index].isDirectory() {
+			rows[index].source = visible[rows[index].source]
+		}
+	}
+	if directory := selectedFileTreeDirectory(a.compare.fileRows, a.compare.selectedRow); directory != "" {
+		a.compare.selectedRow = fileTreeDirectoryIndex(rows, directory)
+		a.compare.selected = -1
+		if a.compare.selectedRow < 0 {
+			syncFileTreeRow(rows, &a.compare.selectedRow, &a.compare.selected)
+		}
+	} else {
+		syncFileTreeRow(rows, &a.compare.selectedRow, &a.compare.selected)
+	}
+	if a.compare.selected != previous {
+		a.clearCompareDiff()
+	}
+	return rows
+}
+
+// selectCompareFileRow separates visible tree rows from their source files. A
+// directory has no diff, so choosing one also drops any old file patch.
+func (a *app) selectCompareFileRow(row int) {
+	previous := a.compare.selected
+	selectFileTreeRow(a.compare.fileRows, row, &a.compare.selectedRow, &a.compare.selected)
+	if a.compare.selected != previous || a.compare.selected < 0 {
+		a.clearCompareDiff()
+	}
+}
+
+func (a *app) clearCompareDiff() {
+	a.compare.diffKey = ""
+	a.compare.diffPatch = ""
+	a.compare.diffState = nil
+	a.compare.diffLoading = false
+	a.compare.diffError = ""
+}
+
+// selectCompareSource also serves the full-window file list, where changing a
+// file must start its read even though the ordinary page is behind the overlay.
+func (a *app) selectCompareSource(source int) {
+	previous := a.compare.selected
+	a.compare.selected = source
+	a.compare.fileRows = a.syncCompareFileRows()
+	if a.compare.selected != previous || a.compare.selected < 0 {
+		a.clearCompareDiff()
+	}
+	a.requestCompareFileDiff()
+}
+
 // requestCompareFileDiff reads the selected file with exactly the options that
 // produced its list. diffKey rejects a slower response for a previous file;
 // token and generation reject responses for a previous comparison or repo.
 func (a *app) requestCompareFileDiff() {
-	if !a.compare.open || a.compare.filesLoading || a.compare.filesError != "" ||
+	if a.compare.filesLoading || a.compare.filesError != "" ||
 		a.compare.selected < 0 || a.compare.selected >= len(a.compare.files) {
 		return
 	}
@@ -183,6 +270,7 @@ func (a *app) requestCompareFileDiff() {
 		return
 	}
 	a.compare.diffKey = file.Path
+	a.compare.diffPatch = ""
 	a.compare.diffState = nil
 	a.compare.diffLoading = true
 	a.compare.diffError = ""
@@ -201,7 +289,7 @@ func (a *app) requestCompareFileDiff() {
 			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
 		}
 		a.update(func() {
-			if generation != a.generation || token != a.compare.token || !a.compare.open ||
+			if generation != a.generation || token != a.compare.token ||
 				a.compare.diffKey != file.Path {
 				return
 			}
@@ -210,86 +298,122 @@ func (a *app) requestCompareFileDiff() {
 				a.compare.diffError = safeError(err)
 				return
 			}
+			a.compare.diffPatch = diff.Patch
 			a.compare.diffState = state
 		})
 	}()
 }
 
-// compareModal is a large, read-only worksheet: refs and display options above,
-// changed files on the left, and the selected file's patch on the right.
-func (a *app) compareModal(c *ui.Context) {
-	if !a.compare.open {
-		return
+// comparePage puts display options beside the title and both refs in one
+// compact action row, leaving the rest of the workspace to files and diffs.
+const compareDiffActionSize float32 = 22
+
+// compareDiffActionButton is deliberately smaller than the ordinary diff
+// toolbar: these actions sit beside the file title rather than on their own row.
+func compareDiffActionButton(c *ui.Context, label, tooltip string, icon *ui.SVG, active, disabled bool, run func()) {
+	var button ui.Element
+	if active {
+		button = ui.PrimaryButton(c, "")
+	} else {
+		button = ui.Button(c, "")
 	}
-	theme := c.Theme()
-	ui.Overlay(c, func() {
-		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
-			Justify(ui.Center).AlignItems(ui.Center).
-			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
-		a.registerTerminalModalShortcuts(back)
-		if !a.settings.DisableShortcuts {
-			back.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
-			back.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })
-		}
-		back.Children(func() {
-			panel := ui.Column(c).Width(1100).Height(700).MaxWidthPercent(94).MaxHeightPercent(92).
-				Padding(18).Gap(12).Background(theme.Background).
-				Border(1, theme.Border).Radius(theme.Radius + 4).
-				Role(ui.RoleDialog).Label(tr("Compare refs"))
-			panel.Children(func() {
-				ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
-					ui.Box(c).Size(34, 34).Radius(9).Center().
-						Background(theme.Accent.Alpha(0.14)).Children(func() {
-						ui.Icon(c, compareIcon).FontSize(18).TextColor(theme.Accent)
-					})
-					ui.Column(c).Gap(2).Grow(1).Children(func() {
-						ui.Text(c, tr("Compare refs")).FontSize(17).Bold()
-						ui.Text(c, tr("Review two branches, tags, or commits without changing your working tree.")).
-							TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-					})
-					iconButton(c, "Close comparison", "Escape", closeIcon, false, a.closeCompare)
-				})
+	clicked := button.Size(compareDiffActionSize, compareDiffActionSize).Padding(0).Center().
+		Label(tr(label)).Tooltip(tr(tooltip)).Disabled(disabled).Clicked()
+	button.Children(func() {
+		ui.Icon(c, icon).FontSize(12)
+	})
+	if clicked {
+		run()
+	}
+}
 
-				ui.Row(c).AlignItems(ui.End).Gap(8).Children(func() {
-					from := a.compareRefInput(c, "From ref", "main or HEAD~1", &a.compare.from).Grow(1)
-					to := a.compareRefInput(c, "To ref", "feature or HEAD", &a.compare.to).Grow(1)
-					iconButton(c, "Swap refs", "Swap the comparison direction", swapIcon,
-						strings.TrimSpace(a.compare.from) == "" || strings.TrimSpace(a.compare.to) == "", a.swapCompare)
-					compare := ui.PrimaryButton(c, tr("Compare")).
-						Tooltip(tr("Read the changed files and their diffs")).
-						Disabled(strings.TrimSpace(a.compare.from) == "" || strings.TrimSpace(a.compare.to) == "" || a.compare.filesLoading)
-					if compare.Clicked() || from.Submitted() || to.Submitted() {
-						a.beginCompare()
-					}
-				})
-				ui.Row(c).AlignItems(ui.Center).Gap(12).Wrap().Children(func() {
-					ignore := ui.Checkbox(c, &a.compare.options.IgnoreWhitespace, tr("Ignore whitespace")).
-						Label(tr("Ignore whitespace")).Tooltip(tr("Hide whitespace-only changes inside each file"))
-					ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
-						ui.Text(c, tr("Context lines")).TextColor(theme.TextMuted)
-						contextChoice := ui.Select(c, &a.compare.context, []string{"0", "1", "3", "5", "10", "20"}).
-							Label(tr("Context lines")).Tooltip(tr("Unchanged lines shown around each change"))
-						if contextChoice.Changed() {
-							a.refreshAppliedCompare()
-						}
-					})
-					if ignore.Changed() {
-						a.refreshAppliedCompare()
-					}
-					ui.Spacer(c).Grow(1)
-					a.diffLayoutButton(c)
-					a.diffWrapButton(c)
-				})
-
-				if a.compare.appliedFrom != "" {
-					ui.Textf(c, "%s → %s", a.compare.appliedFrom, a.compare.appliedTo).
-						TextColor(theme.TextMuted).SingleLine().Tooltip(a.compare.appliedFrom + " → " + a.compare.appliedTo)
-				}
-				a.compareResults(c, theme)
+// compareDiffViewOptions keeps the patch-read and presentation actions in one
+// compact title-bar group, followed by download and fullscreen.
+func (a *app) compareDiffViewOptions(c *ui.Context, fullscreen bool) {
+	ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
+		compareDiffActionButton(c, "Toggle whitespace-only diff changes", "Alt+W · Hide or show whitespace-only changes",
+			diffWhitespaceIcon, a.compare.options.IgnoreWhitespace, false, a.toggleDiffWhitespace)
+		contextButton := ui.Button(c, "").Size(compareDiffActionSize, compareDiffActionSize).Padding(0).Center()
+		contextClicked := contextButton.Label(tr("Change diff context lines")).
+			Tooltip(tr("Alt+U · Cycle through 0, 1, 3, 5, and 10 context lines")).Clicked()
+		contextButton.Children(func() {
+			ui.Row(c).Gap(1).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, diffContextIcon).FontSize(10)
+				ui.Text(c, strconv.Itoa(a.compare.options.ContextLines)).FontSize(c.Theme().FontSize - 5)
 			})
-			if panel.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
-				a.closeCompare()
-			}
+		})
+		if contextClicked {
+			a.cycleDiffContext()
+		}
+
+		layoutTooltip, layoutIcon := "Switch to side-by-side diff", diffSplitIcon
+		if a.diffSplit {
+			layoutTooltip, layoutIcon = "Switch to unified diff", diffUnifiedIcon
+		}
+		compareDiffActionButton(c, "Toggle diff layout", layoutTooltip, layoutIcon, false, false, a.toggleDiffLayout)
+
+		wrapTooltip := "Long lines scroll sideways — click to wrap them"
+		if a.diffWrap {
+			wrapTooltip = "Long lines are wrapped — click to scroll them sideways"
+		}
+		compareDiffActionButton(c, "Toggle diff line wrapping", wrapTooltip, diffWrapIcon, a.diffWrap, false, a.toggleDiffWrap)
+
+		shown, ok := a.activeDiff()
+		compareDiffActionButton(c, "Save diff", "Save this diff to a file…", downloadIcon,
+			false, !ok || shown.patch == "", a.exportDiff)
+		if fullscreen {
+			compareDiffActionButton(c, "Restore diff view", "Restore diff view", shrinkIcon, false, false, a.closeDiffFullscreen)
+		} else {
+			compareDiffActionButton(c, "Expand diff", "Review this diff in the whole window", expandIcon,
+				false, !ok, a.openDiffFullscreen)
+		}
+	})
+}
+
+const (
+	compareControlHeight  float32 = 32
+	compareDownloadMargin float32 = 6
+)
+
+func compareHeaderIconButton(c *ui.Context, label string, icon *ui.SVG, disabled bool, run func()) {
+	button := ui.Button(c, "").Size(compareControlHeight, compareControlHeight).Padding(0).Center()
+	clicked := button.Label(tr(label)).Tooltip(tr(label)).Disabled(disabled).Clicked()
+	button.Children(func() {
+		ui.Icon(c, icon).FontSize(14)
+	})
+	if clicked {
+		run()
+	}
+}
+
+func (a *app) comparePage(c *ui.Context) {
+	theme := c.Theme()
+	islandCard(c, ui.Column(c).Grow(1)).Children(func() {
+		ui.Column(c).Gap(8).Padding(10, 12).Children(func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				ui.Icon(c, compareIcon).FontSize(16).TextColor(theme.Accent)
+				ui.Text(c, tr("Compare refs")).FontSize(16).Bold()
+			})
+			ui.Row(c).AlignItems(ui.End).Gap(8).Children(func() {
+				from := a.compareRefInput(c, "From ref", "main or HEAD~1", &a.compare.from).Grow(1)
+				to := a.compareRefInput(c, "To ref", "feature or HEAD", &a.compare.to).Grow(1)
+				compare := compactTextButton(ui.PrimaryButton(c, tr("Compare"))).Height(compareControlHeight).
+					Tooltip(tr("Read the changed files and their diffs")).
+					Disabled(strings.TrimSpace(a.compare.from) == "" || strings.TrimSpace(a.compare.to) == "" || a.compare.filesLoading)
+				if compare.Clicked() || from.Submitted() || to.Submitted() {
+					a.beginCompare()
+				}
+				compareHeaderIconButton(c, "Refresh comparison", refreshIcon,
+					a.compare.appliedFrom == "" || a.compare.filesLoading, a.refreshAppliedCompare)
+				compareHeaderIconButton(c, "Swap refs", swapIcon,
+					strings.TrimSpace(a.compare.from) == "" || strings.TrimSpace(a.compare.to) == "", a.swapCompare)
+				compareHeaderIconButton(c, "Cancel comparison", closeIcon, false, a.resetComparePage)
+			})
+		})
+		ui.Divider(c).FillWidth()
+		ui.Column(c).Grow(1).Padding(10, 12).
+			Role(ui.RoleRegion).Label(tr("Comparison results")).Children(func() {
+			a.compareResults(c, theme)
 		})
 	})
 }
@@ -299,7 +423,7 @@ func (a *app) compareModal(c *ui.Context) {
 func (a *app) compareRefInput(c *ui.Context, label, placeholder string, value *string) ui.Element {
 	theme := c.Theme()
 	combo := ui.ComboboxBase(c, value)
-	input := combo.Input.Grow(1).Padding(7, 10).
+	input := combo.Input.Grow(1).Height(compareControlHeight).Padding(7, 10).
 		Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius).
 		Label(tr(label)).Placeholder(tr(placeholder)).AutoComplete(ui.AutoCompleteList)
 	combo.Popup(func(panel ui.Element) {
@@ -339,6 +463,7 @@ func (a *app) compareRefChoices(typed string, filtering bool) []string {
 		}
 	}
 	add("HEAD")
+	add("HEAD~1")
 	for _, branch := range a.snapshot.Branches {
 		add(branch.Name)
 	}
@@ -405,55 +530,82 @@ func (a *app) compareResults(c *ui.Context, theme *ui.Theme) {
 		return
 	}
 
-	paneSplit(c, &a.compare.listWidth, func() {
-		ui.Column(c).Grow(1).FillHeight().Gap(7).Children(func() {
-			ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
-				paneTitle(c, folderIcon, "Changed files")
-				ui.Spacer(c).Grow(1)
-				ui.Badge(c, strconv.Itoa(len(a.compare.files)))
+	a.compare.fileRows = a.syncCompareFileRows()
+	a.collapsibleContentPaneSplit(c, &a.compare.listWidth, &a.workspacePaneCollapsed[sectionCompare],
+		"Expand list pane", func() {
+			ui.Column(c).Grow(1).FillHeight().Gap(7).Children(func() {
+				ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
+					paneTitle(c, folderIcon, "Changed files")
+					ui.Spacer(c).Grow(1)
+					ui.Badge(c, strconv.Itoa(len(a.compare.files)))
+					a.fileTreeModeButton(c)
+					paneCollapseButton(c, &a.workspacePaneCollapsed[sectionCompare], "Collapse list pane")
+				})
+				ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
+					ui.SearchField(c, &a.compare.fileSearch).Bind(&a.sectionSearch[sectionCompare]).
+						Label(tr("Search files")).Placeholder(tr("Search files")).Grow(1)
+					a.searchNavigationButtons(c, strings.TrimSpace(a.compare.fileSearch) != "")
+					ui.Row(c).Padding(0, compareDownloadMargin, 0, 0).Children(func() {
+						a.exportCompareDiffButton(c)
+					})
+				})
+				if len(a.compare.fileRows) == 0 {
+					ui.Column(c).Grow(1).Center().Children(func() {
+						ui.Text(c, tr("No files match this filter")).TextColor(theme.TextMuted)
+					})
+					return
+				}
+				list := a.keyboardList(c, &a.compare.list, len(a.compare.fileRows)).Grow(1).Rows(func(row ui.ListRow) {
+					item := a.compare.fileRows[row.Index]
+					if item.isDirectory() {
+						a.fileTreeDirectoryRow(row.Context, fileTreeCompareScope, item, row.Selected(), func() {
+							a.selectCompareFileRow(row.Index)
+						})
+						return
+					}
+					file := a.compare.files[item.source]
+					ui.Row(row.Context).Gap(8).AlignItems(ui.Center).
+						Padding(6, 8, 6, float32(8+16*item.depth)).Children(func() {
+						fileTypeMark(row.Context, file.Path, 13, row.Selected())
+						ui.Text(row.Context, item.name).Grow(1).SingleLine().Tooltip(file.Path)
+						fileDiffStatCounts(row.Context, file.Path, file.LinesAdded, file.LinesDeleted)
+						statusSlot(row.Context, statusLetter(file.Status), rowStatusColor(theme, row, theme.Warning))
+					})
+				})
+				if a.keyboardListChanged(&a.compare.list, list) {
+					a.selectCompareFileRow(a.compare.selectedRow)
+				}
+				normalizeFileTreeRow(a.compare.fileRows, &a.compare.selectedRow, &a.compare.selected)
 			})
-			list := a.keyboardList(c, &a.compare.list, len(a.compare.files)).Grow(1).Rows(func(row ui.ListRow) {
-				file := a.compare.files[row.Index]
-				ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(7, 8).Children(func() {
-					fileTypeMark(row.Context, file.Path, 13, row.Selected())
-					ui.Text(row.Context, file.Path).Grow(1).SingleLine().Tooltip(file.Path)
-					fileDiffStatCounts(row.Context, file.Path, file.LinesAdded, file.LinesDeleted)
-					statusSlot(row.Context, statusLetter(file.Status), theme.Warning)
+		}, func() {
+			ui.Column(c).Grow(1).FillHeight().Gap(7).Children(func() {
+				if a.compare.selected < 0 || a.compare.selected >= len(a.compare.files) {
+					ui.Column(c).Grow(1).Center().Children(func() {
+						ui.Text(c, tr("Select a file to see its diff.")).TextColor(theme.TextMuted)
+					})
+					return
+				}
+				file := a.compare.files[a.compare.selected]
+				ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+					ui.Text(c, file.Path).Bold().SingleLine().Tooltip(file.Path).Grow(1)
+					a.compareDiffViewOptions(c, false)
 				})
+				a.requestCompareFileDiff()
+				switch {
+				case a.compare.diffLoading:
+					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+						ui.Spinner(c).Label(tr("Loading diff"))
+						ui.Text(c, tr("Loading diff…")).TextColor(theme.TextMuted)
+					})
+				case a.compare.diffError != "":
+					ui.Text(c, a.compare.diffError).TextColor(theme.Danger).Selectable()
+				case a.compare.diffState != nil:
+					a.keyboardDiffViewer(c, a.compare.diffState)
+				default:
+					ui.Column(c).Grow(1).Center().Children(func() {
+						ui.Text(c, tr("No textual diff")).TextColor(theme.TextMuted)
+					})
+				}
 			})
-			if a.keyboardListChanged(&a.compare.list, list) {
-				a.compare.diffKey = ""
-				a.compare.diffState = nil
-				a.compare.diffLoading = false
-				a.compare.diffError = ""
-			}
 		})
-	}, func() {
-		ui.Column(c).Grow(1).FillHeight().Gap(7).Children(func() {
-			if a.compare.selected < 0 || a.compare.selected >= len(a.compare.files) {
-				ui.Column(c).Grow(1).Center().Children(func() {
-					ui.Text(c, tr("Select a file to see its diff.")).TextColor(theme.TextMuted)
-				})
-				return
-			}
-			file := a.compare.files[a.compare.selected]
-			ui.Text(c, file.Path).Bold().SingleLine().Tooltip(file.Path)
-			a.requestCompareFileDiff()
-			switch {
-			case a.compare.diffLoading:
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Spinner(c).Label(tr("Loading diff"))
-					ui.Text(c, tr("Loading diff…")).TextColor(theme.TextMuted)
-				})
-			case a.compare.diffError != "":
-				ui.Text(c, a.compare.diffError).TextColor(theme.Danger)
-			case a.compare.diffState != nil:
-				a.keyboardDiffViewer(c, a.compare.diffState)
-			default:
-				ui.Column(c).Grow(1).Center().Children(func() {
-					ui.Text(c, tr("No textual diff")).TextColor(theme.TextMuted)
-				})
-			}
-		})
-	}).Grow(1)
 }
