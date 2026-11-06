@@ -60,7 +60,10 @@ type app struct {
 
 	opener repositoryOpener
 	update func(func())
-	window *mygo.Window
+	// updateChanged applies a background read on the UI thread without
+	// repainting when its callback reports that nothing visible changed.
+	updateChanged func(func() bool)
+	window        *mygo.Window
 	// services is refreshed from the active window so keyboard-only actions
 	// can use the same clipboard and browser services as pointer actions.
 	services ui.Services
@@ -987,6 +990,9 @@ func newApp(opener repositoryOpener) *app {
 		return file.Path + "\x00" + file.Status
 	}
 	a.fileHistoryFileList.Label = func(row int) string { return a.fileHistoryFiles[row].Path }
+	a.updateChanged = func(fn func() bool) {
+		a.update(func() { fn() })
+	}
 	return a
 }
 

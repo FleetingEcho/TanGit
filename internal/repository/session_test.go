@@ -436,8 +436,8 @@ func TestBranchCommitsReadWithoutCheckout(t *testing.T) {
 	}
 }
 
-// SearchCommits narrows Git's history by message, author and branch, and
-// treats the message as literal text rather than a regular expression.
+// SearchCommits narrows Git's history by message, hash, author and branch,
+// and treats the message as literal text rather than a regular expression.
 func TestSearchCommitsFilters(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
@@ -458,6 +458,7 @@ func TestSearchCommitsFilters(t *testing.T) {
 	runGit(t, dir, "config", "user.name", "Ada Lovelace")
 	runGit(t, dir, "config", "user.email", "ada@example.com")
 	runGit(t, dir, "commit", "--allow-empty", "-m", "FIX the README")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "deadbeef notes")
 
 	session, err := (Opener{}).Open(context.Background(), dir)
 	if err != nil {
@@ -481,12 +482,52 @@ func TestSearchCommitsFilters(t *testing.T) {
 		t.Fatalf("a literal dot matched %d commits, want none", len(dots))
 	}
 
+	hexMessage, err := session.SearchCommits(context.Background(), CommitFilter{Query: "deadbeef", Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hexMessage) != 1 || hexMessage[0].Subject != "deadbeef notes" {
+		t.Fatalf("hexadecimal message search = %#v, want the deadbeef notes commit", hexMessage)
+	}
+
 	byAuthor, err := session.SearchCommits(context.Background(), CommitFilter{Author: "grace", Limit: 20})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(byAuthor) != 1 || byAuthor[0].Subject != "Feature work" {
 		t.Fatalf("author search = %#v, want the feature commit", byAuthor)
+	}
+
+	featureHash := byAuthor[0].Hash
+	for _, query := range []string{featureHash, featureHash[:7]} {
+		byHash, err := session.SearchCommits(context.Background(), CommitFilter{Query: query, Limit: 20})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(byHash) != 1 || byHash[0].Hash != featureHash {
+			t.Fatalf("hash search for %q = %#v, want only the feature commit", query, byHash)
+		}
+	}
+	outsideBranch, err := session.SearchCommits(context.Background(), CommitFilter{Query: featureHash, Branch: "main", Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outsideBranch) != 0 {
+		t.Fatalf("hash search escaped its branch filter: %#v", outsideBranch)
+	}
+	withAuthor, err := session.SearchCommits(context.Background(), CommitFilter{Query: featureHash, Author: "grace", Branch: "feature", Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(withAuthor) != 1 || withAuthor[0].Hash != featureHash {
+		t.Fatalf("hash and author search = %#v, want only the feature commit", withAuthor)
+	}
+	wrongAuthor, err := session.SearchCommits(context.Background(), CommitFilter{Query: featureHash, Author: "ada", Branch: "feature", Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wrongAuthor) != 0 {
+		t.Fatalf("hash search ignored its author filter: %#v", wrongAuthor)
 	}
 
 	onFeature, err := session.SearchCommits(context.Background(), CommitFilter{Branch: "feature", Limit: 20})
