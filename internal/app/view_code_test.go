@@ -301,15 +301,26 @@ func TestCodeSearchBadgeReportsTheActualBackend(t *testing.T) {
 	if h.app.code.searchBackend != workspaceSearchBackendGo {
 		t.Fatalf("fallback backend = %v, want Go", h.app.code.searchBackend)
 	}
-	if h.tester.HasText("ripgrep") {
-		t.Fatal("the native fallback incorrectly displays the ripgrep badge")
+	if _, found := h.tester.Find("Search powered by ripgrep"); found {
+		t.Fatal("the native fallback incorrectly displays the ripgrep backend badge")
+	}
+	if _, found := h.tester.Find("Search powered by the internal Go scanner"); !found {
+		t.Fatal("the native fallback does not display the Go backend badge")
 	}
 
 	h.app.code.searchQuery = ""
 	h.app.beginCodeSearch()
 	h.tester.Frame()
-	if h.app.code.searchBackend != workspaceSearchBackendNone || h.tester.HasText("ripgrep") {
-		t.Fatal("clearing the query retained the backend badge")
+	if h.app.code.searchBackend != workspaceSearchBackendNone {
+		t.Fatal("clearing the query retained the backend state")
+	}
+	for _, label := range []string{"Search powered by ripgrep", "Search powered by the internal Go scanner"} {
+		if _, found := h.tester.Find(label); found {
+			t.Fatalf("clearing the query retained the %q badge", label)
+		}
+	}
+	if _, found := h.tester.Find("Use ripgrep"); !found {
+		t.Fatal("clearing the query hid the independent backend switch")
 	}
 }
 
@@ -371,6 +382,239 @@ func TestCodeSearchDebouncesTypingAndClearsOptionsWhenEmptied(t *testing.T) {
 	if h.app.code.searchCaseSensitive || h.app.code.searchWholeWord || h.app.code.searchRegularExpr || h.app.code.searchFiltersOpen ||
 		h.app.code.searchInclude != "" || h.app.code.searchExclude != "" {
 		t.Fatal("clearing the query left search options highlighted or active")
+	}
+}
+
+func TestCodeSearchBackendSwitchVisibilityFollowsRipgrepAvailability(t *testing.T) {
+	originalLookPath := workspaceSearchLookPath
+	t.Cleanup(func() { workspaceSearchLookPath = originalLookPath })
+	for _, available := range []bool{true, false} {
+		t.Run(fmt.Sprintf("available-%v", available), func(t *testing.T) {
+			workspaceSearchLookPath = func(string) (string, error) {
+				if available {
+					return "rg", nil
+				}
+				return "", exec.ErrNotFound
+			}
+			h := menuTestApp(t)
+			useRealCodeWorkspace(t, h, map[string]string{"match.txt": "needle\n"})
+			h.tester.Key(ui.Cmd|ui.Shift, ui.KeyF)
+			h.tester.Frame()
+			bounds, found := h.tester.Find("Use ripgrep")
+			if found != available {
+				t.Fatalf("before any search, Use ripgrep visibility = %v, want %v", found, available)
+			}
+			if available && (bounds.W > 30 || bounds.H > 16) {
+				t.Fatalf("the compact backend switch is %.0fx%.0f DIP, want at most 30x16", bounds.W, bounds.H)
+			}
+			badge, badgeFound := h.tester.Find("Search may be slow in huge repositories. Each page is limited to 500 matches, and files larger than 8 MiB are skipped.")
+			if !badgeFound || !h.tester.HasText("500 per page") {
+				t.Fatal("the page-limit badge is not visible before a search")
+			}
+			if available && bounds.X > badge.X {
+				t.Fatal("the backend switch is not to the left of the page-limit badge")
+			}
+			if !h.app.code.searchRipgrepKnown || h.app.code.searchRipgrepAvailable != available {
+				t.Fatalf("cached availability: known=%v available=%v, want true/%v",
+					h.app.code.searchRipgrepKnown, h.app.code.searchRipgrepAvailable, available)
+			}
+		})
+	}
+}
+
+func TestCodeSearchBackendSwitchSelectsNativeOrRipgrep(t *testing.T) {
+	originalRun, originalLookPath := runCodeSearch, workspaceSearchLookPath
+	t.Cleanup(func() {
+		runCodeSearch = originalRun
+		workspaceSearchLookPath = originalLookPath
+	})
+	workspaceSearchLookPath = func(string) (string, error) { return "rg", nil }
+	preferences := make(chan bool, 3)
+	runCodeSearch = func(_ context.Context, _ string, _ []string, options workspaceSearchOptions, _ int) ([]workspaceSearchMatch, workspaceSearchBackend, error) {
+		preferences <- options.PreferNative
+		backend := workspaceSearchBackendRipgrep
+		if options.PreferNative {
+			backend = workspaceSearchBackendGo
+		}
+		return []workspaceSearchMatch{{Path: "match.txt", Line: 1, Column: 1, Text: "needle"}}, backend, nil
+	}
+
+	h := menuTestApp(t)
+	useRealCodeWorkspace(t, h, map[string]string{"match.txt": "needle\n"})
+	h.tester.Key(ui.Cmd|ui.Shift, ui.KeyF)
+	h.tester.Type("needle")
+	h.tester.Key(0, ui.KeyEnter)
+	h.waitFor(t, "the initial ripgrep search", func() bool {
+		return !h.app.code.searchRunning && h.app.code.searchBackend == workspaceSearchBackendRipgrep
+	})
+	if preferNative := <-preferences; preferNative {
+		t.Fatal("the default search did not allow ripgrep")
+	}
+
+	if err := h.tester.Click("Use ripgrep"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor(t, "the native-only search", func() bool {
+		return !h.app.code.searchRunning && h.app.code.searchBackend == workspaceSearchBackendGo
+	})
+	if preferNative := <-preferences; !preferNative || !h.app.code.searchSubmittedOptions.PreferNative {
+		t.Fatal("turning off ripgrep did not capture the native-only search option")
+	}
+	if _, found := h.tester.Find("Search powered by the internal Go scanner"); !found {
+		t.Fatal("the result header does not identify the internal Go backend")
+	}
+
+	if err := h.tester.Click("Use ripgrep"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor(t, "the re-enabled ripgrep search", func() bool {
+		return !h.app.code.searchRunning && h.app.code.searchBackend == workspaceSearchBackendRipgrep
+	})
+	if preferNative := <-preferences; preferNative || h.app.code.searchSubmittedOptions.PreferNative {
+		t.Fatal("re-enabling ripgrep retained the native-only search option")
+	}
+}
+
+func TestCodeSearchLoadMoreRaisesLimitAndHidesWhenExhausted(t *testing.T) {
+	originalRun := runCodeSearch
+	t.Cleanup(func() { runCodeSearch = originalRun })
+	limits := make(chan int, 2)
+	runCodeSearch = func(_ context.Context, _ string, _ []string, _ workspaceSearchOptions, limit int) ([]workspaceSearchMatch, workspaceSearchBackend, error) {
+		limits <- limit
+		count := min(750, limit)
+		matches := make([]workspaceSearchMatch, count)
+		for i := range matches {
+			matches[i] = workspaceSearchMatch{Path: fmt.Sprintf("file-%04d.txt", i), Line: 1, Column: 1, Text: "needle"}
+		}
+		return matches, workspaceSearchBackendGo, nil
+	}
+
+	h := menuTestApp(t)
+	useRealCodeWorkspace(t, h, map[string]string{"needle.txt": "needle\n"})
+	h.tester.Key(ui.Cmd|ui.Shift, ui.KeyF)
+	h.tester.Type("needle")
+	h.tester.Key(0, ui.KeyEnter)
+	h.waitFor(t, "the first search page", func() bool {
+		return !h.app.code.searchRunning && len(h.app.code.searchResults) == codeSearchPageSize
+	})
+	if got := <-limits; got != codeSearchPageSize {
+		t.Fatalf("initial result limit = %d, want %d", got, codeSearchPageSize)
+	}
+	if !h.tester.HasText("500 per page") {
+		t.Fatal("the result header does not show the search page limit")
+	}
+	if _, found := h.tester.Find("Search may be slow in huge repositories. Each page is limited to 500 matches, and files larger than 8 MiB are skipped."); !found {
+		t.Fatal("the search page-limit badge has no explanatory label")
+	}
+	if _, found := h.tester.Find("Load more matches"); !found || !h.app.code.searchHasMore {
+		t.Fatal("a full first page does not offer Load more")
+	}
+	h.app.code.searchSelected = 42
+	h.app.code.searchCollapsed = map[string]bool{"file-0001.txt": true}
+
+	if err := h.tester.Click("Load more matches"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor(t, "the second search page", func() bool {
+		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 750
+	})
+	if got := <-limits; got != 2*codeSearchPageSize {
+		t.Fatalf("second-page result limit = %d, want %d", got, 2*codeSearchPageSize)
+	}
+	if h.app.code.searchSelected != 42 || !h.app.code.searchCollapsed["file-0001.txt"] {
+		t.Fatal("loading another page reset the visible selection or folding")
+	}
+	if _, found := h.tester.Find("Load more matches"); found || h.app.code.searchHasMore {
+		t.Fatal("an exhausted search still offers Load more")
+	}
+}
+
+func TestCodeSearchLoadMoreReachesFilesBeyondMatchHeavyFiles(t *testing.T) {
+	h := menuTestApp(t)
+	useRealCodeWorkspace(t, h, map[string]string{
+		"a-heavy.txt": strings.Repeat("needle\n", 1000),
+		"z-light.txt": "needle\n",
+	})
+	h.tester.Key(ui.Cmd|ui.Shift, ui.KeyF)
+	h.tester.Type("needle")
+	h.tester.Key(0, ui.KeyEnter)
+	h.waitFor(t, "the first search page", func() bool {
+		return !h.app.code.searchRunning && len(h.app.code.searchResults) == codeSearchPageSize
+	})
+	if err := h.tester.Click("Load more matches"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor(t, "the second search page", func() bool {
+		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 2*codeSearchPageSize
+	})
+	paths := make(map[string]bool)
+	for _, match := range h.app.code.searchResults {
+		paths[match.Path] = true
+	}
+	if !paths["z-light.txt"] {
+		t.Fatalf("loading more returned %d matches but still omitted the later matching file; paths = %v", len(h.app.code.searchResults), paths)
+	}
+	if !h.tester.HasText("z-light.txt") {
+		t.Fatal("the refreshed result list does not show the newly discovered file")
+	}
+}
+
+func TestCodeSearchLoadMoreKeepsResultsAndClearCancelsReload(t *testing.T) {
+	originalRun := runCodeSearch
+	t.Cleanup(func() { runCodeSearch = originalRun })
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	runCodeSearch = func(ctx context.Context, _ string, _ []string, _ workspaceSearchOptions, limit int) ([]workspaceSearchMatch, workspaceSearchBackend, error) {
+		if limit == codeSearchPageSize {
+			matches := make([]workspaceSearchMatch, codeSearchPageSize)
+			for i := range matches {
+				matches[i] = workspaceSearchMatch{Path: fmt.Sprintf("file-%04d.txt", i), Line: 1, Column: 1, Text: "needle"}
+			}
+			return matches, workspaceSearchBackendGo, nil
+		}
+		close(started)
+		<-ctx.Done()
+		close(cancelled)
+		return nil, workspaceSearchBackendNone, ctx.Err()
+	}
+
+	h := menuTestApp(t)
+	useRealCodeWorkspace(t, h, map[string]string{"needle.txt": "needle\n"})
+	h.tester.Key(ui.Cmd|ui.Shift, ui.KeyF)
+	h.tester.Type("needle")
+	h.tester.Key(0, ui.KeyEnter)
+	h.waitFor(t, "the first search page", func() bool {
+		return !h.app.code.searchRunning && len(h.app.code.searchResults) == codeSearchPageSize
+	})
+	if err := h.tester.Click("Load more matches"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the next search page did not start")
+	}
+	h.tester.Frame()
+	if len(h.app.code.searchResults) != codeSearchPageSize || !h.app.code.searchLoadingMore || !h.tester.HasText("500 matches") {
+		t.Fatal("loading another page discarded the visible results")
+	}
+	if h.tester.HasText("Searching files…") {
+		t.Fatal("loading another page replaced the result list with the initial-search spinner")
+	}
+
+	if err := h.tester.Click("Clear"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("clearing the query did not cancel the next-page search")
+	}
+	h.updates.waitForUpdate(t)
+	h.tester.Frame()
+	if h.app.code.searchRunning || h.app.code.searchLoadingMore || h.app.code.searchHasMore || len(h.app.code.searchResults) != 0 {
+		t.Fatalf("the cancelled reload left search state behind: running=%v loadingMore=%v hasMore=%v results=%d",
+			h.app.code.searchRunning, h.app.code.searchLoadingMore, h.app.code.searchHasMore, len(h.app.code.searchResults))
 	}
 }
 
