@@ -26,7 +26,7 @@ func TestHeaderTextButtonsShareTheIconButtonHeight(t *testing.T) {
 	h, _ := menuTestAppWithCalls(t)
 	h.app.snapshot.Operation = "merge"
 	h.tester.Frame()
-	icon, found := h.tester.Find("Compare refs")
+	icon, found := h.tester.Find("Fetch")
 	if !found {
 		t.Fatal("header icon button is missing")
 	}

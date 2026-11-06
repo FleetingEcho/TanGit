@@ -278,7 +278,6 @@ var spanish = map[string]string{
 	"Refresh comparison": "Actualizar comparación",
 	"Cancel comparison":  "Cancelar comparación",
 	"Compare two refs":   "Comparar dos refs",
-	"Compare two branches, tags, or commits (W)":                                "Comparar dos ramas, etiquetas o commits (W)",
 	"Review two branches, tags, or commits without changing your working tree.": "Compara dos ramas, etiquetas o commits sin modificar tu árbol de trabajo.",
 	"Close comparison":                       "Cerrar comparación",
 	"From ref":                               "Ref de origen",
