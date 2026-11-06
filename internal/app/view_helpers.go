@@ -218,7 +218,7 @@ func compactTextButton(button ui.Element) ui.Element {
 
 // flatToggleIconButton keeps a view mode's active state visible and exposes
 // it as a pressed toggle to assistive technology.
-func flatToggleIconButton(c *ui.Context, label, tooltip string, icon *ui.SVG, size, pad float32, active bool, run func()) {
+func flatToggleIconButton(c *ui.Context, label, tooltip string, icon *ui.SVG, size, pad float32, active bool, run func()) ui.Element {
 	theme := c.Theme()
 	button := ui.ButtonBase(c).Padding(pad).Radius(theme.Radius)
 	button.Label(tr(label)).Tooltip(tr(tooltip)).Checked(active)
@@ -237,6 +237,7 @@ func flatToggleIconButton(c *ui.Context, label, tooltip string, icon *ui.SVG, si
 	if button.Clicked() {
 		run()
 	}
+	return button
 }
 
 // flatIconButton is a borderless icon button for a pane's header and its
@@ -532,6 +533,8 @@ func (a *app) closeAllForms() {
 	a.closeCloneForm()
 	a.closePatchPreview()
 	a.closeCustomPatchBuilder()
+	a.resetChangeCourier()
+	a.closeCodeBlameDetails()
 	a.filterOpen = false
 	a.closeCompare()
 }
@@ -571,6 +574,7 @@ func (a *app) modalOpen() bool {
 		a.commandLogOpen ||
 		a.patchPreviewOpen ||
 		a.customPatch.open ||
+		a.courier.open ||
 		a.state == stateCloning ||
 		a.diffFullscreen ||
 		a.branchFullscreen ||

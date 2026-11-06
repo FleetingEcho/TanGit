@@ -308,8 +308,21 @@ func TestChangesExactSearchAndUntrackedToggle(t *testing.T) {
 	}
 
 	h.app.fileSearch = ""
-	h.app.ignoreUntracked = true
 	h.tester.Frame()
+	if err := h.tester.Click("File filters"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if !h.app.changesFiltersOpen || !h.tester.HasText("Ignore untracked files") {
+		t.Fatal("the filter icon did not open its options popover")
+	}
+	if err := h.tester.Click("Ignore untracked files"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if !h.app.ignoreUntracked || !h.app.changesFiltersOpen {
+		t.Fatal("the popover option did not immediately hide untracked files")
+	}
 	got = changeRowPaths(h.app.changeRows)
 	want = []string{"staged:both.txt", "staged:staged.txt", "unstaged:both.txt", "unstaged:work.txt"}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
@@ -318,6 +331,25 @@ func TestChangesExactSearchAndUntrackedToggle(t *testing.T) {
 	// The badges count what the filter leaves, not the warehouse of files.
 	if h.app.changeRows[3].count != 2 {
 		t.Errorf("the changes badge says %d, want 2", h.app.changeRows[3].count)
+	}
+	h.tester.Key(0, ui.KeyEscape)
+	h.tester.Frame()
+	if h.app.changesFiltersOpen {
+		t.Fatal("Escape did not dismiss the filter popover")
+	}
+	if info, ok := h.tester.Access("File filters"); !ok || !info.Checked {
+		t.Fatalf("active filter is not exposed on the popover trigger: %+v, %v", info, ok)
+	}
+	if err := h.tester.Click("File filters"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Clear filters"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.ignoreUntracked {
+		t.Fatal("Clear filters did not restore untracked files")
 	}
 }
 
@@ -465,6 +497,9 @@ func TestCloseBlame(t *testing.T) {
 	h.app.selectedFile = 2 // staged.txt
 	h.app.beginBlame()
 	h.waitFor(t, "the blame", func() bool { return h.app.blameState != nil })
+	if !h.app.blameState.NoIndentGuides {
+		t.Fatal("blame metadata indentation must not draw a grid beside the source")
+	}
 
 	if err := h.tester.Click("Close blame"); err != nil {
 		t.Fatal(err)

@@ -313,6 +313,13 @@ func (f fakeSession) DeleteWorkSnapshot(_ context.Context, snapshot repository.W
 	f.calls.record("delete-snapshot:" + snapshot.ID)
 	return nil
 }
+func (f fakeSession) Operations(context.Context) ([]repository.OperationRecord, error) {
+	return f.snapshot.Operations, nil
+}
+func (f fakeSession) UndoOperation(_ context.Context, id string) error {
+	f.calls.record("undo-operation:" + id)
+	return nil
+}
 
 func (f fakeSession) Discard(_ context.Context, file repository.File) error {
 	f.calls.record("discard:" + file.Path)
@@ -566,6 +573,11 @@ func (f fakeSession) BlameFile(context.Context, repository.File) ([]repository.B
 	return []repository.BlameLine{{Hash: "a1b2c3d4e5f60718", Author: "Ada", Date: "2026-01-01", Text: "changed"}}, nil
 }
 
+func (f fakeSession) BlameWorkingTreeFile(_ context.Context, path string) ([]repository.BlameLine, error) {
+	f.calls.record("blame-working-tree:" + path)
+	return []repository.BlameLine{{Hash: "a1b2c3d4e5f60718", Author: "Ada", Date: "2026-01-01", Text: "changed"}}, nil
+}
+
 func (f fakeSession) CommitFiles(_ context.Context, commit repository.Commit) ([]repository.CommitFile, error) {
 	f.calls.record("commit-files:" + commit.Hash)
 	// Two files, so a test can choose the second and see the diff move.
@@ -582,6 +594,11 @@ func (f fakeSession) CommitFileDiff(_ context.Context, commit repository.Commit,
 
 func (f fakeSession) CommitFilePatch(_ context.Context, commit repository.Commit, file repository.CommitFile) (string, error) {
 	f.calls.record("commit-file-patch:" + commit.Hash + ":" + file.Path)
+	return fakeWorkingTreePatch, nil
+}
+
+func (f fakeSession) WorkingTreeFilePatch(_ context.Context, file repository.File) (string, error) {
+	f.calls.record("working-tree-file-patch:" + file.Path)
 	return fakeWorkingTreePatch, nil
 }
 
@@ -1020,7 +1037,13 @@ func (u *updates) update(fn func()) {
 	u.mu.Lock()
 	u.fns = append(u.fns, fn)
 	u.mu.Unlock()
-	u.done <- struct{}{}
+	// Updates coalesce a redraw wakeup in the real UI loop. Keep every
+	// function above, but never let repeated background reads block one
+	// another merely because the test has not returned to its frame loop.
+	select {
+	case u.done <- struct{}{}:
+	default:
+	}
 }
 
 // waitForUpdate waits for one update and runs it, as the UI loop would, before

@@ -299,6 +299,13 @@ func (s *gitSession) RestoreWorkSnapshot(ctx context.Context, snapshot WorkSnaps
 		sort.Strings(overlap)
 		return &RestoreConflictError{Paths: overlap}
 	}
+	return s.applyWorkSnapshot(snapshot)
+}
+
+// applyWorkSnapshot performs the write after the caller has completed the
+// appropriate validation. Public snapshot restores reject overlaps above;
+// journal Undo instead validates the operation's complete exact after-state.
+func (s *gitSession) applyWorkSnapshot(snapshot WorkSnapshot) error {
 	output, err := s.cmd.New([]string{"git", "stash", "apply", "--index", snapshot.Hash}).RunWithOutput()
 	if err != nil {
 		return fmt.Errorf("restore recovery: %w: %s", err, strings.TrimSpace(output))
@@ -321,17 +328,28 @@ func (s *gitSession) DeleteWorkSnapshot(ctx context.Context, snapshot WorkSnapsh
 	return nil
 }
 
-// pruneRecovery bounds only automatic recovery. Named checkpoints and native
-// stashes are never aged out, and no aggressive object collection is run.
+// pruneRecovery bounds only automatic recovery not still needed by a journal
+// Undo. Named checkpoints and native stashes are never aged out, and no
+// aggressive object collection is run.
 func (s *gitSession) pruneRecovery(ctx context.Context) error {
 	snapshots, err := s.WorkSnapshots(ctx)
 	if err != nil {
 		return err
 	}
+	operations, err := s.Operations(ctx)
+	if err != nil {
+		return err
+	}
+	protected := make(map[string]bool)
+	for _, record := range operations {
+		if record.CanUndo() && record.Snapshot != nil {
+			protected[record.Snapshot.ID] = true
+		}
+	}
 	var automatic []WorkSnapshot
 	cutoff := time.Now().Add(-recoveryLifetime).Unix()
 	for _, snapshot := range snapshots {
-		if snapshot.Kind == RecoverySnapshotKind {
+		if snapshot.Kind == RecoverySnapshotKind && !protected[snapshot.ID] {
 			automatic = append(automatic, snapshot)
 		}
 	}

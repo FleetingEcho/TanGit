@@ -174,6 +174,9 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 	a.snapshot = snapshot
 	a.snapshotSeq++
 	checkout := a.refreshCodeAfterCheckout(old, snapshot)
+	if refsChanged && !checkout {
+		a.refreshCodeBlameAfterRepositoryMutation()
+	}
 	if codeFilesChanged && a.code.filesLoaded && !checkout && !operationRefreshed {
 		a.code.filesLoaded = false
 		a.requestCodeFiles()
@@ -238,12 +241,14 @@ func fileSignature(snapshot repository.Snapshot, path string) string {
 	return ""
 }
 
-// snapshotSigns names the two halves of a read: the working tree and the refs
-// the lists are built from.
+// snapshotSigns names the working tree, refs and durable recovery data that a
+// read found.
 type snapshotSigns struct {
-	files     string
-	refs      string
-	codeFiles string
+	files      string
+	refs       string
+	codeFiles  string
+	operations string
+	recovery   string
 }
 
 // signSnapshot names what a read found, so two reads with the same signs mean
@@ -251,7 +256,43 @@ type snapshotSigns struct {
 func signSnapshot(snapshot repository.Snapshot) snapshotSigns {
 	return snapshotSigns{
 		files: filesSignature(snapshot), refs: refsSignature(snapshot), codeFiles: codeFilesSignature(snapshot),
+		operations: operationsSignature(snapshot), recovery: recoverySignature(snapshot),
 	}
+}
+
+// operationsSignature and recoverySignature cover their durable records only.
+// Unlike relative stash recency, every field is stable until the journal or a
+// recovery ref actually changes.
+func operationsSignature(snapshot repository.Snapshot) string {
+	var b strings.Builder
+	for _, record := range snapshot.Operations {
+		fmt.Fprintf(&b, "%d\x00%s\x00%s\x00%s\x00%s\x00%t\x00%d\x00%d\x00%d\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00",
+			record.Version, record.ID, record.Kind, record.Summary, record.Status, record.Partial,
+			record.CreatedAt, record.FinishedAt, record.UndoneAt, record.Worktree,
+			record.Branch, record.BranchAfter, record.HeadBefore, record.HeadAfter,
+			record.BeforeState, record.AfterState, record.StashAfter, record.ObjectID,
+			record.RefName, record.Message, record.UndoKind)
+		fmt.Fprintf(&b, "%s\x00", record.Error)
+		writeWorkSnapshotSignature(&b, record.Snapshot)
+	}
+	return b.String()
+}
+
+func recoverySignature(snapshot repository.Snapshot) string {
+	var b strings.Builder
+	for i := range snapshot.WorkSnapshots {
+		writeWorkSnapshotSignature(&b, &snapshot.WorkSnapshots[i])
+	}
+	return b.String()
+}
+
+func writeWorkSnapshotSignature(b *strings.Builder, snapshot *repository.WorkSnapshot) {
+	if snapshot == nil {
+		b.WriteString("nil\x00")
+		return
+	}
+	fmt.Fprintf(b, "%s\x00%s\x00%s\x00%s\x00%d\x00",
+		snapshot.ID, snapshot.Hash, snapshot.Kind, snapshot.Name, snapshot.CreatedAt)
 }
 
 // codeFilesSignature names only changes that can alter the Code explorer's

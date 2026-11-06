@@ -13,10 +13,10 @@ const (
 	blameDateDisplaySize = 10
 )
 
-// formatBlame keeps the selectable, searchable read-only editor, but spends
-// its width on source rather than repeating a full hash, timestamp, timezone,
-// and duplicate source-line number on every row. Contiguous lines from one
-// commit share one metadata label and a vertical continuation mark.
+// formatBlame keeps one selectable, searchable editor row per source line.
+// Contiguous lines from one commit share a compact metadata label; their
+// continuation rows leave that column blank rather than drawing a grid beside
+// the source.
 func formatBlame(lines []repository.BlameLine) string {
 	if len(lines) == 0 {
 		return ""
@@ -31,8 +31,8 @@ func formatBlame(lines []repository.BlameLine) string {
 			authorWidth = width
 		}
 	}
-	metadataWidth := blameHashWidth + 2 + authorWidth + 2 + blameDateDisplaySize + 2
-	continuation := strings.Repeat(" ", metadataWidth) + "│ "
+	metadataWidth := blameHashWidth + 2 + authorWidth + 3 + blameDateDisplaySize + 2
+	continuation := strings.Repeat(" ", metadataWidth)
 
 	var output strings.Builder
 	previousHash := ""
@@ -46,10 +46,10 @@ func formatBlame(lines []repository.BlameLine) string {
 			output.WriteString(shortBlameHash(line.Hash))
 			output.WriteString("  ")
 			output.WriteString(padBlameAuthor(line.Author, authorWidth))
-			output.WriteString("  ")
+			output.WriteString(" · ")
 			output.WriteString(line.Date)
 			output.WriteString(strings.Repeat(" ", max(0, blameDateDisplaySize-utf8.RuneCountInString(line.Date))))
-			output.WriteString("  │ ")
+			output.WriteString("  ")
 		}
 		output.WriteString(line.Text)
 		previousHash = line.Hash
