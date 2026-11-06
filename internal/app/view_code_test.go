@@ -1157,6 +1157,43 @@ func TestCodeLanguageServerShowsAnalysisProgressBesideTheIcon(t *testing.T) {
 	}
 }
 
+func TestCodeLanguageServerNotificationsRepaintOnlyVisibleChanges(t *testing.T) {
+	h := menuTestApp(t)
+	profile, _ := languageServerProfileByID("rust")
+	server := &managedLanguageServer{profile: profile, sequence: 7}
+	h.app.additionalLanguageServers = map[string]*managedLanguageServer{profile.ID: server}
+	repaint := false
+	h.app.updateChanged = func(fn func() bool) {
+		h.app.update(func() { repaint = fn() })
+	}
+	notify := func(wantRepaint bool, sequence uint64, method, params string) {
+		t.Helper()
+		repaint = !wantRepaint
+		h.app.handleManagedLanguageServerNotification(server, sequence, method, json.RawMessage(params))
+		h.updates.waitForUpdate(t)
+		if repaint != wantRepaint {
+			t.Fatalf("%s %s repaint = %v, want %v", method, params, repaint, wantRepaint)
+		}
+	}
+
+	begin := `{"token":"rust-analyzer","value":{"kind":"begin","title":"Roots Scanned"}}`
+	notify(true, 7, "$/progress", begin)
+	notify(false, 7, "$/progress", begin)
+	notify(false, 6, "$/progress", `{"token":"obsolete","value":{"kind":"begin"}}`)
+
+	busy := `{"health":"ok","quiescent":false,"message":"indexing workspace"}`
+	notify(true, 7, "experimental/serverStatus", busy)
+	notify(false, 7, "experimental/serverStatus", busy)
+	notify(true, 7, "$/progress", `{"token":"rust-analyzer","value":{"kind":"end"}}`)
+	notify(false, 7, "$/progress", `{"token":"rust-analyzer","value":{"kind":"end"}}`)
+	notify(true, 7, "experimental/serverStatus", `{"health":"ok","quiescent":true}`)
+	notify(false, 7, "experimental/serverStatus", `{"health":"ok","quiescent":true}`)
+	unhealthy := `{"health":"error","quiescent":true,"message":"workspace load failed"}`
+	notify(true, 7, "experimental/serverStatus", unhealthy)
+	notify(false, 7, "experimental/serverStatus", unhealthy)
+	notify(true, 7, "experimental/serverStatus", `{"health":"ok","quiescent":true}`)
+}
+
 func TestCodeLanguageServerOffersDownloadInsteadOfErrorWhenMissing(t *testing.T) {
 	originalLookPath := languageServerLookPath
 	t.Cleanup(func() { languageServerLookPath = originalLookPath })

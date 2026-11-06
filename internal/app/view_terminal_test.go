@@ -112,6 +112,46 @@ func splitMonitoredTerminal(t *testing.T, h *harness, peers chan monitoredTermin
 	return second
 }
 
+func TestTerminalTitleRepaintsOnlyWhenSessionStateChanges(t *testing.T) {
+	original := newTerminal
+	peers := make(chan monitoredTerminalPeer, 1)
+	var onTitle func(string)
+	newTerminal = func(options terminal.Options) (*terminal.Terminal, error) {
+		onTitle = options.OnTitle
+		return newMonitoredTerminal(options, peers)
+	}
+	t.Cleanup(func() { newTerminal = original })
+	h := menuTestApp(t)
+	h.app.openTerminal()
+	h.tester.Frame()
+	h.waitFor(t, "the titled terminal", func() bool {
+		return len(h.app.term.sessions) > 0 && h.app.term.sessions[0].pane != nil
+	})
+	peer := <-peers
+	t.Cleanup(func() { _ = peer.Close() })
+	if onTitle == nil {
+		t.Fatal("the terminal title callback is missing")
+	}
+	repaint := false
+	h.app.updateChanged = func(fn func() bool) {
+		h.app.update(func() { repaint = fn() })
+	}
+	title := func(value string, wantRepaint bool) {
+		t.Helper()
+		repaint = !wantRepaint
+		onTitle(value)
+		h.updates.waitForUpdate(t)
+		if repaint != wantRepaint {
+			t.Fatalf("title %q repaint = %v, want %v", value, repaint, wantRepaint)
+		}
+	}
+
+	title("build shell", true)
+	title("build shell", false)
+	h.app.closeTerminalAt(0)
+	title("stale title", false)
+}
+
 func TestTerminalPlusCreatesIndependentTabsAndRetainsTheirSplits(t *testing.T) {
 	h, peers, first := monitoredTerminalTestApp(t)
 	firstPane := h.app.term.sessions[0].pane
@@ -441,6 +481,9 @@ func TestTerminalHideAndRestoreKeepShellDimensionsStable(t *testing.T) {
 			h.tester.Advance(20 * time.Millisecond)
 			h.tester.Frame()
 			requireSize(fmt.Sprintf("hide cycle %d frame %d", cycle, step))
+			if _, mounted := h.tester.Find("Terminal pane"); mounted {
+				t.Fatalf("hide cycle %d frame %d left the terminal mounted", cycle, step)
+			}
 		}
 		requireTerminalRunning(t, first)
 		h.app.openTerminal()
@@ -448,6 +491,12 @@ func TestTerminalHideAndRestoreKeepShellDimensionsStable(t *testing.T) {
 			h.tester.Advance(20 * time.Millisecond)
 			h.tester.Frame()
 			requireSize(fmt.Sprintf("restore cycle %d frame %d", cycle, step))
+			if _, mounted := h.tester.Find("Terminal pane"); step < 8 && mounted {
+				t.Fatalf("restore cycle %d frame %d mounted the terminal in an animated dock", cycle, step)
+			}
+		}
+		if _, mounted := h.tester.Find("Terminal pane"); !mounted {
+			t.Fatalf("restore cycle %d did not remount the settled terminal", cycle)
 		}
 		requireTerminalRunning(t, first)
 	}
