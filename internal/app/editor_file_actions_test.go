@@ -68,6 +68,9 @@ func useRealCodeWorkspace(t *testing.T, h *harness, files map[string]string) str
 	}
 	h.app.snapshot.Root = root
 	h.app.session = codeTestSession{Session: h.app.session, root: root}
+	// File-operation tests exercise temporary workspaces, not external process
+	// integration. Keep a locally installed gopls from retaining TempDir on Windows.
+	h.app.settings.LanguageServers = map[string]languageServerSettings{"go": {Disabled: true}}
 	openCodePageForTest(t, h, len(files))
 	return root
 }
@@ -82,7 +85,7 @@ func waitForCodeFileOperation(t *testing.T, h *harness) {
 
 func openRealCodeDocument(t *testing.T, h *harness, name string) *codeDocument {
 	t.Helper()
-	h.app.openCodeFile(name, 0)
+	h.app.openPinnedCodeFile(name, 0)
 	return waitForCodeDocument(t, h, name)
 }
 

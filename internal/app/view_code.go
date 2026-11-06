@@ -12,6 +12,7 @@ import (
 func (a *app) codeView(c *ui.Context) {
 	a.applyPendingCodeActions()
 	a.ensureCodeFiles()
+	a.syncGoLanguageServer()
 	if a.code.filter != a.code.appliedFilter || a.code.treeDirty {
 		a.syncCodeTree()
 	}
@@ -123,7 +124,10 @@ func (a *app) codeFileExplorer(c *ui.Context) {
 				ui.Text(row.Context, status).FontSize(theme.FontSize - 1).Bold().TextColor(theme.Warning)
 			}
 		})
-		if button.Clicked() {
+		if button.DoubleClicked() {
+			a.selectCodeRow(row.Index)
+			a.openPinnedCodeFile(item.path, 0)
+		} else if button.Clicked() {
 			a.selectCodeRow(row.Index)
 			a.openCodeFile(item.path, 0)
 		}
@@ -252,7 +256,10 @@ func (a *app) codeSearchMatchRow(row ui.ListRow, match workspaceSearchMatch) {
 		ui.RichText(row.Context, codeSearchHighlightSpans(text, a.code.searchSubmitted, a.code.searchCaseSensitive, theme)...).
 			Grow(1).SingleLine().Ellipsis("…")
 	})
-	if button.Clicked() {
+	if button.DoubleClicked() {
+		a.selectCodeSearchRow(row.Index)
+		a.openCodeLocationMode(match.Path, match.Line, match.Column-1, true)
+	} else if button.Clicked() {
 		a.selectCodeSearchRow(row.Index)
 		a.openCodeSearchMatch(match)
 	}
@@ -285,7 +292,10 @@ func (a *app) codeFileStatus(path string) string {
 
 func (a *app) codeEditorPane(c *ui.Context) {
 	theme := c.Theme()
-	islandCard(c, ui.Column(c).Grow(1)).Clip().Children(func() {
+	pane := islandCard(c, ui.Column(c).Grow(1)).Clip()
+	pane.OnShortcut(ui.Alt, ui.KeyLeft, func() { a.navigateCodeHistory(true) })
+	pane.OnShortcut(ui.Alt, ui.KeyRight, func() { a.navigateCodeHistory(false) })
+	pane.Children(func() {
 		if len(a.code.tabs) == 0 {
 			a.codeEmptyEditor(c)
 			return
@@ -304,9 +314,40 @@ func (a *app) codeEditorPane(c *ui.Context) {
 			return
 		}
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(7, 14).Children(func() {
+			back := compactIconButton(ui.Button(c, "")).Label(tr("Navigate back")).
+				Tooltip(tr("Navigate back") + " (Alt+Left)").Disabled(len(a.code.back) == 0)
+			back.Children(func() { ui.Text(c, "←").FontSize(theme.FontSize + 1) })
+			if back.Clicked() {
+				a.navigateCodeHistory(true)
+			}
+			forward := compactIconButton(ui.Button(c, "")).Label(tr("Navigate forward")).
+				Tooltip(tr("Navigate forward") + " (Alt+Right)").Disabled(len(a.code.forward) == 0)
+			forward.Children(func() { ui.Text(c, "→").FontSize(theme.FontSize + 1) })
+			if forward.Clicked() {
+				a.navigateCodeHistory(false)
+			}
 			ui.Text(c, document.path).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1).SingleLine().Tooltip(document.path)
+			if strings.EqualFold(filepath.Ext(document.path), ".go") {
+				switch {
+				case a.goLanguageServerError != "":
+					ui.Text(c, tr("gopls issue")).TextColor(theme.Danger).
+						FontSize(theme.FontSize - 1).Tooltip(a.goLanguageServerError)
+				case a.goLanguageServerStarting:
+					ui.Text(c, tr("Starting gopls…")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+				case a.goLanguageServer != nil:
+					ui.Text(c, "gopls").TextColor(theme.Success).FontSize(theme.FontSize - 1)
+				}
+			} else if status, tooltip, failed := a.additionalLanguageServerStatus(document.path); status != "" {
+				color := theme.Success
+				if failed {
+					color = theme.Danger
+				}
+				ui.Text(c, status).TextColor(color).FontSize(theme.FontSize - 1).Tooltip(tooltip)
+			}
 			if document.saveError != "" {
 				ui.Text(c, tr("Could not save")+": "+document.saveError).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
+			} else if document.readOnly {
+				ui.Text(c, tr("Read only")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 			} else if document.state != nil {
 				ui.Text(c, tr("Saved automatically")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 			}
@@ -335,9 +376,15 @@ func (a *app) codeTabs(c *ui.Context) {
 				tab.PopoverMenu(func(m *ui.Menu) {
 					a.codeTabMenu(m, path, index, c.Services())
 				})
+				if tab.DoubleClicked() && a.code.preview == path {
+					a.code.preview = ""
+				}
 				tab.Children(func() {
 					fileTypeMark(c, path, 12, false)
-					ui.Text(c, filepath.Base(path)).SingleLine().MaxWidth(180).Tooltip(path)
+					title := ui.Text(c, filepath.Base(path)).SingleLine().MaxWidth(180).Tooltip(path)
+					if a.code.preview == path {
+						title.Italic()
+					}
 					if document != nil && document.saveError != "" {
 						ui.Icon(c, conflictIcon).FontSize(12).TextColor(theme.Danger)
 					}
@@ -378,9 +425,7 @@ func (a *app) codeDocumentView(c *ui.Context, document *codeDocument) {
 		return
 	}
 	if document.binary {
-		ui.Column(c).Grow(1).Center().Gap(8).Children(func() {
-			ui.Text(c, tr("This file is binary and cannot be edited here.")).TextColor(theme.TextMuted)
-		})
+		binaryFileView(c, document.path, document.imagePreview, nil)
 		return
 	}
 	if document.loadError != "" {
@@ -396,7 +441,7 @@ func (a *app) codeDocumentView(c *ui.Context, document *codeDocument) {
 	if document.state == nil {
 		return
 	}
-	editorView := editor.View(c, document.state).Grow(1).FillWidth()
+	editorView := editor.View(c, document.state).Grow(1).FillWidth().ReadOnly(document.readOnly)
 	a.keyboardPane(c, "code-editor", editorView).Label(tr("Code editor"))
 }
 

@@ -52,7 +52,13 @@ func decodeMediaPreview(blob repository.MediaBlob) mediaPreview {
 	if !blob.Present || blob.Unavailable != "" {
 		return preview
 	}
-	config, _, err := image.DecodeConfig(bytes.NewReader(blob.Data))
+	return decodeMediaData(blob.Data)
+}
+
+// decodeMediaData validates and decodes image bytes already read by an editor.
+func decodeMediaData(data []byte) mediaPreview {
+	preview := mediaPreview{present: true}
+	config, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || config.Width <= 0 || config.Height <= 0 {
 		preview.problem = "This side is not a supported image"
 		return preview
@@ -61,7 +67,7 @@ func decodeMediaPreview(blob repository.MediaBlob) mediaPreview {
 		preview.problem = "Image has more than 40 million pixels"
 		return preview
 	}
-	preview.bitmap, err = ui.DecodeBitmap(blob.Data)
+	preview.bitmap, err = ui.DecodeBitmap(data)
 	if err != nil {
 		preview.problem = "This side is not a supported image"
 		return preview
@@ -115,6 +121,27 @@ func mediaMessage(c *ui.Context, theme *ui.Theme, title, detail string) {
 		ui.Text(c, tr(title)).TextColor(theme.TextMuted)
 		if detail != "" {
 			ui.Text(c, tr(detail)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).TextAlign(ui.Center)
+		}
+	})
+}
+
+// binaryFileView shows a decodable image without offering an editor that
+// could corrupt its bytes. Other binary formats keep the compact explanation.
+func binaryFileView(c *ui.Context, path string, preview *mediaPreview, controls func()) {
+	theme := c.Theme()
+	ui.Column(c).Grow(1).Fill().Center().Gap(8).Padding(8).Children(func() {
+		if preview != nil && preview.bitmap != nil {
+			ui.Image(c, preview.bitmap).Grow(1).Fill().Fit(ui.Contain).
+				Role(ui.RoleImage).Label(path)
+			if preview.width > 0 {
+				ui.Textf(c, "%d × %d", preview.width, preview.height).
+					TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+			}
+		}
+		ui.Text(c, tr("This file is binary and cannot be edited here.")).
+			TextColor(theme.TextMuted).TextAlign(ui.Center)
+		if controls != nil {
+			controls()
 		}
 	})
 }

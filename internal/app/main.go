@@ -118,6 +118,27 @@ type app struct {
 	settingsLoaded bool
 	settingsOpen   bool
 	settingsPage   int
+	// The Go language-server draft backs stable Settings controls while the
+	// persisted profile keeps arguments as a safe array rather than a shell command.
+	goLanguageServerEnabled       bool
+	goLanguageServerPath          string
+	goLanguageServerArgs          string
+	languageServerDrafts          map[string]*languageServerDraft
+	languageServerTestID          string
+	languageServerTestSeq         uint64
+	languageServerTestBusy        bool
+	languageServerTestOK          bool
+	languageServerTestResult      string
+	languageServerInstallPrompted map[string]bool
+	languageServerInstalling      map[string]bool
+	languageServerCatalogQuery    string
+	languageServerCatalogSelected string
+	goLanguageServer              languageServerConnection
+	goLanguageServerStarting      bool
+	goLanguageServerSeq           uint64
+	goLanguageServerError         string
+	goLanguageServerDocs          map[string]uint64
+	additionalLanguageServers     map[string]*managedLanguageServer
 	// customAccent backs ColorWell while Accent keeps its serializable hex.
 	customAccent ui.Color
 	// homeBackground is decoded once for the path in settings, then reused
@@ -409,7 +430,7 @@ type app struct {
 	conflictDiffPatch string
 	// fileEditing swaps the selected file's diff for an editor of the file
 	// itself. fileEditState is that editor's buffer, fileEditKey the file it
-	// was read from, and the loading, binary, error and save fields say what
+	// was read from, and the loading, binary, preview, error and save fields say what
 	// the pane should draw around it. fileEditToken drops a read the choice
 	// replaced.
 	fileEditing          bool
@@ -417,6 +438,7 @@ type app struct {
 	fileEditState        *editor.State
 	fileEditLoading      bool
 	fileEditBinary       bool
+	fileEditPreview      *mediaPreview
 	fileEditError        string
 	fileEditSaveError    string
 	fileEditTriedVersion uint64
