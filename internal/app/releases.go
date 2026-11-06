@@ -16,7 +16,7 @@ const releasesPage = "https://github.com/FleetingEcho/TanGit/releases"
 // appVersionFallback is the version to show when the build carries none, as
 // `go run` and the tests do. `mygo build` links the version mygo.json names,
 // which is the one a release is stamped with.
-const appVersionFallback = "1.2.0"
+const appVersionFallback = "1.3.0"
 
 // appUpdateInfo is the updater state the title bar and Settings share. The
 // updater owns the check and installation flow; the app only presents its
