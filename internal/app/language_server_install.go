@@ -30,9 +30,7 @@ var languageServerInstallMu sync.Mutex
 
 var runLanguageServerInstallCommand = func(ctx context.Context, program string, arguments, environment []string) ([]byte, error) {
 	command := exec.CommandContext(ctx, program, arguments...)
-	if len(environment) > 0 {
-		command.Env = append(os.Environ(), environment...)
-	}
+	command.Env = languageServerCommandEnvironment(command.Environ(), program, environment)
 	return command.CombinedOutput()
 }
 
@@ -126,7 +124,7 @@ func installLanguageServerTool(profile languageServerProfile, dataDir string) (l
 	defer cancel()
 	switch profile.ID {
 	case goLanguageServerID:
-		goTool, err := exec.LookPath("go")
+		goTool, err := languageServerLookPath("go")
 		if err != nil {
 			return languageServerInstallation{}, errors.New("Go is required to download gopls")
 		}
@@ -139,14 +137,14 @@ func installLanguageServerTool(profile languageServerProfile, dataDir string) (l
 		}
 		return languageServerInstallation{Path: filepath.Join(binDir, executableName("gopls")), ProbeArguments: append([]string(nil), profile.VersionArguments...)}, nil
 	case "rust":
-		rustup, err := exec.LookPath("rustup")
+		rustup, err := languageServerLookPath("rustup")
 		if err != nil {
 			return languageServerInstallation{}, errors.New("rustup is required to install rust-analyzer")
 		}
 		if err := runLanguageServerInstaller(ctx, rustup, []string{"component", "add", "rust-analyzer"}, nil); err != nil {
 			return languageServerInstallation{}, err
 		}
-		path, err := exec.LookPath("rust-analyzer")
+		path, err := languageServerLookPath("rust-analyzer")
 		if err != nil {
 			return languageServerInstallation{}, errors.New("rust-analyzer was installed but is not available on PATH")
 		}
@@ -213,7 +211,7 @@ func installPythonLanguageServer(ctx context.Context, toolsDir string, profile l
 
 func findFirstExecutable(names ...string) (string, error) {
 	for _, name := range names {
-		if path, err := exec.LookPath(name); err == nil {
+		if path, err := languageServerLookPath(name); err == nil {
 			return path, nil
 		}
 	}
@@ -317,11 +315,11 @@ func downloadLanguageServerBinary(ctx context.Context, url, target string) error
 }
 
 func installNodeLanguageServer(ctx context.Context, toolsDir string, profile languageServerProfile, packages ...string) (languageServerInstallation, error) {
-	npm, err := exec.LookPath("npm")
+	npm, err := languageServerLookPath("npm")
 	if err != nil {
 		return languageServerInstallation{}, errors.New("Node.js and npm are required to download this language server")
 	}
-	node, err := exec.LookPath("node")
+	node, err := languageServerLookPath("node")
 	if err != nil {
 		return languageServerInstallation{}, errors.New("Node.js is required to run this language server")
 	}
