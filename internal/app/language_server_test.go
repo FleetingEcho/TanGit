@@ -246,6 +246,13 @@ func TestStdioLanguageServerInitializesAndShutsDown(t *testing.T) {
 	if !strings.Contains(string(response), "helper hover") {
 		t.Fatalf("hover response = %s", response)
 	}
+	requestError := make(chan error, 1)
+	connection.Request("test/contentModified", nil, func(_ json.RawMessage, err error) {
+		requestError <- err
+	})
+	if err := <-requestError; !isLanguageServerContentModified(err) {
+		t.Fatalf("content-modified response lost its error code: %v", err)
+	}
 	connection.Close()
 	select {
 	case <-connection.Done():
@@ -286,6 +293,14 @@ func TestLanguageServerHelperProcess(t *testing.T) {
 			writeLanguageServerTestResponse(writer, envelope.ID, nil)
 		case "textDocument/hover":
 			writeLanguageServerTestResponse(writer, envelope.ID, map[string]any{"contents": "helper hover"})
+		case "test/contentModified":
+			message, _ := json.Marshal(languageServerEnvelope{
+				JSONRPC: "2.0", ID: envelope.ID,
+				Error: &languageServerRPCError{Code: -32801, Message: "content modified"},
+			})
+			_, _ = writer.WriteString("Content-Length: " + strconv.Itoa(len(message)) + "\r\n\r\n")
+			_, _ = writer.Write(message)
+			_ = writer.Flush()
 		case "exit":
 			_ = writer.Flush()
 			os.Exit(0)

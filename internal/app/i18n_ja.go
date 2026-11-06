@@ -802,6 +802,7 @@ var japanese = map[string]string{
 	"Choose which tabs the sidebar shows":          "サイドバーに表示するタブを選択",
 	"Sidebar tabs":                                 "サイドバーのタブ",
 	"Shown sections":                               "表示するセクション",
+	"Click to toggle; drag to reorder":             "クリックで切り替え、ドラッグで並べ替え",
 	"Pick any number of tabs":                      "タブをいくつでも選択可能",
 	"All sections":                                 "すべてのセクション",
 	"%d of %d sections":                            "%d / %d 個のセクション",

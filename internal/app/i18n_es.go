@@ -802,6 +802,7 @@ var spanish = map[string]string{
 	"Choose which tabs the sidebar shows":          "Elegir qué pestañas muestra la barra lateral",
 	"Sidebar tabs":                                 "Pestañas de la barra lateral",
 	"Shown sections":                               "Secciones mostradas",
+	"Click to toggle; drag to reorder":             "Haz clic para activar; arrastra para reordenar",
 	"Pick any number of tabs":                      "Elige cualquier cantidad de pestañas",
 	"All sections":                                 "Todas las secciones",
 	"%d of %d sections":                            "%[1]d de %[2]d secciones",

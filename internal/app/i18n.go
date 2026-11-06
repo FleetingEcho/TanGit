@@ -882,6 +882,7 @@ var zhHans = map[string]string{
 	"Choose which tabs the sidebar shows":          "选择侧边栏显示哪些标签页",
 	"Sidebar tabs":                                 "侧边栏标签",
 	"Shown sections":                               "显示的分区",
+	"Click to toggle; drag to reorder":             "点击切换；拖动排序",
 	"Pick any number of tabs":                      "可任意选择多个标签页",
 	"All sections":                                 "全部分区",
 	"%d of %d sections":                            "%d / %d 个分区",
