@@ -203,6 +203,47 @@ func TestMultipleLanguageServersShareATypeScriptDocument(t *testing.T) {
 	h.waitFor(t, "TypeScript definition", func() bool { return h.app.code.active == "target.ts" })
 }
 
+// Replacing a preview must not briefly leave a server with no open documents.
+// TypeScript disposes an inferred project at that point, so the next file pays
+// for a fresh types analysis even though it belongs to the same workspace.
+func TestTypeScriptPreviewOpensItsReplacementBeforeClosingTheOldFile(t *testing.T) {
+	connection := newFakeLanguageServerConnection()
+	launches := make(chan languageServerLaunch, 2)
+	stubLanguageServerConnection(t, func(launch languageServerLaunch) (languageServerConnection, error) {
+		launches <- launch
+		return connection, nil
+	})
+	stubCodeWorkspace(t, map[string]string{
+		"first.ts":  "export const first = 1\n",
+		"second.ts": "export const second = 2\n",
+	})
+	h := menuTestApp(t)
+	h.app.settings.LanguageServers = map[string]languageServerSettings{
+		"go": {Disabled: true}, "typescript": {},
+	}
+	openCodePageForTest(t, h, 2)
+	h.app.openCodeFile("first.ts", 0)
+	waitForCodeDocument(t, h, "first.ts")
+	h.waitFor(t, "the first TypeScript document", func() bool {
+		return len(connection.snapshot()) == 1
+	})
+
+	h.app.openCodeFile("second.ts", 0)
+	waitForCodeDocument(t, h, "second.ts")
+	h.tester.Frame()
+	events := connection.snapshot()
+	if len(events) != 3 {
+		t.Fatalf("preview replacement emitted %#v, want two opens and one close; server=%#v active=%q documents=%v", events, h.app.additionalLanguageServers["typescript"], h.app.code.active, h.app.code.documents)
+	}
+	if events[1].kind != "open" || !strings.HasSuffix(events[1].uri, "/second.ts") ||
+		events[2].kind != "close" || !strings.HasSuffix(events[2].uri, "/first.ts") {
+		t.Fatalf("preview replacement events = %#v, want open second before close first", events)
+	}
+	if got := len(launches); got != 1 {
+		t.Fatalf("TypeScript launches = %d, want one server retained across preview replacement", got)
+	}
+}
+
 func TestCustomTyLanguageServerLaunchesAndPowersPythonFeatures(t *testing.T) {
 	connection := newFakeLanguageServerConnection()
 	connection.request = func(method string, _ any, result func(json.RawMessage, error)) {

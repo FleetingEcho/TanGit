@@ -37,9 +37,12 @@ func (a *app) syncAdditionalLanguageServers() {
 	}
 	wanted := make(map[string]map[string]*codeDocument)
 	for path, document := range a.code.documents {
-		if document == nil || document.state == nil || document.state.Buffer == nil {
+		if document == nil {
 			continue
 		}
+		// A replacement preview belongs to the workspace while its contents
+		// load. Stopping its server during that gap would restart TypeScript
+		// and discard the project every time the user opens another file.
 		for _, profile := range configuredLanguageServerProfiles(a.settings.LanguageServers, path) {
 			if profile.ID == goLanguageServerID {
 				continue
@@ -88,14 +91,29 @@ func (a *app) syncAdditionalLanguageServers() {
 			}
 			continue
 		}
+		ready := false
+		for _, document := range documents {
+			if document != nil && document.state != nil && document.state.Buffer != nil {
+				ready = true
+				break
+			}
+		}
+		if !ready && len(server.documents) > 0 {
+			// The replacement is still loading. Keep the old document open
+			// until its successor can be opened in the same synchronization.
+			continue
+		}
+		// Open the replacement before closing the old preview. TypeScript
+		// disposes an inferred project when its last open document closes;
+		// keeping one open throughout the switch retains the analyzed project.
+		for path, document := range documents {
+			a.syncManagedLanguageServerDocument(server, path, document)
+		}
 		for path := range server.documents {
 			if documents[path] == nil {
 				server.connection.DidClose(languageServerFileURI(a.workingFilePath(path)))
 				delete(server.documents, path)
 			}
-		}
-		for path, document := range documents {
-			a.syncManagedLanguageServerDocument(server, path, document)
 		}
 	}
 }
