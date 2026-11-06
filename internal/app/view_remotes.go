@@ -101,6 +101,7 @@ func (a *app) beginFetchRemote(remote repository.Remote) {
 
 func (a *app) openAddRemote() {
 	a.remoteOriginalName = ""
+	a.remoteOriginalURL = ""
 	a.remoteName = ""
 	a.remoteURL = ""
 	a.showRemoteForm = true
@@ -108,13 +109,23 @@ func (a *app) openAddRemote() {
 
 func (a *app) openEditRemote(remote repository.Remote) {
 	a.remoteOriginalName = remote.Name
-	a.remoteName = remote.Name
-	a.remoteURL = ""
+	a.remoteOriginalURL = ""
 	if len(remote.URLs) > 0 {
-		a.remoteURL = remote.URLs[0]
+		a.remoteOriginalURL = remote.URLs[0]
 	}
+	a.restoreRemoteEdit()
 	a.showRemoteCheckoutForm = false
 	a.showRemoteForm = true
+}
+
+// restoreRemoteEdit only resets the form. The configured Git remote remains
+// untouched unless the user subsequently confirms Save changes.
+func (a *app) restoreRemoteEdit() {
+	if a.remoteOriginalName == "" {
+		return
+	}
+	a.remoteName = a.remoteOriginalName
+	a.remoteURL = a.remoteOriginalURL
 }
 
 func (a *app) editSelectedRemote() {
@@ -141,9 +152,11 @@ func (a *app) beginUpdateRemote() {
 			func(ctx context.Context, session repository.Session) error {
 				return session.UpdateRemote(ctx, oldName, newName, url)
 			}, func() {
+				a.moveRemoteWebURLOverride(oldName, newName)
 				a.selectedRemote = selectedRemoteIndex(a.snapshot.Remotes, newName)
 				a.syncRemoteRow()
 				a.remoteOriginalName = ""
+				a.remoteOriginalURL = ""
 				a.remoteName = ""
 				a.remoteURL = ""
 				a.showRemoteForm = false
@@ -161,6 +174,7 @@ func (a *app) beginAddRemote() {
 			a.selectedRemote = selectedRemoteIndex(a.snapshot.Remotes, name)
 			a.syncRemoteRow()
 			a.remoteOriginalName = ""
+			a.remoteOriginalURL = ""
 			a.remoteName = ""
 			a.remoteURL = ""
 			a.showRemoteForm = false
@@ -368,7 +382,7 @@ func (a *app) confirmRemoveRemote(remote repository.Remote) {
 			a.beginRepositoryActionMessage(trf("Removed remote %s", remote.Name), "",
 				func(ctx context.Context, session repository.Session) error {
 					return session.RemoveRemote(ctx, remote.Name)
-				}, nil)
+				}, func() { a.moveRemoteWebURLOverride(remote.Name, "") })
 		},
 	})
 }
@@ -386,6 +400,20 @@ func (a *app) remoteRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) {
 	if m.Item(tr("Edit remote…")).Shortcut(0, ui.KeyE).Disabled(a.actionBusy).Chosen() {
 		a.selectRemoteRow(row.Index)
 		a.openEditRemote(remote)
+	}
+	m.Separator()
+	webURL := a.remoteWebAddress(remote)
+	if m.Item(tr("Open in browser")).Shortcut(0, ui.KeyO).Disabled(webURL == "").Chosen() {
+		a.selectRemoteRow(row.Index)
+		a.openRemoteWebURL(services, remote)
+	}
+	if m.Item(tr("Copy web URL")).Shortcut(0, ui.KeyC).Disabled(webURL == "").Chosen() {
+		a.selectRemoteRow(row.Index)
+		a.copyRemoteWebURL(services, remote)
+	}
+	if m.Item(tr("Edit web URL…")).Shortcut(ui.Shift, ui.KeyO).Chosen() {
+		a.selectRemoteRow(row.Index)
+		a.openEditRemoteWebURL(remote)
 	}
 	m.Separator()
 	if len(remote.URLs) > 0 {
@@ -413,7 +441,15 @@ func (a *app) remoteFormModal(c *ui.Context) {
 			ui.TextInput(c, &a.remoteURL).Label(tr("Remote URL")).
 				Placeholder(tr("git@example.com:team/project.git"))
 		})
-		ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+			if editing {
+				if ui.Button(c, tr("Restore original")).
+					Tooltip(tr("Restore the remote name and fetch URL saved in Git.")).
+					Disabled(a.actionBusy).Clicked() {
+					a.restoreRemoteEdit()
+				}
+			}
+			ui.Spacer(c)
 			if ui.Button(c, tr("Cancel")).Disabled(a.actionBusy).Clicked() {
 				a.showRemoteForm = false
 			}
@@ -477,6 +513,7 @@ func (a *app) remotesView(c *ui.Context) {
 						return
 					}
 					remote := a.snapshot.Remotes[a.selectedRemote]
+					webURL := a.remoteWebAddress(remote)
 					ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 						ui.Text(c, remote.Name).FontSize(18).Bold().Grow(1)
 						flatIconButton(c, "Fetch remote", "Fetch branches from this remote (F)", fetchIcon, 14, 3, a.actionBusy, func() {
@@ -485,12 +522,29 @@ func (a *app) remotesView(c *ui.Context) {
 						flatIconButton(c, "Edit remote…", "Edit this remote's name or fetch URL (E)", editIcon, 14, 3, a.actionBusy, func() {
 							a.openEditRemote(remote)
 						})
+						flatIconButton(c, "Open in browser", "Open this remote's web URL in the browser (O)", externalLinkIcon, 14, 3, webURL == "", func() {
+							a.openRemoteWebURL(c.Services(), remote)
+						})
+						flatIconButton(c, "Copy web URL", "Copy this remote's web URL (C)", copyIcon, 14, 3, webURL == "", func() {
+							a.copyRemoteWebURL(c.Services(), remote)
+						})
+						flatIconButton(c, "Edit web URL…", "Set this remote's web URL (Shift+O)", editIcon, 14, 3, false, func() {
+							a.openEditRemoteWebURL(remote)
+						})
 						flatIconButton(c, "Remove remote…", "Remove this remote and its remote-tracking refs (D)", trashIcon, 14, 3, a.actionBusy,
 							a.confirmRemoveSelectedRemote)
 					})
 					for _, url := range remote.URLs {
 						ui.Text(c, url).TextColor(theme.TextMuted).Selectable()
 					}
+					ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+						ui.Text(c, tr("Web URL")).Bold()
+						if webURL != "" {
+							ui.Text(c, webURL).TextColor(theme.TextMuted).Selectable()
+						} else {
+							ui.Text(c, tr("No web URL could be derived.")).TextColor(theme.TextMuted)
+						}
+					})
 					ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
 						ui.Icon(c, branchIcon).FontSize(13).TextColor(theme.Accent)
 						ui.Text(c, tr("Remote branches")).Bold().Grow(1)
