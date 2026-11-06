@@ -16,6 +16,9 @@ import (
 )
 
 func TestTypeScriptFileOffersManagedLanguageServerOnce(t *testing.T) {
+	originalLookPath := languageServerLookPath
+	t.Cleanup(func() { languageServerLookPath = originalLookPath })
+	languageServerLookPath = func(string) (string, error) { return "", exec.ErrNotFound }
 	h := menuTestApp(t)
 	h.app.offerLanguageServerInstall("src/main.ts")
 	if len(h.app.pendingToasts) != 1 {
@@ -36,6 +39,83 @@ func TestTypeScriptFileOffersManagedLanguageServerOnce(t *testing.T) {
 	h.app.offerLanguageServerInstall("src/disabled.ts")
 	if len(h.app.pendingToasts) != 0 {
 		t.Fatalf("an explicitly disabled server was offered: %#v", h.app.pendingToasts)
+	}
+}
+
+func TestEnabledMissingLanguageServersOfferManagedInstalls(t *testing.T) {
+	originalLookPath := languageServerLookPath
+	t.Cleanup(func() { languageServerLookPath = originalLookPath })
+	languageServerLookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+
+	h := menuTestApp(t)
+	h.app.settings.LanguageServers = map[string]languageServerSettings{
+		"typescript": {Disabled: true},
+		"tailwind":   {},
+		"oxlint":     {},
+	}
+	h.app.offerLanguageServerInstall("src/main.tsx")
+	for _, title := range []string{"Install Tailwind CSS Language Server?", "Install Oxc / Oxlint?"} {
+		if !hasToastTitle(h.app.pendingToasts, title) {
+			t.Errorf("missing install prompt %q: %#v", title, h.app.pendingToasts)
+		}
+	}
+	if len(h.app.pendingToasts) != 2 {
+		t.Fatalf("install prompts = %d, want only the two enabled missing servers", len(h.app.pendingToasts))
+	}
+}
+
+func TestMissingLanguageServerIsDownloadRequiredInsteadOfFailed(t *testing.T) {
+	originalLookPath := languageServerLookPath
+	t.Cleanup(func() { languageServerLookPath = originalLookPath })
+	languageServerLookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+
+	h := menuTestApp(t)
+	profile, _ := languageServerProfileByID("tailwind")
+	server := &managedLanguageServer{profile: profile}
+	h.app.settings.LanguageServers = map[string]languageServerSettings{"tailwind": {}}
+	h.app.additionalLanguageServers = map[string]*managedLanguageServer{"tailwind": server}
+	h.app.startManagedLanguageServer(server)
+	statuses := h.app.codeLanguageServerStatuses()
+	if len(statuses) != 1 || !statuses[0].missing || statuses[0].failed || server.error != "" {
+		t.Fatalf("missing language-server status = %#v, server error %q", statuses, server.error)
+	}
+}
+
+func TestManagedLegacyTypeScriptServerIsDownloadRequired(t *testing.T) {
+	originalLookPath := languageServerLookPath
+	t.Cleanup(func() { languageServerLookPath = originalLookPath })
+	languageServerLookPath = func(program string) (string, error) { return program, nil }
+
+	h := menuTestApp(t)
+	h.app.pathUserData = t.TempDir()
+	prefix := filepath.Join(h.app.pathUserData, "tools", "node")
+	cli := filepath.Join(prefix, "node_modules", "typescript-language-server", "lib", "cli.mjs")
+	h.app.settings.LanguageServers = map[string]languageServerSettings{
+		"typescript": {Path: "node", Arguments: []string{cli, "--stdio"}},
+	}
+	profile, _ := languageServerProfileByID("typescript")
+	server := &managedLanguageServer{profile: profile}
+	h.app.additionalLanguageServers = map[string]*managedLanguageServer{"typescript": server}
+
+	h.app.startManagedLanguageServer(server)
+	statuses := h.app.codeLanguageServerStatuses()
+	if len(statuses) != 1 || !statuses[0].missing || statuses[0].failed || server.starting {
+		t.Fatalf("incomplete managed TypeScript status = %#v, server = %#v", statuses, server)
+	}
+
+	tsc := filepath.Join(prefix, "node_modules", "typescript", "bin", "tsc")
+	if err := os.MkdirAll(filepath.Dir(tsc), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tsc, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(prefix, "node_modules", "typescript", "package.json"), []byte(`{"version":"7.0.2","bin":{"tsc":"bin/tsc"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.app.settings.LanguageServers["typescript"] = languageServerSettings{Path: "node", Arguments: []string{tsc, "--lsp", "--stdio"}}
+	if !h.app.languageServerExecutableAvailable(profile) {
+		t.Fatal("a complete managed TypeScript installation was still considered missing")
 	}
 }
 
@@ -139,7 +219,7 @@ func TestLanguageServerCatalogUsesCompactActionsSearchAndScroll(t *testing.T) {
 	if !downloadOK || !configureOK || !resultsOK || !sourceOK {
 		t.Fatalf("catalog controls missing: download=%v configure=%v scroll=%v source=%v", downloadOK, configureOK, resultsOK, sourceOK)
 	}
-	const typeScriptSource = "https://www.npmjs.com/package/typescript-language-server"
+	const typeScriptSource = "https://www.npmjs.com/package/typescript"
 	if source.W <= 0 || languageServerDownloadURLs["typescript"] != typeScriptSource {
 		t.Fatalf("TypeScript download source is not visible or incorrect: bounds=%+v url=%q", source, languageServerDownloadURLs["typescript"])
 	}
@@ -466,7 +546,7 @@ func TestNodePackageExecutableUsesManifestAndRejectsEscapes(t *testing.T) {
 
 func TestRealManagedTypeScriptInstall(t *testing.T) {
 	if os.Getenv("TANGIT_TEST_REAL_LSP_INSTALL") != "1" {
-		t.Skip("set TANGIT_TEST_REAL_LSP_INSTALL=1 to download and exercise typescript-language-server")
+		t.Skip("set TANGIT_TEST_REAL_LSP_INSTALL=1 to download and exercise TypeScript 7's native LSP")
 	}
 	profile, ok := languageServerProfileByID("typescript")
 	if !ok {
@@ -477,7 +557,8 @@ func TestRealManagedTypeScriptInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(installation.Arguments) == 0 || !strings.HasSuffix(filepath.ToSlash(installation.Arguments[0]), "/typescript-language-server/lib/cli.mjs") {
+	if len(installation.Arguments) < 3 || !strings.HasSuffix(filepath.ToSlash(installation.Arguments[0]), "/typescript/bin/tsc") ||
+		!reflect.DeepEqual(installation.Arguments[1:], []string{"--lsp", "--stdio"}) {
 		t.Fatalf("managed TypeScript launch = %q %q", installation.Path, installation.Arguments)
 	}
 	if len(installation.ProbeArguments) != 2 || installation.ProbeArguments[1] != "--version" {
@@ -537,7 +618,7 @@ func hasToastTitle(toasts []appToast, title string) bool {
 	return false
 }
 
-func TestTypeScriptInstallerPinsCompatibleCompilerAndChecksItsServer(t *testing.T) {
+func TestTypeScriptInstallerPinsNativeVersionSevenAndChecksItsExecutable(t *testing.T) {
 	binDir := t.TempDir()
 	for _, name := range []string{"node", "npm"} {
 		if err := os.WriteFile(filepath.Join(binDir, executableName(name)), []byte("unused"), 0o755); err != nil {
@@ -548,30 +629,27 @@ func TestTypeScriptInstallerPinsCompatibleCompilerAndChecksItsServer(t *testing.
 	original := runLanguageServerInstallCommand
 	t.Cleanup(func() { runLanguageServerInstallCommand = original })
 	for _, withServer := range []bool{false, true} {
-		t.Run(fmt.Sprint("tsserver=", withServer), func(t *testing.T) {
+		t.Run(fmt.Sprint("native-lsp=", withServer), func(t *testing.T) {
 			dataDir := t.TempDir()
 			prefix := filepath.Join(dataDir, "tools", "node")
 			runLanguageServerInstallCommand = func(_ context.Context, _ string, arguments, _ []string) ([]byte, error) {
-				want := []string{"install", "--no-audit", "--no-fund", "--prefix", prefix, "typescript-language-server@latest", "typescript@6"}
+				want := []string{"install", "--no-audit", "--no-fund", "--prefix", prefix, "typescript@7"}
 				if !reflect.DeepEqual(arguments, want) {
 					t.Errorf("npm arguments = %q, want %q", arguments, want)
 				}
-				serverDir := filepath.Join(prefix, "node_modules", "typescript-language-server")
+				serverDir := filepath.Join(prefix, "node_modules", "typescript")
 				if err := os.MkdirAll(serverDir, 0o755); err != nil {
 					return nil, err
 				}
-				if err := os.WriteFile(filepath.Join(serverDir, "package.json"), []byte(`{"bin":"cli.mjs"}`), 0o644); err != nil {
-					return nil, err
-				}
-				if err := os.WriteFile(filepath.Join(serverDir, "cli.mjs"), nil, 0o644); err != nil {
+				if err := os.WriteFile(filepath.Join(serverDir, "package.json"), []byte(`{"version":"7.0.2","bin":{"tsc":"bin/tsc"}}`), 0o644); err != nil {
 					return nil, err
 				}
 				if withServer {
-					tsDir := filepath.Join(prefix, "node_modules", "typescript", "lib")
+					tsDir := filepath.Join(serverDir, "bin")
 					if err := os.MkdirAll(tsDir, 0o755); err != nil {
 						return nil, err
 					}
-					if err := os.WriteFile(filepath.Join(tsDir, "tsserver.js"), nil, 0o644); err != nil {
+					if err := os.WriteFile(filepath.Join(tsDir, "tsc"), nil, 0o644); err != nil {
 						return nil, err
 					}
 				}
@@ -582,8 +660,8 @@ func TestTypeScriptInstallerPinsCompatibleCompilerAndChecksItsServer(t *testing.
 			if withServer && err != nil {
 				t.Fatal(err)
 			}
-			if !withServer && (err == nil || !strings.Contains(err.Error(), "tsserver.js")) {
-				t.Fatalf("missing tsserver error = %v", err)
+			if !withServer && err == nil {
+				t.Fatalf("missing native TypeScript executable error = %v", err)
 			}
 		})
 	}

@@ -2,9 +2,12 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -22,12 +25,66 @@ var runLanguageServerVersion = func(program string, arguments []string) (string,
 var languageServerLookPath = exec.LookPath
 
 func (a *app) languageServerExecutableAvailable(profile languageServerProfile) bool {
+	executable := false
 	for _, program := range languageServerExecutableCandidates(a.settings.LanguageServers[profile.ID].Path, profile.Program) {
 		if _, err := languageServerLookPath(program); err == nil {
+			executable = true
+			break
+		}
+	}
+	if !executable {
+		return false
+	}
+	return a.managedLanguageServerDependenciesAvailable(profile)
+}
+
+// A managed TypeScript Language Server is launched through the user's Node.js
+// executable, so checking only Node can hide an obsolete TS6 wrapper install.
+// Require TanGit's managed TypeScript 7 native LSP entry point and version.
+func (a *app) managedLanguageServerDependenciesAvailable(profile languageServerProfile) bool {
+	if profile.ID != "typescript" {
+		return true
+	}
+	dataDir := a.dataDir()
+	if dataDir == "" {
+		return true
+	}
+	prefix := filepath.Join(dataDir, "tools", "node")
+	managedNodeModules := filepath.Join(prefix, "node_modules")
+	managed := false
+	for _, argument := range a.settings.LanguageServers[profile.ID].Arguments {
+		if pathWithin(managedNodeModules, argument) {
+			managed = true
+			break
+		}
+	}
+	if !managed {
+		return true
+	}
+	manifest, err := os.ReadFile(filepath.Join(managedNodeModules, "typescript", "package.json"))
+	if err != nil {
+		return false
+	}
+	var metadata struct {
+		Version string `json:"version"`
+	}
+	if json.Unmarshal(manifest, &metadata) != nil || !strings.HasPrefix(metadata.Version, "7.") {
+		return false
+	}
+	executable, err := nodePackageExecutable(prefix, "typescript", profile.Program)
+	if err != nil {
+		return false
+	}
+	for _, argument := range a.settings.LanguageServers[profile.ID].Arguments {
+		if sameLanguageServerPath(argument, executable) {
 			return true
 		}
 	}
 	return false
+}
+
+func sameLanguageServerPath(left, right string) bool {
+	return strings.EqualFold(filepath.Clean(left), filepath.Clean(right))
 }
 
 func runLanguageServerVersionArguments(program string, arguments, versionArguments []string) (string, error) {
