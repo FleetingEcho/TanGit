@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -156,7 +157,7 @@ func TestLanguageServerCatalogUsesCompactActionsSearchAndScroll(t *testing.T) {
 	}
 	h.tester.Type("python")
 	h.tester.Frame()
-	if !h.tester.HasText("BasedPyright") || !h.tester.HasText("Ruff") || h.tester.HasText("TypeScript Language Server") {
+	if !h.tester.HasText("ty") || !h.tester.HasText("BasedPyright") || !h.tester.HasText("Ruff") || h.tester.HasText("TypeScript Language Server") {
 		t.Fatalf("catalog search did not filter its scrollable results: %q", h.texts())
 	}
 }
@@ -250,7 +251,7 @@ func TestLanguageServerCatalogAddsAndTogglesCustomTy(t *testing.T) {
 		t.Fatalf("add custom server: %v; texts=%q", err, h.texts())
 	}
 	fields := []struct{ label, value string }{
-		{"Custom server name", "ty"},
+		{"Custom server name", "My ty"},
 		{"Custom server description", "Astral Python language server"},
 		{"Custom server executables", "ty, /opt/python/ty"},
 		{"Custom server arguments", "server"},
@@ -274,19 +275,19 @@ func TestLanguageServerCatalogAddsAndTogglesCustomTy(t *testing.T) {
 	if err := h.tester.Click("Save custom language server"); err != nil {
 		t.Fatalf("save custom ty: %v; texts=%q", err, h.texts())
 	}
-	server, ok := h.app.settings.LanguageServers["custom-ty"]
+	server, ok := h.app.settings.LanguageServers["custom-my-ty"]
 	if !ok || server.Custom == nil || server.Disabled || server.Path != "ty, /opt/python/ty" ||
 		!reflect.DeepEqual(server.Arguments, []string{"server"}) ||
 		server.Custom.Extensions[".py"] != "python" || server.Custom.Extensions[".pyi"] != "python" {
 		t.Fatalf("custom ty settings = %#v", server)
 	}
-	if reloaded := loadAppSettings(h.app.pathUserData).LanguageServers["custom-ty"]; reloaded.Custom == nil ||
+	if reloaded := loadAppSettings(h.app.pathUserData).LanguageServers["custom-my-ty"]; reloaded.Custom == nil ||
 		reloaded.Custom.DownloadURL != "https://pypi.org/project/ty/" || !reflect.DeepEqual(reloaded, server) {
 		t.Fatalf("persisted custom ty = %#v, want %#v", reloaded, server)
 	}
 
 	profiles := configuredLanguageServerProfiles(h.app.settings.LanguageServers, "src/main.py")
-	if len(profiles) != 1 || profiles[0].ID != "custom-ty" || !profiles[0].Custom {
+	if len(profiles) != 1 || profiles[0].ID != "custom-my-ty" || !profiles[0].Custom {
 		t.Fatalf("Python profiles = %#v", profiles)
 	}
 	program, arguments := languageServerProgram(h.app.settings.LanguageServers, profiles[0])
@@ -302,13 +303,13 @@ func TestLanguageServerCatalogAddsAndTogglesCustomTy(t *testing.T) {
 	}
 	h.tester.Scroll(results.X+results.W/2, results.Y+results.H/2, 0, 1800)
 	h.tester.Frame()
-	if !h.tester.HasText("ty") || !h.tester.HasText("CUSTOM — User defined") || !h.tester.HasText("Open download source: ty") {
+	if !h.tester.HasText("My ty") || !h.tester.HasText("CUSTOM — User defined") || !h.tester.HasText("Open download source: My ty") {
 		t.Fatalf("custom ty card or source is missing: %q", h.texts())
 	}
-	if err := h.tester.Click("Disable ty"); err != nil {
+	if err := h.tester.Click("Disable My ty"); err != nil {
 		t.Fatalf("disable custom ty from its card: %v; texts=%q", err, h.texts())
 	}
-	server = h.app.settings.LanguageServers["custom-ty"]
+	server = h.app.settings.LanguageServers["custom-my-ty"]
 	if !server.Disabled || server.Custom == nil {
 		t.Fatalf("disabling discarded the custom profile: %#v", server)
 	}
@@ -316,10 +317,10 @@ func TestLanguageServerCatalogAddsAndTogglesCustomTy(t *testing.T) {
 		t.Fatalf("disabled custom ty still matches Python: %#v", got)
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Enable ty"); err != nil {
+	if err := h.tester.Click("Enable My ty"); err != nil {
 		t.Fatal(err)
 	}
-	if h.app.settings.LanguageServers["custom-ty"].Disabled {
+	if h.app.settings.LanguageServers["custom-my-ty"].Disabled {
 		t.Fatal("card switch did not re-enable custom ty")
 	}
 }
@@ -380,7 +381,7 @@ func TestLanguageServerCatalogSearchesNamesLanguagesAndCommands(t *testing.T) {
 		query string
 		want  []string
 	}{
-		{"python", []string{"BasedPyright", "Ruff"}},
+		{"python", []string{"ty", "BasedPyright", "Ruff"}},
 		{"docker-langserver", []string{"Dockerfile Language Server"}},
 		{".vue", []string{"Tailwind CSS Language Server", "VS Code ESLint Language Server", "Vue Language Server", "Oxc / Oxlint"}},
 	}
@@ -395,6 +396,47 @@ func TestLanguageServerCatalogSearchesNamesLanguagesAndCommands(t *testing.T) {
 				t.Errorf("query %q match for %s = %v, want %v", test.query, profile.Name, got, want)
 			}
 		}
+	}
+}
+
+func TestPythonLanguageServerInstallersUseManagedEnvironment(t *testing.T) {
+	_, err := findFirstExecutable("python3", "python")
+	if err != nil {
+		t.Skip("Python is unavailable")
+	}
+	original := runLanguageServerInstallCommand
+	t.Cleanup(func() { runLanguageServerInstallCommand = original })
+	dataDir := t.TempDir()
+	venvBin := filepath.Join(dataDir, "tools", "python", "bin")
+	if runtime.GOOS == "windows" {
+		venvBin = filepath.Join(dataDir, "tools", "python", "Scripts")
+	}
+	if err := os.MkdirAll(venvBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	venvPython := filepath.Join(venvBin, executableName("python"))
+	if err := os.WriteFile(venvPython, nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"ty", "ruff"} {
+		t.Run(id, func(t *testing.T) {
+			calls := 0
+			runLanguageServerInstallCommand = func(_ context.Context, program string, arguments, _ []string) ([]byte, error) {
+				calls++
+				if program != venvPython || !reflect.DeepEqual(arguments, []string{"-m", "pip", "install", "--upgrade", id}) {
+					t.Errorf("installer = %q %q, want managed Python installing %s", program, arguments, id)
+				}
+				return nil, os.WriteFile(filepath.Join(venvBin, executableName(id)), nil, 0o755)
+			}
+			profile, _ := languageServerProfileByID(id)
+			got, err := installLanguageServerTool(profile, dataDir)
+			want := languageServerInstallation{
+				Path: filepath.Join(venvBin, executableName(id)), Arguments: []string{"server"}, ProbeArguments: []string{"--version"},
+			}
+			if err != nil || !reflect.DeepEqual(got, want) || calls != 1 {
+				t.Fatalf("managed %s = %#v, %v (%d commands); want %#v", id, got, err, calls, want)
+			}
+		})
 	}
 }
 
