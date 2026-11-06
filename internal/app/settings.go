@@ -74,6 +74,9 @@ type appSettings struct {
 	// ids of workspaceSectionIDs. A file without the choice, or one naming no
 	// known section, starts from defaultVisibleSections.
 	VisibleSections []string `json:"visibleSections"`
+	// RemoteWebURLs stores browser-page overrides by repository root and then
+	// remote name, allowing origin, upstream, and arbitrary hosts to differ.
+	RemoteWebURLs map[string]map[string]string `json:"remoteWebUrls,omitempty"`
 }
 
 type languageServerSettings struct {
@@ -168,6 +171,7 @@ func normalizeSettings(s appSettings) appSettings {
 	s.LanguageServers = normalizeLanguageServerSettings(s.LanguageServers)
 	s.HomeBackgroundOpacity = normalizeHomeBackgroundOpacity(s.HomeBackgroundOpacity)
 	s.VisibleSections = normalizeVisibleSections(s.VisibleSections)
+	s.RemoteWebURLs = normalizeRemoteWebURLs(s.RemoteWebURLs)
 	return s
 }
 

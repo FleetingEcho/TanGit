@@ -919,6 +919,8 @@ var zhHant = map[string]string{
 	"Change this remote's name or fetch URL.":             "修改此遠端的名稱或擷取 URL。",
 	"Updated remote %s":                                   "已更新遠端 %s",
 	"Save changes":                                        "儲存更改",
+	"Restore original":                                    "還原原始值",
+	"Restore the remote name and fetch URL saved in Git.": "還原儲存在 Git 中的遠端名稱和擷取 URL。",
 	"Fetch branches from this remote (F)":                 "從此遠端擷取分支 (F)",
 	"Edit this remote's name or fetch URL (E)":            "編輯此遠端的名稱或擷取 URL (E)",
 	"Remove this remote and its remote-tracking refs (D)": "移除此遠端及其遠端追蹤參照 (D)",

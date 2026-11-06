@@ -919,6 +919,8 @@ var japanese = map[string]string{
 	"Change this remote's name or fetch URL.":             "このリモートの名前またはフェッチ URL を変更します。",
 	"Updated remote %s":                                   "リモート %s を更新しました",
 	"Save changes":                                        "変更を保存",
+	"Restore original":                                    "元に戻す",
+	"Restore the remote name and fetch URL saved in Git.": "Git に保存されているリモート名とフェッチ URL を復元します。",
 	"Fetch branches from this remote (F)":                 "このリモートからブランチをフェッチ (F)",
 	"Edit this remote's name or fetch URL (E)":            "このリモートの名前またはフェッチ URL を編集 (E)",
 	"Remove this remote and its remote-tracking refs (D)": "このリモートとそのリモート追跡参照を削除 (D)",
