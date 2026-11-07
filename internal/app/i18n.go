@@ -447,6 +447,7 @@ var zhHans = map[string]string{
 	"No files here":                 "此处没有文件",
 	"Line-by-line history (B)":      "逐行历史 (B)",
 	"Blame":                         "追溯",
+	"Find file histories":           "查找文件历史",
 	"Blame at HEAD":                 "在 HEAD 处追溯",
 	"Close blame":                   "关闭追溯",
 	"Loading blame…":                "正在加载追溯…",
