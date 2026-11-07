@@ -46,12 +46,26 @@ every action reachable from both the keyboard and the mouse.
   last commit.
 - Stash the working tree or only the staged files, then apply, pop, or drop
   stashes.
-- Resolve conflicts in place: keep the current or incoming hunk, edit the
-  file, then stage it.
+- Resolve conflicts in place: navigate with `F7` / `Shift+F7`, keep the
+  current, ancestor, incoming, or both hunks with `Alt+1` through `Alt+4`, undo
+  a pick with `Alt+Z`, edit the file, then stage it. Continue stays disabled
+  until every conflict is resolved.
 - Unified or side-by-side diffs, wrapped long lines, fullscreen review, and
-  **Save diff** to export a patch.
+  **Save diff** to export a patch. Every ordinary diff can hide whitespace-only
+  changes (`Alt+W`) and cycle its context (`Alt+U`); line staging automatically
+  uses the canonical whitespace-sensitive, three-line patch.
+- Add an untracked file to `.gitignore` with `I`, or to this clone's
+  `.git/info/exclude` with `Shift+I`, from either the keyboard or its menus.
+- Compare any two branches, tags, or commits with `W` or **Compare refs**.
+  Review per-file diffs, swap the refs, ignore whitespace, and choose how much
+  context to show without changing the working tree. From a commit, `H`
+  immediately compares it with HEAD and `Shift+H` compares its first parent
+  with the commit.
 - A resizable **file history** drawer with three columns: the file's commits,
-  the files each commit changed, and the per-file diff.
+  the files each commit changed, and the per-file diff. Restore a historical
+  file from History, Graph, branch commits, or this drawer with `Shift+R` or its
+  context menu; confirmation replaces only the working-tree file, never the
+  index.
 - Blame the selected file, and copy a path or commit hash from its row.
 
 ### History, graph, and filtering
@@ -82,7 +96,9 @@ every action reachable from both the keyboard and the mouse.
   section.
 - Press `/` to search files, branches, remotes and their branches, stashes,
   tags, worktrees, submodules, or reflog entries, with match counts and a clear
-  action; History and Graph use their structured commit filter.
+  action. `F3` / `Shift+F3` and the visible chevrons move to the next / previous
+  match, wrapping at either end; History and Graph use their structured commit
+  filter.
 - Undo and redo eligible commits, resets, pulls, checkouts, and completed
   rebases through persistent reflog markers, with auto-stash protection.
 - Recover manually from the reflog by checking out a commit, creating a branch
@@ -243,15 +259,18 @@ more menu opens the same full reference.
 | `` Ctrl+` `` | Toggle the terminal |
 | `F5` | Refresh the repository |
 | `/` | Search the active panel; History and Graph open their commit filter |
+| `F3` / `Shift+F3` | Next / previous quick-search result |
+| `Alt+W` / `Alt+U` | Toggle whitespace-only diff changes / cycle ordinary diff context |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo an eligible Git operation through the reflog |
 | `Escape` | Close a dialog or cancel the current step |
 
 | Section | Keys |
 | --- | --- |
 | Workspace | `1`–`9`, `0` switch sections; arrows, `Home`/`End`, `PageUp`/`PageDown` move; `Enter` opens |
-| Changes | `Space` stage/unstage, `C` write a commit message, `Ctrl+Enter` commit, `B` blame, `D` discard |
-| History / Graph | `P` cherry-pick, `V` revert |
-| Branches | `Space` check out, `N` create, `M` merge, `U` unset upstream, `D` delete |
+| Changes | `Space` stage/unstage, `C` write a commit message, `Ctrl+Enter` commit, `B` blame, `I`/`Shift+I` ignore/exclude, `D` discard |
+| History / Graph | `H` compare with HEAD, `Shift+H` compare parent with commit, `Shift+R` restore selected historical file, `P` cherry-pick, `V` revert |
+| File history | `H` compare with HEAD, `Shift+H` compare parent with commit, `Shift+R` restore selected historical file |
+| Branches | `H`/`Shift+H` compare selected commit, `Shift+R` restore selected file, `Space` check out, `N` create, `M` merge, `U` unset upstream, `D` delete |
 | Remotes | `N` add, `F` fetch, `E` edit, `Space` check out as local branch, `Shift+Space` check out detached, `M` merge, `R` rebase, `U` set upstream, `C` copy branch name, `Shift+D` delete remote branch, `D` remove remote |
 | Stash | `Space` apply, `P` pop, `D` drop |
 | Tags | `N` create, `P` push, `D` delete |

@@ -93,7 +93,7 @@ func (a *app) reflogView(c *ui.Context) {
 				visible := a.visibleReflog()
 				listSearchField(c, &a.sectionSearch[sectionReflog], &a.reflogFilter,
 					"Search reflog", "Filter by operation, hash, or author", "Clear reflog search",
-					len(visible), len(a.snapshot.Reflog), func() { a.selectReflogRow(0) })
+					len(visible), len(a.snapshot.Reflog), func() { a.selectReflogRow(0) }, a.navigateReflogSearch)
 				visible = a.visibleReflog()
 				if len(visible) == 0 {
 					listSearchEmpty(c, "No reflog entries match this search")

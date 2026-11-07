@@ -335,6 +335,15 @@ func (a *app) fileRowMenu(m *ui.Menu, index int, services ui.Services) {
 			}
 		}
 		m.Separator()
+		if !file.Tracked && !file.Staged {
+			if m.Item(tr("Add to .gitignore")).Shortcut(0, ui.KeyI).Disabled(a.actionBusy).Chosen() {
+				a.ignoreFile(file, false)
+			}
+			if m.Item(tr("Add to .git/info/exclude")).Shortcut(ui.Shift, ui.KeyI).Disabled(a.actionBusy).Chosen() {
+				a.ignoreFile(file, true)
+			}
+			m.Separator()
+		}
 		if m.Item(tr("Discard changes…")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
 			a.confirmDiscardFile(file)
 		}
@@ -601,6 +610,15 @@ func (a *app) fileActionsMenu(c *ui.Context, theme *ui.Theme, file repository.Fi
 			}
 		}
 		m.Separator()
+		if !file.Tracked && !file.Staged {
+			if m.Item(tr("Add to .gitignore")).Shortcut(0, ui.KeyI).Disabled(a.actionBusy).Chosen() {
+				a.ignoreFile(file, false)
+			}
+			if m.Item(tr("Add to .git/info/exclude")).Shortcut(ui.Shift, ui.KeyI).Disabled(a.actionBusy).Chosen() {
+				a.ignoreFile(file, true)
+			}
+			m.Separator()
+		}
 		if m.Item(tr("Discard changes…")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
 			a.confirmDiscardSelected()
 		}
@@ -757,17 +775,17 @@ func (a *app) conflictToolbar(c *ui.Context, theme *ui.Theme) {
 				ui.Badge(c, tr("No conflict markers")).Background(theme.Success)
 			} else {
 				ui.Badge(c, trf("Conflict %d of %d", state.selected+1, count)).Background(theme.Danger).TextColor(ui.Hex("#ffffff"))
-				iconButton(c, "Previous conflict", "Select the conflict above", chevronUpIcon, state.selected == 0, func() {
+				iconButton(c, "Previous conflict", "Select the conflict above (Shift+F7)", chevronUpIcon, state.selected == 0, func() {
 					a.moveConflictSelection(-1)
 					c.Invalidate()
 				})
-				iconButton(c, "Next conflict", "Select the conflict below", chevronDownIcon, state.selected == count-1, func() {
+				iconButton(c, "Next conflict", "Select the conflict below (F7)", chevronDownIcon, state.selected == count-1, func() {
 					a.moveConflictSelection(1)
 					c.Invalidate()
 				})
 			}
 			ui.Spacer(c).Grow(1)
-			iconButton(c, "Undo resolution", "Put back the content before the last pick", revertIcon, a.actionBusy || len(state.undo) == 0, func() {
+			iconButton(c, "Undo resolution", "Put back the content before the last pick (Alt+Z)", revertIcon, a.actionBusy || len(state.undo) == 0, func() {
 				a.undoConflictResolution()
 				c.Invalidate()
 			})
@@ -782,21 +800,21 @@ func (a *app) conflictToolbar(c *ui.Context, theme *ui.Theme) {
 		})
 		resolveDisabled := count == 0 || a.actionBusy
 		ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
-			if ui.Button(c, tr("Use current")).Tooltip(tr("Keep the current side's hunk")).Disabled(resolveDisabled).Clicked() {
+			if ui.Button(c, tr("Use current")).Tooltip(tr("Keep the current side's hunk") + " (Alt+1)").Disabled(resolveDisabled).Clicked() {
 				a.resolveConflictSide(conflictCurrent)
 				c.Invalidate()
 			}
 			if hasRegion && region.hasBase() {
-				if ui.Button(c, tr("Use base")).Tooltip(tr("Keep the common ancestor's hunk")).Disabled(resolveDisabled).Clicked() {
+				if ui.Button(c, tr("Use base")).Tooltip(tr("Keep the common ancestor's hunk") + " (Alt+2)").Disabled(resolveDisabled).Clicked() {
 					a.resolveConflictSide(conflictBase)
 					c.Invalidate()
 				}
 			}
-			if ui.Button(c, tr("Use incoming")).Tooltip(tr("Keep the incoming side's hunk")).Disabled(resolveDisabled).Clicked() {
+			if ui.Button(c, tr("Use incoming")).Tooltip(tr("Keep the incoming side's hunk") + " (Alt+3)").Disabled(resolveDisabled).Clicked() {
 				a.resolveConflictSide(conflictIncoming)
 				c.Invalidate()
 			}
-			if ui.Button(c, tr("Use both")).Tooltip(tr("Keep the hunks of both sides, without the ancestor")).Disabled(resolveDisabled).Clicked() {
+			if ui.Button(c, tr("Use both")).Tooltip(tr("Keep the hunks of both sides, without the ancestor") + " (Alt+4)").Disabled(resolveDisabled).Clicked() {
 				a.resolveConflictSide(conflictBoth)
 				c.Invalidate()
 			}

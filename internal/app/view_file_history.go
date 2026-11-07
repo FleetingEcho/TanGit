@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 
 	"lazygitapp/internal/repository"
 )
@@ -13,11 +14,15 @@ import (
 // file history keeps paging in rather than stopping at a fixed count.
 const fileHistoryPage = 100
 
-// commitFileMenu adds the actions of a changed file to m: read the file's own
+// commitFileMenu adds the actions of a changed file to m: read or restore its
 // history, and copy either of its paths.
-func (a *app) commitFileMenu(m *ui.Menu, file repository.CommitFile, services ui.Services) {
+func (a *app) commitFileMenu(m *ui.Menu, commit *repository.Commit, file repository.CommitFile, services ui.Services) {
 	if m.Item(tr("View file changes…")).Chosen() {
 		a.openFileHistory(file.Path)
+	}
+	if commit != nil && m.Item(tr("Restore this historical file…")).Shortcut(ui.Shift, ui.KeyR).
+		Disabled(a.actionBusy || a.session == nil).Chosen() {
+		a.confirmRestoreCommitFile(*commit, file)
 	}
 	m.Separator()
 	a.copyPathItems(m, services, file.Path)
@@ -226,19 +231,20 @@ func (a *app) loadFileHistoryDiff(commit repository.Commit, file repository.Comm
 	a.fileHistoryDiffToken++
 	token := a.fileHistoryDiffToken
 	session := a.session
+	layout, wrap := a.diffLayout(), a.diffWrap
+	options := a.diffOptions
 	go func() {
 		defer a.recoverBackground()
-		diff, err := session.CommitFileDiff(context.Background(), commit, file)
+		diff, err := session.CommitFileDiff(context.Background(), commit, file, options)
+		var state *editor.DiffState
+		if err == nil {
+			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
+		}
 		a.update(func() {
 			if token != a.fileHistoryDiffToken || !a.fileHistoryOpen {
 				return
 			}
 			a.fileHistoryDiffLoading = false
-			if err != nil {
-				a.fileHistoryDiffError = err.Error()
-				return
-			}
-			state, err := buildDiffState(a.diffLayout(), a.diffWrap, repository.File{Path: file.Path}, diff)
 			if err != nil {
 				a.fileHistoryDiffError = err.Error()
 				return
@@ -471,6 +477,9 @@ func (a *app) fileHistoryFilesView(c *ui.Context) {
 				}).OnClick(func() {
 					a.fileHistorySelectedFile = row.Index
 					a.loadFileHistoryDiff(commit, file, false)
+				}).PopoverMenu(func(m *ui.Menu) {
+					a.fileHistorySelectedFile = row.Index
+					a.commitFileMenu(m, &commit, file, row.Context.Services())
 				})
 			})
 			if list.Changed() && a.fileHistorySelectedFile >= 0 && a.fileHistorySelectedFile < len(a.fileHistoryFiles) {
@@ -487,11 +496,13 @@ func (a *app) fileHistoryDiffView(c *ui.Context) {
 	islandCard(c, ui.Column(c).Grow(1).Gap(8).Padding(10)).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 			ui.Icon(c, diffUnifiedIcon).FontSize(13).TextColor(theme.TextMuted)
-			ui.Text(c, tr("File diff")).Bold().Grow(1)
+			ui.Text(c, tr("File diff")).Bold()
 			if a.fileHistoryDiffPath != "" {
 				ui.Text(c, a.fileHistoryDiffPath).TextColor(theme.TextMuted).
-					FontSize(theme.FontSize - 1).SingleLine().Tooltip(a.fileHistoryDiffPath)
+					FontSize(theme.FontSize - 1).SingleLine().Grow(1).Tooltip(a.fileHistoryDiffPath)
 			}
+		})
+		ui.Row(c).Justify(ui.End).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
 			a.diffViewOptions(c)
 		})
 		switch {

@@ -244,6 +244,7 @@ func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 	}
 	a.resetBranchCommits()
 	a.resetCommitDetails()
+	a.resetComparison()
 }
 
 // resetCommitPaging starts the commit list at the page a snapshot carries:
@@ -340,14 +341,15 @@ func (a *app) requestFileDiff() {
 	// Settings belong to the UI thread. Carry the options this request used
 	// into its worker rather than reading app fields there.
 	layout, wrap := a.diffLayout(), a.diffWrap
+	options := a.diffOptions
 	go func() {
 		defer a.recoverBackground()
-		diff, err := session.Diff(ctx, file)
+		diff, err := session.Diff(ctx, file, options)
 		var state *editor.DiffState
 		if err == nil {
-			state, err = buildDiffState(layout, wrap, file, diff)
+			state, err = buildDiffState(layout, wrap, file, diff, options)
 			if err == nil && state != nil {
-				state.LineSelection = diffSupportsLineStaging(file, diff.Kind)
+				state.LineSelection = canonicalDiffOptions(options) && diffSupportsLineStaging(file, diff.Kind)
 				if state.LineSelection {
 					// Clicks on the numbers are reported back so the mode
 					// that picks a range can extend it. The state is passed

@@ -326,9 +326,13 @@ type app struct {
 	diffKind  string
 	// diffPatch is the diff the pane shows, kept so a selection of its lines
 	// can be turned into the partial patch that stages or unstages them.
-	diffPatch      string
-	diffLoading    bool
-	diffError      string
+	diffPatch   string
+	diffLoading bool
+	diffError   string
+	// compare is the independent, read-only ref-comparison dialog. Its
+	// requests keep their own refs and options so changing the form cannot
+	// change a read already in flight.
+	compare        comparisonState
 	diffGeneration uint64
 	cancelDiff     context.CancelFunc
 	// conflictState is the conflicted file the pane shows, and conflictView
@@ -428,6 +432,7 @@ type app struct {
 	stashDiffState         *editor.DiffState
 	stashDiffHash          string
 	stashDiffPath          string
+	stashDiffOptions       repository.DiffOptions
 	stashDiffPatch         string
 	stashDiffLoading       bool
 	stashDiffError         string
@@ -486,6 +491,7 @@ type app struct {
 	commitFilesError   string
 	commitDiffHash     string
 	commitDiffPath     string
+	commitDiffOptions  repository.DiffOptions
 	// commitDiffPatch is the diff the pane shows, kept so it can be saved.
 	commitDiffPatch   string
 	commitDiffLoading bool
@@ -494,9 +500,11 @@ type app struct {
 
 	// diffSplit shows diffs side by side instead of unified, and diffWrap
 	// wraps long diff lines instead of scrolling them sideways; both are
-	// what the header buttons toggle.
-	diffSplit bool
-	diffWrap  bool
+	// what the header buttons toggle. diffOptions controls the patches every
+	// ordinary diff read asks Git for; Compare keeps independent options.
+	diffSplit   bool
+	diffWrap    bool
+	diffOptions repository.DiffOptions
 
 	// graphListPercent is the Graph section's share of the workspace width,
 	// wider than the other sections because the lanes need the room.
@@ -613,8 +621,27 @@ func newApp(opener repositoryOpener) *app {
 		fileHistoryWidth:         80,
 		fileHistoryCommitPercent: 30,
 		fileHistoryFilePercent:   30,
+		diffOptions:              repository.DiffOptions{ContextLines: 3},
+		compare: comparisonState{
+			selected:  -1,
+			context:   "3",
+			listWidth: 280,
+		},
 	}
 	a.term.percent = terminalPanelPercent
+	a.compare.list.Selected = &a.compare.selected
+	a.compare.list.Key = func(row int) any {
+		if row < 0 || row >= len(a.compare.files) {
+			return row
+		}
+		return a.compare.files[row].Path
+	}
+	a.compare.list.Label = func(row int) string {
+		if row < 0 || row >= len(a.compare.files) {
+			return ""
+		}
+		return a.compare.files[row].Path
+	}
 	a.navList.Selected = &a.navSelected
 	a.navList.Key = func(row int) any {
 		if section, ok := a.navRow(row); ok {

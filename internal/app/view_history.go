@@ -149,29 +149,33 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 // requestCommitFileDiff reads the diff of the file chosen in commit, unless
 // it is already the one the pane shows.
 func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.CommitFile) {
-	if a.session == nil || (a.commitDiffHash == commit.Hash && a.commitDiffPath == file.Path) {
+	if a.session == nil || (a.commitDiffHash == commit.Hash && a.commitDiffPath == file.Path &&
+		a.commitDiffOptions == a.diffOptions) {
 		return
 	}
 	session := a.session
 	repositoryGeneration := a.generation
 	a.commitDiffHash = commit.Hash
 	a.commitDiffPath = file.Path
+	a.commitDiffOptions = a.diffOptions
 	a.commitDiffLoading = true
 	a.commitDiffError = ""
 	a.commitDiffPatch = ""
 	a.commitDiffState = nil
 
 	layout, wrap := a.diffLayout(), a.diffWrap
+	options := a.diffOptions
 	go func() {
 		defer a.recoverBackground()
-		diff, err := session.CommitFileDiff(context.Background(), commit, file)
+		diff, err := session.CommitFileDiff(context.Background(), commit, file, options)
 		var state *editor.DiffState
 		if err == nil {
-			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff)
+			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
 		}
 		a.update(func() {
 			if repositoryGeneration != a.generation {
-				if a.commitDiffHash == commit.Hash && a.commitDiffPath == file.Path {
+				if a.commitDiffHash == commit.Hash && a.commitDiffPath == file.Path &&
+					a.commitDiffOptions == options {
 					a.commitDiffHash = ""
 					a.commitDiffPath = ""
 					a.commitDiffPatch = ""
@@ -179,7 +183,8 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 				}
 				return
 			}
-			if a.commitDiffHash != commit.Hash || a.commitDiffPath != file.Path {
+			if a.commitDiffHash != commit.Hash || a.commitDiffPath != file.Path ||
+				a.commitDiffOptions != options {
 				return
 			}
 			a.commitDiffLoading = false
@@ -547,7 +552,7 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 						statusSlot(row.Context, statusLetter(file.Status),
 							rowStatusColor(theme, row, theme.Warning))
 					}).PopoverMenu(func(m *ui.Menu) {
-						a.commitFileMenu(m, file, services)
+						a.commitFileMenu(m, commit, file, services)
 					})
 				})
 				if list.Changed() {

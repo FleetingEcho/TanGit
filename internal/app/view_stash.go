@@ -239,29 +239,33 @@ func (a *app) requestStashDetails(stash repository.Stash) {
 // it is already the one the pane shows.
 func (a *app) requestStashFileDiff(stash repository.Stash, file repository.CommitFile) {
 	key := stashKey(stash)
-	if a.session == nil || (a.stashDiffHash == key && a.stashDiffPath == file.Path) {
+	if a.session == nil || (a.stashDiffHash == key && a.stashDiffPath == file.Path &&
+		a.stashDiffOptions == a.diffOptions) {
 		return
 	}
 	session := a.session
 	repositoryGeneration := a.generation
 	a.stashDiffHash = key
 	a.stashDiffPath = file.Path
+	a.stashDiffOptions = a.diffOptions
 	a.stashDiffLoading = true
 	a.stashDiffError = ""
 	a.stashDiffPatch = ""
 	a.stashDiffState = nil
 
 	layout, wrap := a.diffLayout(), a.diffWrap
+	options := a.diffOptions
 	go func() {
 		defer a.recoverBackground()
-		diff, err := session.StashFileDiff(context.Background(), stash.Index, file)
+		diff, err := session.StashFileDiff(context.Background(), stash.Index, file, options)
 		var state *editor.DiffState
 		if err == nil {
-			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff)
+			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
 		}
 		a.update(func() {
 			if repositoryGeneration != a.generation {
-				if a.stashDiffHash == key && a.stashDiffPath == file.Path {
+				if a.stashDiffHash == key && a.stashDiffPath == file.Path &&
+					a.stashDiffOptions == options {
 					a.stashDiffHash = ""
 					a.stashDiffPath = ""
 					a.stashDiffPatch = ""
@@ -269,7 +273,8 @@ func (a *app) requestStashFileDiff(stash repository.Stash, file repository.Commi
 				}
 				return
 			}
-			if a.stashDiffHash != key || a.stashDiffPath != file.Path {
+			if a.stashDiffHash != key || a.stashDiffPath != file.Path ||
+				a.stashDiffOptions != options {
 				return
 			}
 			a.stashDiffLoading = false
@@ -376,7 +381,7 @@ func (a *app) stashFileMenu(m *ui.Menu, stash repository.Stash, file repository.
 		a.confirmDiscardStashFile(stash, file)
 	}
 	m.Separator()
-	a.commitFileMenu(m, file, services)
+	a.commitFileMenu(m, nil, file, services)
 }
 
 func (a *app) visibleStashes() []int {
@@ -449,7 +454,7 @@ func (a *app) stashView(c *ui.Context) {
 					visible := a.visibleStashes()
 					listSearchField(c, &a.sectionSearch[sectionStash], &a.stashFilter,
 						"Search saved work", "Filter by message, hash, or stash name", "Clear stash search",
-						len(visible), len(a.snapshot.Stashes), func() { a.selectStashRow(0) })
+						len(visible), len(a.snapshot.Stashes), func() { a.selectStashRow(0) }, a.navigateStashSearch)
 					visible = a.visibleStashes()
 					if len(visible) == 0 {
 						listSearchEmpty(c, "No stashes match this search")
@@ -493,9 +498,8 @@ func (a *app) stashView(c *ui.Context) {
 						return
 					}
 					stash := a.snapshot.Stashes[a.selectedStash]
-					ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+					ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
 						ui.Text(c, stash.Name).FontSize(18).Bold().Grow(1).SingleLine().Tooltip(stash.Name)
-						a.diffViewOptions(c)
 						if ui.Button(c, tr("Rename…")).Disabled(a.actionBusy).Clicked() {
 							a.showStashRenameForm = true
 							a.stashRename = stash.Name
@@ -509,6 +513,9 @@ func (a *app) stashView(c *ui.Context) {
 						if ui.Button(c, tr("Drop…")).Disabled(a.actionBusy).Clicked() {
 							a.confirmStashMutation(false)
 						}
+					})
+					ui.Row(c).Justify(ui.End).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
+						a.diffViewOptions(c)
 					})
 					ui.Textf(c, "stash@{%d} · %s", stash.Index, stash.Recency).
 						TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)

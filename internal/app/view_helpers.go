@@ -36,13 +36,18 @@ func hasUnstagedFiles(files []repository.File) bool {
 	return false
 }
 
-func hasConflictedFiles(files []repository.File) bool {
+func conflictedFileCount(files []repository.File) int {
+	count := 0
 	for _, file := range files {
 		if file.HasMergeConflicts {
-			return true
+			count++
 		}
 	}
-	return false
+	return count
+}
+
+func hasConflictedFiles(files []repository.File) bool {
+	return conflictedFileCount(files) > 0
 }
 
 func statusColor(theme *ui.Theme, file repository.File) ui.Color {
@@ -445,13 +450,17 @@ func paneToggle(c *ui.Context, button ui.Element) ui.Element {
 // iconTextButton is a button with an icon and its label, for the picker,
 // where the action deserves a word beside its glyph.
 func iconTextButton(c *ui.Context, label, tooltip string, icon *ui.SVG, primary bool, run func()) {
+	iconTextButtonState(c, label, tooltip, icon, primary, false, run)
+}
+
+func iconTextButtonState(c *ui.Context, label, tooltip string, icon *ui.SVG, primary, disabled bool, run func()) {
 	var button ui.Element
 	if primary {
 		button = ui.PrimaryButton(c, "")
 	} else {
 		button = ui.Button(c, "")
 	}
-	clicked := button.Label(tr(label)).Tooltip(tr(tooltip)).Gap(6).Clicked()
+	clicked := button.Label(tr(label)).Tooltip(tr(tooltip)).Gap(6).Disabled(disabled).Clicked()
 	button.Children(func() {
 		ui.Icon(c, icon).FontSize(14)
 		ui.Text(c, tr(label))
@@ -480,6 +489,7 @@ func (a *app) closeAllForms() {
 	a.closeCommitRewordForm()
 	a.showRenameRecent = false
 	a.filterOpen = false
+	a.closeCompare()
 }
 
 // anyFormOpen reports whether a text-entry form is showing. Plain-letter
@@ -487,6 +497,7 @@ func (a *app) closeAllForms() {
 // swallow keystrokes meant for a text input.
 func (a *app) anyFormOpen() bool {
 	return a.filterOpen ||
+		a.compare.open ||
 		a.showCommitForm ||
 		a.showBranchForm ||
 		a.showRenameForm ||

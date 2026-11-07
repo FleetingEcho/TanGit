@@ -205,7 +205,7 @@ func (a *app) tagsView(c *ui.Context) {
 						len(visible), len(a.snapshot.Tags), func() {
 							a.selectTagRow(0)
 							a.showTagPushForm = false
-						})
+						}, a.navigateTagSearch)
 					visible = a.visibleTags()
 					if len(visible) == 0 {
 						listSearchEmpty(c, "No repository tags match this search")

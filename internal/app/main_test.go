@@ -110,7 +110,7 @@ func (f fakeSession) Snapshot(context.Context) (repository.Snapshot, error) {
 	return f.snapshot, nil
 }
 
-func (f fakeSession) Diff(_ context.Context, file repository.File) (repository.Diff, error) {
+func (f fakeSession) Diff(_ context.Context, file repository.File, options repository.DiffOptions) (repository.Diff, error) {
 	side := "unstaged"
 	if file.Staged && !file.Unstaged {
 		side = "staged"
@@ -244,6 +244,16 @@ func (f fakeSession) ApplyFixupCommits(_ context.Context, commit repository.Comm
 
 func (f fakeSession) Discard(_ context.Context, file repository.File) error {
 	f.calls.record("discard:" + file.Path)
+	return nil
+}
+
+func (f fakeSession) IgnoreFile(_ context.Context, file repository.File) error {
+	f.calls.record("ignore:" + file.Path)
+	return nil
+}
+
+func (f fakeSession) ExcludeFile(_ context.Context, file repository.File) error {
+	f.calls.record("exclude:" + file.Path)
 	return nil
 }
 
@@ -393,7 +403,7 @@ func (f fakeSession) StashFiles(_ context.Context, index int) ([]repository.Comm
 	}, nil
 }
 
-func (f fakeSession) StashFileDiff(_ context.Context, index int, file repository.CommitFile) (repository.Diff, error) {
+func (f fakeSession) StashFileDiff(_ context.Context, index int, file repository.CommitFile, options repository.DiffOptions) (repository.Diff, error) {
 	f.calls.record("stash-file-diff:" + strconv.Itoa(index) + ":" + file.Path)
 	return repository.Diff{Patch: "diff --git a/" + file.Path + " b/" + file.Path +
 		"\n--- a/" + file.Path + "\n+++ b/" + file.Path + "\n@@ -1 +1 @@\n-old\n+new\n",
@@ -438,6 +448,7 @@ func (f fakeSession) ResolveConflict(_ context.Context, file repository.File, cu
 }
 
 func (f fakeSession) ContinueOperation(context.Context) error {
+	f.calls.record("continue")
 	return nil
 }
 
@@ -478,9 +489,29 @@ func (f fakeSession) CommitFiles(_ context.Context, commit repository.Commit) ([
 	}, nil
 }
 
-func (f fakeSession) CommitFileDiff(_ context.Context, commit repository.Commit, file repository.CommitFile) (repository.Diff, error) {
+func (f fakeSession) CommitFileDiff(_ context.Context, commit repository.Commit, file repository.CommitFile, options repository.DiffOptions) (repository.Diff, error) {
 	f.calls.record("commit-file-diff:" + commit.Hash + ":" + file.Path)
 	return repository.Diff{NewText: "changed\n", Kind: "Commit"}, nil
+}
+
+func (f fakeSession) RestoreCommitFile(_ context.Context, commit repository.Commit, file repository.CommitFile) error {
+	f.calls.record("restore:" + commit.Hash + ":" + file.Path)
+	return nil
+}
+
+func (f fakeSession) CompareFiles(_ context.Context, from, to string, options repository.DiffOptions) ([]repository.CommitFile, error) {
+	f.calls.record("compare-files:" + from + ":" + to + ":" +
+		strconv.FormatBool(options.IgnoreWhitespace) + ":" + strconv.Itoa(options.ContextLines))
+	return []repository.CommitFile{
+		{Path: "compare-one.txt", Status: "M", LinesAdded: 2, LinesDeleted: 1},
+		{Path: "compare-two.txt", Status: "M", LinesAdded: 1, LinesDeleted: 2},
+	}, nil
+}
+
+func (f fakeSession) CompareFileDiff(_ context.Context, from, to string, file repository.CommitFile, options repository.DiffOptions) (repository.Diff, error) {
+	f.calls.record("compare-file-diff:" + from + ":" + to + ":" + file.Path + ":" +
+		strconv.FormatBool(options.IgnoreWhitespace) + ":" + strconv.Itoa(options.ContextLines))
+	return repository.Diff{Patch: fakeWorkingTreePatch, Kind: "Compare"}, nil
 }
 
 // BranchCommits answers with the snapshot's commits: a test fixture describes
@@ -786,6 +817,7 @@ func TestBuildDiffStateForUntrackedFile(t *testing.T) {
 		false,
 		repository.File{Path: "new.go"},
 		repository.Diff{NewText: "package new\n", Kind: "Untracked"},
+		repository.DiffOptions{ContextLines: 3},
 	)
 	if err != nil {
 		t.Fatal(err)

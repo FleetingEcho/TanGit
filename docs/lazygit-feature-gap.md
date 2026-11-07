@@ -99,14 +99,17 @@ and [Config](https://github.com/jesseduffield/lazygit/blob/bbca3df2cd064729bd66b
 ### 6. Diffing and external tools
 
 TanGit offers built-in unified/side-by-side layouts, wrapping, fullscreen, and
-patch export. It does not expose:
+patch export. Working-tree, commit, branch-commit, stash, file-history, and
+comparison diffs support whitespace ignoring and selectable context. Its
+**Compare refs** dialog (`W`) compares arbitrary branches, tags, or commits
+without changing the working tree. Commit action bars and menus additionally
+offer immediate commit-to-HEAD (`H`) and first-parent-to-commit (`Shift+H`)
+comparisons. It does not expose:
 
-- compare arbitrary refs or two selected commits, reverse comparison, or diff
-  against a selected ref;
+- two-selected-commit comparison;
 - external diff renderers and renderer cycling;
 - `git difftool` for files/commits/branches/tags;
-- toggle whitespace changes;
-- change diff context size or rename-similarity threshold at runtime;
+- changing the rename-similarity threshold at runtime;
 - jump to a file inside a multi-file diff;
 - open a pull request at the selected diff line.
 
@@ -121,8 +124,8 @@ TanGit's [`Session`](../internal/repository/session.go), menus, and
 
 | Panel | Missing Lazygit actions |
 | --- | --- |
-| Working files | Open with OS default app; add to `.gitignore` or `.git/info/exclude`; commit without hooks; commit using Git editor; find fixup base; per-file `git difftool`; upstream reset options. |
-| Commit files | Checkout a file from that commit; discard that file from the commit through rebase; open with default app; edit; `git difftool`; include one/all files in a custom patch. |
+| Working files | Open with OS default app; commit without hooks; commit using Git editor; find fixup base; per-file `git difftool`; upstream reset options. |
+| Commit files | Discard that file from the commit through rebase; open with default app; edit; `git difftool`; include one/all files in a custom patch. |
 | Local branches | Git-flow actions; checkout by typed name/previous branch; move unpushed commits to a new branch; create worktree from selected branch; create/open/copy PR; squash merge; sort branches; choose a new upstream from the local-branch panel or reset upstream; mixed reset. |
 | Remote branches | Create worktree directly; sorting; reset; browse its commits; `git difftool`. TanGit can check out locally or detached, merge/rebase, delete on the remote, set the current branch's upstream, and copy the full name. |
 | Remotes | Add a fork remote. |
@@ -140,15 +143,16 @@ The authoritative upstream inventory is the generated
 TanGit has native list navigation and `/` quick search on Changes, local and
 remote branches, remotes, stash, tags, worktrees, submodules, and reflog.
 Searches use trimmed, case-insensitive substring matching, visible/total counts,
-first-match selection, and explicit clear actions; row actions retain their
-unfiltered repository targets. History and Graph open their structured commit
-filter (message, author, and branch) instead. Changes, commit, branch-commit,
-and stash file lists also switch between flat paths and sorted directory trees
-with per-pane folding and expand/collapse-all controls; directory rows never
-become file-action targets.
+first-match selection, and explicit clear actions. `F3`, `Shift+F3`, and visible
+chevrons move through results with wrapping and preserve each list's source
+selection and details. History and Graph open their structured commit filter
+(message, author, and branch) instead. Changes, commit, branch-commit, and stash
+file lists also switch between flat paths and sorted directory trees with
+per-pane folding and expand/collapse-all controls; directory rows never become
+file-action targets.
 
-The remaining navigation gaps are generic range selection, multi-row
-operations, and next/previous search-result movement.
+The remaining navigation gaps are generic range selection and multi-row
+operations.
 
 ### 9. Lazygit configuration compatibility
 
@@ -178,12 +182,12 @@ and custom copy/paste/open commands. The full upstream surface is in
 | --- | --- | --- |
 | History editing | Reword, drop, reorder, squash, fixup, amend-old, create/apply fixups, and branch rebase. | No native mid-rebase todo editor, range operations, `--onto` base marking, author editing, or skip. |
 | Partial changes | Select diff lines and stage/unstage them. | No hunk-edit mode or old-commit custom patches. |
-| Conflicts | Pick current/incoming content, edit, undo a resolution, and stage. | Lazygit additionally exposes pick-both and broader merge-conflict option menus. |
+| Conflicts | Pick current/ancestor/incoming/both content, navigate with `F7`/`Shift+F7`, edit, undo a resolution, and stage. Continue is disabled until all conflicts are resolved. | Lazygit exposes broader merge-conflict option menus. |
 | Reset | Soft/mixed/hard reset to a commit or reflog entry. | Fewer reset targets/options than Lazygit. |
 | Stash | Stash all or staged changes; apply, pop, rename, drop; inspect/apply/discard one stashed file. | No stash-unstaged-only option or branch/worktree-from-stash. |
 | Worktrees | Create from a typed base, switch the app to one, and remove it. | No one-key creation from the selected branch/commit/tag/stash and no direct editor action. |
 | Commit graph | Native graph page with lanes. | No Lazygit classic/detailed graph modes, graph visibility/log-order menus, or whole-graph toggles. |
-| Search/filter | Commit filter by message, author, and branch; Changes file search. | No uniform `/` filtering across branches, remotes, stash, tags, submodules, reflog, etc. |
+| Search/filter | Structured commit filtering plus quick search and wrapped result navigation on the other list panes. | No range selection or multi-row filtering/actions. |
 | Settings | Native themes, accent, font, spacing, radius, language, editor, diff defaults, visible sections. | Not compatible with Lazygit YAML and covers a much smaller set of Git/UI behaviors. |
 | Terminal/commands | Persistent embedded terminal and command log. | Different from Lazygit's one-shot shell prompt and context-aware custom-command system. |
 
@@ -195,6 +199,9 @@ These should **not** be counted as gaps:
 - select individual diff lines for partial staging;
 - commit, add a description, and amend HEAD;
 - discard a file or all visible changes with confirmation;
+- add untracked files to `.gitignore` or `.git/info/exclude`;
+- restore old file versions from commit views with destructive confirmation and
+  no index change;
 - fetch, pull, and push;
 - browse paged history and a commit graph;
 - filter commits by message, author, and branch;
@@ -214,7 +221,11 @@ These should **not** be counted as gaps:
 - add/update/delete submodules;
 - check out commits in detached HEAD mode; browse reflog entries, copy hashes,
   create recovery branches, and reset to an entry;
-- conflict resolution, file editing, blame, and file history;
+- conflict resolution with all four hunk choices, keyboard navigation, file
+  editing, blame, and file history;
+- arbitrary-ref comparison plus commit/HEAD and parent/commit shortcuts, with
+  per-file diffs, reverse comparison, whitespace ignoring, and context controls;
+- ordinary diff whitespace/context controls and wrapped quick-search navigation;
 - unified/side-by-side/wrapped/fullscreen diffs and patch export;
 - command log, recent repositories, multi-repository tabs, editor integration,
   terminal pane, themes, localization, and keyboard shortcut reference.
@@ -229,7 +240,7 @@ menus and views under `internal/app/view_*.go`, and fixed shortcut map in
 1. **Uniform search plus file-tree views** — broad daily usability improvement.
 2. **Remote branch/upstream/remote editing actions** — closes common Git
    workflow gaps without requiring provider APIs.
-3. **Arbitrary-ref comparisons and external difftool/renderer support.**
+3. **External difftool/renderer support and deeper comparison entry points.**
 4. **Native mid-rebase todo editing, range operations, and `--onto` base marking.**
 5. **PR/forge integration.**
 6. **Custom commands and configurable keybindings.**

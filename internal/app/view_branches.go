@@ -438,7 +438,7 @@ func (a *app) branchListView(c *ui.Context) {
 				a.selectBranchRow(0)
 				a.resetBranchCommits()
 				a.showRenameForm = false
-			})
+			}, a.navigateBranchSearch)
 		// Changed applies the pending text, so rows captured before the input
 		// may belong to its previous query. Re-read them before drawing.
 		visible = a.visibleBranches()
@@ -736,12 +736,13 @@ func (a *app) requestBranchCommitFileDiff(commit repository.Commit, file reposit
 	a.branchCommitDiffError = ""
 
 	layout, wrap := a.diffLayout(), a.diffWrap
+	options := a.diffOptions
 	go func() {
 		defer a.recoverBackground()
-		diff, err := session.CommitFileDiff(context.Background(), commit, file)
+		diff, err := session.CommitFileDiff(context.Background(), commit, file, options)
 		var state *editor.DiffState
 		if err == nil {
-			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff)
+			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
 		}
 		a.update(func() {
 			if token != a.branchCommitToken {
@@ -936,7 +937,7 @@ func (a *app) branchCommitDetailView(c *ui.Context, branch repository.Branch) {
 						ui.Text(row.Context, item.name).Grow(1).SingleLine().Tooltip(file.Path)
 						fileDiffStatCounts(row.Context, file.Path, file.LinesAdded, file.LinesDeleted)
 					}).PopoverMenu(func(m *ui.Menu) {
-						a.commitFileMenu(m, file, services)
+						a.commitFileMenu(m, &commit, file, services)
 					})
 				})
 				if list.Changed() {
