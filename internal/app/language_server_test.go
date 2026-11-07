@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -226,11 +228,27 @@ func TestStdioLanguageServerInitializesAndShutsDown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	environment := []string{"TANGIT_LANGUAGE_SERVER_HELPER=1"}
+	if runtime.GOOS == "darwin" {
+		// Model a server that needs another tool beside its executable, while
+		// launched from Finder with only system directories in PATH.
+		bin := t.TempDir()
+		link := filepath.Join(bin, "helper-server")
+		if err := os.Symlink(executable, link); err != nil {
+			t.Fatal(err)
+		}
+		executable = link
+		tool := filepath.Join(bin, "tangit-helper-tool")
+		if err := os.WriteFile(tool, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		environment = append(environment, "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "TANGIT_LANGUAGE_SERVER_EXPECTED_TOOL="+tool)
+	}
 	connection, err := connectStdioLanguageServer(languageServerLaunch{
 		Program:               executable,
 		Arguments:             []string{"-test.run=^TestLanguageServerHelperProcess$"},
 		Root:                  t.TempDir(),
-		Env:                   []string{"TANGIT_LANGUAGE_SERVER_HELPER=1"},
+		Env:                   environment,
 		InitializationOptions: map[string]any{"test": map[string]any{"value": "enabled"}},
 	})
 	if err != nil {
@@ -283,6 +301,12 @@ func TestLanguageServerHelperProcess(t *testing.T) {
 		}
 		switch envelope.Method {
 		case "initialize":
+			if expected := os.Getenv("TANGIT_LANGUAGE_SERVER_EXPECTED_TOOL"); expected != "" {
+				path, err := exec.LookPath(filepath.Base(expected))
+				if err != nil || path != expected {
+					os.Exit(5)
+				}
+			}
 			var params struct {
 				Capabilities struct {
 					Window struct {
