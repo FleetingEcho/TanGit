@@ -148,10 +148,10 @@ func (ed *editor) build(c *ui.Context, buf *Buffer, o options) ui.Element {
 			ds.buildBlocks(c, ed)
 		}
 		if ed.find.open {
-			ed.buildFindBar(c)
+			ed.buildFindBar(c, e)
 		}
 		if ed.goTo.open {
-			ed.buildGoToLine(c)
+			ed.buildGoToLine(c, e)
 		}
 		if hasCaret {
 			ed.buildCompletions(c, caretAnchor)
