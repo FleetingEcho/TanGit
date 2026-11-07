@@ -65,6 +65,56 @@ func TestStageSelectedLinesSendsOnlyTheirPatch(t *testing.T) {
 	}
 }
 
+// A multiple-line range sends both selected replacements in one partial
+// patch, while the change in the unselected hunk stays out of that patch.
+func TestStageSelectedLinesSendsEveryChangeInTheRange(t *testing.T) {
+	calls := &callRecorder{}
+	a := newApp(fakeOpener{
+		result: openResult{snapshot: repository.Snapshot{
+			Root:   "/work/project",
+			Branch: "main",
+			Files:  []repository.File{{Path: "app.go", Status: " M", Unstaged: true, Tracked: true}},
+		}},
+		calls: calls,
+		patch: twoHunkPatch,
+	})
+	h := &harness{app: a, updates: newUpdates()}
+	h.tester = ui.NewTester(a.view, 1280, 800)
+	a.update = h.updates.update
+	a.path = "/work/project"
+	openFixture(t, h.tester)
+	h.settle(t)
+	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
+	h.tester.Frame()
+	if err := h.tester.Click("Select multiple lines"); err != nil {
+		t.Fatal(err)
+	}
+	h.app.diffState.SetSelectedLines(editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 3}, true)
+	h.tester.Frame()
+	if !h.tester.HasText("3 lines selected") {
+		t.Fatalf("the pane does not count the selected range: %q", h.texts())
+	}
+	if err := h.tester.Click("Stage selected lines"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor(t, "staging the range", func() bool {
+		return findCall(calls, "apply-patch:false:") != ""
+	})
+
+	sent := findCall(calls, "apply-patch:false:")
+	for _, want := range []string{"-two", "+TWO", "-four", "+FOUR"} {
+		if !strings.Contains(sent, want) {
+			t.Errorf("the staged patch is missing %q:\n%s", want, sent)
+		}
+	}
+	if strings.Contains(sent, "ten and a half") {
+		t.Fatalf("the staged patch took the unselected hunk:\n%s", sent)
+	}
+	if calls.has("stage:app.go") {
+		t.Fatal("the range staged the whole file instead of its selected lines")
+	}
+}
+
 // On the staged side the same selection goes the other way: it takes the
 // lines out of the index.
 func TestUnstageSelectedLinesTakesOnlyThemBack(t *testing.T) {
