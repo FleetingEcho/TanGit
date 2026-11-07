@@ -207,6 +207,87 @@ func TestPartialPatchRoundTripsThroughTheIndex(t *testing.T) {
 	}
 }
 
+// One range can include adjacent edits and an edit in another hunk. Both
+// directions must move exactly those three changes without taking the later,
+// unselected edit or changing the working tree.
+func TestPartialPatchRoundTripsMultipleLinesAcrossHunks(t *testing.T) {
+	dir := t.TempDir()
+	runGitIn(t, dir, "init", "--initial-branch=main")
+	runGitIn(t, dir, "config", "user.name", "Desktop Test")
+	runGitIn(t, dir, "config", "user.email", "desktop@example.com")
+	path := filepath.Join(dir, "lines.txt")
+	original := "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\neleven\ntwelve\nthirteen\nfourteen\nfifteen\nsixteen\nseventeen\neighteen\nnineteen\ntwenty\n"
+	working := "one\nTWO\nTHREE\nfour\nfive\nsix\nseven\neight\nnine\nten\neleven\nTWELVE\nthirteen\nfourteen\nfifteen\nsixteen\nseventeen\neighteen\nnineteen\nTWENTY\n"
+	stagedContent := "one\nTWO\nTHREE\nfour\nfive\nsix\nseven\neight\nnine\nten\neleven\nTWELVE\nthirteen\nfourteen\nfifteen\nsixteen\nseventeen\neighteen\nnineteen\ntwenty\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(t, dir, "add", "lines.txt")
+	runGitIn(t, dir, "commit", "-m", "initial")
+	if err := os.WriteFile(path, []byte(working), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	session, err := (repository.Opener{}).Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := repository.File{Path: "lines.txt", Tracked: true, Unstaged: true, Status: " M"}
+	diff, err := session.Diff(ctx, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(diff.Patch, "\n@@ "); got != 3 {
+		t.Fatalf("the fixture has %d hunk headers, want three:\n%s", got, diff.Patch)
+	}
+	// New lines 2 through 12 cover TWO and THREE together, unchanged lines,
+	// and TWELVE in the next hunk. TWENTY remains outside the selection.
+	selection := editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 11}
+	patchText, wholeFile, err := partialPatch(diff.Patch, file, selection, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wholeFile {
+		t.Fatal("three of the file's four changes were taken for the whole file")
+	}
+	if err := session.ApplyCachedPatch(ctx, patchText, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := runGitIn(t, dir, "show", ":lines.txt"); got != stagedContent {
+		t.Fatalf("staged content:\n%s\nwant exactly the three selected changes:\n%s", got, stagedContent)
+	}
+	if content, err := os.ReadFile(path); err != nil || string(content) != working {
+		t.Fatalf("staging changed the working tree: %q %v", content, err)
+	}
+
+	// Stage the remaining edit too, so unstaging the same range must leave
+	// TWENTY in the index rather than becoming a whole-file unstage.
+	runGitIn(t, dir, "add", "lines.txt")
+	stagedFile := repository.File{Path: "lines.txt", Tracked: true, Staged: true, Status: "M "}
+	stagedDiff, err := session.Diff(ctx, stagedFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reverse, wholeFile, err := partialPatch(stagedDiff.Patch, stagedFile, selection, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wholeFile {
+		t.Fatal("taking the selected changes back was incorrectly treated as a whole-file unstage")
+	}
+	if err := session.ApplyCachedPatch(ctx, reverse, true); err != nil {
+		t.Fatal(err)
+	}
+	remainingStagedContent := strings.Replace(original, "twenty\n", "TWENTY\n", 1)
+	if got := runGitIn(t, dir, "show", ":lines.txt"); got != remainingStagedContent {
+		t.Fatalf("unstaging did not leave only the unselected edit in the index:\n%s", got)
+	}
+	if content, err := os.ReadFile(path); err != nil || string(content) != working {
+		t.Fatalf("unstaging changed the working tree: %q %v", content, err)
+	}
+}
+
 // Selecting every change of the file is selecting the file, and the caller
 // stages it whole rather than building a patch of it: the diff of a file
 // wholly added or removed describes the file, not a change within it.
