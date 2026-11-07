@@ -591,6 +591,19 @@ func TestScreenshot(t *testing.T) {
 		saveScreenshot(t, dir, "07-branches-light", tt)
 	})
 
+	t.Run("branches-chinese-light", func(t *testing.T) {
+		t.Cleanup(func() { currentLanguage = defaultLanguage })
+		a, tt, updated := newScreenshotHarness(t, false)
+		a.settings.Language = "zh-Hans"
+		a.selectedBranch = 1
+		a.workspaceTab = sectionBranches
+		tt.Frame()
+		settleShot(t, tt, updated, func() bool {
+			return !a.branchCommitsLoading && a.branchCommitDiffState != nil
+		})
+		saveScreenshot(t, dir, "62-branches-chinese-light", tt)
+	})
+
 	// The plus beside Local branches opens one modal naming the new branch
 	// and the branch it starts from.
 	t.Run("branch-create-modal-light", func(t *testing.T) {
@@ -745,6 +758,25 @@ func TestScreenshot(t *testing.T) {
 		tt.SetSize(720, 800)
 		tt.Frame()
 		saveScreenshot(t, dir, "17b-settings-narrow-light", tt)
+	})
+
+	t.Run("settings-language-menu-light", func(t *testing.T) {
+		a, tt := newScreenshotApp(t, false)
+		a.openSettings()
+		tt.Frame()
+		if err := tt.Click("English"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		saveScreenshot(t, dir, "60-settings-language-menu-light", tt)
+	})
+
+	t.Run("settings-french-light", func(t *testing.T) {
+		a, tt := newScreenshotApp(t, false)
+		a.settings.Language = "fr"
+		a.openSettings()
+		tt.Frame()
+		saveScreenshot(t, dir, "61-settings-french-light", tt)
 	})
 
 	t.Run("settings-dark", func(t *testing.T) {
@@ -1222,6 +1254,13 @@ func TestScreenshot(t *testing.T) {
 	t.Run("shell-changes-tokyo-night", func(t *testing.T) {
 		_, tt, _, _ := newShellShot(t, true, defaultTheme)
 		saveScreenshot(t, dir, "44-shell-tokyo-night", tt)
+	})
+
+	t.Run("shell-update-available-tokyo-night", func(t *testing.T) {
+		s, tt, _, _ := newShellShot(t, true, defaultTheme)
+		s.availableUpdate = "1.1.0"
+		tt.Frame()
+		saveScreenshot(t, dir, "63-shell-update-available-tokyo-night", tt)
 	})
 
 	t.Run("shell-kanagawa-wave", func(t *testing.T) {

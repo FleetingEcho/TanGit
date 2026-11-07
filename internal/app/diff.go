@@ -334,12 +334,17 @@ func (a *app) expandDiffButton(c *ui.Context) {
 // them with the diff they change, instead of the window's top bar, puts them
 // where the user looks while reading the diff.
 func (a *app) diffViewOptions(c *ui.Context) {
-	a.diffWhitespaceButton(c)
-	a.diffContextButton(c)
-	a.diffLayoutButton(c)
-	a.diffWrapButton(c)
-	a.exportDiffButton(c)
-	a.expandDiffButton(c)
+	// Own the gap here rather than inheriting each pane's header spacing. Text
+	// buttons keep their natural width, so translations never collide with the
+	// fixed-width icon controls beside them.
+	ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
+		a.diffWhitespaceButton(c)
+		a.diffContextButton(c)
+		a.diffLayoutButton(c)
+		a.diffWrapButton(c)
+		a.exportDiffButton(c)
+		a.expandDiffButton(c)
+	})
 }
 
 // toggleDiffWhitespace changes the patch, rather than just its presentation.

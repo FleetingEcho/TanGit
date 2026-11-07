@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -935,15 +936,76 @@ func (u *updates) waitForUpdate(t *testing.T) {
 	}
 }
 
+// The command-line path travels through the same shell startup as the real
+// app. Exercise actual Git repositories, including `tangit ./` from inside
+// one and a path containing whitespace, without opening a native window.
+func TestLaunchPathOpensRealRepository(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		folder   string
+		argument string
+		inside   bool
+	}{
+		{name: "current directory", folder: "current-repo", argument: "./", inside: true},
+		{name: "path with spaces", folder: "repository with spaces", argument: "./repository with spaces"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			parent := t.TempDir()
+			runGitIn(t, parent, "init", "--initial-branch=main", test.folder)
+			root := filepath.Join(parent, test.folder)
+			if test.inside {
+				t.Chdir(root)
+			} else {
+				t.Chdir(parent)
+			}
+
+			s := newShell(repository.Opener{})
+			updated := newUpdates()
+			s.update = updated.update
+			s.invalidate = func() {}
+			t.Cleanup(s.shutdown)
+			s.start(launchPath([]string{test.argument}))
+			tester := ui.NewTester(s.view, 1000, 700)
+			a := s.activeApp()
+			for range 20 {
+				tester.Frame()
+				if a.state == stateReady && !a.repositoryDetailsLoading && len(updated.done) == 0 {
+					break
+				}
+				updated.waitForUpdate(t)
+			}
+			tester.Frame()
+			if a.state != stateReady || !s.activeTab().repository() {
+				t.Fatalf("%s did not open directly: state=%v error=%q", test.argument, a.state, a.errMessage)
+			}
+			want, err := filepath.EvalSymlinks(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if a.path != want {
+				t.Fatalf("opened root = %q, want %q", a.path, want)
+			}
+		})
+	}
+}
+
 // A launch from the terminal opens the path it names; flags, such as the
 // -psn_… a macOS bundle passes, are not paths and are skipped.
 func TestLaunchPath(t *testing.T) {
+	t.Chdir(t.TempDir())
+	cwd, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatal(err)
+	}
 	cases := []struct {
 		args []string
 		want string
 	}{
 		{nil, ""},
 		{[]string{"/tmp/repo"}, "/tmp/repo"},
+		{[]string{"./"}, cwd},
+		{[]string{"./work/repo"}, filepath.Join(cwd, "work", "repo")},
+		{[]string{"./repository with spaces"}, filepath.Join(cwd, "repository with spaces")},
 		{[]string{"-psn_0_12345"}, ""},
 		{[]string{"-psn_0_12345", "/tmp/repo"}, "/tmp/repo"},
 		{[]string{"", "/tmp/repo"}, "/tmp/repo"},

@@ -1,7 +1,7 @@
 {
   "name": "TanGit",
   "identifier": "dev.tangit.desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "./cmd/tangit",
   "out": "build",
   "updates": {
@@ -10,6 +10,7 @@
   },
   "linux": {
     "depends": ["libayatana-appindicator3-1"],
-    "webview": false
+    "webview": false,
+    "command": "tangit"
   }
 }
