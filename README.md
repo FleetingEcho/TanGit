@@ -1,0 +1,313 @@
+<p align="center">
+  <img src="docs/icon.png" width="104" alt="TanGit icon">
+</p>
+
+<h1 align="center">TanGit</h1>
+
+<p align="center">
+  A native Git desktop client, built in Go with
+  <a href="https://github.com/egoist/mygo">MyGo</a> and
+  <a href="https://github.com/jesseduffield/lazygit">Lazygit</a>'s Git engine.
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> ·
+  <a href="#build-and-run">Build &amp; run</a> ·
+  <a href="#keyboard">Keyboard</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#license">License</a>
+</p>
+
+![TanGit workspace](docs/screenshots/workspace.png)
+
+TanGit brings Lazygit's fast, keyboard-driven Git workflow to a real desktop
+window. The Git work — staging lines, cherry-picking, rebasing, reading the
+reflog — runs through the same commands and models as Lazygit. The interface is
+drawn natively by MyGo: no HTML, no JavaScript, and no bundled browser.
+
+It is a small Go application with a bundled VT library, a terminal pane, and
+every action reachable from both the keyboard and the mouse.
+
+## Features
+
+### Changes and commits
+
+- Stage and unstage whole files, or **select lines inside a diff** to stage
+  only part of a file.
+- The working tree keeps itself current: changes, commits, and branches made
+  in another app appear within seconds without pressing `F5`, and the file or
+  commit you were reading stays chosen.
+- Stage, unstage, or discard everything at once, with a confirmation before
+  anything is thrown away.
+- Switch Changes, commit, branch-commit, and stash file lists between flat
+  paths and sorted, collapsible directory trees. Directory folding never
+  changes which source file a diff or row action targets.
+- Commit with a one-line subject, expand it into a description, or amend the
+  last commit.
+- Stash the working tree or only the staged files, then apply, pop, or drop
+  stashes.
+- Resolve conflicts in place: keep the current or incoming hunk, edit the
+  file, then stage it.
+- Unified or side-by-side diffs, wrapped long lines, fullscreen review, and
+  **Save diff** to export a patch.
+- A resizable **file history** drawer with three columns: the file's commits,
+  the files each commit changed, and the per-file diff.
+- Blame the selected file, and copy a path or commit hash from its row.
+
+### History, graph, and filtering
+
+- Browse commits with their author, age, branches, and tags, paging older
+  history as you scroll.
+- **Filter commits** by message, author, and branch, with a match count.
+  While a filter is active, one small **×** clears every field at once.
+- The Graph draws every branch as lanes, newest first, in the same list you
+  already use.
+- Per-commit actions: copy hash, soft, mixed, or hard reset, create a tag or
+  branch there, cherry-pick onto the current branch, or revert.
+- Edit history without leaving the app: reword, drop, reorder, squash, fix up,
+  amend older commits, and create or apply fixup commits. Git's todo-file editor
+  handoff runs inside the TanGit executable rather than a terminal editor.
+
+### Branches, remotes, and the rest
+
+- Branches: check out, create, rename, merge into the current branch, rebase
+  onto, pull, unset an upstream, and delete — with a force-checkout confirmation
+  when work would be lost.
+- Remotes: add, edit, fetch, and remove remotes; check out a remote branch as a
+  local one or as detached HEAD, merge or rebase onto it, set it as the current
+  branch's upstream, copy its full name, or delete it on the remote after
+  confirmation.
+- Tags: create, push, and delete.
+- Stash, worktrees, submodules, and reflog each have their own workspace
+  section.
+- Press `/` to search files, branches, remotes and their branches, stashes,
+  tags, worktrees, submodules, or reflog entries, with match counts and a clear
+  action; History and Graph use their structured commit filter.
+- Undo and redo eligible commits, resets, pulls, checkouts, and completed
+  rebases through persistent reflog markers, with auto-stash protection.
+- Recover manually from the reflog by checking out a commit, creating a branch
+  there, or resetting the current branch with soft, mixed, or hard semantics.
+- The sidebar shows the five everyday sections by default. Turn the rest on in
+  **Settings → Workspace sections**.
+
+### The workspace
+
+- Open several repositories in **tabs** (`Ctrl+T`, `Ctrl+W`, `Ctrl+Tab`), with
+  a picker that remembers recent repositories.
+- A **tabbed title bar** that drags the window: the system's traffic lights on
+  the left on macOS, and minimize, full screen, and close drawn on the right on
+  Linux and Windows.
+- A **terminal pane** running your shell in the repository, toggled with
+  ``Ctrl+` ``; it keeps running while hidden.
+- A **command log** recording every Git command and the output it printed.
+- Close the window and TanGit stays in the menu bar or notification area:
+  click its icon to reopen the window or quit for good.
+- Open the repository or a file in your editor: presets for VS Code, Zed, and
+  Neovim, or a custom command with `{{filename}}` and `{{line}}` placeholders.
+- Toasts for actions and failures; a failed UI frame falls back to a safe
+  screen instead of taking the window down.
+
+### Make it yours
+
+- **20 palettes plus System**: Tokyo Night (the default), Dracula, Gruvbox,
+  GitHub, Nord, One, Solarized, all four Catppuccin flavors, Rosé Pine,
+  Kanagawa Wave, Everforest Dark, and Ayu Mirage, with light variants where
+  available.
+- Accent colors (17 muted tones plus the palette's own), font family and size,
+  spacing, and corner radius.
+- English (default) and Simplified Chinese.
+- No telemetry. TanGit checks its signed GitHub releases in the background;
+  when a newer version is available, the title bar's update icon lights up and
+  opens the release notes and install flow. **Settings → Updates** also shows
+  the running version and links to the GitHub releases page.
+
+### Screenshots
+
+TanGit browsing the [Lazygit](https://github.com/jesseduffield/lazygit)
+repository. The image follows your GitHub color scheme:
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/graph_dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/graph_light.png">
+    <img src="docs/screenshots/graph_light.png" alt="TanGit showing the Lazygit repository's commit graph and a side-by-side diff">
+  </picture>
+</p>
+
+More of the workspace:
+
+<p align="center">
+  <img src="docs/screenshots/picker.png" width="49%" alt="Repository picker">
+  <img src="docs/screenshots/file-history.png" width="49%" alt="File history">
+</p>
+
+## Build and run
+
+Prebuilt packages are attached to
+[GitHub releases](https://github.com/FleetingEcho/TanGit/releases) when
+published. The steps below run and build TanGit from source.
+
+### Requirements
+
+- Linux (X11 or Wayland), macOS 11 or newer (Apple silicon and Intel), or
+  Windows 10/11.
+- Git available on `PATH`.
+- To build: Go **1.27.3**, as pinned by `go.mod`.
+- On Linux the package depends on GTK 3 and `libayatana-appindicator3-1`,
+  which `apt` installs with the `.deb`. Without AppIndicator, TanGit still
+  runs, and closing the window quits as before.
+
+> **Building from source:** everything TanGit needs is declared in `go.mod`,
+> which points at the upstream Lazygit module. The Go toolchain downloads the
+> dependency; no sibling checkout is required. The few additions TanGit needs
+> from Lazygit's command layer live in `internal/repository/lazygit_ext.go`,
+> built on the module's public API, so a fresh clone builds on its own.
+
+```sh
+git clone https://github.com/FleetingEcho/TanGit.git
+cd TanGit
+
+# Run the app in development mode.
+go tool mygo dev
+
+# Build for the host platform.
+go tool mygo build
+
+# Build every release target for v1.0.0.
+go tool mygo build -platform darwin/universal,windows/amd64,windows/arm64,linux/amd64,linux/arm64
+
+# Install on Debian or Ubuntu.
+sudo apt install ./build/linux-amd64/tangit_1.0.0_amd64.deb
+```
+
+### Release artifacts
+
+Each target gets its own directory under `build/`:
+
+```
+build/
+├── darwin-universal/
+│   ├── TanGit.app                  # arm64 + Intel, one bundle
+│   └── tangit-1.0.0.dmg            # on macOS, signed when configured
+├── windows-amd64/  windows-arm64/
+│   ├── TanGit.exe
+│   ├── ghostty-vt.dll
+│   └── tangit-setup-1.0.0-<arch>.exe   # when NSIS is installed
+├── linux-amd64/    linux-arm64/
+│   ├── tangit
+│   ├── tangit_1.0.0_<arch>.deb
+│   ├── tangit-1.0.0-linux-<arch>.tar.gz
+│   ├── PKGBUILD                    # Arch package recipe
+│   └── install.sh
+└── ...
+```
+
+MyGo needs no cgo, so any target can be compiled from any machine. Two steps
+still need their host tooling:
+
+- **macOS disk images and signing** need macOS. Elsewhere the universal
+  `.app` is built and the DMG step is skipped with a warning.
+- **Windows installers** need NSIS (`makensis`) on `PATH`. Without it the
+  `.exe` is built and the setup step is skipped; pass `-skip-installer` to
+  skip it quietly.
+
+### Publishing signed updates
+
+The release workflow builds each platform, signs its update archive, and
+uploads the installers and update manifests to a draft GitHub release. Before
+using it for the first time, add the generated private key as a repository
+secret (never commit this key):
+
+```sh
+gh secret set MYGO_UPDATER_PRIVATE_KEY \
+  < ~/.config/mygo/update-keys/mygo-update.key
+```
+
+For each release, bump `version` in `mygo.json`, commit it, then push the
+matching tag (for example, `v1.0.0`). After the workflow finishes, review and
+publish its draft release. Installed copies will then discover the signed
+update automatically.
+
+## Keyboard
+
+TanGit is keyboard-first. Press **?** for the shortcuts available on the
+current page, or **F1** for the complete, filterable shortcut list; the header's
+more menu opens the same full reference.
+
+| Everywhere | |
+| --- | --- |
+| `F1` | Open the complete shortcut list |
+| `?` | Show shortcuts for the current page |
+| `Ctrl+,` | Open settings |
+| `Ctrl+L` | Show the command log |
+| `` Ctrl+` `` | Toggle the terminal |
+| `F5` | Refresh the repository |
+| `/` | Search the active panel; History and Graph open their commit filter |
+| `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo an eligible Git operation through the reflog |
+| `Escape` | Close a dialog or cancel the current step |
+
+| Section | Keys |
+| --- | --- |
+| Workspace | `1`–`9`, `0` switch sections; arrows, `Home`/`End`, `PageUp`/`PageDown` move; `Enter` opens |
+| Changes | `Space` stage/unstage, `C` write a commit message, `Ctrl+Enter` commit, `B` blame, `D` discard |
+| History / Graph | `P` cherry-pick, `V` revert |
+| Branches | `Space` check out, `N` create, `M` merge, `U` unset upstream, `D` delete |
+| Remotes | `N` add, `F` fetch, `E` edit, `Space` check out as local branch, `Shift+Space` check out detached, `M` merge, `R` rebase, `U` set upstream, `C` copy branch name, `Shift+D` delete remote branch, `D` remove remote |
+| Stash | `Space` apply, `P` pop, `D` drop |
+| Tags | `N` create, `P` push, `D` delete |
+| Worktrees | `N` create, `O` open, `D` remove |
+| Submodules | `N` add, `U` update, `D` delete |
+
+## How it works
+
+| Path | Responsibility |
+| --- | --- |
+| `cmd/tangit` | Thin executable entry point |
+| `internal/app/main.go`, `shell.go`, `view_shell.go` | Window, tabs, picker, and workspace chrome |
+| `internal/app/view_*.go` | One file per section or pane (changes, history, graph, branches, …) |
+| `internal/app/actions.go` | Git actions, confirmations, and background work |
+| `internal/repository` | Lazygit's Git commands behind a small session interface |
+| `internal/app/settings.go`, `i18n.go`, `notifications.go` | Preferences, translations, and toasts |
+| `internal/app/*_test.go` | Headless UI tests, including `screenshot_test.go` |
+
+The `internal/repository` package wraps Lazygit's command layer and models in
+a `Session` interface. The UI never shells out to Git itself: it schedules
+actions, the session runs them, and the next frame reads a fresh snapshot.
+That keeps reads and writes serialized and the panes consistent. Where the app
+needs something the library does not expose, `lazygit_ext.go` builds it on the
+library's public API rather than patching a copy of the library.
+
+The interface is tested without a window. `mygo/ui` provides a headless tester
+that clicks, types, and renders frames, so behaviour, layout, and screenshots
+are all exercised by `go test`.
+
+Settings and recent repositories live in MyGo's user-data directory, usually
+`~/.config/TanGit` on Linux. They are written atomically and saved as you
+change them.
+
+## Development
+
+```sh
+gofmt -l .                 # formatting
+go vet ./...               # static checks
+go test ./...              # all tests
+go test -race ./...        # race detector
+go tool mygo build         # release build
+
+# Regenerate the screenshots used above (and the rest of the gallery).
+MYGO_SHOTS=/tmp/tangit-shots go test ./internal/app -run TestScreenshot
+```
+
+There is no separate lint configuration: `gofmt` and `go vet` are the
+standard. Wrap new interface strings in `tr(...)` and add a Simplified Chinese
+entry to `internal/app/i18n.go`; the English catalog is the source text itself.
+
+## Contributing
+
+Issues and pull requests are welcome. For a change to the interface, include a
+screenshot from `MYGO_SHOTS` if you can; it makes a review much faster. Run the
+full test suite and `go vet` before opening a pull request.
+
+## License
+
+TanGit is released under the [MIT License](LICENSE).

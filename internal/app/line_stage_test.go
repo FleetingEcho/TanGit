@@ -1,0 +1,333 @@
+package app
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
+
+	"lazygitapp/internal/repository"
+)
+
+// unstagedTrackedFile is a file changed only in the working tree, so the
+// Changes pane shows its unstaged diff and offers to stage a selection of it.
+func unstagedTrackedFile() []repository.File {
+	return []repository.File{{Path: "changed.txt", Status: " M", Unstaged: true, Tracked: true}}
+}
+
+// findCall is the first call the recorder holds that starts with prefix.
+func findCall(calls *callRecorder, prefix string) string {
+	for _, call := range calls.all() {
+		if strings.HasPrefix(call, prefix) {
+			return call
+		}
+	}
+	return ""
+}
+
+// The pane names the way to select lines, counts the selection, and stages
+// only the lines picked: the file's other change stays out of the index.
+func TestStageSelectedLinesSendsOnlyTheirPatch(t *testing.T) {
+	h, calls := changesTestApp(t, unstagedTrackedFile())
+	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
+	if !h.app.lineSelectionAvailable() {
+		t.Fatal("the unstaged diff does not offer line selection")
+	}
+	if !h.tester.HasText("Click line numbers to select lines") {
+		t.Fatalf("the pane does not say how to select lines: %q", h.texts())
+	}
+
+	// New-side line 1 is the change of the fake diff's "two" to "TWO"; the
+	// fourth line's change is left alone.
+	h.app.diffState.SetSelectedLines(editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1}, true)
+	h.tester.Frame()
+	if !h.tester.HasText("1 line selected") {
+		t.Fatalf("the pane does not count the selected line: %q", h.texts())
+	}
+	if !h.tester.HasText("Stage selected lines") {
+		t.Fatalf("the pane offers no way to stage the line: %q", h.texts())
+	}
+	if err := h.tester.Click("Stage selected lines"); err != nil {
+		t.Fatalf("stage the selected line: %v", err)
+	}
+	h.waitFor(t, "the partial patch", func() bool {
+		return findCall(calls, "apply-patch:false:") != ""
+	})
+	sent := findCall(calls, "apply-patch:false:")
+	for _, want := range []string{"-two", "+TWO"} {
+		if !strings.Contains(sent, want) {
+			t.Errorf("the patch sent is missing %q: %q", want, sent)
+		}
+	}
+	if strings.Contains(sent, "FOUR") {
+		t.Errorf("the patch sent took the file's other change: %q", sent)
+	}
+}
+
+// On the staged side the same selection goes the other way: it takes the
+// lines out of the index.
+func TestUnstageSelectedLinesTakesOnlyThemBack(t *testing.T) {
+	h, calls := changesTestApp(t, []repository.File{
+		{Path: "changed.txt", Status: "M ", Staged: true, Tracked: true},
+	})
+	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
+	h.app.diffState.SetSelectedLines(editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1}, true)
+	h.tester.Frame()
+	if !h.tester.HasText("Unstage selected lines") {
+		t.Fatalf("the staged side offers no way to unstage the line: %q", h.texts())
+	}
+	if err := h.tester.Click("Unstage selected lines"); err != nil {
+		t.Fatalf("unstage the selected line: %v", err)
+	}
+	h.waitFor(t, "the reversed patch", func() bool {
+		return findCall(calls, "apply-patch:true:") != ""
+	})
+	sent := findCall(calls, "apply-patch:true:")
+	for _, want := range []string{"-two", "+TWO"} {
+		if !strings.Contains(sent, want) {
+			t.Errorf("the patch sent is missing %q: %q", want, sent)
+		}
+	}
+	if strings.Contains(sent, "+FOUR") {
+		t.Errorf("the patch sent took the file's other change: %q", sent)
+	}
+}
+
+// An untracked file is shown as the patch that adds it, so its lines can be
+// picked too: only the picked line goes into the index, and the file stays
+// otherwise untracked.
+func TestUntrackedFileStagesOnlyThePickedLine(t *testing.T) {
+	h, calls := changesTestApp(t, []repository.File{
+		{Path: "new.txt", Status: "??", Unstaged: true, Added: true},
+	})
+	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
+	if !h.app.lineSelectionAvailable() {
+		t.Fatal("a new file does not offer line selection")
+	}
+	if !h.tester.HasText("Click line numbers to select lines") {
+		t.Fatalf("the pane does not say how to select lines: %q", h.texts())
+	}
+
+	// New-side line 1 is the file's second line; the first stays out.
+	h.app.diffState.SetSelectedLines(editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1}, true)
+	h.tester.Frame()
+	if err := h.tester.Click("Stage selected lines"); err != nil {
+		t.Fatalf("stage the selected line: %v", err)
+	}
+	h.waitFor(t, "the partial patch", func() bool {
+		return findCall(calls, "apply-patch:false:") != ""
+	})
+	sent := findCall(calls, "apply-patch:false:")
+	if !strings.Contains(sent, "+second") {
+		t.Errorf("the patch sent is missing the picked line: %q", sent)
+	}
+	if strings.Contains(sent, "+first") {
+		t.Errorf("the patch sent took the line beside it: %q", sent)
+	}
+	if calls.has("stage:new.txt") {
+		t.Fatal("the whole file was staged")
+	}
+}
+
+// Picking every line of a new file is adding the file, which is done as a
+// whole rather than line by line.
+func TestPickingEveryLineOfANewFileStagesTheFile(t *testing.T) {
+	h, calls := changesTestApp(t, []repository.File{
+		{Path: "new.txt", Status: "??", Unstaged: true, Added: true},
+	})
+	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
+	h.app.diffState.SetSelectedLines(editor.DiffLineRange{Side: editor.DiffNew, Start: 0, End: 1}, true)
+	h.tester.Frame()
+	if err := h.tester.Click("Stage selected lines"); err != nil {
+		t.Fatalf("stage the selected lines: %v", err)
+	}
+	h.waitFor(t, "the file staged", func() bool { return calls.has("stage:new.txt") })
+	if findCall(calls, "apply-patch:") != "" {
+		t.Fatal("the file was applied line by line instead of added")
+	}
+}
+
+// Space acts on the lines picked in the diff, as the pane's button does,
+// rather than on the whole file.
+func TestSpaceStagesTheSelectedLines(t *testing.T) {
+	h, calls := changesTestApp(t, unstagedTrackedFile())
+	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
+	h.app.diffState.SetSelectedLines(editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1}, true)
+	h.press(t, ui.KeySpace)
+	h.waitFor(t, "the partial patch", func() bool {
+		return findCall(calls, "apply-patch:false:") != ""
+	})
+	if calls.has("stage:changed.txt") {
+		t.Fatal("Space staged the whole file instead of the selected lines")
+	}
+}
+
+// clickDiffLine does what the editor does when a line number is clicked: it
+// makes the line the selection, then reports the click to the app.
+func clickDiffLine(t *testing.T, h *harness, line editor.DiffLineRange) {
+	t.Helper()
+	h.app.diffState.SetSelectedLines(line, true)
+	h.app.extendLineSelection(h.app.diffState, line)
+	h.tester.Frame()
+}
+
+// Without the mode a click picks one line, as it always did.
+func TestPlainLineClickPicksOneLine(t *testing.T) {
+	h, _ := changesTestApp(t, unstagedTrackedFile())
+	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
+	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1})
+	if got, ok := h.app.diffState.SelectedLines(); !ok || got != (editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1}) {
+		t.Fatalf("a click picked %+v, want one line", got)
+	}
+	if !h.tester.HasText("Select multiple lines") {
+		t.Fatalf("the pane offers no way into the multi-line mode: %q", h.texts())
+	}
+}
+
+// The mode's button is the way to pick a range without holding Shift: each
+// click extends the range, so 1 then 3 selects 1 to 3.
+func TestSelectMultipleLinesExtendsTheRangeWithEachClick(t *testing.T) {
+	h, _ := changesTestApp(t, unstagedTrackedFile())
+	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
+	if err := h.tester.Click("Select multiple lines"); err != nil {
+		t.Fatalf("enter the multi-line mode: %v", err)
+	}
+	h.tester.Frame()
+	if !h.app.lineSelectMode {
+		t.Fatal("the button did not enter the multi-line mode")
+	}
+	for _, want := range []string{"Selecting multiple lines",
+		"Click a line number, then another, to choose a range.", "Cancel"} {
+		if !h.tester.HasText(want) {
+			t.Fatalf("the mode is missing %q: %q", want, h.texts())
+		}
+	}
+
+	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1})
+	if !h.tester.HasText("1 line selected") {
+		t.Fatalf("one click did not select its line: %q", h.texts())
+	}
+	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 3, End: 3})
+	got, ok := h.app.diffState.SelectedLines()
+	if !ok || got != (editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 3}) {
+		t.Fatalf("the second click selected %+v, want lines 1 to 3", got)
+	}
+	if !h.tester.HasText("3 lines selected") {
+		t.Fatalf("the pane does not count the range: %q", h.texts())
+	}
+
+	// A line inside the range starts it again, so a new range can be picked.
+	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 2, End: 2})
+	got, _ = h.app.diffState.SelectedLines()
+	if got != (editor.DiffLineRange{Side: editor.DiffNew, Start: 2, End: 2}) {
+		t.Fatalf("a click inside the range left %+v, want its own line", got)
+	}
+}
+
+// A range picked in the mode is staged as one patch: only its changes move,
+// and the change outside it stays in the working tree.
+func TestSelectingARangeStagesThoseLines(t *testing.T) {
+	h, calls := changesTestApp(t, unstagedTrackedFile())
+	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
+	if err := h.tester.Click("Select multiple lines"); err != nil {
+		t.Fatalf("enter the multi-line mode: %v", err)
+	}
+	h.tester.Frame()
+	// New-side lines 1 to 2 hold the first change; the fourth line's change
+	// is outside the range.
+	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1})
+	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 2, End: 2})
+	if err := h.tester.Click("Stage selected lines"); err != nil {
+		t.Fatalf("stage the range: %v", err)
+	}
+	h.waitFor(t, "the partial patch", func() bool {
+		return findCall(calls, "apply-patch:false:") != ""
+	})
+	sent := findCall(calls, "apply-patch:false:")
+	if !strings.Contains(sent, "+TWO") {
+		t.Errorf("the patch missed the range's change: %q", sent)
+	}
+	if strings.Contains(sent, "+FOUR") {
+		t.Errorf("the patch took the change outside the range: %q", sent)
+	}
+}
+
+// Cancel leaves the mode and drops the selection; Escape does the same.
+func TestCancelLeavesTheLineSelectionMode(t *testing.T) {
+	for _, leave := range []struct {
+		name string
+		act  func(t *testing.T, h *harness)
+	}{
+		{"Cancel", func(t *testing.T, h *harness) {
+			if err := h.tester.Click("Cancel"); err != nil {
+				t.Fatalf("Cancel: %v", err)
+			}
+		}},
+		{"Escape", func(t *testing.T, h *harness) { h.press(t, ui.KeyEscape) }},
+	} {
+		t.Run(leave.name, func(t *testing.T) {
+			h, _ := changesTestApp(t, unstagedTrackedFile())
+			h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
+			if err := h.tester.Click("Select multiple lines"); err != nil {
+				t.Fatalf("enter the multi-line mode: %v", err)
+			}
+			h.tester.Frame()
+			clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1})
+			leave.act(t, h)
+			h.tester.Frame()
+			if h.app.lineSelectMode {
+				t.Fatal("the mode is still on")
+			}
+			if _, ok := h.app.diffState.SelectedLines(); ok {
+				t.Fatal("the selection was left behind")
+			}
+			if !h.tester.HasText("Click line numbers to select lines") {
+				t.Fatalf("the pane does not return to its plain hint: %q", h.texts())
+			}
+		})
+	}
+}
+
+// A new diff starts with the mode off: the lines of the file before must not
+// be taken for the lines of the file after.
+func TestANewDiffLeavesTheLineSelectionMode(t *testing.T) {
+	h, _ := changesTestApp(t, unstagedTrackedFile())
+	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
+	if err := h.tester.Click("Select multiple lines"); err != nil {
+		t.Fatalf("enter the multi-line mode: %v", err)
+	}
+	h.tester.Frame()
+	h.app.resetFileDiff()
+	if h.app.lineSelectMode || h.app.lineSelectHas {
+		t.Fatal("the mode outlived the diff it was picking lines of")
+	}
+}
+
+// The mode works through the pane's own clicks, not just the app's bookkeeping:
+// the editor reports each click on a line number, and two clicks pick the two
+// lines between them.
+func TestClickingLineNumbersInTheModeExtendsTheRange(t *testing.T) {
+	h, _ := changesTestApp(t, unstagedTrackedFile())
+	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
+	if err := h.tester.Click("Select multiple lines"); err != nil {
+		t.Fatalf("enter the multi-line mode: %v", err)
+	}
+	h.tester.Frame()
+	caption, ok := h.tester.Find("Unstaged changes")
+	if !ok {
+		t.Fatalf("the diff's caption is not on screen: %q", h.texts())
+	}
+	// The pane's rows: the column's gap, a row for the hunk's header, then a
+	// row a line, at the default theme's 20 points. The numbers are just left
+	// of the caption's text.
+	row := func(i int) float32 { return caption.Y + caption.H + 10 + float32(i)*20 + 10 }
+	h.tester.ClickAt(caption.X+20, row(4)) // new-side line 1
+	h.tester.Frame()
+	h.tester.ClickAt(caption.X+20, row(5)) // new-side line 2
+	h.tester.Frame()
+	if got, ok := h.app.diffState.SelectedLines(); !ok ||
+		got != (editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 2}) {
+		t.Fatalf("two clicks picked %+v, want new-side lines 1 to 2", got)
+	}
+}

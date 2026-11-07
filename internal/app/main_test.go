@@ -1,0 +1,915 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
+
+	"lazygitapp/internal/repository"
+)
+
+type openResult struct {
+	snapshot repository.Snapshot
+	err      error
+}
+
+type fakeOpener struct {
+	result  openResult
+	release <-chan struct{}
+	calls   *callRecorder
+	// initErr makes the picker's offer to initialize a folder fail, as a
+	// folder the user may not write to does.
+	initErr error
+}
+
+func (f fakeOpener) Init(_ context.Context, path string) error {
+	f.calls.record("init:" + path)
+	return f.initErr
+}
+
+func (f fakeOpener) Open(context.Context, string) (repository.Session, error) {
+	if f.release != nil {
+		<-f.release
+	}
+	if f.result.err != nil {
+		return nil, f.result.err
+	}
+	return fakeSession{snapshot: f.result.snapshot, calls: f.calls}, nil
+}
+
+// openFixture submits the picker's path field with Enter, which is how a
+// typed path opens now that the picker has no separate Open button.
+func openFixture(t *testing.T, tt *ui.Tester) {
+	t.Helper()
+	if err := tt.Click("Repository folder"); err != nil {
+		t.Fatalf("focus the repository field: %v", err)
+	}
+	tt.Key(0, ui.KeyEnter)
+}
+
+type fakeSession struct {
+	snapshot repository.Snapshot
+	// calls records what the fake was asked to do, for tests that click an
+	// action and assert it reached the session. Nil records nothing.
+	calls *callRecorder
+	// commandLog is what the command log modal reads, nil when a test does
+	// not open it.
+	commandLog *repository.CommandLog
+}
+
+// callRecorder is the calls a fakeSession recorded, safe to read from the
+// test's goroutine while the app's actions write to it.
+type callRecorder struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (r *callRecorder) record(call string) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, call)
+}
+
+func (r *callRecorder) all() []string {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.calls...)
+}
+
+func (r *callRecorder) has(call string) bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, got := range r.calls {
+		if got == call {
+			return true
+		}
+	}
+	return false
+}
+
+func (f fakeSession) Snapshot(context.Context) (repository.Snapshot, error) {
+	return f.snapshot, nil
+}
+
+func (f fakeSession) Diff(_ context.Context, file repository.File) (repository.Diff, error) {
+	side := "unstaged"
+	if file.Staged && !file.Unstaged {
+		side = "staged"
+	}
+	f.calls.record("diff:" + file.Path + ":" + side)
+	if !file.Tracked {
+		return repository.Diff{Patch: fakeNewFilePatch, Kind: "Untracked"}, nil
+	}
+	kind := "Unstaged"
+	if side == "staged" {
+		kind = "Staged"
+	}
+	return repository.Diff{Patch: fakeWorkingTreePatch, Kind: kind}, nil
+}
+
+// fakeWorkingTreePatch is the diff the fake session shows for a tracked file:
+// two changes in one hunk, so a test can select one and leave the other.
+const fakeWorkingTreePatch = `diff --git a/changed.txt b/changed.txt
+index 1111111..2222222 100644
+--- a/changed.txt
++++ b/changed.txt
+@@ -1,4 +1,4 @@
+ one
+-two
++TWO
+ three
+-four
++FOUR
+`
+
+// fakeNewFilePatch is the diff git shows for a file it does not know: the
+// patch that adds it, so a test can select one of its lines.
+const fakeNewFilePatch = `diff --git a/new.txt b/new.txt
+new file mode 100644
+index 0000000..3333333
+--- /dev/null
++++ b/new.txt
+@@ -0,0 +1,2 @@
++first
++second
+`
+
+func (f fakeSession) Stage(_ context.Context, file repository.File) error {
+	f.calls.record("stage:" + file.Path)
+	return nil
+}
+
+func (f fakeSession) Unstage(_ context.Context, file repository.File) error {
+	f.calls.record("unstage:" + file.Path)
+	return nil
+}
+
+func (f fakeSession) ApplyCachedPatch(_ context.Context, patchText string, reverse bool) error {
+	f.calls.record("apply-patch:" + strconv.FormatBool(reverse) + ":" + patchText)
+	return nil
+}
+
+func (f fakeSession) StageAll(context.Context) error {
+	f.calls.record("stage-all")
+	return nil
+}
+
+func (f fakeSession) UnstageAll(context.Context) error {
+	f.calls.record("unstage-all")
+	return nil
+}
+
+func (f fakeSession) Commit(_ context.Context, summary, _ string, amend bool) error {
+	f.calls.record("commit:" + summary)
+	if amend {
+		f.calls.record("amend:" + summary)
+	}
+	return nil
+}
+
+func (f fakeSession) Undo(context.Context) error {
+	f.calls.record("undo")
+	return nil
+}
+
+func (f fakeSession) Redo(context.Context) error {
+	f.calls.record("redo")
+	return nil
+}
+
+func (f fakeSession) CommitMessage(_ context.Context, commit repository.Commit) (repository.CommitMessage, error) {
+	return repository.CommitMessage{Summary: commit.Subject, Description: "Existing body"}, nil
+}
+
+func (f fakeSession) RewordCommit(_ context.Context, commit repository.Commit, summary, description string) error {
+	f.calls.record("reword:" + commit.Hash + ":" + summary + ":" + description)
+	return nil
+}
+
+func (f fakeSession) DropCommit(_ context.Context, commit repository.Commit) error {
+	f.calls.record("drop:" + commit.Hash)
+	return nil
+}
+
+func (f fakeSession) MoveCommit(_ context.Context, commit repository.Commit, direction repository.CommitMove) error {
+	f.calls.record("move:" + strconv.Itoa(int(direction)) + ":" + commit.Hash)
+	return nil
+}
+
+func (f fakeSession) CombineCommit(_ context.Context, commit repository.Commit, mode repository.CombineMode) error {
+	f.calls.record("combine:" + strconv.Itoa(int(mode)) + ":" + commit.Hash)
+	return nil
+}
+
+func (f fakeSession) AmendCommit(_ context.Context, commit repository.Commit) error {
+	f.calls.record("amend-to:" + commit.Hash)
+	return nil
+}
+
+func (f fakeSession) CreateFixupCommit(_ context.Context, commit repository.Commit) error {
+	f.calls.record("fixup-for:" + commit.Hash)
+	return nil
+}
+
+func (f fakeSession) ApplyFixupCommits(_ context.Context, commit repository.Commit) error {
+	f.calls.record("apply-fixups:" + commit.Hash)
+	return nil
+}
+
+func (f fakeSession) Discard(_ context.Context, file repository.File) error {
+	f.calls.record("discard:" + file.Path)
+	return nil
+}
+
+func (f fakeSession) CheckoutBranch(_ context.Context, name string) error {
+	f.calls.record("checkout:" + name)
+	return nil
+}
+
+func (f fakeSession) CheckoutCommit(_ context.Context, commit repository.Commit) error {
+	f.calls.record("checkout-commit:" + commit.Hash)
+	return nil
+}
+
+func (f fakeSession) CreateBranch(_ context.Context, name, base string) error {
+	f.calls.record("branch:" + name + ":" + base)
+	return nil
+}
+
+func (f fakeSession) DeleteBranch(context.Context, string, bool) error {
+	return nil
+}
+
+func (f fakeSession) RenameBranch(context.Context, string, string) error {
+	return nil
+}
+
+func (f fakeSession) MergeBranch(_ context.Context, name string) error {
+	f.calls.record("merge:" + name)
+	return nil
+}
+
+func (f fakeSession) Fetch(context.Context) error {
+	return nil
+}
+
+func (f fakeSession) FetchRemote(_ context.Context, name string) error {
+	f.calls.record("fetch-remote:" + name)
+	return nil
+}
+
+func (f fakeSession) Pull(context.Context) error {
+	return nil
+}
+
+func (f fakeSession) Push(context.Context) error {
+	return nil
+}
+
+func (f fakeSession) PullBranch(_ context.Context, name string) error {
+	f.calls.record("pull-branch:" + name)
+	return nil
+}
+
+func (f fakeSession) FastForwardBranch(_ context.Context, name string) error {
+	f.calls.record("fast-forward:" + name)
+	return nil
+}
+
+func (f fakeSession) RebaseOntoBranch(_ context.Context, name string) error {
+	f.calls.record("rebase-onto:" + name)
+	return nil
+}
+
+func (f fakeSession) ForceCheckoutBranch(_ context.Context, name string) error {
+	f.calls.record("force-checkout:" + name)
+	return nil
+}
+
+func (f fakeSession) SetUpstream(_ context.Context, remote, remoteBranch, localBranch string) error {
+	f.calls.record("set-upstream:" + remote + ":" + remoteBranch + ":" + localBranch)
+	return nil
+}
+
+func (f fakeSession) UnsetUpstream(_ context.Context, localBranch string) error {
+	f.calls.record("unset-upstream:" + localBranch)
+	return nil
+}
+
+func (f fakeSession) CommandLog() *repository.CommandLog {
+	return f.commandLog
+}
+
+func (f fakeSession) AddRemote(context.Context, string, string) error {
+	return nil
+}
+
+func (f fakeSession) UpdateRemote(_ context.Context, oldName, newName, url string) error {
+	f.calls.record("update-remote:" + oldName + ":" + newName + ":" + url)
+	return nil
+}
+
+func (f fakeSession) RemoveRemote(context.Context, string) error {
+	return nil
+}
+
+func (f fakeSession) CheckoutRemoteBranch(context.Context, string, string, string) error {
+	return nil
+}
+
+func (f fakeSession) DeleteRemoteBranch(_ context.Context, remote, branch string) error {
+	f.calls.record("delete-remote-branch:" + remote + ":" + branch)
+	return nil
+}
+
+func (f fakeSession) StashChanges(_ context.Context, message string, includeUntracked bool) error {
+	f.calls.record("stash:" + message)
+	if includeUntracked {
+		f.calls.record("stash-untracked")
+	}
+	return nil
+}
+
+func (f fakeSession) StashStagedChanges(_ context.Context, message string) error {
+	f.calls.record("stash-staged:" + message)
+	return nil
+}
+
+func (f fakeSession) ApplyStash(_ context.Context, index int, pop bool) error {
+	f.calls.record("stash-apply:" + strconv.Itoa(index) + ":" + strconv.FormatBool(pop))
+	return nil
+}
+
+func (f fakeSession) RenameStash(context.Context, int, string) error {
+	return nil
+}
+
+func (f fakeSession) DropStash(_ context.Context, index int) error {
+	f.calls.record("stash-drop:" + strconv.Itoa(index))
+	return nil
+}
+
+func (f fakeSession) ApplyStashFile(_ context.Context, index int, file repository.CommitFile) error {
+	f.calls.record("stash-apply-file:" + strconv.Itoa(index) + ":" + file.Path)
+	return nil
+}
+
+func (f fakeSession) DiscardStashFile(_ context.Context, index int, file repository.CommitFile, name string) error {
+	f.calls.record("stash-discard-file:" + strconv.Itoa(index) + ":" + file.Path + ":" + name)
+	return nil
+}
+
+func (f fakeSession) StashFiles(_ context.Context, index int) ([]repository.CommitFile, error) {
+	f.calls.record("stash-files:" + strconv.Itoa(index))
+	return []repository.CommitFile{
+		{Path: "one.txt", Status: "M"},
+		{Path: "two.txt", Status: "A"},
+	}, nil
+}
+
+func (f fakeSession) StashFileDiff(_ context.Context, index int, file repository.CommitFile) (repository.Diff, error) {
+	f.calls.record("stash-file-diff:" + strconv.Itoa(index) + ":" + file.Path)
+	return repository.Diff{Patch: "diff --git a/" + file.Path + " b/" + file.Path +
+		"\n--- a/" + file.Path + "\n+++ b/" + file.Path + "\n@@ -1 +1 @@\n-old\n+new\n",
+		Kind: "Stash"}, nil
+}
+
+func (f fakeSession) CreateTag(_ context.Context, name, ref, _ string, _ bool) error {
+	f.calls.record("tag:" + name + ":" + ref)
+	return nil
+}
+
+func (f fakeSession) DeleteTag(context.Context, string) error {
+	return nil
+}
+
+func (f fakeSession) PushTag(context.Context, string, string) error {
+	return nil
+}
+
+func (f fakeSession) CherryPickCommit(_ context.Context, commit repository.Commit) error {
+	f.calls.record("cherry-pick:" + commit.Hash)
+	return nil
+}
+
+func (f fakeSession) RevertCommit(_ context.Context, commit repository.Commit) error {
+	f.calls.record("revert:" + commit.Hash)
+	return nil
+}
+
+func (f fakeSession) ResetToCommit(ctx context.Context, commit repository.Commit, mode repository.ResetMode) error {
+	f.calls.record("reset-" + string(mode) + ":" + commit.Hash)
+	return nil
+}
+
+func (f fakeSession) ResolveConflict(_ context.Context, file repository.File, current bool) error {
+	side := "incoming"
+	if current {
+		side = "current"
+	}
+	f.calls.record("resolve:" + file.Path + ":" + side)
+	return nil
+}
+
+func (f fakeSession) ContinueOperation(context.Context) error {
+	return nil
+}
+
+func (f fakeSession) AbortOperation(context.Context) error {
+	return nil
+}
+
+func (f fakeSession) CreateWorktree(context.Context, string, string, string, bool) error {
+	return nil
+}
+
+func (f fakeSession) DeleteWorktree(context.Context, string, bool) error {
+	return nil
+}
+
+func (f fakeSession) AddSubmodule(context.Context, string, string, string) error {
+	return nil
+}
+
+func (f fakeSession) UpdateSubmodule(context.Context, string) error {
+	return nil
+}
+
+func (f fakeSession) DeleteSubmodule(context.Context, string) error {
+	return nil
+}
+
+func (f fakeSession) BlameFile(context.Context, repository.File) (string, error) {
+	return "a1b2c3d (Ada 2026-01-01 1) changed", nil
+}
+
+func (f fakeSession) CommitFiles(_ context.Context, commit repository.Commit) ([]repository.CommitFile, error) {
+	f.calls.record("commit-files:" + commit.Hash)
+	// Two files, so a test can choose the second and see the diff move.
+	return []repository.CommitFile{
+		{Path: "one.txt", Status: "M", LinesAdded: 8, LinesDeleted: 2},
+		{Path: "two.txt", Status: "M", LinesAdded: 1, LinesDeleted: 9},
+	}, nil
+}
+
+func (f fakeSession) CommitFileDiff(_ context.Context, commit repository.Commit, file repository.CommitFile) (repository.Diff, error) {
+	f.calls.record("commit-file-diff:" + commit.Hash + ":" + file.Path)
+	return repository.Diff{NewText: "changed\n", Kind: "Commit"}, nil
+}
+
+// BranchCommits answers with the snapshot's commits: a test fixture describes
+// the branch it browses, not a second history.
+func (f fakeSession) BranchCommits(context.Context, string, int) ([]repository.Commit, error) {
+	return f.snapshot.Commits, nil
+}
+
+// SearchCommits narrows the snapshot's commits as a repository would, so a
+// test can drive the filter modal without a second fixture.
+func (f fakeSession) SearchCommits(_ context.Context, filter repository.CommitFilter) ([]repository.Commit, error) {
+	f.calls.record("search-commits")
+	query := strings.ToLower(strings.TrimSpace(filter.Query))
+	author := strings.ToLower(strings.TrimSpace(filter.Author))
+	commits := make([]repository.Commit, 0, len(f.snapshot.Commits))
+	for _, commit := range f.snapshot.Commits {
+		if query != "" && !strings.Contains(strings.ToLower(commit.Subject), query) {
+			continue
+		}
+		if author != "" &&
+			!strings.Contains(strings.ToLower(commit.AuthorName), author) &&
+			!strings.Contains(strings.ToLower(commit.AuthorEmail), author) {
+			continue
+		}
+		commits = append(commits, commit)
+		if filter.Limit > 0 && len(commits) == filter.Limit {
+			break
+		}
+	}
+	return commits, nil
+}
+
+// Authors lists the snapshot's distinct author names, sorted as Git's log
+// supplies them to the filter.
+func (f fakeSession) Authors(context.Context) ([]string, error) {
+	seen := make(map[string]struct{})
+	authors := make([]string, 0, 4)
+	for _, commit := range f.snapshot.Commits {
+		if commit.AuthorName == "" {
+			continue
+		}
+		if _, ok := seen[commit.AuthorName]; ok {
+			continue
+		}
+		seen[commit.AuthorName] = struct{}{}
+		authors = append(authors, commit.AuthorName)
+	}
+	sort.Strings(authors)
+	return authors, nil
+}
+
+// FileCommits answers with the snapshot's commits, as BranchCommits does: a
+// fixture does not describe a file's own history. It honors the page asked
+// for, as a repository does.
+func (f fakeSession) FileCommits(_ context.Context, path string, limit, skip int) ([]repository.Commit, error) {
+	f.calls.record("file-commits:" + path)
+	commits := f.snapshot.Commits
+	if skip >= len(commits) {
+		return nil, nil
+	}
+	commits = commits[skip:]
+	if limit > 0 && limit < len(commits) {
+		commits = commits[:limit]
+	}
+	return commits, nil
+}
+
+// RecentCommits pages the snapshot's commits the way a repository does, so a
+// test can describe a history longer than the first page.
+func (f fakeSession) RecentCommits(_ context.Context, limit, skip int) ([]repository.Commit, error) {
+	f.calls.record("recent-commits")
+	commits := f.snapshot.Commits
+	if skip >= len(commits) {
+		return nil, nil
+	}
+	commits = commits[skip:]
+	if limit > 0 && limit < len(commits) {
+		commits = commits[:limit]
+	}
+	return commits, nil
+}
+
+func TestViewOpensRepository(t *testing.T) {
+	updated := newUpdates()
+	release := make(chan struct{})
+	a := newApp(fakeOpener{
+		release: release,
+		result: openResult{snapshot: repository.Snapshot{
+			Root:   "/work/project",
+			Branch: "main",
+			Head:   "a1b2c3d",
+			Files: []repository.File{
+				{Path: "one.txt", Status: "M ", Staged: true, Tracked: true},
+				{Path: "two.txt", Status: "??", Unstaged: true, Added: true},
+			},
+			Commits: []repository.Commit{
+				{Hash: "a1b2c3d4", ShortHash: "a1b2c3d", Subject: "Native history", AuthorName: "Ada", AuthorEmail: "ada@example.com"},
+			},
+			Branches: []repository.Branch{
+				{Name: "main", DisplayName: "main", Head: true, Subject: "Native history"},
+				{Name: "feature", DisplayName: "feature", Subject: "Desktop work"},
+			},
+			Remotes: []repository.Remote{
+				{Name: "origin", URLs: []string{"git@example.com:team/project.git"}, Branches: []repository.RemoteBranch{{Name: "main", RemoteName: "origin"}, {Name: "feature", RemoteName: "origin"}}},
+			},
+			Stashes: []repository.Stash{
+				{Index: 0, Name: "WIP: native stash", Hash: "stashhash", Recency: "2m"},
+			},
+			Tags: []repository.Tag{
+				{Name: "v1.0.0", Message: "First native release"},
+			},
+			Worktrees: []repository.Worktree{
+				{Name: "project", Path: "/work/project", Branch: "main", Current: true, Main: true},
+				{Name: "feature-tree", Path: "/work/feature-tree", Branch: "feature"},
+			},
+			Submodules: []repository.Submodule{
+				{Name: "library", Path: "vendor/library", URL: "git@example.com:team/library.git"},
+			},
+			Reflog: []repository.Commit{
+				{Hash: "a1b2c3d4", ShortHash: "a1b2c3d", Subject: "checkout: moving from feature to main", UnixTimestamp: 1_700_000_000},
+			},
+		}},
+	})
+	// This walk covers every section, including the specialist tabs the
+	// default set leaves out.
+	a.settings.VisibleSections = append([]string(nil), workspaceSectionIDs...)
+	a.update = updated.update
+	a.path = "/work/project"
+	tt := ui.NewTester(a.view, 960, 640)
+
+	openFixture(t, tt)
+	close(release)
+	updated.waitForUpdate(t)
+	// The Changes section chooses its first file and reads its diff as it
+	// builds, so the diff arrives one frame after the repository opens.
+	tt.Frame()
+	updated.waitForUpdate(t)
+	tt.Frame()
+
+	for _, text := range []string{"main", "/work/project", "one.txt", "two.txt", "Staged", "File actions"} {
+		if !tt.HasText(text) {
+			t.Errorf("missing %q in texts %q", text, tt.Texts())
+		}
+	}
+	// The staged file's status is its own letter at the end of the row.
+	if _, ok := tt.Find("M"); !ok {
+		t.Errorf("the staged row shows no status letter: %q", tt.Texts())
+	}
+	// The full commit form is one item of the panel's menu now: the inline
+	// box commits staged changes.
+	if err := tt.Click("⋯"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Commit with a description…"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Create commit") || !tt.HasText("Amend the latest commit") {
+		t.Fatalf("commit form not shown in texts %q", tt.Texts())
+	}
+	if err := tt.Click("Cancel"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("History"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("Native history") || !tt.HasText("Ada <ada@example.com>") {
+		t.Fatalf("history not shown in texts %q", tt.Texts())
+	}
+	if !tt.HasText("Cherry-pick this commit") || !tt.HasText("Soft reset to this commit") {
+		t.Fatalf("history actions not shown in texts %q", tt.Texts())
+	}
+	if err := tt.Click("Branches"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("feature") || !tt.HasText("Current") {
+		t.Fatalf("branches not shown in texts %q", tt.Texts())
+	}
+	if err := tt.Click("feature"); err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []string{"Checkout", "Merge into current…", "Rename…", "Delete…"} {
+		if !tt.HasText(action) {
+			t.Fatalf("branch action %q not shown in texts %q", action, tt.Texts())
+		}
+	}
+	if err := tt.Click("Rename…"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("New branch name") || !tt.HasText("Cancel rename") {
+		t.Fatalf("branch actions not shown in texts %q", tt.Texts())
+	}
+	if err := tt.Click("New branch…"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("Branch name") || !tt.HasText("From branch") || !tt.HasText("Create branch") {
+		t.Fatalf("branch form not shown in texts %q", tt.Texts())
+	}
+	if err := tt.Click("Cancel"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("Remotes"); err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{"origin", "git@example.com:team/project.git", "Remote branches", "Checkout as local…"} {
+		if !tt.HasText(text) {
+			t.Fatalf("remote text %q not shown in texts %q", text, tt.Texts())
+		}
+	}
+	if err := tt.Click("Add remote…"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("Remote name") || !tt.HasText("Remote URL") {
+		t.Fatalf("remote form not shown in texts %q", tt.Texts())
+	}
+	if err := tt.Click("Cancel"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("Stash"); err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{"Saved work", "WIP: native stash", "Apply", "Pop…", "Drop…"} {
+		if !tt.HasText(text) {
+			t.Fatalf("stash text %q not shown in texts %q", text, tt.Texts())
+		}
+	}
+	if err := tt.Click("Stash changes…"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("Stash message") || !tt.HasText("Include untracked") {
+		t.Fatalf("stash form not shown in texts %q", tt.Texts())
+	}
+	if err := tt.Click("Cancel"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("Tags"); err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{"Repository tags", "v1.0.0", "First native release", "Push tag…", "Delete tag…"} {
+		if !tt.HasText(text) {
+			t.Fatalf("tag text %q not shown in texts %q", text, tt.Texts())
+		}
+	}
+	if err := tt.Click("Create tag…"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("Tag name") || !tt.HasText("Target ref") || !tt.HasText("Annotated") {
+		t.Fatalf("tag form not shown in texts %q", tt.Texts())
+	}
+	if err := tt.Click("Cancel"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("Worktrees"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("Linked worktrees") || !tt.HasText("feature-tree") || !tt.HasText("Main worktree") {
+		t.Fatalf("worktrees not shown in texts %q", tt.Texts())
+	}
+	if err := tt.Click("feature-tree"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("Open worktree") || !tt.HasText("Remove…") {
+		t.Fatalf("worktree actions not shown in texts %q", tt.Texts())
+	}
+	if err := tt.Click("New worktree…"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("Worktree path") || !tt.HasText("Base ref") || !tt.HasText("Detached HEAD") {
+		t.Fatalf("worktree form not shown in texts %q", tt.Texts())
+	}
+	if err := tt.Click("Cancel"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("Submodules"); err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{"Configured submodules", "library", "vendor/library", "Initialize / update", "Delete…"} {
+		if !tt.HasText(text) {
+			t.Fatalf("submodule text %q not shown in texts %q", text, tt.Texts())
+		}
+	}
+	if err := tt.Click("Add submodule…"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("Submodule name") || !tt.HasText("Checkout path") || !tt.HasText("Repository URL") {
+		t.Fatalf("submodule form not shown in texts %q", tt.Texts())
+	}
+	if err := tt.Click("Cancel"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("Reflog"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("Recent reference movements") || !tt.HasText("checkout: moving from feature to main") {
+		t.Fatalf("reflog not shown in texts %q", tt.Texts())
+	}
+}
+
+func TestBuildDiffStateForUntrackedFile(t *testing.T) {
+	state, err := buildDiffState(
+		editor.DiffUnified,
+		false,
+		repository.File{Path: "new.go"},
+		repository.Diff{NewText: "package new\n", Kind: "Untracked"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Old.String() != "" || state.New.String() != "package new\n" {
+		t.Fatalf("unexpected diff texts %q and %q", state.Old.String(), state.New.String())
+	}
+}
+
+func TestViewShowsOpenError(t *testing.T) {
+	updated := newUpdates()
+	release := make(chan struct{})
+	a := newApp(fakeOpener{
+		release: release,
+		result:  openResult{err: errors.New("not a Git repository")},
+	})
+	a.update = updated.update
+	a.path = "/work/not-a-repository"
+	tt := ui.NewTester(a.view, 960, 640)
+
+	openFixture(t, tt)
+	close(release)
+	updated.waitForUpdate(t)
+	tt.Frame()
+
+	if !tt.HasText("Could not open repository") || !tt.HasText("not a Git repository") {
+		t.Fatalf("unexpected texts %q", tt.Texts())
+	}
+}
+
+func TestViewRequiresRepositoryPath(t *testing.T) {
+	a := newApp(fakeOpener{})
+	tt := ui.NewTester(a.view, 960, 640)
+
+	openFixture(t, tt)
+
+	if !tt.HasText("Choose a repository folder first.") {
+		t.Fatalf("unexpected texts %q", tt.Texts())
+	}
+}
+
+func TestViewShowsConflictRecoveryControls(t *testing.T) {
+	originalRead := readWorkingFile
+	t.Cleanup(func() { readWorkingFile = originalRead })
+	readWorkingFile = func(string) ([]byte, error) {
+		return []byte("top\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> topic\nbottom\n"), nil
+	}
+
+	updated := newUpdates()
+	release := make(chan struct{})
+	a := newApp(fakeOpener{release: release, result: openResult{snapshot: repository.Snapshot{
+		Root:      "/work/conflict",
+		Branch:    "main",
+		Operation: "merge",
+		Files: []repository.File{
+			{Path: "conflict.txt", Status: "UU", Unstaged: true, HasMergeConflicts: true},
+		},
+	}}})
+	a.update = updated.update
+	a.path = "/work/conflict"
+	tt := ui.NewTester(a.view, 960, 640)
+
+	openFixture(t, tt)
+	close(release)
+	updated.waitForUpdate(t)
+	tt.Frame()
+	updated.waitForUpdate(t)
+	tt.Frame()
+
+	for _, text := range []string{
+		"MERGE", "Continue", "Abort…", "Conflict", "Conflict 1 of 1",
+		"Use current", "Use incoming", "Use both", "Mark resolved", "Open file in editor",
+	} {
+		if !tt.HasText(text) {
+			t.Fatalf("conflict control %q not shown in texts %q", text, tt.Texts())
+		}
+	}
+}
+
+// updates collects the updates an app asks for, for the test to run on its
+// own goroutine: MyGo's Window.Update runs them on the UI loop, and running
+// them where they come from races with the frame building the view.
+type updates struct {
+	mu   sync.Mutex
+	fns  []func()
+	done chan struct{}
+}
+
+func newUpdates() *updates {
+	return &updates{done: make(chan struct{}, 8)}
+}
+
+func (u *updates) update(fn func()) {
+	u.mu.Lock()
+	u.fns = append(u.fns, fn)
+	u.mu.Unlock()
+	u.done <- struct{}{}
+}
+
+// waitForUpdate waits for one update and runs it, as the UI loop would, before
+// the next frame.
+func (u *updates) waitForUpdate(t *testing.T) {
+	t.Helper()
+	select {
+	case <-u.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for an update")
+	}
+	u.mu.Lock()
+	fns := u.fns
+	u.fns = nil
+	u.mu.Unlock()
+	for _, fn := range fns {
+		fn()
+	}
+}
+
+// A launch from the terminal opens the path it names; flags, such as the
+// -psn_… a macOS bundle passes, are not paths and are skipped.
+func TestLaunchPath(t *testing.T) {
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{nil, ""},
+		{[]string{"/tmp/repo"}, "/tmp/repo"},
+		{[]string{"-psn_0_12345"}, ""},
+		{[]string{"-psn_0_12345", "/tmp/repo"}, "/tmp/repo"},
+		{[]string{"", "/tmp/repo"}, "/tmp/repo"},
+	}
+	for _, tt := range cases {
+		if got := launchPath(tt.args); got != tt.want {
+			t.Errorf("launchPath(%q) = %q, want %q", tt.args, got, tt.want)
+		}
+	}
+}
