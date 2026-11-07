@@ -4,18 +4,21 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/ui/editor"
 
 	"lazygitapp/internal/repository"
+	"lazygitapp/internal/workspace"
 )
 
 type courierTargetSession struct {
 	fakeSession
-	preview repository.PatchPreview
-	err     error
+	preview  repository.PatchPreview
+	err      error
+	applyErr error
 }
 
 func (s *courierTargetSession) PreviewPatchText(_ context.Context, text string) (repository.PatchPreview, error) {
@@ -30,14 +33,18 @@ func (s *courierTargetSession) PreviewPatchText(_ context.Context, text string) 
 
 func (s *courierTargetSession) ApplyPatch(_ context.Context, preview repository.PatchPreview) error {
 	s.calls.record("courier-target-apply:" + preview.Text)
+	if s.applyErr != nil {
+		return s.applyErr
+	}
 	return s.err
 }
 
 type courierOpener struct {
-	path   string
-	target repository.Session
-	calls  *callRecorder
-	err    error
+	path    string
+	target  repository.Session
+	targets map[string]repository.Session
+	calls   *callRecorder
+	err     error
 }
 
 func (o courierOpener) Init(context.Context, string) error { return nil }
@@ -45,6 +52,9 @@ func (o courierOpener) Open(_ context.Context, path string) (repository.Session,
 	o.calls.record("courier-open:" + path)
 	if o.err != nil {
 		return nil, o.err
+	}
+	if target, ok := o.targets[path]; ok {
+		return target, nil
 	}
 	if path != o.path || o.target == nil {
 		return nil, errors.New("unexpected courier destination")
@@ -96,6 +106,26 @@ func TestChangeCourierPreviewsAndAppliesThroughTargetSession(t *testing.T) {
 		if call == "custom-apply:"+fakeWorkingTreePatch {
 			t.Fatal("source session applied the courier patch")
 		}
+	}
+}
+
+func TestChangeCourierPreservesRemoteWorkspaceForDestination(t *testing.T) {
+	calls := &callRecorder{}
+	target := &courierTargetSession{fakeSession: fakeSession{calls: calls}, preview: repository.PatchPreview{Clean: true}}
+	h, _ := courierTestApp(t, target, nil)
+	h.app.location = workspace.Location{Kind: workspace.SSH, ProfileID: "prod", Root: "/srv/main"}
+	h.app.snapshot.Root = "/srv/main"
+	h.app.snapshot.Worktrees = []repository.Worktree{
+		{Path: "/srv/main", Name: "main", Branch: "main", Current: true, Main: true},
+		{Path: "/srv/feature", Name: "feature", Branch: "feature"},
+	}
+	h.app.opener = courierOpener{path: "ssh://prod/srv/feature", target: target, calls: calls}
+
+	h.app.openChangeCourier(fakeWorkingTreePatch, "Custom Patch")
+	h.waitFor(t, "remote destination preview", func() bool { return h.app.courier.preview != nil })
+
+	if !calls.has("courier-open:ssh://prod/srv/feature") {
+		t.Fatalf("remote destination used the wrong workspace: %v", calls.all())
 	}
 }
 
@@ -253,5 +283,212 @@ func TestCustomPatchCourierHandoffUsesCompletePreviewBytes(t *testing.T) {
 	h.settle(t)
 	if !calls.has("courier-target-preview:" + customPatchFixture) {
 		t.Fatalf("handoff did not preserve complete canonical bytes: %v", calls.all())
+	}
+}
+
+type closableCourierTarget struct {
+	courierTargetSession
+	closeCount atomic.Int32
+}
+
+func newClosableCourierTarget(calls *callRecorder, previewErr, applyErr error) *closableCourierTarget {
+	return &closableCourierTarget{courierTargetSession: courierTargetSession{
+		fakeSession: fakeSession{calls: calls},
+		preview:     repository.PatchPreview{Clean: true},
+		err:         previewErr,
+		applyErr:    applyErr,
+	}}
+}
+
+func (s *closableCourierTarget) Close() error {
+	s.closeCount.Add(1)
+	return nil
+}
+
+func requireCourierTargetClosedOnce(t *testing.T, h *harness, target *closableCourierTarget) {
+	t.Helper()
+	h.waitFor(t, "courier target close", func() bool { return target.closeCount.Load() != 0 })
+	for len(h.updates.done) > 0 {
+		h.updates.waitForUpdate(t)
+	}
+	h.app.resetChangeCourier()
+	for len(h.updates.done) > 0 {
+		h.updates.waitForUpdate(t)
+	}
+	if got := target.closeCount.Load(); got != 1 {
+		t.Fatalf("courier target Close calls = %d, want exactly 1", got)
+	}
+}
+
+func TestChangeCourierClosesTargetExactlyOnce(t *testing.T) {
+	tests := []struct {
+		name       string
+		previewErr error
+		applyErr   error
+		finish     func(*testing.T, *harness)
+	}{
+		{
+			name: "dismiss",
+			finish: func(t *testing.T, h *harness) {
+				h.waitFor(t, "destination preview", func() bool { return h.app.courier.preview != nil })
+				h.app.closeChangeCourier()
+			},
+		},
+		{
+			name:       "preview failure",
+			previewErr: errors.New("preview failed"),
+			finish: func(t *testing.T, h *harness) {
+				h.waitFor(t, "preview failure", func() bool { return h.app.courier.destinationError != "" })
+			},
+		},
+		{
+			name: "apply success",
+			finish: func(t *testing.T, h *harness) {
+				h.waitFor(t, "destination preview", func() bool { return h.app.courier.preview != nil })
+				h.app.beginCourierApply()
+			},
+		},
+		{
+			name:     "apply error",
+			applyErr: errors.New("apply failed"),
+			finish: func(t *testing.T, h *harness) {
+				h.waitFor(t, "destination preview", func() bool { return h.app.courier.preview != nil })
+				h.app.beginCourierApply()
+			},
+		},
+		{
+			name: "shutdown",
+			finish: func(t *testing.T, h *harness) {
+				h.waitFor(t, "destination preview", func() bool { return h.app.courier.preview != nil })
+				h.app.shutdown()
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			calls := &callRecorder{}
+			target := newClosableCourierTarget(calls, test.previewErr, test.applyErr)
+			h, _ := courierTestApp(t, &target.courierTargetSession, nil)
+			h.app.opener = courierOpener{path: "/work/feature", target: target, calls: calls}
+			h.app.openChangeCourier(fakeWorkingTreePatch, "Custom Patch")
+			test.finish(t, h)
+			requireCourierTargetClosedOnce(t, h, target)
+		})
+	}
+}
+
+func TestChangeCourierSwitchClosesEachTargetExactlyOnce(t *testing.T) {
+	calls := &callRecorder{}
+	first := newClosableCourierTarget(calls, nil, nil)
+	second := newClosableCourierTarget(calls, nil, nil)
+	h, _ := courierTestApp(t, &first.courierTargetSession, nil)
+	h.app.snapshot.Worktrees = []repository.Worktree{
+		{Path: "/work/project", Name: "project", Branch: "main", Current: true, Main: true},
+		{Path: "/work/feature", Name: "feature", Branch: "feature"},
+		{Path: "/work/other", Name: "other", Branch: "other"},
+	}
+	h.app.opener = courierOpener{calls: calls, targets: map[string]repository.Session{
+		"/work/feature": first,
+		"/work/other":   second,
+	}}
+	h.app.openChangeCourier(fakeWorkingTreePatch, "Custom Patch")
+	h.waitFor(t, "first destination preview", func() bool { return h.app.courier.preview != nil })
+
+	h.app.beginCourierDestination("/work/other")
+	if got := first.closeCount.Load(); got != 1 {
+		t.Fatalf("replaced target Close calls = %d, want exactly 1", got)
+	}
+	if got := second.closeCount.Load(); got != 0 {
+		t.Fatalf("new target closed before its preview finished: %d", got)
+	}
+	h.waitFor(t, "second destination preview", func() bool { return h.app.courier.preview != nil })
+	h.app.closeChangeCourier()
+	requireCourierTargetClosedOnce(t, h, second)
+	if got := first.closeCount.Load(); got != 1 {
+		t.Fatalf("replaced target Close calls after cleanup = %d, want exactly 1", got)
+	}
+}
+
+type cancelPreviewCourierTarget struct {
+	*closableCourierTarget
+	started  chan struct{}
+	release  chan struct{}
+	canceled atomic.Bool
+}
+
+func (s *cancelPreviewCourierTarget) PreviewPatchText(ctx context.Context, text string) (repository.PatchPreview, error) {
+	close(s.started)
+	select {
+	case <-ctx.Done():
+		s.canceled.Store(true)
+		return repository.PatchPreview{}, ctx.Err()
+	case <-s.release:
+		return s.closableCourierTarget.PreviewPatchText(ctx, text)
+	}
+}
+
+func TestChangeCourierStalePreviewClosesTargetExactlyOnce(t *testing.T) {
+	calls := &callRecorder{}
+	base := newClosableCourierTarget(calls, nil, nil)
+	target := &cancelPreviewCourierTarget{
+		closableCourierTarget: base,
+		started:               make(chan struct{}),
+		release:               make(chan struct{}),
+	}
+	defer close(target.release)
+	h, _ := courierTestApp(t, &base.courierTargetSession, nil)
+	h.app.opener = courierOpener{path: "/work/feature", target: target, calls: calls}
+	h.app.openChangeCourier(fakeWorkingTreePatch, "Custom Patch")
+	<-target.started
+
+	h.app.closeChangeCourier()
+	requireCourierTargetClosedOnce(t, h, base)
+	if !target.canceled.Load() {
+		t.Fatal("dismissing the courier did not cancel its destination preview")
+	}
+	if h.app.courier.open || h.app.courier.preview != nil {
+		t.Fatal("stale destination completion resurrected the courier")
+	}
+}
+
+type cancelApplyCourierTarget struct {
+	*closableCourierTarget
+	started  chan struct{}
+	release  chan struct{}
+	canceled atomic.Bool
+}
+
+func (s *cancelApplyCourierTarget) ApplyPatch(ctx context.Context, preview repository.PatchPreview) error {
+	close(s.started)
+	select {
+	case <-ctx.Done():
+		s.canceled.Store(true)
+		return ctx.Err()
+	case <-s.release:
+		return s.closableCourierTarget.ApplyPatch(ctx, preview)
+	}
+}
+
+func TestChangeCourierResetCancelsApplyAndClosesTargetExactlyOnce(t *testing.T) {
+	calls := &callRecorder{}
+	base := newClosableCourierTarget(calls, nil, nil)
+	target := &cancelApplyCourierTarget{
+		closableCourierTarget: base,
+		started:               make(chan struct{}),
+		release:               make(chan struct{}),
+	}
+	defer close(target.release)
+	h, _ := courierTestApp(t, &base.courierTargetSession, nil)
+	h.app.opener = courierOpener{path: "/work/feature", target: target, calls: calls}
+	h.app.openChangeCourier(fakeWorkingTreePatch, "Custom Patch")
+	h.waitFor(t, "destination preview", func() bool { return h.app.courier.preview != nil })
+	h.app.beginCourierApply()
+	<-target.started
+
+	h.app.resetChangeCourier()
+	requireCourierTargetClosedOnce(t, h, base)
+	if !target.canceled.Load() {
+		t.Fatal("resetting the courier did not cancel its apply")
 	}
 }

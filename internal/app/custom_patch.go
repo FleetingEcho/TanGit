@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -515,7 +514,7 @@ func (a *app) exportCustomPatch() {
 	opts := mygo.SaveDialogOptions{
 		Parent:      a.window,
 		Title:       tr("Export Custom Patch"),
-		DefaultPath: filepath.Join(a.snapshot.Root, "custom.patch"),
+		DefaultPath: a.patchDialogDefaultPath("custom.patch"),
 		ButtonLabel: tr("Export"),
 		Filters:     []mygo.FileFilter{{Name: tr("Patch files"), Extensions: []string{"patch", "diff"}}},
 	}

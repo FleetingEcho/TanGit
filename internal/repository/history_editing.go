@@ -79,7 +79,7 @@ func (s *gitSession) RewordCommit(ctx context.Context, commit Commit, summary, d
 		}
 		return nil
 	}
-	if err := s.git.Rebase.RewordCommit(commits, index, summary, description); err != nil {
+	if err := s.rewordCommit(commits, index, summary, description); err != nil {
 		return fmt.Errorf("reword %s: %w", commit.ShortHash, err)
 	}
 	return nil
@@ -97,9 +97,9 @@ func (s *gitSession) DropCommit(ctx context.Context, commit Commit) error {
 		return fmt.Errorf("drop commit: %w", err)
 	}
 	if commits[index].IsMerge() {
-		err = s.git.Rebase.DropMergeCommit(commits, index)
+		err = s.dropMergeCommit(commits, index)
 	} else {
-		err = s.git.Rebase.InteractiveRebase(commits, index, index, todo.Drop, "")
+		err = s.interactiveRebase(commits, index, index, todo.Drop, "")
 	}
 	if err != nil {
 		return fmt.Errorf("drop %s: %w", commit.ShortHash, err)
@@ -128,12 +128,12 @@ func (s *gitSession) MoveCommit(ctx context.Context, commit Commit, direction Co
 		if index == 0 {
 			return fmt.Errorf("move commit: HEAD cannot move any newer")
 		}
-		err = s.git.Rebase.MoveCommitsUp(commits, index, index)
+		err = s.moveCommits(commits, index, index, -1)
 	case MoveCommitOlder:
 		if index == len(commits)-1 {
 			return fmt.Errorf("move commit: the root commit cannot move any older")
 		}
-		err = s.git.Rebase.MoveCommitsDown(commits, index, index)
+		err = s.moveCommits(commits, index, index, 1)
 	}
 	if err != nil {
 		return fmt.Errorf("move %s: %w", commit.ShortHash, err)
@@ -165,7 +165,7 @@ func (s *gitSession) CombineCommit(ctx context.Context, commit Commit, mode Comb
 	if mode == CombineFixup {
 		action = todo.Fixup
 	}
-	if err := s.git.Rebase.InteractiveRebase(commits, index, index, action, ""); err != nil {
+	if err := s.interactiveRebase(commits, index, index, action, ""); err != nil {
 		return fmt.Errorf("combine %s: %w", commit.ShortHash, err)
 	}
 	return nil
@@ -187,7 +187,7 @@ func (s *gitSession) AmendCommit(ctx context.Context, commit Commit) error {
 	if models.IsHeadCommit(commits, index) {
 		err = s.git.Commit.AmendHead()
 	} else {
-		err = s.git.Rebase.AmendTo(commits, index)
+		err = s.amendToCommit(commits, index)
 	}
 	if err != nil {
 		return fmt.Errorf("amend %s: %w", commit.ShortHash, err)
@@ -223,7 +223,7 @@ func (s *gitSession) ApplyFixupCommits(ctx context.Context, commit Commit) error
 	if err != nil {
 		return fmt.Errorf("apply fixup commits: %w", err)
 	}
-	if err := s.git.Rebase.SquashAllAboveFixupCommits(commits[index]); err != nil {
+	if err := s.applyFixupCommits(commits[index]); err != nil {
 		return fmt.Errorf("apply fixups from %s: %w", commit.ShortHash, err)
 	}
 	return nil
@@ -246,7 +246,7 @@ func (s *gitSession) requireStagedChanges() error {
 // range. An unlimited HEAD-only read is deliberate and must not be replaced by
 // the paged, all-ref history used by the workspace lists.
 func (s *gitSession) editableHeadHistory(hash string) ([]*models.Commit, int, error) {
-	if state := s.git.Status.WorkingTreeState(); state.Any() {
+	if state := s.workingTreeState(); state.Any() {
 		return nil, -1, fmt.Errorf("finish or abort the %s in progress first", state.Effective().CommandName())
 	}
 	if _, err := s.currentBranch(); err != nil {
