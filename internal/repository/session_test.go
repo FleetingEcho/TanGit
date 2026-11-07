@@ -101,7 +101,7 @@ func TestStageDiffAndUnstage(t *testing.T) {
 	}
 	file := snapshot.Files[0]
 
-	diff, err := session.Diff(context.Background(), file)
+	diff, err := session.Diff(context.Background(), file, DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestStageDiffAndUnstage(t *testing.T) {
 	if !file.Staged || file.Unstaged {
 		t.Fatalf("unexpected staged file %#v", file)
 	}
-	diff, err = session.Diff(context.Background(), file)
+	diff, err = session.Diff(context.Background(), file, DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +364,7 @@ func TestCommitAndAmend(t *testing.T) {
 	if files[0].LinesAdded != 1 || files[0].LinesDeleted != 0 {
 		t.Fatalf("commit line stats = +%d -%d, want +1 -0", files[0].LinesAdded, files[0].LinesDeleted)
 	}
-	diff, err := session.CommitFileDiff(context.Background(), snapshot.Commits[0], files[0])
+	diff, err := session.CommitFileDiff(context.Background(), snapshot.Commits[0], files[0], DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1143,7 +1143,7 @@ func TestStashStagedChangesKeepsTheWorkTree(t *testing.T) {
 		t.Fatalf("the index still holds %q", cached)
 	}
 	stagedDiff, err := session.StashFileDiff(context.Background(), 0,
-		CommitFile{Path: "staged.txt", Status: "M"})
+		CommitFile{Path: "staged.txt", Status: "M"}, DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1203,7 +1203,7 @@ func TestStashLifecycle(t *testing.T) {
 		t.Fatalf("unexpected stash files %#v", files)
 	}
 	trackedDiff, err := session.StashFileDiff(context.Background(), 0,
-		CommitFile{Path: "tracked.txt", Status: "M"})
+		CommitFile{Path: "tracked.txt", Status: "M"}, DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1211,7 +1211,7 @@ func TestStashLifecycle(t *testing.T) {
 		t.Fatalf("unexpected tracked stash diff %q", trackedDiff.Patch)
 	}
 	untrackedDiff, err := session.StashFileDiff(context.Background(), 0,
-		CommitFile{Path: "untracked.txt", Status: "A"})
+		CommitFile{Path: "untracked.txt", Status: "A"}, DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1981,7 +1981,7 @@ func TestMergeConflictResolveAndContinue(t *testing.T) {
 		t.Fatalf("file.txt = %#v, want an unstaged conflict", file)
 	}
 
-	diff, err := session.Diff(context.Background(), file)
+	diff, err := session.Diff(context.Background(), file, DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatalf("read the conflicted diff: %v", err)
 	}

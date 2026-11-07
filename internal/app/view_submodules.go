@@ -127,7 +127,7 @@ func (a *app) submodulesView(c *ui.Context) {
 					visible := a.visibleSubmodules()
 					listSearchField(c, &a.sectionSearch[sectionSubmodules], &a.submoduleFilter,
 						"Search submodules", "Filter by name, path, or URL", "Clear submodule search",
-						len(visible), len(a.snapshot.Submodules), func() { a.selectSubmoduleRow(0) })
+						len(visible), len(a.snapshot.Submodules), func() { a.selectSubmoduleRow(0) }, a.navigateSubmoduleSearch)
 					visible = a.visibleSubmodules()
 					if len(visible) == 0 {
 						listSearchEmpty(c, "No submodules match this search")

@@ -248,6 +248,85 @@ func TestConflictPaneMovesBetweenConflicts(t *testing.T) {
 	}
 }
 
+// The complete hunk workflow is available without leaving the marker editor:
+// navigate, pick both/incoming/current, and undo the last pick. Modified
+// choices leave ordinary letters and digits available to the editor.
+func TestConflictKeyboardResolvesHunks(t *testing.T) {
+	content := "a\n<<<<<<< HEAD\n1\n=======\n2\n>>>>>>> t\nb\n<<<<<<< HEAD\n3\n=======\n4\n>>>>>>> t\n"
+	originalRead, originalWrite := readWorkingFile, writeWorkingFile
+	t.Cleanup(func() {
+		readWorkingFile, writeWorkingFile = originalRead, originalWrite
+	})
+	readWorkingFile = func(string) ([]byte, error) { return []byte(content), nil }
+	var written string
+	writeWorkingFile = func(_ string, data []byte) error {
+		written = string(data)
+		return nil
+	}
+
+	h, _ := changesTestApp(t, []repository.File{
+		{Path: "conflict.txt", Status: "UU", Unstaged: true, HasMergeConflicts: true},
+	})
+	h.waitFor(t, "the conflict read", func() bool {
+		return !h.app.diffLoading && h.app.conflictState != nil
+	})
+	h.tester.Frame()
+
+	h.tester.Key(0, ui.KeyF7)
+	h.tester.Frame()
+	if h.app.conflictState.selected != 1 {
+		t.Fatalf("F7 selected conflict %d, want the second", h.app.conflictState.selected)
+	}
+	h.tester.Key(ui.Shift, ui.KeyF7)
+	h.tester.Frame()
+	if h.app.conflictState.selected != 0 {
+		t.Fatalf("Shift+F7 selected conflict %d, want the first", h.app.conflictState.selected)
+	}
+
+	h.tester.Key(ui.Alt, ui.Key4)
+	h.tester.Frame()
+	if got, want := written, "a\n1\n2\nb\n<<<<<<< HEAD\n3\n=======\n4\n>>>>>>> t\n"; got != want {
+		t.Fatalf("Alt+4 wrote %q, want both sides of the first hunk %q", got, want)
+	}
+	h.tester.Key(ui.Alt, ui.Key3)
+	h.tester.Frame()
+	if got, want := written, "a\n1\n2\nb\n4\n"; got != want {
+		t.Fatalf("Alt+3 wrote %q, want the incoming second hunk %q", got, want)
+	}
+	if len(h.app.conflictState.regions) != 0 {
+		t.Fatalf("keyboard picks left conflicts: %#v", h.app.conflictState.regions)
+	}
+
+	h.tester.Key(ui.Alt, ui.KeyZ)
+	h.tester.Frame()
+	if got, want := written, "a\n1\n2\nb\n<<<<<<< HEAD\n3\n=======\n4\n>>>>>>> t\n"; got != want {
+		t.Fatalf("Alt+Z wrote %q, want the incoming pick undone %q", got, want)
+	}
+	h.tester.Key(ui.Alt, ui.Key1)
+	h.tester.Frame()
+	if got, want := written, "a\n1\n2\nb\n3\n"; got != want {
+		t.Fatalf("Alt+1 wrote %q, want the current second hunk %q", got, want)
+	}
+}
+
+// An interrupted merge cannot be continued while Git still reports a
+// conflict. The disabled header action must not call the repository at all.
+func TestContinueStaysDisabledWithUnresolvedConflicts(t *testing.T) {
+	h, calls := changesTestApp(t, []repository.File{
+		{Path: "conflict.txt", Status: "UU", Unstaged: true, HasMergeConflicts: true},
+	})
+	h.app.snapshot.Operation = "merge"
+	h.tester.Frame()
+
+	if err := h.tester.Click("Continue"); err != nil {
+		t.Fatalf("click disabled Continue: %v", err)
+	}
+	h.tester.Frame()
+	if calls.has("continue") {
+		t.Fatal("Continue ran with an unresolved conflict")
+	}
+}
+
 // A file that cannot be read says so in the pane instead of pretending it
 // has no conflicts.
 func TestConflictPaneReportsAnUnreadableFile(t *testing.T) {

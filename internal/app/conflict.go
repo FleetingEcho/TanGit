@@ -390,7 +390,8 @@ func (a *app) requestConflictFile(file repository.File, generation uint64) {
 		// side-by-side review shows as the changes between the sides.
 		patch := ""
 		if session != nil {
-			if diff, derr := session.Diff(context.Background(), file); derr == nil {
+			canonical := repository.DiffOptions{ContextLines: 3}
+			if diff, derr := session.Diff(context.Background(), file, canonical); derr == nil {
 				patch = diff.Patch
 			}
 		}

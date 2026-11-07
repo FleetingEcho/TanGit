@@ -67,7 +67,7 @@ func normalizeFilteredRow(rows []int, selectedRow, selectedSource *int) {
 // visible/total count, and an explicit clear action. onChange starts the list
 // at its first match and closes any inline action whose subject may have moved.
 func listSearchField(c *ui.Context, handle *ui.Handle, query *string,
-	label, placeholder, clearLabel string, matches, total int, onChange func(),
+	label, placeholder, clearLabel string, matches, total int, onChange func(), onNavigate ...func(int),
 ) {
 	theme := c.Theme()
 	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
@@ -82,6 +82,14 @@ func listSearchField(c *ui.Context, handle *ui.Handle, query *string,
 			return
 		}
 		ui.Badge(c, fmt.Sprintf("%d / %d", matches, total))
+		if matches > 0 && len(onNavigate) > 0 && onNavigate[0] != nil {
+			commitHeaderButton(c, tr(label)+": "+tr("previous result"), "Shift+F3", chevronUpIcon, func() {
+				onNavigate[0](-1)
+			})
+			commitHeaderButton(c, tr(label)+": "+tr("next result"), "F3", chevronDownIcon, func() {
+				onNavigate[0](1)
+			})
+		}
 		commitHeaderButton(c, clearLabel, "Show every item", closeIcon, func() {
 			*query = ""
 			onChange()
