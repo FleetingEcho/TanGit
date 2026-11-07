@@ -365,7 +365,7 @@ func (a *app) historyView(c *ui.Context) {
 					ui.Text(c, a.historyFilter.err).TextColor(theme.Danger).SingleLine().
 						Tooltip(a.historyFilter.err)
 				}
-				a.keyboardList(c, &a.commitList, len(commits)).Grow(1).Rows(func(row ui.ListRow) {
+				a.commitListElement(c, commits).Grow(1).Rows(func(row ui.ListRow) {
 					commit := commits[row.Index]
 					services := row.Context.Services()
 					rowElement := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(7, 8)
@@ -382,7 +382,11 @@ func (a *app) historyView(c *ui.Context) {
 								}
 							})
 						})
-					}).PopoverMenu(func(m *ui.Menu) {
+					})
+					if a.commitSelectionMode && rowElement.RowClicked() {
+						a.toggleCommitForBatch(commit)
+					}
+					rowElement.PopoverMenu(func(m *ui.Menu) {
 						a.selectedCommit = row.Index
 						a.commitRowMenu(m, commit, services)
 					})
