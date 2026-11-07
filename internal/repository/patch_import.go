@@ -522,10 +522,17 @@ func (s *gitSession) patchRepositoryState() (string, error) {
 		paths = nil
 	}
 	sort.Strings(paths)
+	if err := s.hashWorktreeFiles(hash, paths); err != nil {
+		return "", fmt.Errorf("read repository content state: %w", err)
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
+}
+
+func (s *gitSession) hashWorktreeFiles(hash io.Writer, paths []string) error {
 	for _, path := range paths {
 		name, err := worktreeFilePath(s.git.RepoPaths.WorktreePath(), path)
 		if err != nil {
-			return "", fmt.Errorf("read repository content state: %w", err)
+			return err
 		}
 		fmt.Fprintf(hash, "path\x00%s\x00", path)
 		info, err := os.Lstat(name)
@@ -534,25 +541,42 @@ func (s *gitSession) patchRepositoryState() (string, error) {
 			continue
 		}
 		if err != nil {
-			return "", fmt.Errorf("read repository content state: %w", err)
+			return err
 		}
 		fmt.Fprintf(hash, "%s\x00", info.Mode())
 		switch {
 		case info.Mode()&os.ModeSymlink != 0:
 			target, err := os.Readlink(name)
 			if err != nil {
-				return "", fmt.Errorf("read repository content state: %w", err)
+				return err
 			}
 			fmt.Fprintf(hash, "link\x00%d\x00%s\x00", len(target), target)
 		case info.Mode().IsRegular():
 			content, err := os.ReadFile(name)
 			if err != nil {
-				return "", fmt.Errorf("read repository content state: %w", err)
+				return err
 			}
 			fmt.Fprintf(hash, "file\x00%d\x00", len(content))
 			hash.Write(content)
 			hash.Write([]byte{0})
 		}
+	}
+	return nil
+}
+
+func (s *gitSession) resetRepositoryState(before, after string) (string, error) {
+	state, err := s.patchRepositoryState()
+	if err != nil {
+		return "", err
+	}
+	ignored, err := s.resetIgnoredPaths(before, after)
+	if err != nil || len(ignored) == 0 {
+		return state, err
+	}
+	hash := sha256.New()
+	fmt.Fprintf(hash, "reset\x00%s\x00", state)
+	if err := s.hashWorktreeFiles(hash, ignored); err != nil {
+		return "", fmt.Errorf("read reset content state: %w", err)
 	}
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }

@@ -486,6 +486,87 @@ func TestHardResetJournalUndoRestoresUntrackedFileOverwrittenByReset(t *testing.
 	}
 }
 
+func TestHardResetJournalUndoRestoresIgnoredFileOverwrittenByReset(t *testing.T) {
+	dir, session := recoveryRepository(t)
+	ctx := context.Background()
+	before := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
+	runGit(t, dir, "checkout", "-b", "older-with-tracked-ignored-collision")
+	if err := os.WriteFile(filepath.Join(dir, "collision.txt"), []byte("tracked at reset target\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "collision.txt")
+	runGit(t, dir, "commit", "-m", "tracked ignored collision")
+	older := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
+	runGit(t, dir, "checkout", "main")
+	if err := os.WriteFile(filepath.Join(dir, ".git", "info", "exclude"), []byte("collision.txt\nnode_modules/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "node_modules"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "node_modules", "cache.txt"), []byte("cache before reset\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "collision.txt"), []byte("precious ignored contents\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.ResetToCommit(ctx, Commit{Hash: older, ShortHash: older[:7]}, ResetHard); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "collision.txt")); string(got) != "tracked at reset target\n" {
+		t.Fatalf("fixture reset did not replace the ignored file: %q", got)
+	}
+	record := onlyOperation(t, session)
+	if record.Snapshot == nil {
+		t.Fatal("hard reset did not capture the ignored file it overwrote")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "node_modules", "cache.txt"), []byte("unrelated newer cache\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.UndoOperation(ctx, record.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD")); got != before {
+		t.Fatalf("restored HEAD = %s, want %s", got, before)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "collision.txt")); string(got) != "precious ignored contents\n" {
+		t.Fatalf("restored overwritten ignored file = %q", got)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "node_modules", "cache.txt")); string(got) != "unrelated newer cache\n" {
+		t.Fatalf("Undo captured or reverted an unrelated ignored cache = %q", got)
+	}
+}
+
+func TestResetJournalUndoRejectsNewerIgnoredFile(t *testing.T) {
+	dir, session := recoveryRepository(t)
+	ctx := context.Background()
+	if err := os.WriteFile(filepath.Join(dir, "collision.txt"), []byte("tracked before reset\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "collision.txt")
+	runGit(t, dir, "commit", "-m", "tracked before ignored reset")
+	older := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD^"))
+	if err := session.ResetToCommit(ctx, Commit{Hash: older, ShortHash: older[:7]}, ResetHard); err != nil {
+		t.Fatal(err)
+	}
+	record := onlyOperation(t, session)
+	if err := os.WriteFile(filepath.Join(dir, ".git", "info", "exclude"), []byte("collision.txt\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "collision.txt"), []byte("new precious ignored work\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.UndoOperation(ctx, record.ID); err == nil || !strings.Contains(err.Error(), "worktree changed") {
+		t.Fatalf("newer ignored work was accepted for Undo: %v", err)
+	}
+	if got := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD")); got != older {
+		t.Fatalf("stale Undo moved HEAD to %s, want %s", got, older)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "collision.txt")); string(got) != "new precious ignored work\n" {
+		t.Fatalf("stale Undo overwrote newer ignored contents = %q", got)
+	}
+}
+
 func TestSoftAndMixedResetJournalUndoRestoreExactHead(t *testing.T) {
 	for _, mode := range []ResetMode{ResetSoft, ResetMixed} {
 		t.Run(string(mode), func(t *testing.T) {

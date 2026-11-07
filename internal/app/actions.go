@@ -390,20 +390,21 @@ func (a *app) requestFileDiff() {
 				}
 			}
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if generation != a.diffGeneration || repositoryGeneration != a.generation {
-				return
+				return false
 			}
 			a.cancelDiff = nil
 			a.diffLoading = false
 			if err != nil {
 				a.diffError = safeError(err)
-				return
+				return true
 			}
 			a.diffKind = diff.Kind
 			a.diffPatch = diff.Patch
 			a.diffState = state
 			a.diffMedia = media
+			return true
 		})
 	}()
 }
@@ -429,16 +430,17 @@ func (a *app) beginBlame() {
 			buffer := editor.NewBuffer(formatBlame(lines))
 			state = &editor.State{Buffer: buffer, ReadOnly: true, SoftWrap: false, NoIndentGuides: true, Label: "Git blame output"}
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation || blameGeneration != a.blameGeneration {
-				return
+				return false
 			}
 			a.blameLoading = false
 			if err != nil {
 				a.blameError = safeError(err)
-				return
+				return true
 			}
 			a.blameState = state
+			return true
 		})
 	}()
 }
@@ -779,27 +781,39 @@ func selectedReflogIndex(entries []repository.Commit, selected reflogSelection) 
 	return -1
 }
 
+// chooseRepositoryFolder is the native directory chooser. Tests answer it
+// without opening a desktop dialog.
+var chooseRepositoryFolder = func(options mygo.OpenDialogOptions) ([]string, error) {
+	return mygo.Dialog.Open(options)
+}
+
 func (a *app) browse() {
+	generation := a.generation
+	options := mygo.OpenDialogOptions{
+		Parent:      a.window,
+		Title:       "Open Git Repository",
+		DefaultPath: a.path,
+		ButtonLabel: "Open",
+		Directory:   true,
+	}
 	go func() {
 		defer a.recoverBackground()
-		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-			Parent:      a.window,
-			Title:       "Open Git Repository",
-			DefaultPath: a.path,
-			ButtonLabel: "Open",
-			Directory:   true,
-		})
-		a.update(func() {
+		paths, err := chooseRepositoryFolder(options)
+		a.updateChanged(func() bool {
+			if generation != a.generation {
+				return false
+			}
 			if err != nil {
 				a.state = stateError
 				a.errMessage = safeError(err)
-				return
+				return true
 			}
 			if len(paths) == 0 {
-				return
+				return false
 			}
 			a.path = paths[0]
 			a.beginOpen()
+			return true
 		})
 	}()
 }

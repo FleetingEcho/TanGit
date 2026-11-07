@@ -165,6 +165,47 @@ func (p *pipe) Close() error {
 	return nil
 }
 
+func TestOutputInvalidationFollowsViewMount(t *testing.T) {
+	loadLib(t)
+	term, err := New(Options{Conn: newPipe(), NoBlink: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	mounted := true
+	parent := "old"
+	tt := ui.NewTester(func(c *ui.Context) {
+		if mounted {
+			ui.Box(c).Key(parent).Children(func() { View(c, term).Fill() })
+		}
+	}, 400, 200)
+
+	term.Feed([]byte("visible"))
+	if !tt.FramePending() {
+		t.Fatal("output in a mounted terminal did not request a frame")
+	}
+	tt.Frame()
+	mounted = false
+	tt.Frame()
+	term.Feed([]byte(" hidden"))
+	if tt.FramePending() {
+		t.Fatal("output in an unmounted terminal requested a frame")
+	}
+	mounted = true
+	tt.Frame()
+	term.Feed([]byte(" visible again"))
+	if !tt.FramePending() {
+		t.Fatal("output after remounting did not request a frame")
+	}
+	tt.Frame()
+	parent = "new"
+	tt.Frame()
+	term.Feed([]byte(" moved"))
+	if !tt.FramePending() {
+		t.Fatal("output after moving to a new parent did not request a frame")
+	}
+}
+
 func TestPaint(t *testing.T) {
 	loadLib(t)
 	term, err := New(Options{Conn: newPipe()})
