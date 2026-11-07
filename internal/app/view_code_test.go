@@ -368,9 +368,17 @@ func TestCodeSearchDebouncesTypingAndClearsOptionsWhenEmptied(t *testing.T) {
 		t.Fatal("typing started a search before the debounce elapsed")
 	}
 
-	// A callback from superseded input must not search the newer query early.
+	// A callback from superseded input must neither search the newer query
+	// early nor repaint a window whose state it leaves untouched.
+	repaint := true
+	h.app.updateChanged = func(fn func() bool) {
+		h.app.update(func() { repaint = fn() })
+	}
 	timers[0]()
 	h.updates.waitForUpdate(t)
+	if repaint {
+		t.Fatal("a stale debounce callback repainted the window")
+	}
 	if h.app.code.searchSubmitted != "" || h.app.code.searchRunning {
 		t.Fatal("a stale debounce callback started a search")
 	}
@@ -675,6 +683,10 @@ func TestCodeSearchEditingCancelsActiveWorkAndStartsLatestQuery(t *testing.T) {
 	timers[0]()
 	h.updates.waitForUpdate(t)
 	waitSignal(started, "old", "starting")
+	repaint := true
+	h.app.updateChanged = func(fn func() bool) {
+		h.app.update(func() { repaint = fn() })
+	}
 
 	if err := h.tester.Click("Clear"); err != nil {
 		t.Fatal(err)
@@ -685,12 +697,16 @@ func TestCodeSearchEditingCancelsActiveWorkAndStartsLatestQuery(t *testing.T) {
 	}
 	waitSignal(cancelled, "old", "cancellation")
 	h.updates.waitForUpdate(t)
+	if repaint {
+		t.Fatal("a cancelled search repainted the window")
+	}
 
 	h.tester.Type("old-again")
 	h.tester.Frame()
 	timers[1]()
 	h.updates.waitForUpdate(t)
 	waitSignal(started, "old-again", "starting")
+	repaint = true
 	h.tester.Key(ui.Cmd, ui.KeyA)
 	h.tester.Type("fresh")
 	h.tester.Frame()
@@ -700,6 +716,9 @@ func TestCodeSearchEditingCancelsActiveWorkAndStartsLatestQuery(t *testing.T) {
 	}
 	waitSignal(cancelled, "old-again", "cancellation")
 	h.updates.waitForUpdate(t)
+	if repaint {
+		t.Fatal("a superseded search repainted the window")
+	}
 	timers[2]()
 	h.updates.waitForUpdate(t)
 	waitSignal(started, "fresh", "starting")
@@ -1159,8 +1178,9 @@ func TestCodeLanguageServerShowsAnalysisProgressBesideTheIcon(t *testing.T) {
 
 func TestCodeLanguageServerNotificationsRepaintOnlyVisibleChanges(t *testing.T) {
 	h := menuTestApp(t)
+	h.app.workspaceTab = sectionCode
 	profile, _ := languageServerProfileByID("rust")
-	server := &managedLanguageServer{profile: profile, sequence: 7}
+	server := &managedLanguageServer{profile: profile, sequence: 7, connection: newFakeLanguageServerConnection()}
 	h.app.additionalLanguageServers = map[string]*managedLanguageServer{profile.ID: server}
 	repaint := false
 	h.app.updateChanged = func(fn func() bool) {
@@ -1179,19 +1199,34 @@ func TestCodeLanguageServerNotificationsRepaintOnlyVisibleChanges(t *testing.T) 
 	begin := `{"token":"rust-analyzer","value":{"kind":"begin","title":"Roots Scanned"}}`
 	notify(true, 7, "$/progress", begin)
 	notify(false, 7, "$/progress", begin)
+	notify(false, 7, "$/progress", `{"token":"second-root","value":{"kind":"begin","title":"More roots"}}`)
+	notify(false, 7, "$/progress", `{"token":"second-root","value":{"kind":"end"}}`)
 	notify(false, 6, "$/progress", `{"token":"obsolete","value":{"kind":"begin"}}`)
 
 	busy := `{"health":"ok","quiescent":false,"message":"indexing workspace"}`
 	notify(true, 7, "experimental/serverStatus", busy)
 	notify(false, 7, "experimental/serverStatus", busy)
-	notify(true, 7, "$/progress", `{"token":"rust-analyzer","value":{"kind":"end"}}`)
+	// The progress token ends, but the busy server keeps the same visible
+	// Analyzing state, so there is no frame to request.
 	notify(false, 7, "$/progress", `{"token":"rust-analyzer","value":{"kind":"end"}}`)
-	notify(true, 7, "experimental/serverStatus", `{"health":"ok","quiescent":true}`)
+	notify(false, 7, "$/progress", `{"token":"rust-analyzer","value":{"kind":"end"}}`)
+
+	h.app.workspaceTab = sectionChanges
+	notify(false, 7, "experimental/serverStatus", `{"health":"ok","quiescent":true}`)
+	h.app.workspaceTab = sectionCode
 	notify(false, 7, "experimental/serverStatus", `{"health":"ok","quiescent":true}`)
 	unhealthy := `{"health":"error","quiescent":true,"message":"workspace load failed"}`
 	notify(true, 7, "experimental/serverStatus", unhealthy)
 	notify(false, 7, "experimental/serverStatus", unhealthy)
 	notify(true, 7, "experimental/serverStatus", `{"health":"ok","quiescent":true}`)
+
+	// Workspace errors produce a global toast even when Code is hidden, but
+	// duplicate and stale copies of that notification remain no-ops.
+	h.app.workspaceTab = sectionChanges
+	workspaceError := `{"type":1,"message":"errors loading workspace"}`
+	notify(true, 7, "window/showMessage", workspaceError)
+	notify(false, 7, "window/showMessage", workspaceError)
+	notify(false, 6, "window/showMessage", workspaceError)
 }
 
 func TestCodeLanguageServerOffersDownloadInsteadOfErrorWhenMissing(t *testing.T) {
@@ -1326,6 +1361,10 @@ func TestCodePageRetainsDocumentsAcrossSectionsAndRejectsStaleReads(t *testing.T
 		return []byte("stale"), nil
 	}
 	document.state = nil
+	repaint := true
+	h.app.updateChanged = func(fn func() bool) {
+		h.app.update(func() { repaint = fn() })
+	}
 	h.app.requestCodeDocument(document)
 	select {
 	case <-started:
@@ -1344,6 +1383,9 @@ func TestCodePageRetainsDocumentsAcrossSectionsAndRejectsStaleReads(t *testing.T
 	h.updates.waitForUpdate(t)
 	if len(h.app.code.documents) != 0 || h.app.code.active != "" {
 		t.Fatal("a read from the old repository repopulated reset Code state")
+	}
+	if repaint {
+		t.Fatal("a stale document read repainted the window")
 	}
 	readWorkingFile = originalRead
 }

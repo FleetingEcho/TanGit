@@ -59,21 +59,23 @@ func (a *app) startGoLanguageServer() {
 	go func() {
 		defer a.recoverBackground()
 		connection, err := connectLanguageServerCandidates(launch, programs)
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if sequence != a.goLanguageServerSeq || a.snapshot.Root != launch.Root {
 				if connection != nil {
 					go connection.Close()
 				}
-				return
+				return false
 			}
+			before := a.codeLanguageServerStatuses()
 			a.goLanguageServerStarting = false
 			if err != nil {
 				a.goLanguageServerError = safeError(err)
-				return
+				return a.codeLanguageServerPresentationChanged(before)
 			}
 			a.goLanguageServer = connection
 			a.goLanguageServerDocs = make(map[string]uint64)
 			a.watchGoLanguageServer(connection, sequence)
+			return a.codeLanguageServerPresentationChanged(before)
 		})
 	}()
 }
@@ -84,10 +86,11 @@ func (a *app) watchGoLanguageServer(connection languageServerConnection, sequenc
 		if !ok {
 			err = nil
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if sequence != a.goLanguageServerSeq || a.goLanguageServer != connection {
-				return
+				return false
 			}
+			before := a.codeLanguageServerStatuses()
 			a.goLanguageServer = nil
 			a.goLanguageServerDocs = nil
 			if err != nil {
@@ -95,6 +98,7 @@ func (a *app) watchGoLanguageServer(connection languageServerConnection, sequenc
 			} else {
 				a.goLanguageServerError = "language server stopped unexpectedly"
 			}
+			return a.codeLanguageServerPresentationChanged(before)
 		})
 	}()
 }

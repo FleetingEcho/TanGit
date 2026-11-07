@@ -116,8 +116,12 @@ func TestTerminalTitleRepaintsOnlyWhenSessionStateChanges(t *testing.T) {
 	original := newTerminal
 	peers := make(chan monitoredTerminalPeer, 1)
 	var onTitle func(string)
+	var onSearch func(terminal.SearchStatus)
+	var onExit func(int)
 	newTerminal = func(options terminal.Options) (*terminal.Terminal, error) {
 		onTitle = options.OnTitle
+		onSearch = options.OnSearch
+		onExit = options.OnExit
 		return newMonitoredTerminal(options, peers)
 	}
 	t.Cleanup(func() { newTerminal = original })
@@ -148,8 +152,62 @@ func TestTerminalTitleRepaintsOnlyWhenSessionStateChanges(t *testing.T) {
 
 	title("build shell", true)
 	title("build shell", false)
-	h.app.closeTerminalAt(0)
+	title("  build shell  ", false)
+	h.app.term.panelOpen = false
+	title("hidden title", false)
+	repaint = true
+	onSearch(terminal.SearchStatus{Text: "needle", Total: 1, Selected: 1})
+	h.updates.waitForUpdate(t)
+	if repaint {
+		t.Fatal("hidden terminal search results repainted the window")
+	}
+	repaint = true
+	onExit(0)
+	h.updates.waitForUpdate(t)
+	if repaint {
+		t.Fatal("a hidden terminal exit repainted the window")
+	}
+	if h.app.terminalSessionCount() != 0 {
+		t.Fatal("the hidden terminal exit did not update session state")
+	}
 	title("stale title", false)
+}
+
+func TestHiddenTerminalStartupDoesNotRepaint(t *testing.T) {
+	original := newTerminal
+	peers := make(chan monitoredTerminalPeer, 1)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	newTerminal = func(options terminal.Options) (*terminal.Terminal, error) {
+		close(started)
+		<-release
+		return newMonitoredTerminal(options, peers)
+	}
+	t.Cleanup(func() { newTerminal = original })
+	h := menuTestApp(t)
+	h.updates = newUpdates()
+	h.app.update = h.updates.update
+	repaint := true
+	h.app.updateChanged = func(fn func() bool) {
+		h.app.update(func() { repaint = fn() })
+	}
+	h.app.openTerminal()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the terminal startup did not begin")
+	}
+	h.app.term.panelOpen = false
+	close(release)
+	h.updates.waitForUpdate(t)
+	if repaint {
+		t.Fatal("a hidden terminal startup repainted the window")
+	}
+	if len(h.app.term.sessions) != 1 || h.app.term.sessions[0].pane == nil {
+		t.Fatal("the hidden terminal startup did not install the session")
+	}
+	peer := <-peers
+	t.Cleanup(func() { _ = peer.Close() })
 }
 
 func TestTerminalPlusCreatesIndependentTabsAndRetainsTheirSplits(t *testing.T) {
