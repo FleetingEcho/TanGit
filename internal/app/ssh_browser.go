@@ -95,6 +95,9 @@ func (a *app) startSSHFolderJob(root string, open, initialize bool, delay time.D
 		return
 	}
 	root = strings.TrimSpace(root)
+	if root == "" {
+		root = "/home"
+	}
 	a.cancelSSHWorkspaceResolve()
 	a.sshWorkspaceRoot = root
 	if a.sshBrowser.Listing.Root != root {
@@ -153,6 +156,9 @@ func (a *app) startSSHFolderJob(root string, open, initialize bool, delay time.D
 			}
 			a.sshBrowser.Listing = listing
 			a.sshWorkspaceRoot = listing.Root
+			if open && !listing.Repository && !initialize {
+				a.notify("info", "This folder is not a Git repository", tr("Choose a Git-managed folder or enable repository creation, then click Open."))
+			}
 			if open && listing.Repository {
 				a.path = (workspace.Location{Kind: workspace.SSH, ProfileID: profile.ID, Root: listing.Root}).String()
 				a.closeSSHWorkspacePicker()
