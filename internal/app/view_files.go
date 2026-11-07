@@ -249,6 +249,16 @@ func (a *app) lineSelectionControls(c *ui.Context, withHint bool) {
 						SingleLine().Width(0).Grow(1).Tooltip(tr(hint))
 				}
 			})
+			if !a.customPatchActive() && a.diffState != nil && a.diffPatch != "" {
+				label, tooltip := "Send current hunk to worktree…", "Preview and copy the current hunk to another worktree"
+				action := a.beginCurrentHunkCourier
+				if selected {
+					label, tooltip = "Send selected lines to worktree…", "Preview and copy only the selected lines to another worktree"
+					action = a.beginSelectedLinesCourier
+				}
+				iconButton(c, label, a.courierButtonTooltip(tooltip), worktreesIcon,
+					a.actionBusy || len(courierDestinations(a.snapshot)) == 0, action)
+			}
 			if a.lineSelectMode {
 				button := ui.ButtonBase(c).Size(22, 22).Padding(3).Radius(4).
 					Label(tr("Cancel")).Tooltip(tr("Leave the selection alone and stop choosing lines"))
@@ -434,6 +444,10 @@ func (a *app) fileRowMenu(m *ui.Menu, index int, services ui.Services) {
 	}
 	if m.Item(tr(reviewLabel)).Shortcut(0, ui.KeyR).Disabled(a.actionBusy).Chosen() {
 		a.setFileReviewed(file, !a.reviewedFiles[file.Path])
+	}
+	m.Separator()
+	if !file.HasMergeConflicts && m.Item(tr("Send file to worktree…")).Disabled(a.actionBusy || len(courierDestinations(a.snapshot)) == 0).Chosen() {
+		a.beginWorkingTreeCourier(file, nil, trf("File · %s", file.Path))
 	}
 	m.Separator()
 	if file.HasMergeConflicts {

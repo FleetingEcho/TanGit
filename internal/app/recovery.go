@@ -20,8 +20,30 @@ func (a *app) recoveryPanel(c *ui.Context) {
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 			ui.Icon(c, softResetIcon).FontSize(15).TextColor(theme.Accent)
 			ui.Text(c, tr("Recovery & checkpoints")).Bold().Grow(1)
-			ui.Badge(c, fmt.Sprintf("%d", len(a.snapshot.WorkSnapshots)))
+			recoveryClicked := false
+			if a.savedWorkPanel == 0 {
+				recoveryClicked = compactTextButton(ui.PrimaryButton(c, tr("Recovery"))).Label(tr("Show recovery and checkpoints")).Clicked()
+			} else {
+				recoveryClicked = compactTextButton(ui.Button(c, tr("Recovery"))).Label(tr("Show recovery and checkpoints")).Clicked()
+			}
+			if recoveryClicked {
+				a.savedWorkPanel = 0
+			}
+			journalClicked := false
+			if a.savedWorkPanel == 1 {
+				journalClicked = compactTextButton(ui.PrimaryButton(c, tr("Safety Journal"))).Label(tr("Show safety journal")).Clicked()
+			} else {
+				journalClicked = compactTextButton(ui.Button(c, tr("Safety Journal"))).Label(tr("Show safety journal")).Clicked()
+			}
+			if journalClicked {
+				a.savedWorkPanel = 1
+			}
+			ui.Badge(c, fmt.Sprintf("%d", len(a.snapshot.WorkSnapshots)+len(a.snapshot.Operations)))
 		})
+		if a.savedWorkPanel == 1 {
+			a.safetyJournalBody(c)
+			return
+		}
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 			input := ui.TextInput(c, &a.checkpointName).Label(tr("Checkpoint name")).
 				Placeholder(tr("Name a checkpoint")).Grow(1)

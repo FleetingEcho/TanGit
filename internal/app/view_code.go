@@ -741,6 +741,7 @@ func (a *app) codeDocumentView(c *ui.Context, document *codeDocument) {
 	if document.state == nil {
 		return
 	}
+	a.syncCodeBlame(document)
 	source := func() {
 		editorView := editor.View(c, document.state).Grow(1).FillWidth().ReadOnly(document.readOnly)
 		a.keyboardPane(c, "code-editor", editorView).Label(tr("Code editor")).MinWidth(0)
