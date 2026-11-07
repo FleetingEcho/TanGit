@@ -430,11 +430,16 @@ func (a *app) keyboardDiffViewerWithID(c *ui.Context, state *editor.DiffState, o
 	}
 	e := a.keyboardPanelTabs(id, a.keyboardPane(c, id, editor.DiffView(c, state).Grow(1)).Label(tr("Diff")))
 
-	selectable := state == a.diffState && state.LineSelection
+	selectable := (state == a.diffState && state.LineSelection) ||
+		(state == a.commitDiffState && a.customPatchLineSelectionAvailable())
 	if e.FocusWithin() {
 		a.keyboardDiffCanSelect = selectable
 	}
 	if !a.settings.DisableShortcuts {
+		if state == a.commitDiffState && a.customPatchActive() {
+			e.OnShortcut(0, ui.KeyA, a.addCustomPatchCurrentHunk)
+			e.OnShortcut(ui.Shift, ui.KeyB, a.openCustomPatchBuilder)
+		}
 		for _, command := range diffKeyboardCommands() {
 			if command.selection && !selectable {
 				continue
@@ -586,7 +591,7 @@ func (a *app) selectKeyboardDiffLines(state *editor.DiffState, delta int, extend
 	if !state.LineSelection {
 		return
 	}
-	if state != a.diffState {
+	if state != a.diffState && !(state == a.commitDiffState && a.customPatchLineSelectionAvailable()) {
 		return
 	}
 	if !a.lineSelectMode {

@@ -528,6 +528,10 @@ func (a *app) closeAllForms() {
 	a.showRenameRecent = false
 	a.closeCodeFileForm()
 	a.closeTerminalRename()
+	a.cancelCloneOperation()
+	a.closeCloneForm()
+	a.closePatchPreview()
+	a.closeCustomPatchBuilder()
 	a.filterOpen = false
 	a.closeCompare()
 }
@@ -553,6 +557,7 @@ func (a *app) anyFormOpen() bool {
 		a.showCommitBranchForm ||
 		a.showCommitRewordForm ||
 		a.showRenameRecent ||
+		a.cloneOpen ||
 		a.code.fileForm != codeFileFormNone ||
 		a.term.renameID != 0 || a.term.renameGroup != 0
 }
@@ -564,6 +569,9 @@ func (a *app) modalOpen() bool {
 		a.settingsOpen ||
 		a.keybindingsOpen ||
 		a.commandLogOpen ||
+		a.patchPreviewOpen ||
+		a.customPatch.open ||
+		a.state == stateCloning ||
 		a.diffFullscreen ||
 		a.branchFullscreen ||
 		a.anyFormOpen() ||
