@@ -111,8 +111,9 @@ every action reachable from both the keyboard and the mouse.
 
 - Open several repositories in **tabs** (`Ctrl+T`, `Ctrl+W`, `Ctrl+Tab`), with
   a picker that remembers recent repositories.
-- Open a repository directly from a terminal with **`tangit <path>`**, including
-  relative paths such as `tangit ./` and quoted paths containing spaces.
+- Open a repository directly from a terminal, including relative paths and
+  paths containing spaces. Linux packages provide **`tangit <path>`**; macOS
+  and Windows launcher setup is covered below.
 - A **tabbed title bar** that drags the window: the system's traffic lights on
   the left on macOS, and minimize, full screen, and close drawn on the right on
   Linux and Windows.
@@ -203,10 +204,15 @@ sudo apt install ./build/linux-amd64/tangit_1.0.1_amd64.deb
 
 ### Open a repository from the terminal
 
-Linux packages install a `tangit` command on `PATH` (the standalone installer
-uses `~/.local/bin`). Pass the repository to open, just as you would with a
-terminal editor: **`tangit <path>`**. Relative paths are resolved from the
-directory where you run the command.
+TanGit accepts a repository path on every platform. Relative paths are resolved
+from the directory where you run the command; quote paths containing spaces.
+
+#### Linux
+
+The v1.0.1 and later packages install **`tangit <path>`** on `PATH` (the
+standalone installer uses `~/.local/bin`). An in-app update from v1.0.0 does
+not add the newly introduced launcher, so reinstall a v1.0.1 or later package
+once when upgrading that installation.
 
 ```sh
 # Open the current repository from inside it.
@@ -214,8 +220,49 @@ tangit ./
 
 # Open another repository, quoting paths that contain spaces.
 tangit "./path with spaces/repo"
+```
 
-# Development equivalent, run from the TanGit source tree.
+#### macOS
+
+The DMG installs `TanGit.app` but does not install a shell command. To create
+a `tangit` launcher on the standard `/usr/local/bin` path, run this once:
+
+```sh
+sudo mkdir -p /usr/local/bin
+sudo ln -sf "/Applications/TanGit.app/Contents/MacOS/TanGit" /usr/local/bin/tangit
+```
+
+If the app is in your user Applications folder, replace `/Applications` in the
+command with `"$HOME/Applications"`. Open a new terminal afterwards. The link
+continues to work after in-place updates while the app stays in that folder.
+
+#### Windows
+
+The installer puts `TanGit.exe` in `%LOCALAPPDATA%\Programs\TanGit` but does not
+add that folder to `PATH`. PowerShell can open the current repository without
+changing `PATH`:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\TanGit\TanGit.exe" .
+```
+
+To enable `tangit <path>` in new PowerShell and Command Prompt windows, add
+the install folder to your user `PATH`:
+
+```powershell
+$dir = Join-Path $env:LOCALAPPDATA 'Programs\TanGit'
+$oldPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+if (($oldPath -split ';') -notcontains $dir) {
+    [Environment]::SetEnvironmentVariable('Path', "$oldPath;$dir", 'User')
+}
+```
+
+For a custom installation folder, use that folder instead of the default above.
+
+For development on any platform, this equivalent runs from the TanGit source
+tree:
+
+```sh
 go run ./cmd/tangit .
 ```
 
