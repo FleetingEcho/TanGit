@@ -16,6 +16,9 @@ var (
 	ErrNothingToUndo = errors.New("no eligible Git operation to undo")
 	// ErrNothingToRedo reports that no undone action can currently be reapplied.
 	ErrNothingToRedo = errors.New("no eligible Git operation to redo")
+	// ErrReflogReplayChanged reports that the exact approved action is no longer
+	// the next replay, as when another Git client changes history meanwhile.
+	ErrReflogReplayChanged = errors.New("Git history changed; review the operation and try again")
 )
 
 const (
@@ -33,6 +36,10 @@ const (
 	reflogRebase
 	reflogCurrentRebase
 )
+
+func (a reflogAction) identity() string {
+	return fmt.Sprintf("%d:%s:%s", a.kind, a.from, a.to)
+}
 
 type reflogEntry struct {
 	hash string
@@ -55,17 +62,41 @@ var (
 // write their own marked reflog entries rather than maintaining process-local
 // stacks, so repeated calls and calls after restarting TanGit stay balanced.
 func (s *gitSession) Undo(ctx context.Context) error {
-	return s.replayReflog(ctx, false)
+	return s.replayReflog(ctx, false, nil)
+}
+
+// UndoExpected refuses a confirmation whose approved action is no longer next.
+func (s *gitSession) UndoExpected(ctx context.Context, expected string) error {
+	return s.replayReflog(ctx, false, &expected)
 }
 
 // Redo reapplies the eligible action reversed by the newest unmatched Undo.
 func (s *gitSession) Redo(ctx context.Context) error {
-	return s.replayReflog(ctx, true)
+	return s.replayReflog(ctx, true, nil)
+}
+
+// RedoExpected refuses a confirmation whose approved action is no longer next.
+func (s *gitSession) RedoExpected(ctx context.Context, expected string) error {
+	return s.replayReflog(ctx, true, &expected)
+}
+
+// ReflogReplayIdentity binds a confirmation to the exact visible reflog action.
+// Both endpoint hashes and the action kind must match when it is accepted.
+func ReflogReplayIdentity(commits []Commit, redo bool) (string, bool) {
+	entries := make([]reflogEntry, 0, len(commits))
+	for _, commit := range commits {
+		entries = append(entries, reflogEntry{hash: commit.Hash, name: commit.Subject})
+	}
+	action, ok := findReflogAction(entries, redo)
+	if !ok {
+		return "", false
+	}
+	return action.identity(), true
 }
 
 // ReflogReplayDescription describes the operation a confirmation would replay.
 // The app's display snapshot is bounded, so an eligible action outside it has
-// no preview; Undo and Redo still re-read the complete reflog before acting.
+// no preview; expected replay revalidates its identity against the full reflog.
 func ReflogReplayDescription(commits []Commit, operations []OperationRecord, redo bool) (string, bool) {
 	entries := make([]reflogEntry, 0, len(commits))
 	for _, commit := range commits {
@@ -96,10 +127,12 @@ func ReflogReplayDescription(commits []Commit, operations []OperationRecord, red
 	return "", false
 }
 
-func (s *gitSession) replayReflog(ctx context.Context, redo bool) error {
+func (s *gitSession) replayReflog(ctx context.Context, redo bool, expected *string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
 	verb := "undo"
 	if redo {
 		verb = "redo"
@@ -120,6 +153,9 @@ func (s *gitSession) replayReflog(ctx context.Context, redo bool) error {
 		entries = append(entries, reflogEntry{hash: entry.Hash(), name: entry.Name})
 	}
 	action, ok := findReflogAction(entries, redo)
+	if expected != nil && (!ok || action.identity() != *expected) {
+		return ErrReflogReplayChanged
+	}
 	if !ok {
 		if redo {
 			return ErrNothingToRedo
