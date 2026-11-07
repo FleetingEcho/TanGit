@@ -365,7 +365,7 @@ func (a *app) fileHistoryCommitsView(c *ui.Context) {
 				ui.Text(c, tr("No commits changed this file.")).TextColor(theme.TextMuted)
 			})
 		default:
-			list := ui.List(c, &a.fileHistoryList, len(a.fileHistoryCommits)).Grow(1).Rows(func(row ui.ListRow) {
+			list := a.keyboardList(c, &a.fileHistoryList, len(a.fileHistoryCommits)).Grow(1).Rows(func(row ui.ListRow) {
 				commit := a.fileHistoryCommits[row.Index]
 				services := row.Context.Services()
 				ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(6, 8).Children(func() {
@@ -387,7 +387,7 @@ func (a *app) fileHistoryCommitsView(c *ui.Context) {
 					a.commitRowMenu(m, commit, services)
 				})
 			})
-			if list.Changed() && a.fileHistorySelected >= 0 && a.fileHistorySelected < len(a.fileHistoryCommits) {
+			if a.keyboardListChanged(&a.fileHistoryList, list) && a.fileHistorySelected >= 0 && a.fileHistorySelected < len(a.fileHistoryCommits) {
 				a.loadFileHistoryCommit(a.fileHistoryCommits[a.fileHistorySelected], false)
 			}
 			// Scrolling to the last commit reads the page below it, so the
@@ -462,7 +462,7 @@ func (a *app) fileHistoryFilesView(c *ui.Context) {
 				return
 			}
 			commit := a.fileHistoryCommits[a.fileHistorySelected]
-			list := ui.List(c, &a.fileHistoryFileList, len(a.fileHistoryFiles)).Grow(1).Rows(func(row ui.ListRow) {
+			list := a.keyboardList(c, &a.fileHistoryFileList, len(a.fileHistoryFiles)).Grow(1).Rows(func(row ui.ListRow) {
 				file := a.fileHistoryFiles[row.Index]
 				style := diffFileStyle(theme, file.Status)
 				ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(6, 8).Children(func() {
@@ -482,7 +482,7 @@ func (a *app) fileHistoryFilesView(c *ui.Context) {
 					a.commitFileMenu(m, &commit, file, row.Context.Services())
 				})
 			})
-			if list.Changed() && a.fileHistorySelectedFile >= 0 && a.fileHistorySelectedFile < len(a.fileHistoryFiles) {
+			if a.keyboardListChanged(&a.fileHistoryFileList, list) && a.fileHistorySelectedFile >= 0 && a.fileHistorySelectedFile < len(a.fileHistoryFiles) {
 				a.loadFileHistoryDiff(commit, a.fileHistoryFiles[a.fileHistorySelectedFile], false)
 			}
 		}
@@ -527,7 +527,7 @@ func (a *app) fileHistoryDiffView(c *ui.Context) {
 				ui.Text(c, tr("Choose a file to see its diff.")).TextColor(theme.TextMuted)
 			})
 		default:
-			diffViewer(c, a.fileHistoryDiffState)
+			a.keyboardDiffViewer(c, a.fileHistoryDiffState)
 		}
 	})
 }

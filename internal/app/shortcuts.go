@@ -69,16 +69,21 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		return
 	}
 	if a.showCommitForm {
+		if !a.settings.DisableShortcuts {
+			c.OnShortcut(ui.Ctrl, ui.KeyEnter, a.beginCommit)
+		}
 		c.OnShortcut(0, ui.KeyEscape, func() { a.showCommitForm = false })
 		return
 	}
 	// Picking a range of lines is a mode of the Changes page: Escape is how it
 	// is left, the same as its Cancel button.
 	if a.lineSelectMode {
+		c.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
+		c.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })
 		c.OnShortcut(0, ui.KeyEscape, a.stopLineSelection)
 		return
 	}
-	// The settings dialog's switch turns every action shortcut off. The
+	// The hotkeys switch turns every action shortcut off. The
 	// header icons still reach each action, and the dialogs keep Escape.
 	if a.settings.DisableShortcuts {
 		return
@@ -87,8 +92,13 @@ func (a *app) registerShortcuts(c *ui.Context) {
 	// picker as in the workspace, and so is the command log.
 	c.OnShortcut(ui.Ctrl, ui.KeyComma, a.openSettings)
 	c.OnShortcut(0, ui.KeyF1, a.openKeybindings)
-	c.OnShortcut(ui.Shift, ui.KeySlash, a.openCurrentKeybindings)
+	if !c.FocusTakesText() {
+		c.OnShortcut(ui.Shift, ui.KeySlash, a.openCurrentKeybindings)
+	}
 	c.OnShortcut(ui.Ctrl, ui.KeyL, a.openCommandLog)
+	c.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
+	c.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })
+	c.OnShortcut(0, ui.KeyEscape, func() { a.keyboardBack(c) })
 	if a.state != stateReady {
 		return
 	}
@@ -125,12 +135,16 @@ func (a *app) registerShortcuts(c *ui.Context) {
 	}
 
 	c.OnShortcut(0, ui.KeyF5, a.beginRefresh)
+	c.OnShortcut(0, ui.KeyF3, func() { a.navigateActiveSearch(1) })
+	c.OnShortcut(ui.Shift, ui.KeyF3, func() { a.navigateActiveSearch(-1) })
+	if c.FocusTakesText() {
+		return
+	}
+	c.OnShortcut(ui.Shift, ui.KeyW, a.openCompare)
 	c.OnShortcut(0, ui.KeyW, a.openCompare)
 	c.OnShortcut(ui.Alt, ui.KeyW, a.toggleDiffWhitespace)
 	c.OnShortcut(ui.Alt, ui.KeyU, a.cycleDiffContext)
 	c.OnShortcut(0, ui.KeySlash, a.focusActiveSearch)
-	c.OnShortcut(0, ui.KeyF3, func() { a.navigateActiveSearch(1) })
-	c.OnShortcut(ui.Shift, ui.KeyF3, func() { a.navigateActiveSearch(-1) })
 	c.OnShortcut(ui.Ctrl, ui.KeyZ, a.confirmUndo)
 	c.OnShortcut(ui.Ctrl|ui.Shift, ui.KeyZ, a.confirmRedo)
 	// The digits number the sections that show, so 1 is always the first
@@ -144,75 +158,8 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		c.OnShortcut(0, key, func() { a.setWorkspaceTab(tab) })
 	}
 
-	if a.fileHistoryOpen {
-		c.OnShortcut(0, ui.KeyH, func() { a.compareSelectedCommit(false) })
-		c.OnShortcut(ui.Shift, ui.KeyH, func() { a.compareSelectedCommit(true) })
-		c.OnShortcut(ui.Shift, ui.KeyR, a.confirmRestoreSelectedHistoricalFile)
-		return
-	}
-	switch a.workspaceTab {
-	case sectionChanges:
-		c.OnShortcut(0, ui.KeySpace, a.toggleStageSelected)
-		c.OnShortcut(0, ui.KeyI, func() { a.ignoreSelectedFile(false) })
-		c.OnShortcut(ui.Shift, ui.KeyI, func() { a.ignoreSelectedFile(true) })
-		c.OnShortcut(0, ui.KeyD, a.confirmDiscardSelected)
-		c.OnShortcut(0, ui.KeyB, a.beginBlame)
-		c.OnShortcut(ui.Ctrl, ui.KeyEnter, a.beginCommit)
-		if hasStagedFiles(a.snapshot.Files) {
-			c.OnShortcut(0, ui.KeyC, func() { a.showCommitForm = true })
-		}
-	case sectionHistory, sectionGraph:
-		c.OnShortcut(0, ui.KeyH, func() { a.compareSelectedCommit(false) })
-		c.OnShortcut(ui.Shift, ui.KeyH, func() { a.compareSelectedCommit(true) })
-		c.OnShortcut(ui.Shift, ui.KeyR, a.confirmRestoreSelectedHistoricalFile)
-		c.OnShortcut(0, ui.KeyP, func() { a.confirmCommitAction(false) })
-		c.OnShortcut(0, ui.KeyV, func() { a.confirmCommitAction(true) })
-		c.OnShortcut(0, ui.KeyR, a.rewordSelectedCommit)
-		c.OnShortcut(0, ui.KeyA, a.confirmSelectedAmendCommit)
-		c.OnShortcut(0, ui.KeyS, func() { a.confirmSelectedCombineCommit(repository.CombineSquash) })
-		c.OnShortcut(0, ui.KeyF, func() { a.confirmSelectedCombineCommit(repository.CombineFixup) })
-		c.OnShortcut(0, ui.KeyD, a.confirmSelectedDropCommit)
-		c.OnShortcut(ui.Ctrl, ui.KeyK, func() { a.confirmSelectedMoveCommit(repository.MoveCommitNewer) })
-		c.OnShortcut(ui.Ctrl, ui.KeyJ, func() { a.confirmSelectedMoveCommit(repository.MoveCommitOlder) })
-	case sectionBranches:
-		c.OnShortcut(0, ui.KeyH, func() { a.compareSelectedCommit(false) })
-		c.OnShortcut(ui.Shift, ui.KeyH, func() { a.compareSelectedCommit(true) })
-		c.OnShortcut(ui.Shift, ui.KeyR, a.confirmRestoreSelectedHistoricalFile)
-		c.OnShortcut(0, ui.KeySpace, a.checkoutSelectedBranch)
-		c.OnShortcut(0, ui.KeyM, a.confirmMergeSelectedBranch)
-		c.OnShortcut(0, ui.KeyD, a.confirmDeleteSelectedBranch)
-		c.OnShortcut(0, ui.KeyN, a.beginNewBranch)
-		c.OnShortcut(0, ui.KeyU, a.unsetSelectedUpstream)
-	case sectionRemotes:
-		c.OnShortcut(0, ui.KeyD, a.confirmRemoveSelectedRemote)
-		c.OnShortcut(0, ui.KeyN, a.openAddRemote)
-		c.OnShortcut(0, ui.KeyF, a.fetchSelectedRemote)
-		c.OnShortcut(0, ui.KeyE, a.editSelectedRemote)
-		c.OnShortcut(0, ui.KeyU, a.setSelectedRemoteBranchUpstream)
-		c.OnShortcut(0, ui.KeySpace, a.checkoutSelectedRemoteBranch)
-		c.OnShortcut(ui.Shift, ui.KeySpace, a.confirmCheckoutSelectedRemoteBranch)
-		c.OnShortcut(0, ui.KeyM, a.confirmMergeSelectedRemoteBranch)
-		c.OnShortcut(0, ui.KeyR, a.confirmRebaseSelectedRemoteBranch)
-		c.OnShortcut(ui.Shift, ui.KeyD, a.confirmDeleteSelectedRemoteBranch)
-		services := c.Services()
-		c.OnShortcut(0, ui.KeyC, func() { a.copySelectedRemoteBranch(services) })
-	case sectionStash:
-		c.OnShortcut(0, ui.KeySpace, a.applySelectedStash)
-		c.OnShortcut(0, ui.KeyP, func() { a.confirmStashMutation(true) })
-		c.OnShortcut(0, ui.KeyD, func() { a.confirmStashMutation(false) })
-	case sectionTags:
-		c.OnShortcut(0, ui.KeyP, a.beginPushSelectedTag)
-		c.OnShortcut(0, ui.KeyD, a.confirmDeleteSelectedTag)
-		c.OnShortcut(0, ui.KeyN, a.openTagForm)
-	case sectionWorktrees:
-		c.OnShortcut(0, ui.KeyO, a.openSelectedWorktree)
-		c.OnShortcut(0, ui.KeyD, a.confirmDeleteSelectedWorktree)
-		c.OnShortcut(0, ui.KeyN, a.beginNewWorktree)
-	case sectionSubmodules:
-		c.OnShortcut(0, ui.KeyU, a.updateSelectedSubmodule)
-		c.OnShortcut(0, ui.KeyD, a.confirmDeleteSelectedSubmodule)
-		c.OnShortcut(0, ui.KeyN, func() { a.showSubmoduleForm = true })
-	}
+	a.registerGitCommands(c)
+
 }
 
 // focusActiveSearch makes / the common keyboard entry to filtering. History
@@ -291,8 +238,10 @@ func (a *app) updateSelectedSubmodule() {
 		return
 	}
 	submodule := a.snapshot.Submodules[a.selectedSubmodule]
-	a.beginRepositoryActionMessage(trf("Updated %s", submodule.Name), "",
-		func(ctx context.Context, session repository.Session) error {
-			return session.UpdateSubmodule(ctx, submodule.Path)
-		}, nil)
+	a.confirmAttention("Update", submodule.Path, "This updates submodule working trees to their recorded commits. Review local submodule changes before continuing.", func() {
+		a.beginRepositoryActionMessage(trf("Updated %s", submodule.Name), "",
+			func(ctx context.Context, session repository.Session) error {
+				return session.UpdateSubmodule(ctx, submodule.Path)
+			}, nil)
+	})
 }

@@ -158,6 +158,9 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 	a.commandLog = session.CommandLog()
 	a.commandLogOpen = false
 	a.confirm = nil
+	a.commitSelection = nil
+	a.keyboardCopied = nil
+	a.keyboardSectionKnown = false
 	a.snapshot = snapshot
 	a.snapshotSeq++
 	a.repositoryDetailsLoading = false
@@ -490,6 +493,9 @@ func (a *app) beginRepositoryActionMessage(
 			}()
 			if read {
 				a.repositoryDetailsLoading = false
+				if a.snapshot.Branch != snapshot.Branch {
+					a.commitSelection = nil
+				}
 				a.snapshot = snapshot
 				a.snapshotSeq++
 				a.resetCommitPaging(snapshot)

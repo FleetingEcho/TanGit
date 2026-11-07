@@ -462,6 +462,33 @@ func TestScreenshot(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	t.Run("batch-commits-light", func(t *testing.T) {
+		a, tt, updated := newScreenshotHarness(t, false)
+		a.workspaceTab = sectionHistory
+		a.commitSelection = map[string]bool{}
+		for i, commit := range a.visibleCommits() {
+			if i < 2 {
+				a.commitSelection[commit.Hash] = true
+			}
+		}
+		tt.Frame()
+		settleShot(t, tt, updated, func() bool { return !a.commitFilesLoading && !a.diffLoading })
+		saveScreenshot(t, dir, "batch-commits-light", tt)
+	})
+
+	t.Run("keyboard-diff-review-dark", func(t *testing.T) {
+		a, tt, updated := newScreenshotHarness(t, true)
+		a.workspaceTab = sectionHistory
+		a.selectedCommit = 0
+		tt.Frame()
+		settleShot(t, tt, updated, func() bool { return a.commitDiffState != nil })
+		tt.Key(0, ui.KeyF6)
+		tt.Frame()
+		tt.Key(0, ui.KeyF6)
+		tt.Frame()
+		saveScreenshot(t, dir, "keyboard-diff-review-dark", tt)
+	})
+
 	t.Run("empty-light", func(t *testing.T) {
 		a := newApp(screenshotOpener{snapshot: repository.Snapshot{}})
 		a.settings.Theme = "System"
@@ -1422,4 +1449,10 @@ func newPickerShot(t *testing.T, dark bool, errMessage string) *ui.Tester {
 	tt.SetDark(dark)
 	tt.Frame()
 	return tt
+}
+
+func (s screenshotSession) ForcePushWithLease(context.Context) error                     { return nil }
+func (s screenshotSession) CherryPickCommits(context.Context, []repository.Commit) error { return nil }
+func (s screenshotSession) EditCommitRange(context.Context, []repository.Commit, repository.CommitRangeAction) error {
+	return nil
 }

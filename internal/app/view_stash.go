@@ -18,14 +18,16 @@ func (a *app) beginStashChanges() {
 		message = a.defaultStashMessage()
 	}
 	includeUntracked := a.stashIncludeUntracked
-	a.beginRepositoryActionMessage(tr("Stashed changes"), "",
-		func(ctx context.Context, session repository.Session) error {
-			return session.StashChanges(ctx, message, includeUntracked)
-		}, func() {
-			a.stashMessage = ""
-			a.stashIncludeUntracked = false
-			a.showStashForm = false
-		})
+	a.confirmAttention("Stash", message, "This saves changes in a stash and removes them from the working tree or index.", func() {
+		a.beginRepositoryActionMessage(tr("Stashed changes"), "",
+			func(ctx context.Context, session repository.Session) error {
+				return session.StashChanges(ctx, message, includeUntracked)
+			}, func() {
+				a.stashMessage = ""
+				a.stashIncludeUntracked = false
+				a.showStashForm = false
+			})
+	})
 }
 
 // stashStagedChanges saves only the index away. The unstaged work stays in
@@ -37,10 +39,12 @@ func (a *app) stashStagedChanges() {
 		return
 	}
 	message := a.defaultStashMessage()
-	a.beginRepositoryActionMessage(tr("Stashed staged changes"), "",
-		func(ctx context.Context, session repository.Session) error {
-			return session.StashStagedChanges(ctx, message)
-		}, nil)
+	a.confirmAttention("Stash", message, "This saves changes in a stash and removes them from the working tree or index.", func() {
+		a.beginRepositoryActionMessage(tr("Stashed staged changes"), "",
+			func(ctx context.Context, session repository.Session) error {
+				return session.StashStagedChanges(ctx, message)
+			}, nil)
+	})
 }
 
 // defaultStashMessage names a stash the user left unnamed: the branch it was
@@ -333,19 +337,23 @@ func (a *app) confirmStashMutationFor(stash repository.Stash, pop bool) {
 }
 
 func (a *app) applyStash(stash repository.Stash) {
-	a.beginRepositoryActionMessage(trf("Applied %s", stash.Name), "",
-		func(ctx context.Context, session repository.Session) error {
-			return session.ApplyStash(ctx, stash.Index, false)
-		}, nil)
+	a.confirmAttention("Apply", stash.Name, "This applies saved changes to the working tree and may cause conflicts. Applying one stash file can replace its current working-tree contents.", func() {
+		a.beginRepositoryActionMessage(trf("Applied %s", stash.Name), "",
+			func(ctx context.Context, session repository.Session) error {
+				return session.ApplyStash(ctx, stash.Index, false)
+			}, nil)
+	})
 }
 
 // applyStashFile writes one saved file's version into the working tree,
 // leaving the saved work itself in the stash.
 func (a *app) applyStashFile(stash repository.Stash, file repository.CommitFile) {
-	a.beginRepositoryActionMessage(trf("Applied %s", file.Path), file.Path,
-		func(ctx context.Context, session repository.Session) error {
-			return session.ApplyStashFile(ctx, stash.Index, file)
-		}, nil)
+	a.confirmAttention("Apply", file.Path+"\n"+stash.Name, "This applies saved changes to the working tree and may cause conflicts. Applying one stash file can replace its current working-tree contents.", func() {
+		a.beginRepositoryActionMessage(trf("Applied %s", file.Path), file.Path,
+			func(ctx context.Context, session repository.Session) error {
+				return session.ApplyStashFile(ctx, stash.Index, file)
+			}, nil)
+	})
 }
 
 // confirmDiscardStashFile asks before rewriting the saved work without one
@@ -416,7 +424,7 @@ func (a *app) stashRowMenu(m *ui.Menu, row ui.ListRow) {
 		a.selectStashRow(row.Index)
 		a.applyStash(stash)
 	}
-	if m.Item(tr("Pop (apply and drop)…")).Shortcut(0, ui.KeyP).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Pop (apply and drop)…")).Shortcut(0, ui.KeyG).Disabled(a.actionBusy).Chosen() {
 		a.selectStashRow(row.Index)
 		a.confirmStashMutationFor(stash, true)
 	}
@@ -460,7 +468,7 @@ func (a *app) stashView(c *ui.Context) {
 						listSearchEmpty(c, "No stashes match this search")
 						return
 					}
-					list := ui.List(c, &a.stashList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
+					list := a.keyboardList(c, &a.stashList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
 						stash, _ := sourceRow(visible, a.snapshot.Stashes, row.Index)
 						element := ui.Column(row.Context).Gap(2).Padding(7, 8)
 						// The row's actions show on the pointer's row, or the
@@ -484,7 +492,7 @@ func (a *app) stashView(c *ui.Context) {
 							ui.Textf(row.Context, "stash@{%d} · %s", stash.Index, stash.Recency).TextColor(secondaryRowColor(theme, row))
 						}).PopoverMenu(func(m *ui.Menu) { a.stashRowMenu(m, row) })
 					})
-					if list.Changed() {
+					if a.keyboardListChanged(&a.stashList, list) {
 						a.selectStashRow(a.selectedStashRow)
 					}
 					normalizeFilteredRow(visible, &a.selectedStashRow, &a.selectedStash)
@@ -567,7 +575,7 @@ func (a *app) stashView(c *ui.Context) {
 								ui.Badge(c, fmt.Sprintf("%d", len(a.stashFiles)))
 								a.fileTreeButtons(c, fileTreeStashScope, paths)
 							})
-							list := ui.List(c, &a.stashFileList, len(a.stashFileRows)).Grow(1).Rows(func(row ui.ListRow) {
+							list := a.keyboardList(c, &a.stashFileList, len(a.stashFileRows)).Grow(1).Rows(func(row ui.ListRow) {
 								item := a.stashFileRows[row.Index]
 								if item.isDirectory() {
 									a.fileTreeDirectoryRow(row.Context, fileTreeStashScope, item, row.Selected(), func() {
@@ -601,7 +609,7 @@ func (a *app) stashView(c *ui.Context) {
 									a.stashFileMenu(m, stash, file, services)
 								})
 							})
-							if list.Changed() {
+							if a.keyboardListChanged(&a.stashFileList, list) {
 								a.selectStashFileRow(a.selectedStashFileRow)
 							}
 							normalizeFileTreeRow(a.stashFileRows, &a.selectedStashFileRow, &a.selectedStashFile)
@@ -626,7 +634,7 @@ func (a *app) stashView(c *ui.Context) {
 									}
 								})
 							case a.stashDiffState != nil:
-								diffViewer(c, a.stashDiffState)
+								a.keyboardDiffViewer(c, a.stashDiffState)
 							}
 						})
 					}).Grow(1)

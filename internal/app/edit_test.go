@@ -203,9 +203,8 @@ func TestBothSidesOfAFileOfferTheEditorOnlyInTheChangesSection(t *testing.T) {
 	}
 }
 
-// A diff is read, not typed into: clicking its text leaves the keyboard where
-// it was, so no caret appears in what the pane only shows.
-func TestClickingTheDiffDoesNotFocusItsEditor(t *testing.T) {
+// A read-only diff can receive focus for keyboard review without editing text.
+func TestClickingTheDiffFocusesReadOnlyKeyboardReview(t *testing.T) {
 	h, _ := changesTestApp(t, unstagedTrackedFile())
 	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
 	caption, ok := h.tester.Find("Unstaged changes")
@@ -215,8 +214,14 @@ func TestClickingTheDiffDoesNotFocusItsEditor(t *testing.T) {
 	// Below the caption and its hunk header, in the text of the change.
 	h.tester.ClickAt(caption.X+120, caption.Y+caption.H+70)
 	h.tester.Frame()
-	if h.tester.Focused("New text") {
-		t.Fatalf("clicking the diff focused its editor: %q", h.texts())
+	if !h.tester.Focused("New text") {
+		t.Fatal("clicking the diff did not focus keyboard review")
+	}
+	before := h.app.diffState.New.String()
+	h.tester.Type("should not edit")
+	h.tester.Frame()
+	if h.app.diffState.New.String() != before {
+		t.Fatal("keyboard review edited a read-only diff")
 	}
 }
 

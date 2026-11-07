@@ -29,7 +29,7 @@ func TestKeybindingsModalListsAndFiltersShortcuts(t *testing.T) {
 		"Commit the staged changes",
 		"Check out the chosen branch",
 		"Ctrl+Enter",
-		"Disable all keyboard shortcuts",
+		"Enable keyboard shortcuts",
 		"Done",
 	} {
 		if !strings.Contains(texts, want) {
@@ -92,7 +92,7 @@ func TestQuestionMarkWorksAfterReenablingShortcutsInReference(t *testing.T) {
 	h.tester.Key(0, ui.KeyF1)
 	h.tester.Frame()
 	for i := 0; i < 2; i++ {
-		if err := h.tester.Click("Disable all keyboard shortcuts"); err != nil {
+		if err := h.tester.Click("Enable keyboard shortcuts"); err != nil {
 			t.Fatalf("toggle the shortcut switch: %v", err)
 		}
 		h.tester.Frame()
@@ -127,7 +127,7 @@ func TestDisablingAllShortcutsStopsTheKeyboard(t *testing.T) {
 		t.Fatalf("open the shortcut list: %v", err)
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Disable all keyboard shortcuts"); err != nil {
+	if err := h.tester.Click("Enable keyboard shortcuts"); err != nil {
 		t.Fatalf("click the disable switch: %v", err)
 	}
 	h.tester.Frame()

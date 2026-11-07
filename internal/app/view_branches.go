@@ -202,10 +202,12 @@ func (a *app) confirmDeleteBranch(branch repository.Branch) {
 }
 
 func (a *app) checkoutBranch(name string) {
-	a.beginRepositoryActionMessage(trf("Checked out %s", name), "",
-		func(ctx context.Context, session repository.Session) error {
-			return session.CheckoutBranch(ctx, name)
-		}, nil)
+	a.confirmAttention("Checkout", name, "This changes the checked-out branch and working-tree files. Uncommitted changes may be carried across or prevent checkout.", func() {
+		a.beginRepositoryActionMessage(trf("Checked out %s", name), "",
+			func(ctx context.Context, session repository.Session) error {
+				return session.CheckoutBranch(ctx, name)
+			}, nil)
+	})
 }
 
 // beginPullBranch brings a branch's latest upstream changes in: the checked
@@ -216,29 +218,35 @@ func (a *app) beginPullBranch(branch repository.Branch) {
 	if branch.Head {
 		message = trf("Pulled latest into %s", branchDisplay(branch))
 	}
-	a.beginRepositoryActionMessage(message, "",
-		func(ctx context.Context, session repository.Session) error {
-			return session.PullBranch(ctx, branch.Name)
-		}, nil)
+	a.confirmAttention("Pull", branch.Name, "This integrates upstream changes and may change branch history or working-tree files. Conflicts may require resolution.", func() {
+		a.beginRepositoryActionMessage(message, "",
+			func(ctx context.Context, session repository.Session) error {
+				return session.PullBranch(ctx, branch.Name)
+			}, nil)
+	})
 }
 
 // beginFastForwardBranch moves a branch to its upstream when only new commits
 // are in the way, as Lazygit's fast-forward does.
 func (a *app) beginFastForwardBranch(branch repository.Branch) {
-	a.beginRepositoryActionMessage(trf("Fast-forwarded %s", branchDisplay(branch)), "",
-		func(ctx context.Context, session repository.Session) error {
-			return session.FastForwardBranch(ctx, branch.Name)
-		}, nil)
+	a.confirmAttention("Fast-forward", branch.Name, "This integrates upstream changes and may change branch history or working-tree files. Conflicts may require resolution.", func() {
+		a.beginRepositoryActionMessage(trf("Fast-forwarded %s", branchDisplay(branch)), "",
+			func(ctx context.Context, session repository.Session) error {
+				return session.FastForwardBranch(ctx, branch.Name)
+			}, nil)
+	})
 }
 
 func (a *app) beginUnsetUpstream(branch repository.Branch) {
 	if a.actionBusy || a.session == nil || branch.UpstreamRemote == "" {
 		return
 	}
-	a.beginRepositoryActionMessage(trf("%s no longer tracks %s/%s", branch.Name, branch.UpstreamRemote, branch.UpstreamBranch), "",
-		func(ctx context.Context, session repository.Session) error {
-			return session.UnsetUpstream(ctx, branch.Name)
-		}, nil)
+	a.confirmAttention("Unset upstream", branch.Name, "This changes branch tracking configuration and affects future pulls and pushes.", func() {
+		a.beginRepositoryActionMessage(trf("%s no longer tracks %s/%s", branch.Name, branch.UpstreamRemote, branch.UpstreamBranch), "",
+			func(ctx context.Context, session repository.Session) error {
+				return session.UnsetUpstream(ctx, branch.Name)
+			}, nil)
+	})
 }
 
 func (a *app) unsetSelectedUpstream() {
@@ -327,6 +335,15 @@ func (a *app) branchRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) {
 	if !ok {
 		return
 	}
+	if branch.Head {
+		if m.Item(tr("Push")).Disabled(a.actionBusy).Chosen() {
+			a.confirmPush()
+		}
+
+		if m.Item(tr("Force push with lease…")).Disabled(a.actionBusy).Chosen() {
+			a.confirmForcePushWithLease()
+		}
+	}
 	if !branch.Head {
 		if m.Item(tr("Checkout")).Shortcut(0, ui.KeySpace).Disabled(a.actionBusy).Chosen() {
 			a.selectBranchRow(row.Index)
@@ -336,7 +353,7 @@ func (a *app) branchRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) {
 			a.selectBranchRow(row.Index)
 			a.confirmForceCheckoutBranch(branch)
 		}
-		if m.Item(tr("Merge into current…")).Shortcut(0, ui.KeyM).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Merge into current…")).Shortcut(ui.Shift, ui.KeyM).Disabled(a.actionBusy).Chosen() {
 			a.selectBranchRow(row.Index)
 			a.confirmMergeBranch(branch)
 		}
@@ -446,7 +463,7 @@ func (a *app) branchListView(c *ui.Context) {
 			listSearchEmpty(c, "No local branches match this search")
 			return
 		}
-		list := ui.List(c, &a.branchList, len(visible)).Grow(1).AutoFocus().Rows(func(row ui.ListRow) {
+		list := a.keyboardList(c, &a.branchList, len(visible)).Grow(1).AutoFocus().Rows(func(row ui.ListRow) {
 			branch, _ := sourceRow(visible, a.snapshot.Branches, row.Index)
 			services := row.Context.Services()
 			ui.Row(row.Context).Gap(8).Padding(7, 8).Children(func() {
@@ -465,7 +482,7 @@ func (a *app) branchListView(c *ui.Context) {
 				}
 			}).PopoverMenu(func(m *ui.Menu) { a.branchRowMenu(m, row, services) })
 		})
-		if list.Changed() {
+		if a.keyboardListChanged(&a.branchList, list) {
 			a.selectBranchRow(a.selectedBranchRow)
 			a.resetBranchCommits()
 			a.showRenameForm = false
@@ -827,7 +844,7 @@ func (a *app) branchCommitsView(c *ui.Context, branch repository.Branch) {
 			ui.Text(c, tr("No commits on this branch yet.")).TextColor(theme.TextMuted)
 			return
 		}
-		ui.List(c, &a.branchCommitList, len(a.branchCommits)).Grow(1).Rows(func(row ui.ListRow) {
+		a.keyboardList(c, &a.branchCommitList, len(a.branchCommits)).Grow(1).Rows(func(row ui.ListRow) {
 			commit := a.branchCommits[row.Index]
 			services := row.Context.Services()
 			ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(6, 8).Children(func() {
@@ -922,7 +939,7 @@ func (a *app) branchCommitDetailView(c *ui.Context, branch repository.Branch) {
 					ui.Badge(c, fmt.Sprintf("%d", len(a.branchCommitFiles)))
 					a.fileTreeButtons(c, fileTreeBranchScope, paths)
 				})
-				list := ui.List(c, &a.branchCommitFileList, len(a.branchCommitFileRows)).Grow(1).Rows(func(row ui.ListRow) {
+				list := a.keyboardList(c, &a.branchCommitFileList, len(a.branchCommitFileRows)).Grow(1).Rows(func(row ui.ListRow) {
 					item := a.branchCommitFileRows[row.Index]
 					if item.isDirectory() {
 						a.fileTreeDirectoryRow(row.Context, fileTreeBranchScope, item, row.Selected(), func() {
@@ -940,7 +957,7 @@ func (a *app) branchCommitDetailView(c *ui.Context, branch repository.Branch) {
 						a.commitFileMenu(m, &commit, file, services)
 					})
 				})
-				if list.Changed() {
+				if a.keyboardListChanged(&a.branchCommitFileList, list) {
 					a.selectBranchCommitFileRow(a.selectedBranchCommitFileRow)
 				}
 				normalizeFileTreeRow(a.branchCommitFileRows, &a.selectedBranchCommitFileRow, &a.selectedBranchCommitFile)
@@ -959,7 +976,7 @@ func (a *app) branchCommitDetailView(c *ui.Context, branch repository.Branch) {
 				case a.branchCommitDiffError != "":
 					ui.Text(c, a.branchCommitDiffError).TextColor(theme.Danger)
 				case a.branchCommitDiffState != nil:
-					diffViewer(c, a.branchCommitDiffState)
+					a.keyboardDiffViewer(c, a.branchCommitDiffState)
 				default:
 					ui.Text(c, tr("No textual diff")).TextColor(theme.TextMuted)
 				}

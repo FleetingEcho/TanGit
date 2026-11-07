@@ -131,10 +131,11 @@ func (t *tab) statusColor(theme *ui.Theme) ui.Color {
 // preferences, and the strip that switches pages. Closing a tab shuts its app
 // down; the settings and the history keep their home in the shell.
 type shell struct {
-	window     *mygo.Window
-	opener     repositoryOpener
-	update     func(func())
-	invalidate func()
+	nativeHelpItem *mygo.MenuItem
+	window         *mygo.Window
+	opener         repositoryOpener
+	update         func(func())
+	invalidate     func()
 
 	settings       appSettings
 	settingsLoaded bool
@@ -277,6 +278,7 @@ func (s *shell) view(c *ui.Context) {
 		ui.Column(c).Grow(1).FillWidth().Children(func() {
 			if a := s.activeApp(); a != nil {
 				a.frame(c, systemDark, chrome)
+				s.refreshNativeHelpEnabled()
 			}
 		})
 	})
@@ -1027,9 +1029,10 @@ func (s *shell) tabView(c *ui.Context, i int, width float32) {
 	if narrow {
 		gap, pad = 3, 4
 	}
+	c.Key(t)
 	pill := ui.Row(c).Height(tabPillHeight).Width(width).AlignItems(ui.Center).
 		Gap(gap).Padding(0, pad).Radius(pillRadius(theme)).
-		Role(ui.RoleTab).Checked(active).Label(t.title())
+		Role(ui.RoleTab).Checked(active).Label(t.title()).Focusable().FocusRing(true)
 	hovered := pill.Hovered()
 	switch {
 	case active:
@@ -1040,6 +1043,8 @@ func (s *shell) tabView(c *ui.Context, i int, width float32) {
 		pill.Background(ui.Transparent).Border(1, ui.Transparent)
 	}
 	pill.Tooltip(t.tooltip())
+	pill.OnShortcut(0, ui.KeyEnter, func() { s.request(func() { s.activateTab(t) }) })
+	pill.OnShortcut(0, ui.KeySpace, func() { s.request(func() { s.activateTab(t) }) })
 	services := c.Services()
 	closeClicked := false
 	pill.Children(func() {

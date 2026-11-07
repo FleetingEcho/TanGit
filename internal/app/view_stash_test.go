@@ -131,6 +131,7 @@ func TestStashRowsOfferApplyAndDiscard(t *testing.T) {
 	if err := h.tester.Click("Apply WIP: native stash"); err != nil {
 		t.Fatalf("apply from the row icon: %v", err)
 	}
+	h.confirmAttentionForTest(t)
 	h.waitFor(t, "the stash apply", func() bool { return calls.has("stash-apply:0:false") })
 	h.waitFor(t, "the apply to settle", func() bool { return !h.app.actionBusy })
 
@@ -190,7 +191,8 @@ func TestStashFileRowsOfferApplyAndDiscard(t *testing.T) {
 	if err := h.tester.Click("Apply one.txt"); err != nil {
 		t.Fatalf("apply from the row icon: %v", err)
 	}
-	h.waitFor(t, "the file apply", func() bool { return calls.has("stash-apply-file:0:one.txt") })
+	h.confirmAttentionForTest(t)
+	h.waitFor(t, "the file apply", func() bool { return calls.has("stash-apply-file:0:one.txt") && !h.app.actionBusy })
 	h.waitFor(t, "the apply to settle", func() bool { return !h.app.actionBusy })
 
 	// The action re-reads the saved work; wait for the rows to come back
@@ -240,8 +242,7 @@ func TestStashFileRowsOfferApplyAndDiscard(t *testing.T) {
 }
 
 // The file rows' right-click menu carries the two row actions as well:
-// applying runs at once, while the drop — taking the file's change out of
-// the saved work for good — asks first, as every discard path does.
+// applying and discarding both require confirmation.
 func TestStashFileMenuOffersApplyAndDiscard(t *testing.T) {
 	h, calls := stashTestApp(t)
 	if err := h.tester.Click("Stash"); err != nil {
@@ -255,9 +256,10 @@ func TestStashFileMenuOffersApplyAndDiscard(t *testing.T) {
 	h.rightClick(t, "one.txt")
 	h.requireMenuLabels(t, "Apply this file", "Discard this file…")
 	h.chooseMenuItem(t, "Apply this file")
-	h.waitFor(t, "the file apply", func() bool { return calls.has("stash-apply-file:0:one.txt") })
+	h.confirmAttentionForTest(t)
+	h.waitFor(t, "the file apply", func() bool { return calls.has("stash-apply-file:0:one.txt") && !h.app.actionBusy })
 	if h.app.confirm != nil {
-		t.Fatal("the menu asked before applying a file it leaves in the saved work")
+		t.Fatal("the confirmed apply left its modal open")
 	}
 
 	// The discard asks first and names the file, and Escape leaves the

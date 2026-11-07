@@ -133,14 +133,14 @@ func (a *app) submodulesView(c *ui.Context) {
 						listSearchEmpty(c, "No submodules match this search")
 						return
 					}
-					list := ui.List(c, &a.submoduleList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
+					list := a.keyboardList(c, &a.submoduleList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
 						submodule, _ := sourceRow(visible, a.snapshot.Submodules, row.Index)
 						ui.Column(row.Context).Gap(2).Padding(7, 8).Children(func() {
 							ui.Text(row.Context, submodule.Name)
 							ui.Text(row.Context, submodule.Path).TextColor(secondaryRowColor(theme, row))
 						}).PopoverMenu(func(m *ui.Menu) { a.submoduleRowMenu(m, row) })
 					})
-					if list.Changed() {
+					if a.keyboardListChanged(&a.submoduleList, list) {
 						a.selectSubmoduleRow(a.selectedSubmoduleRow)
 					}
 					normalizeFilteredRow(visible, &a.selectedSubmoduleRow, &a.selectedSubmodule)

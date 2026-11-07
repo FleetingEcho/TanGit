@@ -85,6 +85,8 @@ func (a *app) frame(c *ui.Context, systemDark bool, topInset float32) {
 // topInset is the room the window's own chrome takes above the page, so the
 // notifications and macOS's native window controls stay clear of overlays.
 func (a *app) bodyView(c *ui.Context, topInset float32) {
+	a.keyboardPrevious = append(a.keyboardPrevious[:0], a.keyboardPanes...)
+	a.keyboardPanes = a.keyboardPanes[:0]
 	a.applyPendingRecent()
 	a.registerShortcuts(c)
 	overlayTopInset := float32(0)
@@ -115,6 +117,8 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.keybindingsModal(c)
 	a.commitFilterModal(c)
 	a.confirmModal(c)
+	a.keyboardTextFocus = c.FocusTakesText()
+	a.finishKeyboardFrame(c)
 	// Notifications are queued by the actions this pass ran, so they are
 	// added after everything else and drawn over it.
 	a.flushToasts(c)
@@ -319,7 +323,7 @@ func (a *app) pickerHeroView(c *ui.Context) {
 		bar.Children(func() {
 			ui.Icon(c, folderOpenIcon).FontSize(18).TextColor(theme.TextMuted)
 			path := ui.TextInputBase(c, &a.path).
-				Label(tr("Repository folder")).
+				Label(tr("Repository folder")).AutoFocus().
 				Placeholder(tr("/path/to/repository")).
 				FontSize(15).Height(36).Grow(1)
 			if path.Submitted() {
@@ -475,7 +479,9 @@ func (a *app) recentCardView(c *ui.Context, i int, services ui.Services) {
 	theme := c.Theme()
 	repo := a.recentRepositories[i]
 	selected := a.selectedRecent == i
+	c.Key("recent:" + repo.Path)
 	card := ui.Column(c).Fill().Gap(8).Padding(14).
+		Focusable().Role(ui.RoleButton).Label(trf("Open %s", repo.Path)).FocusRing(true).
 		Background(theme.Surface).Border(1, theme.Border).
 		Radius(theme.Radius + 5)
 	if card.Hovered() && !selected {
@@ -485,6 +491,8 @@ func (a *app) recentCardView(c *ui.Context, i int, services ui.Services) {
 	if selected {
 		card.Background(theme.SurfaceHover).Border(1, theme.Accent)
 	}
+	card.OnShortcut(0, ui.KeyEnter, func() { a.openRecent(repo.Path) }).
+		OnShortcut(0, ui.KeySpace, func() { a.openRecent(repo.Path) })
 	card.Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
 			ui.Box(c).Size(34, 34).Radius(10).Center().
@@ -687,7 +695,7 @@ func (a *app) workspaceView(c *ui.Context) {
 
 func (a *app) headerView(c *ui.Context) {
 	theme := c.Theme()
-	islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(6, 14)).Children(func() {
+	a.keyboardPane(c, "toolbar", islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(6, 14)).Focusable()).Children(func() {
 		base := filepath.Base(a.snapshot.Root)
 		if base == "." || base == string(filepath.Separator) || base == "" {
 			base = a.snapshot.Root
@@ -736,10 +744,7 @@ func (a *app) headerView(c *ui.Context) {
 						if a.actionBusy || hasConflictedFiles(a.snapshot.Files) {
 							return
 						}
-						a.beginRepositoryActionMessage(tr("Continued the operation"), "",
-							func(ctx context.Context, session repository.Session) error {
-								return session.ContinueOperation(ctx)
-							}, nil)
+						a.confirmContinueOperation()
 					})
 				iconTextButton(c, "Abort…", "Abort the interrupted operation", abortIcon, false,
 					func() {
@@ -760,18 +765,17 @@ func (a *app) headerView(c *ui.Context) {
 				})
 			iconButton(c, "Pull", "Pull from the upstream branch", pullIcon,
 				a.actionBusy, func() {
-					a.beginRepositoryActionMessage(tr("Pulled the latest changes"), "",
-						func(ctx context.Context, session repository.Session) error {
-							return session.Pull(ctx)
-						}, nil)
+					a.confirmPull()
 				})
 			primaryIconButton(c, "Push", "Push to the remote", pushIcon,
 				a.actionBusy, func() {
-					a.beginRepositoryActionMessage(tr("Pushed the branch"), "",
-						func(ctx context.Context, session repository.Session) error {
-							return session.Push(ctx)
-						}, nil)
+					a.confirmPush()
 				})
+			ui.PopoverMenuButton(c, tr("Push options"), func(m *ui.Menu) {
+				if m.Item(tr("Force push with lease…")).Chosen() {
+					a.confirmForcePushWithLease()
+				}
+			}).Disabled(a.actionBusy || a.snapshot.Branch == "")
 			iconButton(c, "Refresh", "Refresh (F5)", refreshIcon, a.actionBusy, a.beginRefresh)
 			a.editorButton(c)
 			a.themeButton(c)
@@ -863,7 +867,7 @@ func (a *app) navView(c *ui.Context) {
 			ui.Text(c, tr("Workspace")).TextColor(theme.TextMuted).Grow(1)
 			paneCollapseButton(c, &a.navPaneCollapsed, "Collapse workspace sidebar")
 		})
-		list := ui.List(c, &a.navList, len(a.visibleSections())).Grow(1).Rows(func(row ui.ListRow) {
+		list := a.keyboardList(c, &a.navList, len(a.visibleSections())).Grow(1).Rows(func(row ui.ListRow) {
 			section, ok := a.navRow(row.Index)
 			if !ok {
 				return
@@ -876,7 +880,7 @@ func (a *app) navView(c *ui.Context) {
 				}
 			})
 		})
-		if list.Changed() {
+		if a.keyboardListChanged(&a.navList, list) {
 			if section, ok := a.navRow(a.navSelected); ok {
 				a.setWorkspaceTab(section)
 			}
@@ -1027,14 +1031,14 @@ func (a *app) statusBar(c *ui.Context) {
 			ui.Text(c, line).TextColor(theme.Danger).
 				SingleLine().MaxWidth(520).Tooltip(shorten(a.actionError, 400))
 		}
-		ui.Row(c).Grow(1).Justify(ui.End).Gap(8).Children(func() {
+		a.keyboardPane(c, "status", ui.Row(c).Grow(1).Justify(ui.End).Gap(8).Focusable()).Children(func() {
 			if a.actionBusy {
 				ui.Spinner(c).Label(tr("Working"))
 				ui.Text(c, tr("Working…")).TextColor(theme.TextMuted)
 			}
+			a.terminalButton(c)
 			iconButton(c, "Keyboard shortcuts", "Keyboard shortcuts (F1)", keyboardIcon,
 				false, a.openKeybindings)
-			a.terminalButton(c)
 			button := ui.ButtonBase(c).AlignItems(ui.Center).Gap(5).Padding(2, 7).
 				Radius(theme.Radius).Label(tr("Command log")).
 				Tooltip(tr("Every Git command and its output (Ctrl+L)"))

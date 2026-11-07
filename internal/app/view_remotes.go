@@ -136,17 +136,19 @@ func (a *app) beginUpdateRemote() {
 	if oldName == "" {
 		return
 	}
-	a.beginRepositoryActionMessage(trf("Updated remote %s", newName), "",
-		func(ctx context.Context, session repository.Session) error {
-			return session.UpdateRemote(ctx, oldName, newName, url)
-		}, func() {
-			a.selectedRemote = selectedRemoteIndex(a.snapshot.Remotes, newName)
-			a.syncRemoteRow()
-			a.remoteOriginalName = ""
-			a.remoteName = ""
-			a.remoteURL = ""
-			a.showRemoteForm = false
-		})
+	a.confirmAttention("Edit remote", oldName+" → "+newName+"\n"+url, "This changes the remote destination used by future fetches, pulls, and pushes.", func() {
+		a.beginRepositoryActionMessage(trf("Updated remote %s", newName), "",
+			func(ctx context.Context, session repository.Session) error {
+				return session.UpdateRemote(ctx, oldName, newName, url)
+			}, func() {
+				a.selectedRemote = selectedRemoteIndex(a.snapshot.Remotes, newName)
+				a.syncRemoteRow()
+				a.remoteOriginalName = ""
+				a.remoteName = ""
+				a.remoteURL = ""
+				a.showRemoteForm = false
+			})
+	})
 }
 
 func (a *app) beginAddRemote() {
@@ -190,13 +192,15 @@ func (a *app) beginCheckoutRemoteBranch() {
 	}
 	branch := remote.Branches[a.selectedRemoteBranch]
 	localName := strings.TrimSpace(a.remoteLocalBranch)
-	a.beginRepositoryActionMessage(trf("Checked out %s/%s", remote.Name, branch.Name), "",
-		func(ctx context.Context, session repository.Session) error {
-			return session.CheckoutRemoteBranch(ctx, remote.Name, branch.Name, localName)
-		}, func() {
-			a.remoteLocalBranch = ""
-			a.showRemoteCheckoutForm = false
-		})
+	a.confirmAttention("Checkout", remote.Name+"/"+branch.Name+" → "+localName, "This changes the checked-out branch and working-tree files. Uncommitted changes may be carried across or prevent checkout.", func() {
+		a.beginRepositoryActionMessage(trf("Checked out %s/%s", remote.Name, branch.Name), "",
+			func(ctx context.Context, session repository.Session) error {
+				return session.CheckoutRemoteBranch(ctx, remote.Name, branch.Name, localName)
+			}, func() {
+				a.remoteLocalBranch = ""
+				a.showRemoteCheckoutForm = false
+			})
+	})
 }
 
 func (a *app) currentRemoteBranchSelection() (repository.Remote, repository.RemoteBranch, bool) {
@@ -220,10 +224,12 @@ func (a *app) beginSetUpstream(remote repository.Remote, branch repository.Remot
 	if a.actionBusy || a.session == nil || localBranch == "" {
 		return
 	}
-	a.beginRepositoryActionMessage(trf("%s now tracks %s/%s", localBranch, remote.Name, branch.Name), "",
-		func(ctx context.Context, session repository.Session) error {
-			return session.SetUpstream(ctx, remote.Name, branch.Name, localBranch)
-		}, nil)
+	a.confirmAttention("Set upstream", localBranch+" → "+remote.Name+"/"+branch.Name, "This changes branch tracking configuration and affects future pulls and pushes.", func() {
+		a.beginRepositoryActionMessage(trf("%s now tracks %s/%s", localBranch, remote.Name, branch.Name), "",
+			func(ctx context.Context, session repository.Session) error {
+				return session.SetUpstream(ctx, remote.Name, branch.Name, localBranch)
+			}, nil)
+	})
 }
 
 func (a *app) setSelectedRemoteBranchUpstream() {
@@ -315,7 +321,7 @@ func (a *app) remoteBranchRowMenu(m *ui.Menu, row ui.ListRow, services ui.Servic
 	if a.snapshot.Branch != "" {
 		qualified := remoteLocalBranch(remote, branch)
 		m.Separator()
-		if m.Item(tr("Merge into current…")).Shortcut(0, ui.KeyM).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Merge into current…")).Shortcut(ui.Shift, ui.KeyM).Disabled(a.actionBusy).Chosen() {
 			a.selectRemoteBranchRow(row.Index)
 			a.confirmMergeBranch(qualified)
 		}
@@ -449,7 +455,7 @@ func (a *app) remotesView(c *ui.Context) {
 						listSearchEmpty(c, "No remotes match this search")
 						return
 					}
-					list := ui.List(c, &a.remoteList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
+					list := a.keyboardList(c, &a.remoteList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
 						remote, _ := sourceRow(visible, a.snapshot.Remotes, row.Index)
 						services := row.Context.Services()
 						ui.Row(row.Context).Padding(7, 8).Children(func() {
@@ -457,7 +463,7 @@ func (a *app) remotesView(c *ui.Context) {
 							ui.Badge(row.Context, fmt.Sprintf("%d", len(remote.Branches)))
 						}).PopoverMenu(func(m *ui.Menu) { a.remoteRowMenu(m, row, services) })
 					})
-					if list.Changed() {
+					if a.keyboardListChanged(&a.remoteList, list) {
 						a.selectRemoteRow(a.selectedRemoteRow)
 					}
 					normalizeFilteredRow(visible, &a.selectedRemoteRow, &a.selectedRemote)
@@ -512,7 +518,7 @@ func (a *app) remotesView(c *ui.Context) {
 						listSearchEmpty(c, "No remote branches match this search")
 						return
 					}
-					branches := ui.List(c, &a.remoteBranches, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
+					branches := a.keyboardList(c, &a.remoteBranches, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
 						branch := visible[row.Index]
 						ui.Row(row.Context).AlignItems(ui.Center).Gap(8).Padding(7, 8).Children(func() {
 							ui.Icon(row.Context, branchIcon).FontSize(12).TextColor(secondaryRowColor(theme, row))
@@ -522,7 +528,7 @@ func (a *app) remotesView(c *ui.Context) {
 								a.remoteBranchRowMenu(m, row, row.Context.Services(), remote, branch.branch)
 							})
 					})
-					if branches.Changed() {
+					if a.keyboardListChanged(&a.remoteBranches, branches) {
 						a.selectRemoteBranchRow(a.selectedRemoteBranchRow)
 						a.showRemoteCheckoutForm = false
 					}

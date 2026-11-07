@@ -306,6 +306,7 @@ func (a *app) historyView(c *ui.Context) {
 		"Expand list pane", func() {
 			islandCard(c, ui.Column(c).Grow(1).Gap(8).Padding(12)).Children(func() {
 				a.historyListHeader(c)
+				a.commitSelectionBar(c)
 				commits := a.visibleCommits()
 				if len(commits) == 0 {
 					a.commitEmptyView(c, theme, sectionHistory)
@@ -315,12 +316,13 @@ func (a *app) historyView(c *ui.Context) {
 					ui.Text(c, a.historyFilter.err).TextColor(theme.Danger).SingleLine().
 						Tooltip(a.historyFilter.err)
 				}
-				ui.List(c, &a.commitList, len(commits)).Grow(1).Rows(func(row ui.ListRow) {
+				a.keyboardList(c, &a.commitList, len(commits)).Grow(1).Rows(func(row ui.ListRow) {
 					commit := commits[row.Index]
 					services := row.Context.Services()
 					rowElement := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(7, 8)
 					reveal := rowElement.Hovered() || row.Selected()
 					rowElement.Children(func() {
+						a.commitSelectionCheckbox(row.Context, commit)
 						authorAvatar(row.Context, commit.AuthorName, commit.AuthorEmail, 18)
 						ui.Column(row.Context).Gap(2).Grow(1).Children(func() {
 							// The actions sit on the subject's line, at the row's
@@ -535,7 +537,7 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 					ui.Badge(c, fmt.Sprintf("%d", len(a.commitFiles)))
 					a.fileTreeButtons(c, fileTreeCommitScope, paths)
 				})
-				list := ui.List(c, &a.commitFileList, len(a.commitFileRows)).Grow(1).Rows(func(row ui.ListRow) {
+				list := a.keyboardList(c, &a.commitFileList, len(a.commitFileRows)).Grow(1).Rows(func(row ui.ListRow) {
 					item := a.commitFileRows[row.Index]
 					if item.isDirectory() {
 						a.fileTreeDirectoryRow(row.Context, fileTreeCommitScope, item, row.Selected(), func() {
@@ -555,7 +557,7 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 						a.commitFileMenu(m, commit, file, services)
 					})
 				})
-				if list.Changed() {
+				if a.keyboardListChanged(&a.commitFileList, list) {
 					a.selectCommitFileRow(a.selectedCommitFileRow)
 				}
 				normalizeFileTreeRow(a.commitFileRows, &a.selectedCommitFileRow, &a.selectedCommitFile)
@@ -574,7 +576,7 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 				case a.commitDiffError != "":
 					ui.Text(c, a.commitDiffError).TextColor(theme.Danger)
 				case a.commitDiffState != nil:
-					diffViewer(c, a.commitDiffState)
+					a.keyboardDiffViewer(c, a.commitDiffState)
 				default:
 					ui.Text(c, tr("No textual diff")).TextColor(theme.TextMuted)
 				}
