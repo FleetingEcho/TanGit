@@ -492,7 +492,7 @@ func TestCompareListPaneCollapsesAndRestoresWithoutLosingTheDiff(t *testing.T) {
 	}
 }
 
-func TestCompareWholeDownloadKeepsSpaceBeforeThePaneBorder(t *testing.T) {
+func TestComparePanesKeepSpaceAroundTheDivider(t *testing.T) {
 	h, _ := compareTestApp(t)
 	download, found := h.tester.AccessByRole(ui.RoleButton, "Save comparison diff")
 	if !found {
@@ -504,9 +504,17 @@ func TestCompareWholeDownloadKeepsSpaceBeforeThePaneBorder(t *testing.T) {
 	}
 	paneRight := results.Bounds.X + 12 + h.app.compare.listWidth
 	margin := paneRight - (download.Bounds.X + download.Bounds.W)
-	if margin < compareDownloadMargin || margin > compareDownloadMargin+1 {
+	if margin < comparePaneDividerInset || margin > comparePaneDividerInset+1 {
 		t.Fatalf("whole comparison download has %v DIP to the pane border, want %v",
-			margin, compareDownloadMargin)
+			margin, comparePaneDividerInset)
+	}
+	diffHeader, found := h.tester.AccessByRole(ui.RoleRegion, "File diff")
+	if !found {
+		t.Fatal("the selected comparison file heading is missing its region")
+	}
+	if margin := diffHeader.Bounds.X - (paneRight + 1); margin < comparePaneDividerInset || margin > comparePaneDividerInset+1 {
+		t.Fatalf("selected comparison file has %v DIP from the pane border, want %v",
+			margin, comparePaneDividerInset)
 	}
 }
 

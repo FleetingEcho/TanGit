@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image/color"
@@ -1102,6 +1103,88 @@ func TestCodeLanguageServersUseAnIconWithAHoverStatusList(t *testing.T) {
 	h.tester.Frame()
 	if h.tester.HasText("TypeScript Language Server") || h.app.code.languageServersOpen {
 		t.Fatal("Escape did not close the language-server status panel")
+	}
+}
+
+func TestCodeLanguageServerShowsAnalysisProgressBesideTheIcon(t *testing.T) {
+	h := menuTestApp(t)
+	useRealCodeWorkspace(t, h, map[string]string{"src/main.rs": "fn main() {}\n"})
+	for _, profile := range languageServerProfiles {
+		h.app.settings.LanguageServers[profile.ID] = languageServerSettings{Disabled: true}
+	}
+	openRealCodeDocument(t, h, "src/main.rs")
+
+	profile, _ := languageServerProfileByID("rust")
+	server := &managedLanguageServer{
+		profile: profile, connection: newFakeLanguageServerConnection(), sequence: 7,
+		documents: make(map[string]uint64),
+	}
+	h.app.settings.LanguageServers["rust"] = languageServerSettings{}
+	h.app.additionalLanguageServers["rust"] = server
+	h.tester.Frame()
+
+	notify := func(method, params string) {
+		t.Helper()
+		h.app.handleManagedLanguageServerNotification(server, 7, method, json.RawMessage(params))
+		h.updates.waitForUpdate(t)
+		h.tester.Frame()
+	}
+	notify("$/progress", `{"token":"rust-analyzer","value":{"kind":"begin","title":"Roots Scanned"}}`)
+	if !h.tester.HasText("Analyzing…") {
+		t.Fatalf("analysis progress is not shown beside the language-server icon: %q", h.texts())
+	}
+	notify("$/progress", `{"token":"rust-analyzer","value":{"kind":"end"}}`)
+	if h.tester.HasText("Analyzing…") {
+		t.Fatal("completed analysis remained beside the language-server icon")
+	}
+
+	notify("experimental/serverStatus", `{"health":"ok","quiescent":false,"message":"indexing workspace"}`)
+	if !h.tester.HasText("Analyzing…") {
+		t.Fatal("Rust Analyzer's busy server status is not visible")
+	}
+	notify("experimental/serverStatus", `{"health":"ok","quiescent":true}`)
+	if h.tester.HasText("Analyzing…") {
+		t.Fatal("Rust Analyzer's quiescent status still looks busy")
+	}
+
+	notify("experimental/serverStatus", `{"health":"error","quiescent":true,"message":"workspace load failed"}`)
+	if server.error != "workspace load failed" {
+		t.Fatalf("Rust Analyzer's unhealthy status was lost: %q", server.error)
+	}
+	notify("experimental/serverStatus", `{"health":"ok","quiescent":true}`)
+	if server.error != "" {
+		t.Fatalf("Rust Analyzer's recovered status kept its old error: %q", server.error)
+	}
+}
+
+func TestCodeLanguageServerOffersDownloadInsteadOfErrorWhenMissing(t *testing.T) {
+	originalLookPath := languageServerLookPath
+	t.Cleanup(func() { languageServerLookPath = originalLookPath })
+	languageServerLookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+
+	h := menuTestApp(t)
+	useRealCodeWorkspace(t, h, map[string]string{"src/main.tsx": "export const app = true\n"})
+	for _, profile := range languageServerProfiles {
+		h.app.settings.LanguageServers[profile.ID] = languageServerSettings{Disabled: true}
+	}
+	openRealCodeDocument(t, h, "src/main.tsx")
+	profile, _ := languageServerProfileByID("tailwind")
+	h.app.settings.LanguageServers["tailwind"] = languageServerSettings{}
+	h.app.additionalLanguageServers["tailwind"] = &managedLanguageServer{profile: profile, missing: true}
+	h.tester.Frame()
+
+	button, found := h.tester.Find("Language servers")
+	if !found {
+		t.Fatal("the missing language server has no status button")
+	}
+	h.tester.Move(button.X+button.W/2, button.Y+button.H/2)
+	h.tester.Frame()
+	_, hasError := h.tester.Find("Error")
+	if !h.tester.HasText("Download required") || hasError {
+		t.Fatalf("missing language server is not presented as downloadable: %q", h.texts())
+	}
+	if _, found := h.tester.Find("Download Tailwind CSS Language Server"); !found {
+		t.Fatalf("missing language server has no direct download action: %q", h.texts())
 	}
 }
 

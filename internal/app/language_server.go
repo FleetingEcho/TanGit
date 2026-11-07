@@ -38,6 +38,13 @@ func (a *app) startGoLanguageServer() {
 	if server.Disabled {
 		return
 	}
+	profile, _ := languageServerProfileByID(goLanguageServerID)
+	if !a.languageServerExecutableAvailable(profile) {
+		a.goLanguageServerMissing = true
+		a.goLanguageServerError = ""
+		return
+	}
+	a.goLanguageServerMissing = false
 	programs := languageServerExecutableCandidates(server.Path, "gopls")
 	a.goLanguageServerSeq++
 	sequence := a.goLanguageServerSeq
@@ -93,7 +100,7 @@ func (a *app) watchGoLanguageServer(connection languageServerConnection, sequenc
 }
 
 func (a *app) stopGoLanguageServer() {
-	if a.goLanguageServer == nil && !a.goLanguageServerStarting &&
+	if a.goLanguageServer == nil && !a.goLanguageServerStarting && !a.goLanguageServerMissing &&
 		a.goLanguageServerError == "" && len(a.goLanguageServerDocs) == 0 {
 		return
 	}
@@ -101,6 +108,7 @@ func (a *app) stopGoLanguageServer() {
 	connection := a.goLanguageServer
 	a.goLanguageServer = nil
 	a.goLanguageServerStarting = false
+	a.goLanguageServerMissing = false
 	a.goLanguageServerError = ""
 	a.goLanguageServerDocs = nil
 	if connection != nil {
@@ -134,7 +142,7 @@ func (a *app) syncGoLanguageServer() {
 		return
 	}
 	if a.goLanguageServer == nil {
-		if a.goLanguageServerError == "" {
+		if !a.goLanguageServerMissing && a.goLanguageServerError == "" {
 			a.startGoLanguageServer()
 		}
 		return

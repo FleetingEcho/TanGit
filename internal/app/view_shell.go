@@ -213,7 +213,7 @@ func (a *app) welcomeView(c *ui.Context) {
 	// has nowhere to go.
 	viewport := max(height-titleBarHeight-1-pickerHeaderHeight, 0)
 	page := max(viewport-pickerPadTop-pickerPadBottom, 0)
-	ui.Box(c).Fill().RadialGradient(pickerGlow(c)).Children(func() {
+	ui.Box(c).Fill().Background(c.Theme().Background).Children(func() {
 		a.homeBackgroundView(c)
 		ui.Column(c).Fill().Children(func() {
 			a.pickerHeaderView(c)
@@ -257,29 +257,6 @@ const (
 	pickerPadBottom    float32 = 44
 	pickerContentWidth float32 = 1000
 )
-
-// pickerGlow is the quiet light behind the launcher: the accent color, let
-// go of before it reaches the history, so the page has a place to look first
-// without a picture or a second border. It paints the page itself rather than
-// a box over it, so it never stands between the pointer and a control.
-func pickerGlow(c *ui.Context) ui.RadialGradient {
-	theme := c.Theme()
-	// The same light reads stronger on white than on a dark page, so the
-	// dark theme asks for a little more of it.
-	center, mid := float32(0.16), float32(0.06)
-	if theme.Dark {
-		center, mid = 0.26, 0.10
-	}
-	return ui.RadialGradient{
-		Center: ui.Point{X: 0.5, Y: 0.02},
-		Radius: 820,
-		Stops: []ui.GradientStop{
-			{Color: theme.Accent.Alpha(center), At: 0},
-			{Color: theme.Accent.Alpha(mid), At: 0.45},
-			{Color: theme.Accent.Alpha(0), At: 1},
-		},
-	}
-}
 
 // pickerHeaderView is the picker's own bar: the app's name on the left, the
 // three app-wide controls on the right. The window's title bar already names
@@ -377,7 +354,7 @@ func (a *app) pickerErrorView(c *ui.Context) {
 // history and the shortcuts step aside for one quiet page with the way out.
 func (a *app) loadingView(c *ui.Context) {
 	theme := c.Theme()
-	ui.Box(c).Fill().RadialGradient(pickerGlow(c)).Children(func() {
+	ui.Box(c).Fill().Background(theme.Background).Children(func() {
 		a.homeBackgroundView(c)
 		ui.Column(c).Fill().Center().Gap(16).Padding(28).Children(func() {
 			ui.Box(c).Size(64, 64).Radius(18).Center().

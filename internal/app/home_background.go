@@ -185,8 +185,8 @@ func (a *app) syncHomeBackground() {
 }
 
 // homeBackgroundView paints below the launcher's normal-flow siblings. The
-// translucent image lets the theme's radial glow and background remain part
-// of the composition, preserving text contrast without hiding the picture.
+// translucent image lets the theme's solid background preserve text contrast
+// without hiding the picture.
 func (a *app) homeBackgroundView(c *ui.Context) {
 	if a.settings.HomeBackgroundDisabled || a.homeBackground == nil || a.homeBackgroundPath == "" ||
 		a.homeBackgroundPath != a.settings.HomeBackgroundPath {

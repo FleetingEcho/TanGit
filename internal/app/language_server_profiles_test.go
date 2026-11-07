@@ -65,7 +65,7 @@ func TestLanguageServerProfilesMatchLanguagesAndDefaults(t *testing.T) {
 	}
 	typescript, _ := languageServerProfileByID("typescript")
 	program, arguments := languageServerProgram(settings, typescript)
-	if program != "typescript-language-server" || !reflect.DeepEqual(arguments, []string{"--stdio"}) {
+	if program != "tsc" || !reflect.DeepEqual(arguments, []string{"--lsp", "--stdio"}) {
 		t.Fatalf("TypeScript launch = %q %v", program, arguments)
 	}
 	oxc, _ := languageServerProfileByID("oxlint")
@@ -124,15 +124,6 @@ func TestTyAndRuffSharePythonDocuments(t *testing.T) {
 }
 
 func TestMultipleLanguageServersShareATypeScriptDocument(t *testing.T) {
-	dataDir := t.TempDir()
-	tsserverPath := filepath.Join(dataDir, "tools", "node", "node_modules", "typescript", "lib", "tsserver.js")
-	if err := os.MkdirAll(filepath.Dir(tsserverPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(tsserverPath, []byte("// managed TypeScript"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
 	typescript := newFakeLanguageServerConnection()
 	tailwind := newFakeLanguageServerConnection()
 	typescript.request = func(method string, _ any, result func(json.RawMessage, error)) {
@@ -153,10 +144,9 @@ func TestMultipleLanguageServersShareATypeScriptDocument(t *testing.T) {
 	}
 	stubLanguageServerConnection(t, func(launch languageServerLaunch) (languageServerConnection, error) {
 		switch launch.Program {
-		case "typescript-language-server":
-			want := map[string]any{"tsserver": map[string]any{"fallbackPath": tsserverPath}}
-			if !reflect.DeepEqual(launch.InitializationOptions, want) {
-				t.Errorf("TypeScript initialization = %#v, want %#v", launch.InitializationOptions, want)
+		case "tsc":
+			if launch.InitializationOptions != nil {
+				t.Errorf("native TypeScript initialization = %#v, want nil", launch.InitializationOptions)
 			}
 			return typescript, nil
 		case "tailwindcss-language-server":
@@ -174,7 +164,6 @@ func TestMultipleLanguageServersShareATypeScriptDocument(t *testing.T) {
 		"target.ts": "export const value = 1\nexport const target = value\n",
 	})
 	h := menuTestApp(t)
-	h.app.pathUserData = dataDir
 	h.app.settings.LanguageServers = map[string]languageServerSettings{"go": {Disabled: true}, "typescript": {}, "tailwind": {}}
 	openCodePageForTest(t, h, 2)
 	h.app.openCodeFile("main.ts", 0)
