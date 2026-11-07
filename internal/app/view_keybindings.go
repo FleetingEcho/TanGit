@@ -38,6 +38,7 @@ func keyBindingGroups() []keyBindingGroup {
 				{"Ctrl+,", "Open settings"},
 				{"Ctrl+L", "Show the command log"},
 				{"Ctrl+`", "Toggle the terminal"},
+				{"Ctrl+F", "Search the active terminal"},
 				{"F5", "Refresh the repository"},
 				{"/", "Search the active panel"},
 				{"F3 / Shift+F3", "Move to the next / previous quick-search result"},

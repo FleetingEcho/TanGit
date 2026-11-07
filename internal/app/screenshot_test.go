@@ -8,15 +8,20 @@ package app
 // The files land under $MYGO_SHOTS/<name>.png.
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
+	"image/color"
 	"image/png"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
@@ -163,7 +168,42 @@ func (s screenshotSession) Snapshot(context.Context) (repository.Snapshot, error
 	return s.snapshot, nil
 }
 
+func (s screenshotSession) ReviewedFiles(context.Context, []repository.File) (map[string]bool, error) {
+	return map[string]bool{}, nil
+}
+func (s screenshotSession) SetFileReviewed(context.Context, repository.File, bool) error {
+	return nil
+}
+
+func (s screenshotSession) ConflictStages(context.Context, repository.File) (repository.ConflictStages, error) {
+	return repository.ConflictStages{}, nil
+}
+
+func (s screenshotSession) Media(context.Context, repository.MediaRequest) (repository.MediaPair, error) {
+	return repository.MediaPair{
+		Old: repository.MediaBlob{Present: true, Data: screenshotMediaPNG(240, 140, color.RGBA{R: 44, G: 105, B: 170, A: 255})},
+		New: repository.MediaBlob{Present: true, Data: screenshotMediaPNG(240, 140, color.RGBA{R: 76, G: 160, B: 112, A: 255})},
+	}, nil
+}
+
+func screenshotMediaPNG(width, height int, fill color.Color) []byte {
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.Set(x, y, fill)
+		}
+	}
+	var data bytes.Buffer
+	if err := png.Encode(&data, img); err != nil {
+		panic(err)
+	}
+	return data.Bytes()
+}
+
 func (s screenshotSession) Diff(_ context.Context, file repository.File, options repository.DiffOptions) (repository.Diff, error) {
+	if file.Path == "picture.png" {
+		return repository.Diff{Patch: testBinaryImagePatch, Kind: "Unstaged"}, nil
+	}
 	if !file.Tracked {
 		// A file git does not know is shown as the patch that adds it.
 		return repository.Diff{Patch: screenshotNewFilePatch, Kind: "Untracked"}, nil
@@ -182,11 +222,27 @@ func (s screenshotSession) CompareFileDiff(context.Context, string, string, repo
 func (s screenshotSession) Stage(context.Context, repository.File) error         { return nil }
 func (s screenshotSession) Unstage(context.Context, repository.File) error       { return nil }
 func (s screenshotSession) ApplyCachedPatch(context.Context, string, bool) error { return nil }
-func (s screenshotSession) StageAll(context.Context) error                       { return nil }
-func (s screenshotSession) UnstageAll(context.Context) error                     { return nil }
-func (s screenshotSession) Commit(context.Context, string, string, bool) error   { return nil }
-func (s screenshotSession) Undo(context.Context) error                           { return nil }
-func (s screenshotSession) Redo(context.Context) error                           { return nil }
+func (s screenshotSession) ApplyWorkingTreePatch(context.Context, string, bool) error {
+	return nil
+}
+func (s screenshotSession) DiscardFiles(context.Context, []repository.File) error { return nil }
+func (s screenshotSession) WorkSnapshots(context.Context) ([]repository.WorkSnapshot, error) {
+	return nil, nil
+}
+func (s screenshotSession) CreateCheckpoint(context.Context, string) (repository.WorkSnapshot, error) {
+	return repository.WorkSnapshot{}, nil
+}
+func (s screenshotSession) RestoreWorkSnapshot(context.Context, repository.WorkSnapshot) error {
+	return nil
+}
+func (s screenshotSession) DeleteWorkSnapshot(context.Context, repository.WorkSnapshot) error {
+	return nil
+}
+func (s screenshotSession) StageAll(context.Context) error                     { return nil }
+func (s screenshotSession) UnstageAll(context.Context) error                   { return nil }
+func (s screenshotSession) Commit(context.Context, string, string, bool) error { return nil }
+func (s screenshotSession) Undo(context.Context) error                         { return nil }
+func (s screenshotSession) Redo(context.Context) error                         { return nil }
 func (s screenshotSession) CommitMessage(_ context.Context, commit repository.Commit) (repository.CommitMessage, error) {
 	return repository.CommitMessage{Summary: commit.Subject}, nil
 }
@@ -240,6 +296,10 @@ func (s screenshotSession) DeleteRemoteBranch(context.Context, string, string) e
 	return nil
 }
 func (s screenshotSession) StashChanges(context.Context, string, bool) error { return nil }
+func (s screenshotSession) StashSelectedFiles(context.Context, string, []repository.File, bool) error {
+	return nil
+}
+func (s screenshotSession) StashPatch(context.Context, string, string, string) error { return nil }
 func (s screenshotSession) StashStagedChanges(context.Context, string) error {
 	return nil
 }
@@ -288,8 +348,16 @@ func (s screenshotSession) AddSubmodule(context.Context, string, string, string)
 }
 func (s screenshotSession) UpdateSubmodule(context.Context, string) error { return nil }
 func (s screenshotSession) DeleteSubmodule(context.Context, string) error { return nil }
-func (s screenshotSession) BlameFile(context.Context, repository.File) (string, error) {
-	return "a1b2c3d (Ada Lovelace  2026-01-01 1) func main() {\na1b2c3d (Alan Turing    2026-01-01 2)\tprintln(\"hi\")\n", nil
+func (s screenshotSession) BlameFile(context.Context, repository.File) ([]repository.BlameLine, error) {
+	return []repository.BlameLine{
+		{Hash: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", Author: "Ada Lovelace", Date: "2026-01-01", Text: "package main"},
+		{Hash: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", Author: "Ada Lovelace", Date: "2026-01-01", Text: ""},
+		{Hash: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", Author: "Ada Lovelace", Date: "2026-01-01", Text: "import \"fmt\""},
+		{Hash: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", Author: "Ada Lovelace", Date: "2026-01-01", Text: ""},
+		{Hash: "b2c3d4e5f60718293a4b5c6d7e8f901234567890", Author: "Alan Turing", Date: "2025-11-02", Text: "func main() {"},
+		{Hash: "b2c3d4e5f60718293a4b5c6d7e8f901234567890", Author: "Alan Turing", Date: "2025-11-02", Text: "\tfmt.Println(\"Hello, TanGit\")"},
+		{Hash: "b2c3d4e5f60718293a4b5c6d7e8f901234567890", Author: "Alan Turing", Date: "2025-11-02", Text: "}"},
+	}, nil
 }
 func (s screenshotSession) CommitFiles(context.Context, repository.Commit) ([]repository.CommitFile, error) {
 	return []repository.CommitFile{
@@ -414,7 +482,7 @@ func newScreenshotHarnessFor(t *testing.T, dark bool, snapshot repository.Snapsh
 	// diff, or reads a conflicted file instead, so wait for that read to
 	// land too.
 	settleShot(t, tt, updated, func() bool {
-		return a.diffState != nil || a.diffError != "" || a.conflictState != nil
+		return a.diffState != nil || a.diffMedia != nil || a.diffError != "" || a.conflictState != nil
 	})
 	return a, tt, updated
 }
@@ -465,6 +533,7 @@ func TestScreenshot(t *testing.T) {
 	t.Run("batch-commits-light", func(t *testing.T) {
 		a, tt, updated := newScreenshotHarness(t, false)
 		a.workspaceTab = sectionHistory
+		a.commitSelectionMode = true
 		a.commitSelection = map[string]bool{}
 		for i, commit := range a.visibleCommits() {
 			if i < 2 {
@@ -499,14 +568,38 @@ func TestScreenshot(t *testing.T) {
 	})
 
 	t.Run("changes-light", func(t *testing.T) {
-		_, tt := newScreenshotApp(t, false)
+		a, tt := newScreenshotApp(t, false)
+		a.reviewedFiles["ui/appevents.go"] = true
+		tt.Frame()
 		saveScreenshot(t, dir, "02-changes-light", tt)
 	})
 
 	t.Run("changes-dark", func(t *testing.T) {
-		_, tt := newScreenshotApp(t, true)
+		a, tt := newScreenshotApp(t, true)
+		a.reviewedFiles["ui/appevents.go"] = true
+		tt.Frame()
 		saveScreenshot(t, dir, "03-changes-dark", tt)
 	})
+
+	t.Run("blame-dark", func(t *testing.T) {
+		a, tt, updated := newScreenshotHarness(t, true)
+		a.beginBlame()
+		settleShot(t, tt, updated, func() bool { return a.blameState != nil })
+		saveScreenshot(t, dir, "blame-dark", tt)
+	})
+
+	for _, appearance := range []struct {
+		name string
+		dark bool
+	}{{"media-review-light", false}, {"media-review-dark", true}} {
+		t.Run(appearance.name, func(t *testing.T) {
+			snapshot := screenshotSnapshot()
+			snapshot.Files = []repository.File{{Path: "picture.png", Status: " M", Tracked: true, Unstaged: true}}
+			a, tt, updated := newScreenshotHarnessFor(t, appearance.dark, snapshot)
+			settleShot(t, tt, updated, func() bool { return a.diffMedia != nil && !a.diffLoading })
+			saveScreenshot(t, dir, appearance.name, tt)
+		})
+	}
 
 	t.Run("panes-collapsed-dark", func(t *testing.T) {
 		a, tt := newScreenshotApp(t, true)
@@ -538,6 +631,185 @@ func TestScreenshot(t *testing.T) {
 		saveScreenshot(t, dir, "02b-changes-tokyo-night", tt)
 	})
 
+	t.Run("directory-selection-tokyo-night", func(t *testing.T) {
+		a, tt := newScreenshotApp(t, true)
+		a.settings.Theme = defaultTheme
+		selected := false
+		for i, row := range a.changeRows {
+			if row.isDirectory() && row.directory == "internal/repository" {
+				a.selectedFile = i
+				selected = true
+				break
+			}
+		}
+		if !selected {
+			t.Fatal("the grouped fixture has no internal/repository directory")
+		}
+		tt.Frame()
+		saveScreenshot(t, dir, "02c-directory-selection-tokyo-night", tt)
+	})
+
+	t.Run("terminal-divider-light", func(t *testing.T) {
+		original := newTerminal
+		peers := make(chan monitoredTerminalPeer, 1)
+		newTerminal = func(options terminal.Options) (*terminal.Terminal, error) {
+			return newMonitoredTerminal(options, peers)
+		}
+		defer func() { newTerminal = original }()
+		a, tt, updated := newScreenshotHarness(t, false)
+		if err := tt.Click("Toggle terminal"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		settleShot(t, tt, updated, func() bool { return a.term.sessions[0].pane != nil })
+		first := <-peers
+		defer first.Close()
+		tt.Advance(250 * time.Millisecond)
+		tt.Frame()
+		saveScreenshot(t, dir, "66-terminal-divider-light", tt)
+	})
+
+	t.Run("terminal-split-dark", func(t *testing.T) {
+		original := newTerminal
+		peers := make(chan monitoredTerminalPeer, terminalSessionLimit)
+		newTerminal = func(options terminal.Options) (*terminal.Terminal, error) {
+			return newMonitoredTerminal(options, peers)
+		}
+		defer func() { newTerminal = original }()
+		a, tt, updated := newScreenshotHarness(t, true)
+		if err := tt.Click("Toggle terminal"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		settleShot(t, tt, updated, func() bool { return a.term.sessions[0].pane != nil })
+		first := <-peers
+		defer first.Close()
+		tt.Advance(250 * time.Millisecond)
+		tt.Frame()
+		if err := tt.Click("Split terminal right"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		settleShot(t, tt, updated, func() bool { return a.term.sessions[1].pane != nil })
+		second := <-peers
+		defer second.Close()
+		saveScreenshot(t, dir, "56-terminal-split-dark", tt)
+		if _, err := second.Write([]byte("build finished: needle in scrollback\r\n")); err != nil {
+			t.Fatal(err)
+		}
+		if err := tt.Click("Search terminal"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		tt.Type("needle")
+		settleShot(t, tt, updated, func() bool { return a.term.sessions[1].searchStatus.Total == 1 })
+		saveScreenshot(t, dir, "64-terminal-search-dark", tt)
+		a.closeActiveTerminalSearch()
+		tt.Frame()
+		grip, found := tt.Find("Resize terminal split 1")
+		if !found {
+			t.Fatal("the terminal divider grip is missing")
+		}
+		tt.Move(grip.X+grip.W/2, grip.Y+grip.H/2)
+		tt.Frame()
+		saveScreenshot(t, dir, "60-terminal-divider-hover-dark", tt)
+		tt.Move(0, 0)
+		tt.Frame()
+		if err := tt.Click("Rename terminal 2"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		saveScreenshot(t, dir, "61-terminal-rename-dark", tt)
+		if err := tt.Click("Cancel"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		a.term.layout.below = true
+		tt.Frame()
+		saveScreenshot(t, dir, "59-terminal-split-below-dark", tt)
+
+		firstTab, _ := tt.Find("Select terminal 1")
+		secondTab, _ := tt.Find("Select terminal 2")
+		tt.Press(firstTab.X+30, firstTab.Y+firstTab.H/2)
+		tt.Move(secondTab.X+30, secondTab.Y+secondTab.H/2)
+		tt.Frame()
+		saveScreenshot(t, dir, "57-terminal-drag-placeholder-dark", tt)
+		tt.Release(secondTab.X+30, secondTab.Y+secondTab.H/2)
+		tt.Frame()
+		if err := tt.Click("Close all terminals"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		saveScreenshot(t, dir, "58-terminal-close-all-confirmation-dark", tt)
+		if err := tt.Click("Cancel"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		for index := 2; index < terminalSessionLimit; index++ {
+			if err := tt.Click("Split terminal right"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+			settleShot(t, tt, updated, func() bool {
+				return len(a.term.sessions) > index && a.term.sessions[index].pane != nil
+			})
+			peer := <-peers
+			defer peer.Close()
+		}
+		saveScreenshot(t, dir, "62-terminal-six-cards-dark", tt)
+		a.resetTerminal()
+	})
+
+	t.Run("terminal-mixed-splits-dark", func(t *testing.T) {
+		original := newTerminal
+		peers := make(chan monitoredTerminalPeer, terminalSessionLimit)
+		newTerminal = func(options terminal.Options) (*terminal.Terminal, error) {
+			return newMonitoredTerminal(options, peers)
+		}
+		defer func() { newTerminal = original }()
+		a, tt, updated := newScreenshotHarness(t, true)
+		var opened []monitoredTerminalPeer
+		defer func() {
+			for _, peer := range opened {
+				_ = peer.Close()
+			}
+		}()
+		if err := tt.Click("Toggle terminal"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		settleShot(t, tt, updated, func() bool { return a.term.sessions[0].pane != nil })
+		opened = append(opened, <-peers)
+		tt.Advance(250 * time.Millisecond)
+		tt.Frame()
+		split := func(label string) {
+			t.Helper()
+			count := a.terminalSessionCount()
+			if err := tt.Click(label); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+			settleShot(t, tt, updated, func() bool {
+				return a.terminalSessionCount() == count+1 && a.activeTerminal().pane != nil
+			})
+			opened = append(opened, <-peers)
+			tt.Frame()
+		}
+		split("Split terminal right")
+		if err := tt.Click("Focus terminal 1"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		split("Split terminal below")
+		if err := tt.Click("Focus terminal 2"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		split("Split terminal right")
+		saveScreenshot(t, dir, "63-terminal-mixed-splits-dark", tt)
+		a.resetTerminal()
+	})
+
 	// Selected lines in the diff turn its caption into the action that moves
 	// just them, leaving the rest of the file where it is.
 	t.Run("line-selection-light", func(t *testing.T) {
@@ -567,8 +839,8 @@ func TestScreenshot(t *testing.T) {
 		saveScreenshot(t, dir, "37-new-file-lines-light", tt)
 	})
 
-	// The multi-line mode keeps the clicks coming: the caption says a range is
-	// being picked and offers the way out.
+	// Independent clicks mark only their own changes; the context line between
+	// them stays outside both the selection and its patch.
 	t.Run("line-selection-mode-light", func(t *testing.T) {
 		a, tt, updated := newScreenshotHarness(t, false)
 		settleShot(t, tt, updated, func() bool {
@@ -578,8 +850,15 @@ func TestScreenshot(t *testing.T) {
 			t.Fatalf("enter the multi-line mode: %v", err)
 		}
 		tt.Frame()
-		a.diffState.SetSelectedLines(editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 2}, true)
-		tt.Frame()
+		for _, line := range []editor.DiffLineRange{
+			{Side: editor.DiffNew, Start: 1, End: 1},
+			{Side: editor.DiffNew, Start: 3, End: 3},
+		} {
+			// The editor sets its native range before reporting each gutter click.
+			a.diffState.SetSelectedLines(line, true)
+			a.extendLineSelection(a.diffState, line)
+			tt.Frame()
+		}
 		saveScreenshot(t, dir, "40-lines-mode-light", tt)
 	})
 
@@ -812,6 +1091,27 @@ func TestScreenshot(t *testing.T) {
 		a.openSettings()
 		tt.Frame()
 		saveScreenshot(t, dir, "18-settings-dark", tt)
+	})
+
+	t.Run("settings-font-menu-dark", func(t *testing.T) {
+		a, tt := newScreenshotApp(t, true)
+		a.openSettings()
+		tt.Frame()
+		if err := tt.Click("Typography settings"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		saveScreenshot(t, dir, "65-settings-typography-groups-dark", tt)
+		tt.Scroll(700, 400, 0, 240)
+		tt.Frame()
+		if err := tt.Click("Search buffer fonts"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		tt.Key(ui.Cmd, ui.KeyA)
+		tt.Type("mono")
+		tt.Frame()
+		saveScreenshot(t, dir, "65-settings-font-menu-dark", tt)
 	})
 
 	// The accent row is a pick, not a name: the chosen color repaints the

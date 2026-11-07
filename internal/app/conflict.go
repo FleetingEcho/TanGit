@@ -373,6 +373,14 @@ func (a *app) requestConflictFile(file repository.File, generation uint64) {
 	go func() {
 		defer a.recoverBackground()
 		content, err := readWorkingFile(a.workingFilePath(path))
+		stages := repository.ConflictStages{}
+		if session != nil {
+			var stageErr error
+			stages, stageErr = session.ConflictStages(context.Background(), file)
+			if err == nil && stageErr != nil {
+				err = stageErr
+			}
+		}
 		var state *conflictState
 		var sides *conflictSides
 		if inline {
@@ -404,10 +412,12 @@ func (a *app) requestConflictFile(file repository.File, generation uint64) {
 			a.conflictSaveError = ""
 			a.conflictSaveVersion = 0
 			if err != nil && sides == nil {
-				a.diffError = err.Error()
+				a.diffError = safeError(err)
 				return
 			}
 			a.conflictState = state
+			a.conflictStages = stages
+			a.conflictStageViews = [3]*editor.State{}
 			a.conflictSides = sides
 			a.conflictDiffPatch = patch
 			a.conflictScrollTo = -1
@@ -451,7 +461,11 @@ func (a *app) refreshConflictDiff() {
 	switch {
 	case a.conflictState != nil:
 		path = a.conflictState.path
-		oldText, newText = a.conflictState.sidesTexts()
+		if a.conflictStages.Current.Present || a.conflictStages.Incoming.Present {
+			oldText, newText = a.conflictStages.Current.Content, a.conflictStages.Incoming.Content
+		} else {
+			oldText, newText = a.conflictState.sidesTexts()
+		}
 	case a.conflictSides != nil:
 		sides := a.conflictSides
 		path = sides.file.Path
@@ -471,7 +485,7 @@ func (a *app) refreshConflictDiff() {
 	}
 	state := a.conflictDiffState
 	if state == nil {
-		state = &editor.DiffState{ContextLines: 3}
+		state = &editor.DiffState{ContextLines: 3, Inline: editor.DiffInlineWordAlt}
 		a.conflictDiffState = state
 	}
 	state.Old = editor.NewBuffer(oldText)
@@ -481,6 +495,76 @@ func (a *app) refreshConflictDiff() {
 	state.New.SetLanguage(language)
 	state.Layout = a.diffLayout()
 	state.Wrap = a.diffWrap
+}
+
+// conflictStageSelector exposes Git's three immutable index stages alongside
+// the working-tree Result. Every tab stays in the same file-resolution pane.
+func (a *app) conflictStageSelector(c *ui.Context) {
+	ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
+		for tab, label := range []string{"Base", "Current", "Incoming", "Result"} {
+			tab, label := tab, tr(label)
+			button := ui.Button(c, label)
+			if a.conflictStageTab == tab {
+				button = ui.PrimaryButton(c, label)
+			}
+			if compactTextButton(button).Label(label).Tooltip(tr(conflictStageTooltip(tab))).Clicked() {
+				a.conflictStageTab = tab
+				c.Invalidate()
+			}
+		}
+	})
+}
+
+func conflictStageTooltip(tab int) string {
+	switch tab {
+	case 0:
+		return "Read the common ancestor from index stage 1"
+	case 1:
+		return "Read the current branch from index stage 2"
+	case 2:
+		return "Read the incoming branch from index stage 3"
+	default:
+		return "Edit the resolution in the working tree"
+	}
+}
+
+// conflictStagePane draws a read-only stage and reports whether it handled the
+// pane. Result returns false so the existing editable resolver can draw it.
+func (a *app) conflictStagePane(c *ui.Context, theme *ui.Theme) bool {
+	if a.conflictStageTab == 3 {
+		return false
+	}
+	index := a.conflictStageTab
+	stage := []repository.ConflictStage{a.conflictStages.Base, a.conflictStages.Current, a.conflictStages.Incoming}[index]
+	if !stage.Present {
+		ui.Column(c).Grow(1).Center().Gap(6).Children(func() {
+			ui.Text(c, tr("No version at this stage")).Bold()
+			ui.Text(c, tr("This side deleted the file, or never added it.")).
+				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+		})
+		return true
+	}
+	view := a.conflictStageViews[index]
+	if view == nil {
+		view = &editor.State{
+			Font:        selectedBufferFont(a.settings.BufferFont, a.settings.BufferFontSize),
+			LineHeight:  float32(a.settings.BufferLineHeight),
+			LineNumbers: editor.LineNumbersOn,
+			ReadOnly:    true,
+		}
+		view.Buffer = editor.NewBuffer(stage.Content)
+		path := ""
+		if a.conflictState != nil {
+			path = a.conflictState.path
+		} else if a.conflictSides != nil {
+			path = a.conflictSides.file.Path
+		}
+		view.Buffer.SetLanguage(editor.LanguageFor(path))
+		a.conflictStageViews[index] = view
+	}
+	view.SoftWrap = a.diffWrap
+	a.keyboardPane(c, "conflict-stage", editor.View(c, view).Grow(1)).Label(tr("Immutable merge stage"))
+	return true
 }
 
 // conflictSides is a conflict Git wrote without markers: one side deleted the
@@ -625,9 +709,9 @@ func (a *app) syncConflictEdits() {
 
 	state.adoptText(view.Buffer.String())
 	if err := a.writeConflictFileToDisk(); err != nil {
-		if a.conflictSaveError != err.Error() {
-			a.conflictSaveError = err.Error()
-			a.notify("error", "Could not save the file", err.Error())
+		if a.conflictSaveError != safeError(err) {
+			a.conflictSaveError = safeError(err)
+			a.notify("error", "Could not save the file", safeError(err))
 		}
 		return
 	}
@@ -656,7 +740,7 @@ func (a *app) resolveConflictSide(side conflictSide) {
 	}
 	if err := a.writeConflictFileToDisk(); err != nil {
 		a.conflictState.undoResolution()
-		a.notify("error", "Could not write the resolved file", err.Error())
+		a.notify("error", "Could not write the resolved file", safeError(err))
 		return
 	}
 	a.scrollToSelectedConflict()
@@ -688,7 +772,7 @@ func (a *app) undoConflictResolution() {
 		state.lines = resolved
 		state.regions = findConflictRegions(resolved, state.markerSize)
 		state.clampSelection()
-		a.notify("error", "Could not write the resolved file", err.Error())
+		a.notify("error", "Could not write the resolved file", safeError(err))
 		return
 	}
 	a.scrollToSelectedConflict()

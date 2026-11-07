@@ -318,6 +318,34 @@ func TestBranchCommitsBrowseWithoutCheckout(t *testing.T) {
 	}
 }
 
+func TestCommitWithDescriptionRequiresStagedFiles(t *testing.T) {
+	h, _ := changesTestApp(t, unstagedTrackedFile())
+	if err := h.tester.Click("More actions"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	item, ok := h.tester.Access("Commit with a description…")
+	if !ok || !item.Disabled {
+		t.Fatalf("description commit is enabled without staged files: %+v, found=%v", item, ok)
+	}
+	h.press(t, ui.KeyEscape)
+
+	h.app.snapshot.Files = []repository.File{{Path: "changed.txt", Status: "M ", Staged: true, Tracked: true}}
+	h.tester.Frame()
+	if err := h.tester.Click("More actions"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	item, ok = h.tester.Access("Commit with a description…")
+	if !ok || item.Disabled {
+		t.Fatalf("description commit is disabled with staged files: %+v, found=%v", item, ok)
+	}
+	h.chooseMenuItem(t, "Commit with a description…")
+	if !h.app.showCommitForm {
+		t.Fatal("the enabled description action did not open its form")
+	}
+}
+
 func TestShortcutsAreSilentWhileAFormIsOpen(t *testing.T) {
 	h := menuTestApp(t)
 	if err := h.tester.Click("⋯"); err != nil {

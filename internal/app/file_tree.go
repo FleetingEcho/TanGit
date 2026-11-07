@@ -269,11 +269,15 @@ func (a *app) fileTreeDirectoryRow(c *ui.Context, scope string, item fileTreeRow
 		clicked := button.Label(tr(action) + " " + item.path).Tooltip(item.path).Clicked()
 		button.Children(func() {
 			arrowColor := theme.TextMuted
+			folderColor := theme.Accent
 			if selected {
-				arrowColor = theme.Accent
+				// The row's selected face is Accent, so Accent icons disappear
+				// into it. Match the contrasting text painted on that face.
+				arrowColor = theme.AccentText
+				folderColor = theme.AccentText
 			}
 			ui.Text(c, arrow).TextColor(arrowColor).Width(12)
-			ui.Icon(c, folderIcon).FontSize(13).TextColor(theme.Accent)
+			ui.Icon(c, folderIcon).FontSize(13).TextColor(folderColor)
 			ui.Text(c, item.name).Grow(1).SingleLine().Tooltip(item.path)
 		})
 		if clicked {

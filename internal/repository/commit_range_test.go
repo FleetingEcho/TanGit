@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,8 +23,8 @@ func TestForcePushLeaseRejectsUnseenRemoteChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	runGit(t, dir, "commit", "--amend", "-m", "rewritten")
-	if err := s.Push(ctx); err == nil {
-		t.Fatal("normal push accepted rewritten history")
+	if err := s.Push(ctx); !errors.Is(err, ErrPushRejected) {
+		t.Fatalf("normal push error = %v, want ErrPushRejected", err)
 	}
 	if err := s.ForcePushWithLease(ctx); err != nil {
 		t.Fatal(err)
@@ -39,8 +40,8 @@ func TestForcePushLeaseRejectsUnseenRemoteChanges(t *testing.T) {
 	runGit(t, other, "push", "origin", "main")
 	before := gitOutput(t, remote, "rev-parse", "refs/heads/main")
 	runGit(t, dir, "commit", "--amend", "-m", "rewritten again")
-	if err := s.ForcePushWithLease(ctx); err == nil {
-		t.Fatal("lease accepted unseen remote change")
+	if err := s.ForcePushWithLease(ctx); !errors.Is(err, ErrPushLeaseRejected) {
+		t.Fatalf("lease push error = %v, want ErrPushLeaseRejected", err)
 	}
 	if got := gitOutput(t, remote, "rev-parse", "refs/heads/main"); got != before {
 		t.Fatal("remote changed on rejected push")

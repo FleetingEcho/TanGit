@@ -74,12 +74,12 @@ func TestChangesFileTreeFoldsDirectoriesAndRestoresFlatPaths(t *testing.T) {
 		{Path: "src/ui/app.go", Status: "??", Unstaged: true, Added: true},
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Show files as tree"); err != nil {
-		t.Fatal(err)
-	}
-	h.tester.Frame()
 	if !h.app.fileTreeMode || !h.tester.HasText("src") || !h.tester.HasText("ui") {
-		t.Fatalf("tree controls did not draw directories: %q", h.texts())
+		t.Fatalf("directory grouping was not enabled by default: %q", h.texts())
+	}
+	toggle, ok := h.tester.Access("Show files as a flat list")
+	if !ok || !toggle.Checked {
+		t.Fatalf("the active directory-grouping toggle is not exposed as pressed: %+v, found=%v", toggle, ok)
 	}
 	if err := h.tester.Click("Collapse directory src"); err != nil {
 		t.Fatal(err)
@@ -111,10 +111,6 @@ func TestCommitFileTreeKeepsTheChosenDiffOnItsSourceFile(t *testing.T) {
 	h.app.selectedCommitFile = 0
 	h.app.selectedCommitFileRow = -1
 	h.app.commitFilesHeight = 400
-	h.tester.Frame()
-	if err := h.tester.Click("Show files as tree"); err != nil {
-		t.Fatal(err)
-	}
 	h.tester.Frame()
 	if got := h.tester.HasText("src") && h.tester.HasText("ui") && h.tester.HasText("app.go"); !got {
 		t.Fatalf("commit tree is incomplete: %q", h.texts())
@@ -160,10 +156,6 @@ func TestBranchAndStashFileTreesFoldDirectories(t *testing.T) {
 		h.app.selectedBranchCommitFile = 0
 		h.app.selectedBranchCommitFileRow = -1
 		h.tester.Frame()
-		if err := h.tester.Click("Show files as tree"); err != nil {
-			t.Fatal(err)
-		}
-		h.tester.Frame()
 		if err := h.tester.Click("Collapse directory src"); err != nil {
 			t.Fatal(err)
 		}
@@ -182,10 +174,6 @@ func TestBranchAndStashFileTreesFoldDirectories(t *testing.T) {
 		h.app.stashFiles = nestedTreeCommitFiles()
 		h.app.selectedStashFile = 0
 		h.app.selectedStashFileRow = -1
-		h.tester.Frame()
-		if err := h.tester.Click("Show files as tree"); err != nil {
-			t.Fatal(err)
-		}
 		h.tester.Frame()
 		if err := h.tester.Click("Collapse directory src"); err != nil {
 			t.Fatal(err)

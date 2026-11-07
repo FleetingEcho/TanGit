@@ -207,9 +207,9 @@ func TestBothSidesOfAFileOfferTheEditorOnlyInTheChangesSection(t *testing.T) {
 func TestClickingTheDiffFocusesReadOnlyKeyboardReview(t *testing.T) {
 	h, _ := changesTestApp(t, unstagedTrackedFile())
 	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
-	caption, ok := h.tester.Find("Unstaged changes")
+	caption, ok := h.tester.Find("Select multiple lines")
 	if !ok {
-		t.Fatalf("the diff's caption is not on screen: %q", h.texts())
+		t.Fatalf("the line-selection control is not on screen: %q", h.texts())
 	}
 	// Below the caption and its hunk header, in the text of the change.
 	h.tester.ClickAt(caption.X+120, caption.Y+caption.H+70)

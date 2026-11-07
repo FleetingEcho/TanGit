@@ -61,7 +61,7 @@ func (a *app) openFileHistory(path string) {
 			a.fileHistoryLoading = false
 			if err != nil {
 				a.fileHistoryMore = false
-				a.fileHistoryError = err.Error()
+				a.fileHistoryError = safeError(err)
 				return
 			}
 			a.fileHistoryCommits = commits
@@ -101,7 +101,7 @@ func (a *app) loadMoreFileHistory() {
 			}
 			a.fileHistoryLoadingMore = false
 			if err != nil {
-				a.fileHistoryMoreError = err.Error()
+				a.fileHistoryMoreError = safeError(err)
 				return
 			}
 			a.fileHistoryRead += len(commits)
@@ -155,6 +155,7 @@ func (a *app) resetFileHistoryCommit() {
 // resetFileHistoryDiff drops the diff column and the read it had in flight.
 func (a *app) resetFileHistoryDiff() {
 	a.fileHistoryDiffState = nil
+	a.fileHistoryDiffMedia = nil
 	a.fileHistoryDiffPatch = ""
 	a.fileHistoryDiffLoading = false
 	a.fileHistoryDiffError = ""
@@ -192,7 +193,7 @@ func (a *app) loadFileHistoryCommit(commit repository.Commit, force bool) {
 			}
 			a.fileHistoryFilesLoading = false
 			if err != nil {
-				a.fileHistoryFilesError = err.Error()
+				a.fileHistoryFilesError = safeError(err)
 				return
 			}
 			a.fileHistoryFiles = files
@@ -223,6 +224,7 @@ func (a *app) loadFileHistoryDiff(commit repository.Commit, file repository.Comm
 		return
 	}
 	a.fileHistoryDiffState = nil
+	a.fileHistoryDiffMedia = nil
 	a.fileHistoryDiffPatch = ""
 	a.fileHistoryDiffLoading = true
 	a.fileHistoryDiffError = ""
@@ -237,8 +239,14 @@ func (a *app) loadFileHistoryDiff(commit repository.Commit, file repository.Comm
 		defer a.recoverBackground()
 		diff, err := session.CommitFileDiff(context.Background(), commit, file, options)
 		var state *editor.DiffState
+		var media *mediaReview
 		if err == nil {
 			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
+			if err == nil && state == nil && isMediaPath(file.Path) {
+				media, err = loadMediaReview(context.Background(), session, repository.MediaRequest{
+					Source: repository.MediaCommit, Commit: commit, CommitFile: file,
+				})
+			}
 		}
 		a.update(func() {
 			if token != a.fileHistoryDiffToken || !a.fileHistoryOpen {
@@ -246,11 +254,12 @@ func (a *app) loadFileHistoryDiff(commit repository.Commit, file repository.Comm
 			}
 			a.fileHistoryDiffLoading = false
 			if err != nil {
-				a.fileHistoryDiffError = err.Error()
+				a.fileHistoryDiffError = safeError(err)
 				return
 			}
 			a.fileHistoryDiffPatch = diff.Patch
 			a.fileHistoryDiffState = state
+			a.fileHistoryDiffMedia = media
 		})
 	}()
 }
@@ -522,6 +531,8 @@ func (a *app) fileHistoryDiffView(c *ui.Context) {
 						a.fileHistoryFiles[a.fileHistorySelectedFile], true)
 				}
 			})
+		case a.fileHistoryDiffState == nil && a.fileHistoryDiffMedia != nil:
+			mediaReviewView(c, a.fileHistoryDiffMedia, a.fileHistoryDiffPath)
 		case a.fileHistoryDiffState == nil:
 			ui.Column(c).Grow(1).Center().Children(func() {
 				ui.Text(c, tr("Choose a file to see its diff.")).TextColor(theme.TextMuted)

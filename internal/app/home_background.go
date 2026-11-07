@@ -84,7 +84,7 @@ func (a *app) browseHomeBackground() {
 		if err != nil {
 			a.update(func() {
 				if selection == a.homeBackgroundSelectionSeq {
-					a.notify("error", "Could not set Home background", tr(err.Error()))
+					a.notify("error", "Could not set Home background", tr(safeError(err)))
 				}
 			})
 			return
@@ -99,7 +99,7 @@ func (a *app) browseHomeBackground() {
 				return
 			}
 			if err != nil {
-				a.notify("error", "Could not set Home background", tr(err.Error()))
+				a.notify("error", "Could not set Home background", tr(safeError(err)))
 				return
 			}
 			// Invalidate a persisted-image read that may still be in flight,
@@ -175,7 +175,7 @@ func (a *app) syncHomeBackground() {
 			a.homeBackgroundPending = ""
 			if err != nil {
 				a.homeBackgroundFailed = path
-				a.notify("error", "Could not load Home background", tr(err.Error()))
+				a.notify("error", "Could not load Home background", tr(safeError(err)))
 				return
 			}
 			a.homeBackgroundPath = path

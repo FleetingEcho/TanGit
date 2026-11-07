@@ -288,6 +288,82 @@ func TestPartialPatchRoundTripsMultipleLinesAcrossHunks(t *testing.T) {
 	}
 }
 
+// Two independent clicks can save changes from different hunks without taking
+// the edit between them. Git removes just those lines and restores them later.
+func TestPartialPatchStashesDisjointLinesAcrossHunks(t *testing.T) {
+	dir := t.TempDir()
+	runGitIn(t, dir, "init", "--initial-branch=main")
+	runGitIn(t, dir, "config", "user.name", "Desktop Test")
+	runGitIn(t, dir, "config", "user.email", "desktop@example.com")
+	path := filepath.Join(dir, "lines.txt")
+	original := "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\neleven\ntwelve\nthirteen\nfourteen\nfifteen\nsixteen\nseventeen\neighteen\nnineteen\ntwenty\n"
+	working := "one\nTWO\nthree\nFOUR\nfive\nsix\nseven\neight\nnine\nten\neleven\ntwelve\nthirteen\nfourteen\nfifteen\nsixteen\nsixteen and a half\nseventeen\neighteen\nnineteen\ntwenty\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(t, dir, "add", "lines.txt")
+	runGitIn(t, dir, "commit", "-m", "initial")
+	if err := os.WriteFile(path, []byte(working), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	session, err := (repository.Opener{}).Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := repository.File{Path: "lines.txt", Tracked: true, Unstaged: true, Status: " M"}
+	diff, err := session.Diff(ctx, file, repository.DiffOptions{ContextLines: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// New-side rows 1 and 10 are TWO and sixteen-and-a-half. FOUR is between
+	// their file positions but outside both independently selected ranges.
+	patchText, wholeFile, err := partialPatchSelections(diff.Patch, file, []editor.DiffLineRange{
+		{Side: editor.DiffNew, Start: 1, End: 1},
+		{Side: editor.DiffNew, Start: 10, End: 10},
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wholeFile {
+		t.Fatal("two of the file's three changes were taken for the whole file")
+	}
+	if strings.Contains(patchText, "+FOUR") {
+		t.Fatalf("the disjoint selection took its gap:\n%s", patchText)
+	}
+	removalPatch, _, err := partialPatchSelections(diff.Patch, file, []editor.DiffLineRange{
+		{Side: editor.DiffNew, Start: 1, End: 1},
+		{Side: editor.DiffNew, Start: 10, End: 10},
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := session.StashPatch(ctx, "two independent changes", patchText, removalPatch); err != nil {
+		t.Fatalf("stash disjoint patch: %v\npatch:\n%s", err, patchText)
+	}
+	remaining := strings.Replace(working, "TWO", "two", 1)
+	remaining = strings.Replace(remaining, "sixteen and a half\n", "", 1)
+	if content, err := os.ReadFile(path); err != nil || string(content) != remaining {
+		t.Fatalf("stash removed more than the two selections:\n%s\nwant:\n%s (%v)", content, remaining, err)
+	}
+	if cached := runGitIn(t, dir, "diff", "--cached"); cached != "" {
+		t.Fatalf("selected-line stash touched the index:\n%s", cached)
+	}
+
+	// A native stash will not overwrite the unselected dirty edit. Reset that
+	// path before proving that applying the stash restores both saved changes.
+	runGitIn(t, dir, "restore", "--worktree", "lines.txt")
+	if err := session.ApplyStash(ctx, 0, false); err != nil {
+		t.Fatal(err)
+	}
+	restored := strings.Replace(original, "two\n", "TWO\n", 1)
+	restored = strings.Replace(restored, "sixteen\n", "sixteen\nsixteen and a half\n", 1)
+	if content, err := os.ReadFile(path); err != nil || string(content) != restored {
+		t.Fatalf("restored selected lines:\n%s\nwant:\n%s (%v)", content, restored, err)
+	}
+}
+
 // Selecting every change of the file is selecting the file, and the caller
 // stages it whole rather than building a patch of it: the diff of a file
 // wholly added or removed describes the file, not a change within it.

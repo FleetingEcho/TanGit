@@ -196,7 +196,7 @@ func effectiveEditorCommand(command string) string {
 func (a *app) launchEditor(path string, line int) {
 	command := effectiveEditorCommand(a.settings.EditorCommand)
 	if err := runEditorTemplate(command, path, line); err != nil {
-		description := err.Error()
+		description := safeError(err)
 		switch {
 		case errors.Is(err, errEditorMissing):
 			description = trf("%s was not found on the PATH. Install it, or choose another editor command in Settings.",

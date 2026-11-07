@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 
 	"lazygitapp/internal/repository"
 )
@@ -95,6 +96,52 @@ func TestUnstageAllRefreshesTrackedLineCounts(t *testing.T) {
 	}
 	h.waitFor(t, "the selected file's refreshed unstaged diff", func() bool {
 		return a.diffState != nil && !a.diffLoading && a.diffKind == "Unstaged"
+	})
+}
+
+func TestPartialStageRefreshesRemainingUnstagedLineCounts(t *testing.T) {
+	dir := t.TempDir()
+	runGitIn(t, dir, "init", "--initial-branch=main")
+	runGitIn(t, dir, "config", "user.name", "Desktop Test")
+	runGitIn(t, dir, "config", "user.email", "desktop@example.com")
+	path := filepath.Join(dir, "tracked.txt")
+	if err := os.WriteFile(path, []byte("one\ntwo\nthree\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(t, dir, "add", "tracked.txt")
+	runGitIn(t, dir, "commit", "-m", "initial")
+	if err := os.WriteFile(path, []byte("one\nTWO\nthree\nfour\nfive\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	a := newApp(repository.Opener{})
+	a.pathUserData = t.TempDir()
+	updated := newUpdates()
+	a.update = updated.update
+	a.path = dir
+	h := &harness{app: a, updates: updated, tester: ui.NewTester(a.view, 1280, 800)}
+	t.Cleanup(a.shutdown)
+	openFixture(t, h.tester)
+	h.settle(t)
+	h.waitFor(t, "the original unstaged diff", func() bool {
+		return a.diffState != nil && !a.diffLoading && len(a.snapshot.Files) == 1 &&
+			a.snapshot.Files[0].LinesAdded == 3 && a.snapshot.Files[0].LinesDeleted == 1
+	})
+
+	// Stage only the replacement, leaving the two added lines unstaged.
+	a.diffState.SetSelectedLines(editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1}, true)
+	h.tester.Frame()
+	if err := h.tester.Click("Stage selected lines"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor(t, "the partially staged snapshot", func() bool {
+		return !a.actionBusy && len(a.snapshot.Files) == 1 &&
+			a.snapshot.Files[0].Staged && a.snapshot.Files[0].Unstaged
+	})
+	h.waitFor(t, "the remaining unstaged line counts", func() bool {
+		h.tester.Frame()
+		return h.tester.HasText("Diff statistics for tracked.txt: 2 additions, 0 deletions") &&
+			h.tester.HasText("Diff statistics for tracked.txt: 1 additions, 1 deletions")
 	})
 }
 

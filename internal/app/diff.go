@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -17,6 +18,7 @@ func buildDiffState(layout editor.DiffLayout, wrap bool, file repository.File, d
 		Layout:       layout,
 		ContextLines: options.ContextLines,
 		Wrap:         wrap,
+		Inline:       editor.DiffInlineWordAlt,
 	}
 	if diff.Patch != "" {
 		patches, err := editor.ParsePatch(diff.Patch)
@@ -33,6 +35,10 @@ func buildDiffState(layout editor.DiffLayout, wrap bool, file repository.File, d
 			return nil, nil
 		}
 		state.SetPatch(patches[0])
+		state.Annotations = movedLineAnnotations(patches[0])
+		if len(state.Annotations) > 0 {
+			state.RenderAnnotation = renderMovedLine
+		}
 	} else {
 		state.Old = editor.NewBuffer(diff.OldText)
 		state.New = editor.NewBuffer(diff.NewText)
@@ -69,6 +75,42 @@ func (a *app) toggleDiffWrap() {
 	a.settings.DiffWrap = a.diffWrap
 	a.applyDiffOptions()
 	a.saveSettings()
+}
+
+// selectedBufferFont leaves the family empty for System, so MyGo uses the
+// platform's monospaced family. Size and line spacing stay independent of the
+// interface theme's font size and layout spacing.
+func selectedBufferFont(family string, fontSize float64) ui.Font {
+	family = strings.TrimSpace(family)
+	if family == "System" {
+		family = ""
+	}
+	return ui.Font{Family: family, Size: float32(fontSize)}
+}
+
+// applyBufferFonts updates buffers already on screen as well as those a later
+// pane chooses. New states loaded in the background receive the same setting
+// on the frame that publishes them.
+func (a *app) applyBufferFonts() {
+	font := selectedBufferFont(a.settings.BufferFont, a.settings.BufferFontSize)
+	lineHeight := float32(a.settings.BufferLineHeight)
+	for _, state := range a.liveDiffs() {
+		if state != nil {
+			state.Font = font
+			state.LineHeight = lineHeight
+		}
+	}
+	states := []*editor.State{a.fileEditState, a.conflictView, a.blameState}
+	states = append(states, a.conflictStageViews[:]...)
+	if a.conflictSides != nil {
+		states = append(states, a.conflictSides.view)
+	}
+	for _, state := range states {
+		if state != nil {
+			state.Font = font
+			state.LineHeight = lineHeight
+		}
+	}
 }
 
 // applyDiffOptions gives every diff the app already holds the current layout
@@ -155,6 +197,7 @@ type shownDiff struct {
 	path  string
 	patch string
 	state *editor.DiffState
+	media *mediaReview
 }
 
 // activeDiff is the diff the active section shows, so the expand button and
@@ -172,6 +215,7 @@ func (a *app) activeDiff() (shownDiff, bool) {
 			path:     a.fileHistoryDiffPath,
 			patch:    a.fileHistoryDiffPatch,
 			state:    a.fileHistoryDiffState,
+			media:    a.fileHistoryDiffMedia,
 		}, true
 	}
 	switch a.workspaceTab {
@@ -210,6 +254,7 @@ func (a *app) activeDiff() (shownDiff, bool) {
 			path:     change.file.Path,
 			patch:    a.diffPatch,
 			state:    a.diffState,
+			media:    a.diffMedia,
 		}, true
 	case sectionHistory, sectionGraph:
 		if a.commitDiffPath == "" {
@@ -221,6 +266,7 @@ func (a *app) activeDiff() (shownDiff, bool) {
 			path:     a.commitDiffPath,
 			patch:    a.commitDiffPatch,
 			state:    a.commitDiffState,
+			media:    a.commitDiffMedia,
 		}, true
 	case sectionBranches:
 		if a.branchCommitDiffPath == "" {
@@ -236,6 +282,7 @@ func (a *app) activeDiff() (shownDiff, bool) {
 			path:     a.branchCommitDiffPath,
 			patch:    a.branchCommitDiffPatch,
 			state:    a.branchCommitDiffState,
+			media:    a.branchCommitDiffMedia,
 		}, true
 	case sectionStash:
 		if a.selectedStash < 0 || a.selectedStash >= len(a.snapshot.Stashes) ||
@@ -248,6 +295,7 @@ func (a *app) activeDiff() (shownDiff, bool) {
 			path:     a.stashFiles[a.selectedStashFile].Path,
 			patch:    a.stashDiffPatch,
 			state:    a.stashDiffState,
+			media:    a.stashDiffMedia,
 		}, true
 	}
 	return shownDiff{}, false
@@ -374,17 +422,20 @@ func (a *app) reloadOrdinaryDiffs() {
 	a.commitDiffHash, a.commitDiffPath = "", ""
 	a.commitDiffPatch, a.commitDiffError = "", ""
 	a.commitDiffState = nil
+	a.commitDiffMedia = nil
 	a.commitDiffLoading = false
 
 	a.branchCommitToken++
 	a.branchCommitDiffHash, a.branchCommitDiffPath = "", ""
 	a.branchCommitDiffPatch, a.branchCommitDiffError = "", ""
 	a.branchCommitDiffState = nil
+	a.branchCommitDiffMedia = nil
 	a.branchCommitDiffLoading = false
 
 	a.stashDiffHash, a.stashDiffPath = "", ""
 	a.stashDiffPatch, a.stashDiffError = "", ""
 	a.stashDiffState = nil
+	a.stashDiffMedia = nil
 	a.stashDiffLoading = false
 
 	if a.fileHistoryOpen && a.fileHistorySelected >= 0 &&
@@ -396,20 +447,37 @@ func (a *app) reloadOrdinaryDiffs() {
 }
 
 func (a *app) diffWhitespaceButton(c *ui.Context) {
-	button := ui.Button(c, tr("Ignore space"))
+	// A constructor appends its button, so choose the active look before
+	// building it rather than replacing a plain button with a primary one.
+	var button ui.Element
 	if a.diffOptions.IgnoreWhitespace {
-		button = ui.PrimaryButton(c, tr("Ignore space"))
+		button = compactIconButton(ui.PrimaryButton(c, ""))
+	} else {
+		button = compactIconButton(ui.Button(c, ""))
 	}
-	if button.Label(tr("Toggle whitespace-only diff changes")).
-		Tooltip(tr("Alt+W · Hide or show whitespace-only changes")).Clicked() {
+	clicked := button.Label(tr("Toggle whitespace-only diff changes")).
+		Tooltip(tr("Alt+W · Hide or show whitespace-only changes")).Clicked()
+	button.Children(func() {
+		ui.Icon(c, diffWhitespaceIcon).FontSize(14)
+	})
+	if clicked {
 		a.toggleDiffWhitespace()
 	}
 }
 
 func (a *app) diffContextButton(c *ui.Context) {
-	if ui.Button(c, fmt.Sprintf("%s: %d", tr("Context"), a.diffOptions.ContextLines)).
-		Label(tr("Change diff context lines")).
-		Tooltip(tr("Alt+U · Cycle through 0, 1, 3, 5, and 10 context lines")).Clicked() {
+	button := compactIconButton(ui.Button(c, ""))
+	clicked := button.Label(tr("Change diff context lines")).
+		Tooltip(tr("Alt+U · Cycle through 0, 1, 3, 5, and 10 context lines")).Clicked()
+	button.Children(func() {
+		// Keep the current count visible without a long text-only button in
+		// the icon toolbar.
+		ui.Row(c).Gap(3).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, diffContextIcon).FontSize(14)
+			ui.Text(c, fmt.Sprintf("%d", a.diffOptions.ContextLines)).FontSize(c.Theme().FontSize - 2)
+		})
+	})
+	if clicked {
 		a.cycleDiffContext()
 	}
 }
@@ -630,6 +698,8 @@ func (a *app) diffFullscreenDiff(c *ui.Context, theme *ui.Theme, target shownDif
 	switch {
 	case target.state != nil:
 		a.keyboardDiffViewerWithID(c, target.state, "fullscreen-diff")
+	case target.media != nil:
+		mediaReviewView(c, target.media, target.path)
 	case a.activeDiffLoading():
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Spinner(c).Label(tr("Loading diff"))

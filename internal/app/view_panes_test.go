@@ -292,7 +292,7 @@ func TestTerminalDividerResizesThePane(t *testing.T) {
 	}
 	h.tester.Frame()
 	h.waitFor(t, "the terminal to report its error", func() bool {
-		return h.app.term.err != ""
+		return h.app.term.sessions[0].err != ""
 	})
 	// The panel slides up over 200ms; let the animation finish.
 	h.tester.Advance(250 * time.Millisecond)

@@ -48,8 +48,21 @@ func (a *app) cancelConfirm() {
 	a.confirm = nil
 }
 
+// acceptConfirm clears the question before running it, so Enter and the
+// button cannot run the same action twice during the following rebuild.
+func (a *app) acceptConfirm() {
+	request := a.confirm
+	if request == nil {
+		return
+	}
+	a.confirm = nil
+	if request.run != nil {
+		request.run()
+	}
+}
+
 // confirmModal draws the pending question over the window. Escape and a
-// press outside cancel it; only the named button runs the action.
+// press outside cancel it; Enter or the named button runs the action.
 func (a *app) confirmModal(c *ui.Context) {
 	if a.confirm == nil {
 		return
@@ -59,9 +72,12 @@ func (a *app) confirmModal(c *ui.Context) {
 	icon, color := confirmIcon(theme, request.destructive)
 	ui.Overlay(c, func() {
 		c.Key("confirm-modal")
+		// A modal-scoped command claims Enter before the focused button,
+		// including Cancel, can consume it as that button's click.
 		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 			Justify(ui.Center).AlignItems(ui.Center).
-			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
+			Background(ui.RGBA(0, 0, 0, 0.35)).Modal().
+			OnShortcut(0, ui.KeyEnter, a.acceptConfirm)
 		back.Children(func() {
 			panel := ui.Column(c).Width(470).MaxWidthPercent(92).
 				Padding(22).Gap(14).Background(theme.Background).
@@ -88,10 +104,7 @@ func (a *app) confirmModal(c *ui.Context) {
 							button.Background(theme.Danger).TextColor(ui.Hex("#ffffff"))
 						}
 						if button.Clicked() {
-							a.confirm = nil
-							if request.run != nil {
-								request.run()
-							}
+							a.acceptConfirm()
 						}
 					})
 				})

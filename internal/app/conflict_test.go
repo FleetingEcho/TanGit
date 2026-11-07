@@ -160,6 +160,23 @@ func TestConflictPaneResolvesTheFile(t *testing.T) {
 	})
 	h.tester.Frame()
 
+	icon, found := h.tester.Find("Undo resolution")
+	if !found {
+		t.Fatal("conflict icon button is missing")
+	}
+	for _, label := range []string{"Use current", "Use incoming", "Use both", "Mark resolved"} {
+		button, found := h.tester.Find(label)
+		if !found {
+			t.Fatalf("conflict action %q is missing", label)
+		}
+		if button.H != icon.H {
+			t.Errorf("%s height = %.1f, icon height = %.1f", label, button.H, icon.H)
+		}
+		if button.X+button.W > icon.X {
+			t.Errorf("%s ends at %.1f, after the icon group starts at %.1f", label, button.X+button.W, icon.X)
+		}
+	}
+
 	for _, text := range []string{
 		"Conflict 1 of 1", "Use current", "Use incoming", "Use both",
 		"Undo resolution", "Open file in editor", "Mark resolved",

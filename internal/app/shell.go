@@ -18,11 +18,12 @@ const (
 	// window stays a place to work rather than a wall of tabs.
 	maxRepositoryTabs = 10
 
-	titleBarHeight float32 = 40
-	tabPillHeight  float32 = 26
-	tabStripGap    float32 = 4
-	tabMinWidth    float32 = 36
-	tabMaxWidth    float32 = 208
+	titleBarHeight     float32 = 40
+	windowCornerRadius float32 = 12
+	tabPillHeight      float32 = 26
+	tabStripGap        float32 = 4
+	tabMinWidth        float32 = 36
+	tabMaxWidth        float32 = 208
 	// tabNarrowWidth is where a pill gives up its title so its close control
 	// still fits: ten repositories and a picker at the window's smallest
 	// width leave about that much room each.
@@ -255,6 +256,10 @@ func (s *shell) view(c *ui.Context) {
 	defer s.recoverView(c)
 	defer s.applyPending()
 	s.applyPending()
+	// CornerRadius only rounds native frameless windows on macOS and Windows.
+	// Clear the root instead, then clip the app surface on every platform;
+	// keeping the native hidden-title-bar frame preserves its resize edges.
+	c.Root().Background(ui.Transparent)
 	if s.crash != "" {
 		s.crashView(c)
 		return
@@ -272,7 +277,7 @@ func (s *shell) view(c *ui.Context) {
 	// The page starts below the title bar and its divider, and the
 	// notifications start below that, on the page's own top edge.
 	chrome := max(float32(titleBarHeight), c.TitleBar().Height) + 1
-	ui.Column(c).Fill().Children(func() {
+	ui.Column(c).Fill().Radius(windowCornerRadius).Clip().Background(c.Theme().Background).Children(func() {
 		s.titleBarView(c)
 		ui.Divider(c)
 		ui.Column(c).Grow(1).FillWidth().Children(func() {
@@ -282,6 +287,10 @@ func (s *shell) view(c *ui.Context) {
 			}
 		})
 	})
+	// The page settles its own theme through the shared context. Clear the
+	// root last so neither that call nor the shell's replaces the transparent
+	// corner cutouts with the palette's window-sized background.
+	c.Root().Background(ui.Transparent)
 }
 
 // recoverView contains a fault in the chrome, as the app contains one in a
@@ -304,7 +313,8 @@ func (s *shell) recoverView(c *ui.Context) {
 // a way to try the frame again.
 func (s *shell) crashView(c *ui.Context) {
 	theme := c.Theme()
-	ui.Column(c).Fill().Center().Gap(14).Padding(28).Children(func() {
+	ui.Column(c).Fill().Center().Gap(14).Padding(28).Radius(windowCornerRadius).Clip().
+		Background(c.Theme().Background).Children(func() {
 		ui.Box(c).Size(52, 52).Radius(14).Center().
 			Background(theme.Danger.Alpha(0.14)).Children(func() {
 			ui.Icon(c, conflictIcon).FontSize(26).TextColor(theme.Danger)

@@ -131,7 +131,7 @@ func (a *app) beginCompare() {
 			}
 			a.compare.filesLoading = false
 			if err != nil {
-				a.compare.filesError = err.Error()
+				a.compare.filesError = safeError(err)
 				return
 			}
 			if files == nil {
@@ -207,7 +207,7 @@ func (a *app) requestCompareFileDiff() {
 			}
 			a.compare.diffLoading = false
 			if err != nil {
-				a.compare.diffError = err.Error()
+				a.compare.diffError = safeError(err)
 				return
 			}
 			a.compare.diffState = state

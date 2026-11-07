@@ -19,6 +19,7 @@
 </p>
 
 ![TanGit workspace](docs/screenshots/workspace.png)
+![TanGit workspace (Light)](docs/screenshots/workspace_light.png)
 
 TanGit brings Lazygit's fast, keyboard-driven Git workflow to a real desktop
 window. The Git work — staging lines, cherry-picking, rebasing, reading the

@@ -53,10 +53,12 @@ func (s *gitSession) recentCommits(limit int) ([]*models.Commit, error) {
 	return s.git.Loaders.CommitLoader.GetCommits(git_commands.GetCommitsOptions{
 		Limit:                limit,
 		IncludeRebaseCommits: true,
-		RefName:              "HEAD",
-		All:                  true,
-		MainBranches:         s.commitMainBranches,
-		HashPool:             s.hashPool,
+		// Internal recovery objects are reachable from refs, but are not user
+		// history. Git's exclusion applies together with --all below.
+		RefName:      "--exclude=refs/tangit/*",
+		All:          true,
+		MainBranches: s.commitMainBranches,
+		HashPool:     s.hashPool,
 	})
 }
 

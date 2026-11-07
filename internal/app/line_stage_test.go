@@ -37,6 +37,14 @@ func TestStageSelectedLinesSendsOnlyTheirPatch(t *testing.T) {
 	if !h.tester.HasText("Click line numbers to select lines") {
 		t.Fatalf("the pane does not say how to select lines: %q", h.texts())
 	}
+	if h.tester.HasText("Unstaged changes") {
+		t.Fatal("the selection row repeats the unstaged-side caption")
+	}
+	selectionButton, _ := h.tester.Find("Select multiple lines")
+	hint, _ := h.tester.Find("Click line numbers to select lines")
+	if selectionButton.X >= hint.X {
+		t.Fatalf("the selection icon starts at %.0f, to the right of its hint at %.0f", selectionButton.X, hint.X)
+	}
 
 	// New-side line 1 is the change of the fake diff's "two" to "TWO"; the
 	// fourth line's change is left alone.
@@ -235,9 +243,9 @@ func TestPlainLineClickPicksOneLine(t *testing.T) {
 	}
 }
 
-// The mode's button is the way to pick a range without holding Shift: each
-// click extends the range, so 1 then 3 selects 1 to 3.
-func TestSelectMultipleLinesExtendsTheRangeWithEachClick(t *testing.T) {
+// Adjacent plain clicks coalesce into a range; an explicit Shift-style range
+// keeps its unchanged interior.
+func TestSelectMultipleLinesCoalescesAdjacentClicks(t *testing.T) {
 	h, _ := changesTestApp(t, unstagedTrackedFile())
 	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
 	if err := h.tester.Click("Select multiple lines"); err != nil {
@@ -248,7 +256,7 @@ func TestSelectMultipleLinesExtendsTheRangeWithEachClick(t *testing.T) {
 		t.Fatal("the button did not enter the multi-line mode")
 	}
 	for _, want := range []string{"Selecting multiple lines",
-		"Click a line number, then another, to choose a range.", "Cancel"} {
+		"Click line numbers to choose changes; Shift-click to choose a range.", "Cancel"} {
 		if !h.tester.HasText(want) {
 			t.Fatalf("the mode is missing %q: %q", want, h.texts())
 		}
@@ -258,20 +266,48 @@ func TestSelectMultipleLinesExtendsTheRangeWithEachClick(t *testing.T) {
 	if !h.tester.HasText("1 line selected") {
 		t.Fatalf("one click did not select its line: %q", h.texts())
 	}
-	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 3, End: 3})
+	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 2, End: 2})
 	got, ok := h.app.diffState.SelectedLines()
-	if !ok || got != (editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 3}) {
-		t.Fatalf("the second click selected %+v, want lines 1 to 3", got)
+	if !ok || got != (editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 2}) {
+		t.Fatalf("the second click selected %+v, want lines 1 to 2", got)
 	}
-	if !h.tester.HasText("3 lines selected") {
+	if !h.tester.HasText("2 lines selected") {
 		t.Fatalf("the pane does not count the range: %q", h.texts())
 	}
 
-	// A line inside the range starts it again, so a new range can be picked.
-	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 2, End: 2})
+	// Shift-click explicitly chooses a contiguous range, including its middle.
+	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 3})
 	got, _ = h.app.diffState.SelectedLines()
-	if got != (editor.DiffLineRange{Side: editor.DiffNew, Start: 2, End: 2}) {
-		t.Fatalf("a click inside the range left %+v, want its own line", got)
+	if got != (editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 3}) {
+		t.Fatalf("a range click left %+v, want lines 1 to 3", got)
+	}
+}
+
+func TestMultipleLineModeSelectsOnlyTheChangedLinesClicked(t *testing.T) {
+	h, _ := twoHunkChangesApp(t, unstagedTrackedFile())
+	if err := h.tester.Click("Select multiple lines"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1})
+	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 5, End: 5})
+	if !h.tester.HasText("2 lines selected") {
+		t.Fatalf("two clicked changes include the unchanged lines between them: %q", h.texts())
+	}
+	if h.tester.HasText("5 lines selected") {
+		t.Fatal("the selection became the whole range between the two clicks")
+	}
+	if got, _ := h.app.diffState.SelectedLines(); got != (editor.DiffLineRange{Side: editor.DiffNew, Start: 5, End: 5}) {
+		t.Fatalf("the native highlight spans the gap: %+v", got)
+	}
+	markers := 0
+	for _, annotation := range h.app.diffState.Annotations {
+		if _, ok := annotation.Key.(selectedLineMarker); ok {
+			markers++
+		}
+	}
+	if markers != 2 {
+		t.Fatalf("disjoint choices have %d individual markers, want 2", markers)
 	}
 }
 
@@ -364,9 +400,9 @@ func TestClickingLineNumbersInTheModeExtendsTheRange(t *testing.T) {
 		t.Fatalf("enter the multi-line mode: %v", err)
 	}
 	h.tester.Frame()
-	caption, ok := h.tester.Find("Unstaged changes")
+	caption, ok := h.tester.Find("Selecting multiple lines")
 	if !ok {
-		t.Fatalf("the diff's caption is not on screen: %q", h.texts())
+		t.Fatalf("the line-selection mode caption is not on screen: %q", h.texts())
 	}
 	// The pane's rows: the column's gap, a row for the hunk's header, then a
 	// row a line, at the default theme's 20 points. The numbers are just left

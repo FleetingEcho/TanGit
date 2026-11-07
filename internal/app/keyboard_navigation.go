@@ -24,10 +24,19 @@ func (a *app) keyboardPane(c *ui.Context, id string, e ui.Element) ui.Element {
 		a.keyboardHandles[id] = handle
 	}
 	a.keyboardPanes = append(a.keyboardPanes, keyboardPane{id, handle})
+	// FocusWithin also reports pointer focus. Track the modality separately:
+	// Handle.Focus does not set MyGo's focus-visible state for F6-style moves.
 	focused := handle.FocusWithin(c)
 	accent := c.Theme().Accent
-	return e.Bind(handle).FocusRing(true).DrawOver(func(p *ui.Painter, r ui.Rect) {
-		if focused {
+	return e.Bind(handle).FocusRing(true).ObserveInput(func(ev ui.InputEvent) {
+		switch ev.Kind {
+		case ui.InputKeyDown:
+			a.keyboardFocusVisible = true
+		case ui.InputPointerDown:
+			a.keyboardFocusVisible = false
+		}
+	}).DrawOver(func(p *ui.Painter, r ui.Rect) {
+		if focused && a.keyboardFocusVisible {
 			p.Stroke(r, accent.Alpha(0.8), 4, 1)
 		}
 	})
@@ -226,6 +235,7 @@ func (a *app) cycleKeyboardPaneFrom(current string, delta int) {
 		}
 	}
 	next := (index + delta + len(panes)) % len(panes)
+	a.keyboardFocusVisible = true
 	a.keyboardFocus = panes[next].id
 }
 
@@ -312,6 +322,7 @@ func (a *app) finishKeyboardFrame(c *ui.Context) {
 }
 
 func (a *app) keyboardEnter(id string) {
+	a.keyboardFocusVisible = true
 	if a.keyboardToggleDirectory(id) {
 		return
 	}
@@ -492,6 +503,7 @@ func (a *app) keyboardListMenu(c *ui.Context, s *ui.ListState, m *ui.Menu) {
 }
 
 func (a *app) keyboardBack(c *ui.Context) {
+	a.keyboardFocusVisible = true
 	switch a.focusedKeyboardPane(c) {
 	case "diff":
 		a.keyboardFocus = "changes"
@@ -540,7 +552,11 @@ func (a *app) selectKeyboardDiffLines(state *editor.DiffState, delta int, extend
 	if !extend || !ok || selection.Side != side {
 		a.keyboardLineAnchor = line
 	}
-	state.SetSelectedLines(editor.DiffLineRange{Side: side, Start: min(a.keyboardLineAnchor, line), End: max(a.keyboardLineAnchor, line)}, true)
+	selected := editor.DiffLineRange{Side: side, Start: min(a.keyboardLineAnchor, line), End: max(a.keyboardLineAnchor, line)}
+	state.SetSelectedLines(selected, true)
+	a.lineSelectRanges = []editor.DiffLineRange{selected}
+	a.lineSelectRange, a.lineSelectHas = selected, true
+	a.syncLineSelectionMarkers()
 }
 
 func (a *app) keyboardToggleDirectory(id string) bool {

@@ -22,6 +22,28 @@ func (h *harness) confirmAttentionForTest(t *testing.T) {
 	}
 }
 
+func TestHeaderTextButtonsShareTheIconButtonHeight(t *testing.T) {
+	h, _ := menuTestAppWithCalls(t)
+	h.app.snapshot.Operation = "merge"
+	h.tester.Frame()
+	icon, found := h.tester.Find("Compare refs")
+	if !found {
+		t.Fatal("header icon button is missing")
+	}
+	for _, label := range []string{"Continue", "Abort…"} {
+		button, found := h.tester.Find(label)
+		if !found {
+			t.Fatalf("header action %q is missing", label)
+		}
+		if button.H != icon.H {
+			t.Errorf("%s height = %.1f, icon height = %.1f", label, button.H, icon.H)
+		}
+		if button.X+button.W > icon.X {
+			t.Errorf("%s ends at %.1f, after the icon group starts at %.1f", label, button.X+button.W, icon.X)
+		}
+	}
+}
+
 func TestAttentionOperationsRequireConfirmationAndCancel(t *testing.T) {
 	cases := []struct {
 		name string

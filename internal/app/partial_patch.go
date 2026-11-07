@@ -47,6 +47,12 @@ func diffSupportsLineStaging(file repository.File, kind string) bool {
 // apart. Context lines are not changes, so selecting them alone builds
 // nothing.
 func partialPatch(patchText string, file repository.File, selection editor.DiffLineRange, reverse bool) (string, bool, error) {
+	return partialPatchSelections(patchText, file, []editor.DiffLineRange{selection}, reverse)
+}
+
+// partialPatchSelections builds one patch from independent viewer ranges. The
+// ranges may cross hunks; unchanged lines between them are never included.
+func partialPatchSelections(patchText string, file repository.File, selections []editor.DiffLineRange, reverse bool) (string, bool, error) {
 	parsed, err := editor.ParsePatch(patchText)
 	if err != nil {
 		return "", false, fmt.Errorf("read the file diff: %w", err)
@@ -54,7 +60,7 @@ func partialPatch(patchText string, file repository.File, selection editor.DiffL
 	if len(parsed) != 1 {
 		return "", false, fmt.Errorf("the file diff covers %d files, not one", len(parsed))
 	}
-	lines := selectedLineIdentities(parsed[0], selection)
+	lines := selectedLineIdentities(parsed[0], selections...)
 	if len(lines) == 0 {
 		return "", false, nil
 	}
@@ -94,7 +100,7 @@ func changeLineCount(filePatch *patch.Patch) int {
 // changed line as the old line deleted and the new one added, and staging only
 // the addition would leave the old line beside it. Selecting only deletions
 // stages those alone, which is how lines are taken away.
-func selectedLineIdentities(filePatch editor.FilePatch, selection editor.DiffLineRange) []patch.LineIdentity {
+func selectedLineIdentities(filePatch editor.FilePatch, selections ...editor.DiffLineRange) []patch.LineIdentity {
 	// changeLine is one line of a run of changes: where the patch names it,
 	// and where the pane shows it on its side.
 	type changeLine struct {
@@ -154,8 +160,15 @@ func selectedLineIdentities(filePatch editor.FilePatch, selection editor.DiffLin
 			}
 			takesAdditions := false
 			for _, change := range run {
-				if change.side == selection.Side &&
-					change.partial >= selection.Start && change.partial <= selection.End {
+				selected := false
+				for _, selection := range selections {
+					if change.side == selection.Side &&
+						change.partial >= selection.Start && change.partial <= selection.End {
+						selected = true
+						break
+					}
+				}
+				if selected {
 					if change.side == editor.DiffNew {
 						takesAdditions = true
 					}
