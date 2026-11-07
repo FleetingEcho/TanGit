@@ -358,34 +358,40 @@ func (a *app) historyView(c *ui.Context) {
 		})
 }
 
-// historyListHeader is the commit list's title, its match count while a
-// filter narrows it, and its multi-select and filter controls.
+// historyListHeader keeps the title, match count and controls on the first
+// line. The applied filter, including a long branch name, gets the second.
 func (a *app) historyListHeader(c *ui.Context) {
 	// History opens on the branch checked out, and follows a checkout while
 	// it holds that default. Keeping it here reads it as the pane draws.
 	a.keepCommitFilterDefault(sectionHistory)
 	filtered := a.historyFilter.narrows()
-	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-		paneTitle(c, historyIcon, "Commits")
-		if filtered {
-			if a.historyFilter.loading {
-				ui.Spinner(c).Label(tr("Searching commits"))
-			} else if a.historyFilter.err == "" {
-				ui.Badge(c, fmt.Sprintf("%d", len(a.historyFilter.matches)))
+	ui.Column(c).Gap(6).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+			paneTitle(c, historyIcon, "Commits")
+			if filtered {
+				if a.historyFilter.loading {
+					ui.Spinner(c).Label(tr("Searching commits"))
+				} else if a.historyFilter.err == "" {
+					ui.Badge(c, fmt.Sprintf("%d", len(a.historyFilter.matches)))
+				}
 			}
-			ui.Badge(c, commitFilterSummary(a.historyFilter.applied))
-		}
-		ui.Spacer(c).Grow(1)
-		a.commitSelectionModeButton(c)
-		commitFilterButton(c, "Search and filter the commit list", filtered, func() {
-			a.openCommitFilter(sectionHistory)
+			ui.Spacer(c).Grow(1)
+			a.commitSelectionModeButton(c)
+			commitFilterButton(c, "Search and filter the commit list", filtered, func() {
+				a.openCommitFilter(sectionHistory)
+			})
+			if filtered {
+				clearFilterButton(c, "Clear every filter and show all commits", func() {
+					a.clearCommitFilter(sectionHistory)
+				})
+			}
+			paneCollapseButton(c, &a.workspacePaneCollapsed[sectionHistory], "Collapse list pane")
 		})
 		if filtered {
-			clearFilterButton(c, "Clear every filter and show all commits", func() {
-				a.clearCommitFilter(sectionHistory)
+			ui.Row(c).Children(func() {
+				ui.Badge(c, commitFilterSummary(a.historyFilter.applied))
 			})
 		}
-		paneCollapseButton(c, &a.workspacePaneCollapsed[sectionHistory], "Collapse list pane")
 	})
 }
 
@@ -439,7 +445,7 @@ func (a *app) commitDetailPane(c *ui.Context) {
 	}
 	commit := commits[a.selectedCommit]
 	a.commitDetailCard(c, &commit, "Select a commit", func(c *ui.Context, commit repository.Commit) {
-		a.commitActionIcons(c, commit, c.Services())
+		a.commitActionIcons(c, commit)
 	})
 }
 
@@ -478,7 +484,11 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(4).Wrap().Children(func() { actionIcons(c, *commit) })
 		}
 		a.diffViewOptions(c)
-		ui.Text(c, commit.Hash).TextColor(theme.TextMuted).SingleLine().Tooltip(commit.Hash).Selectable()
+		copyLabel := "Copy commit hash"
+		if a.workspaceTab == sectionReflog {
+			copyLabel = "Copy reflog commit hash"
+		}
+		a.commitHashRow(c, *commit, copyLabel)
 		if commit.AuthorName != "" || commit.AuthorEmail != "" {
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				authorAvatar(c, commit.AuthorName, commit.AuthorEmail, 24)

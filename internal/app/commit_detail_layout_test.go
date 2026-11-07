@@ -30,7 +30,7 @@ func TestCommitDetailToolbarsFitNarrowPanes(t *testing.T) {
 							a.branchCommitDetailView(c, repository.Branch{Head: true})
 						} else {
 							a.commitDetailCard(c, &commit, "Select a commit", func(c *ui.Context, commit repository.Commit) {
-								a.commitActionIcons(c, commit, c.Services())
+								a.commitActionIcons(c, commit)
 							})
 						}
 					})
@@ -61,6 +61,12 @@ func TestCommitDetailToolbarsFitNarrowPanes(t *testing.T) {
 					if !ok || r.X < 0 || r.X+r.W > float32(width)+1 {
 						t.Fatalf("commit header %q is missing or overflows: %+v", label, r)
 					}
+				}
+				hash, _ := tt.Find(commit.Hash)
+				copyHash, _ := tt.Find("Copy commit hash")
+				if copyHash.X < hash.X+hash.W || copyHash.X-hash.X-hash.W > 5 ||
+					copyHash.Y >= hash.Y+hash.H || copyHash.Y+copyHash.H <= hash.Y {
+					t.Fatalf("copy control is not immediately after the hash on its row: hash=%+v copy=%+v", hash, copyHash)
 				}
 				if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
 					saveScreenshot(t, dir, fmt.Sprintf("commit-detail-%d-branch-%v", width, branchView), tt)

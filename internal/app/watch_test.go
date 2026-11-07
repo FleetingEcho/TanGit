@@ -95,6 +95,33 @@ func TestRepositoryEventsRefreshOnlyTheVisibleFocusedPage(t *testing.T) {
 	}
 }
 
+// A filesystem notification only schedules a Git read; it must not repaint
+// before that read has found something visible to change.
+func TestRepositoryEventDoesNotRepaintBeforeRefresh(t *testing.T) {
+	opener := watchingLiveOpener{
+		liveOpener: &liveOpener{snapshot: repository.Snapshot{Root: "/work/repo", Branch: "main"}},
+		events:     make(chan struct{}, 1), cancelled: make(chan struct{}),
+	}
+	s, _, updated := newLiveShell(t, opener)
+	a := openLiveRepo(t, s, updated, "/work/repo")
+	t.Cleanup(a.shutdown)
+
+	notified := false
+	a.externalRefresh = func() { notified = true }
+	repaint := true
+	a.updateChanged = func(fn func() bool) {
+		a.update(func() { repaint = fn() })
+	}
+	opener.events <- struct{}{}
+	drainRefresh(t, updated, 1)
+	if !notified {
+		t.Fatal("the filesystem event did not schedule a refresh")
+	}
+	if repaint {
+		t.Fatal("the filesystem event repainted before its refresh completed")
+	}
+}
+
 type blockingWatchOpener struct {
 	*liveOpener
 	started   chan struct{}

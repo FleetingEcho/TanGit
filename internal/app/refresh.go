@@ -46,9 +46,9 @@ func (a *app) requestQuietRefresh() {
 	go func() {
 		defer a.recoverQuietRefresh(refreshToken)
 		snapshot, err := session.Snapshot(context.Background())
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if refreshToken != a.refreshToken {
-				return
+				return false
 			}
 			defer func() {
 				a.refreshBusy = false
@@ -57,22 +57,23 @@ func (a *app) requestQuietRefresh() {
 				}
 			}()
 			if generation != a.generation || sequence != a.snapshotSeq {
-				return
+				return false
 			}
 			if err != nil || !a.quietRefreshAllowed() {
 				// A repository that cannot be read is not the user's problem
 				// until they ask: the refresh stays quiet, and the next look
 				// tries again.
-				return
+				return false
 			}
 			was, now := signSnapshot(a.snapshot), signSnapshot(snapshot)
 			if was == now {
 				// Empty directories do not alter the Git signature. Their matching
 				// quiet snapshot still completes the operation's refresh cycle.
 				a.code.filesOperationRefresh = false
-				return
+				return false
 			}
 			a.applyQuietSnapshot(snapshot, was, now)
+			return true
 		})
 	}()
 }

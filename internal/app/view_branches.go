@@ -972,7 +972,7 @@ func (a *app) branchCommitDetailView(c *ui.Context, branch repository.Branch) {
 		// The column is narrow, so the subject, the metadata and the actions
 		// each take their own row.
 		ui.Text(c, commit.Subject).FontSize(16).Bold().SingleLine().Tooltip(commit.Subject)
-		ui.Text(c, commit.Hash).TextColor(theme.TextMuted).SingleLine().Tooltip(commit.Hash)
+		a.commitHashRow(c, commit, "Copy commit hash")
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			authorAvatar(c, commit.AuthorName, commit.AuthorEmail, 20)
 			ui.Textf(c, "%s <%s>", commit.AuthorName, commit.AuthorEmail).TextColor(theme.TextMuted).
@@ -982,7 +982,7 @@ func (a *app) branchCommitDetailView(c *ui.Context, branch repository.Branch) {
 			}
 		})
 		ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Wrap().Children(func() {
-			a.commitActionIconsWithHistory(c, commit, c.Services(), branch.Head)
+			a.commitActionIconsWithHistory(c, commit, branch.Head)
 		})
 		a.diffViewOptions(c)
 		a.requestBranchCommitFiles(commit)

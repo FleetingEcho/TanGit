@@ -22,29 +22,36 @@ func (a *app) graphView(c *ui.Context) {
 	a.collapsibleContentPaneSplitPercent(c, &a.graphListPercent, &a.workspacePaneCollapsed[sectionGraph],
 		"Expand list pane", func() {
 			islandCard(c, ui.Column(c).Grow(1).Gap(8).Padding(12)).Children(func() {
-				ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-					ui.Icon(c, graphIcon).FontSize(14).TextColor(theme.Accent)
-					ui.Text(c, tr("Commit graph")).Bold().Grow(1)
-					if filtered {
-						if a.graphFilter.loading {
-							ui.Spinner(c).Label(tr("Searching commits"))
-						} else if a.graphFilter.err == "" {
+				ui.Column(c).Gap(6).Children(func() {
+					ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+						ui.Icon(c, graphIcon).FontSize(14).TextColor(theme.Accent)
+						ui.Text(c, tr("Commit graph")).Bold()
+						if filtered {
+							if a.graphFilter.loading {
+								ui.Spinner(c).Label(tr("Searching commits"))
+							} else if a.graphFilter.err == "" {
+								ui.Badge(c, fmt.Sprintf("%d", len(commits)))
+							}
+						} else if len(commits) > 0 {
 							ui.Badge(c, fmt.Sprintf("%d", len(commits)))
 						}
-						ui.Badge(c, commitFilterSummary(a.graphFilter.applied))
-					} else if len(commits) > 0 {
-						ui.Badge(c, fmt.Sprintf("%d", len(commits)))
-					}
-					a.commitSelectionModeButton(c)
-					commitFilterButton(c, "Search and filter the commit graph", filtered, func() {
-						a.openCommitFilter(sectionGraph)
+						ui.Spacer(c).Grow(1)
+						a.commitSelectionModeButton(c)
+						commitFilterButton(c, "Search and filter the commit graph", filtered, func() {
+							a.openCommitFilter(sectionGraph)
+						})
+						if filtered {
+							clearFilterButton(c, "Clear every filter and show all commits", func() {
+								a.clearCommitFilter(sectionGraph)
+							})
+						}
+						paneCollapseButton(c, &a.workspacePaneCollapsed[sectionGraph], "Collapse list pane")
 					})
 					if filtered {
-						clearFilterButton(c, "Clear every filter and show all commits", func() {
-							a.clearCommitFilter(sectionGraph)
+						ui.Row(c).Children(func() {
+							ui.Badge(c, commitFilterSummary(a.graphFilter.applied))
 						})
 					}
-					paneCollapseButton(c, &a.workspacePaneCollapsed[sectionGraph], "Collapse list pane")
 				})
 				subtitle := "Every branch, newest first"
 				if filtered {
