@@ -21,6 +21,7 @@ func TestNetworkErrorCategories(t *testing.T) {
 		{name: "host key", err: errors.New("Host key verification failed."), want: ErrHostKeyVerification},
 		{name: "changed host key", err: errors.New("REMOTE HOST IDENTIFICATION HAS CHANGED!"), want: ErrHostKeyVerification},
 		{name: "cancelled prompt", err: errors.New("credential prompt cancelled by user"), want: ErrPromptCancelled},
+		{name: "diverged pull", err: errors.New("fatal: Need to specify how to reconcile divergent branches."), want: ErrPullDiverged},
 		{name: "push rejected", err: errors.New("! [rejected] main -> main (non-fast-forward)"), want: ErrPushRejected},
 		{name: "lease rejected", err: errors.New("! [rejected] main -> main (stale info)"), lease: true, want: ErrPushLeaseRejected},
 	}
@@ -39,7 +40,7 @@ func TestNetworkErrorCategories(t *testing.T) {
 
 func TestNetworkErrorDoesNotClassifyOrdinaryFailures(t *testing.T) {
 	err := safeNetworkError(errors.New("could not resolve host: example.invalid"), false)
-	for _, kind := range []error{ErrAuthentication, ErrPushRejected, ErrPushLeaseRejected, ErrPromptCancelled, ErrHostKeyVerification} {
+	for _, kind := range []error{ErrAuthentication, ErrPullDiverged, ErrPushRejected, ErrPushLeaseRejected, ErrPromptCancelled, ErrHostKeyVerification} {
 		if errors.Is(err, kind) {
 			t.Fatalf("DNS failure was classified as %v", kind)
 		}

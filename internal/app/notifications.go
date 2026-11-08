@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -66,9 +67,37 @@ func (a *app) notifyTranslated(kind, title, description string) {
 }
 
 // notifyError reports a failed action, with the way to the command log that
-// holds the command and the rest of its output.
+// holds the command and the rest of its output. A known recovery becomes the
+// primary action instead of leaving the user to find it in Git's output.
 func (a *app) notifyError(err error) {
 	if err == nil {
+		return
+	}
+	if errors.Is(err, repository.ErrPullDiverged) {
+		a.notifyToast(appToast{
+			kind:        "error",
+			title:       "Choose how to pull",
+			description: tr("Your local and remote branches have diverged. Merge preserves both histories; rebase replays your local commits on top of the remote tip."),
+			action:      "Merge",
+			onAction:    func() { a.confirmPullStrategy(repository.PullMerge) },
+			moreActions: []appToastAction{
+				{label: "Rebase", onAction: func() { a.confirmPullStrategy(repository.PullRebase) }},
+				{label: "View log", onAction: a.openCommandLog},
+			},
+			timeout: 12 * time.Second,
+		})
+		return
+	}
+	if errors.Is(err, repository.ErrPushRejected) {
+		a.notifyToast(appToast{
+			kind:        "error",
+			title:       "Pull first, then push",
+			description: tr("The remote branch has changes you do not have locally. Pull and resolve any conflicts, then push again."),
+			action:      "Pull now",
+			onAction:    a.confirmPull,
+			moreActions: []appToastAction{{label: "View log", onAction: a.openCommandLog}},
+			timeout:     12 * time.Second,
+		})
 		return
 	}
 	a.pendingToasts = append(a.pendingToasts, appToast{

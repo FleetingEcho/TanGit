@@ -238,6 +238,16 @@ type ProgressiveSession interface {
 	DetailsSnapshot(context.Context) (Snapshot, error)
 }
 
+// PullStrategy chooses how one pull reconciles divergent branches without
+// changing the repository's or user's persistent Git configuration.
+type PullStrategy uint8
+
+const (
+	pullConfigured PullStrategy = iota
+	PullMerge
+	PullRebase
+)
+
 type Session interface {
 	Snapshot(context.Context) (Snapshot, error)
 	// RecentCommits reads up to limit commits reachable from any ref, newest
@@ -294,6 +304,7 @@ type Session interface {
 	Fetch(context.Context) error
 	FetchRemote(context.Context, string) error
 	Pull(context.Context) error
+	PullWithStrategy(context.Context, PullStrategy) error
 	Push(context.Context) error
 	ForcePushWithLease(context.Context) error
 	CherryPickCommits(context.Context, []Commit) error
@@ -1355,6 +1366,17 @@ func (s *gitSession) FetchRemote(ctx context.Context, name string) error {
 }
 
 func (s *gitSession) Pull(ctx context.Context) error {
+	return s.pull(ctx, pullConfigured)
+}
+
+func (s *gitSession) PullWithStrategy(ctx context.Context, strategy PullStrategy) error {
+	if strategy != PullMerge && strategy != PullRebase {
+		return fmt.Errorf("pull: unknown reconciliation strategy %d", strategy)
+	}
+	return s.pull(ctx, strategy)
+}
+
+func (s *gitSession) pull(ctx context.Context, strategy PullStrategy) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -1365,11 +1387,25 @@ func (s *gitSession) Pull(ctx context.Context) error {
 	if branch.UpstreamRemote == "" || branch.UpstreamBranch == "" {
 		return fmt.Errorf("pull: branch %s: %w", branch.Name, ErrNoUpstream)
 	}
-	if err := s.git.Sync.Pull(nil, git_commands.PullOptions{
-		RemoteName: branch.UpstreamRemote,
-		BranchName: branch.UpstreamBranch,
-	}); err != nil {
-		return fmt.Errorf("pull: %w", safeNetworkError(err, false))
+	var pullErr error
+	if strategy == pullConfigured {
+		pullErr = s.git.Sync.Pull(nil, git_commands.PullOptions{
+			RemoteName: branch.UpstreamRemote,
+			BranchName: branch.UpstreamBranch,
+		})
+	} else {
+		mode := "--no-rebase"
+		if strategy == PullRebase {
+			mode = "--rebase"
+		}
+		args := []string{"git", "pull", "--no-edit", mode, branch.UpstreamRemote, "refs/heads/" + branch.UpstreamBranch}
+		pullErr = s.cmd.New(args).
+			AddEnvVars("GIT_SEQUENCE_EDITOR=:").
+			PromptOnCredentialRequest(nil).
+			Run()
+	}
+	if pullErr != nil {
+		return fmt.Errorf("pull: %w", safeNetworkError(pullErr, false))
 	}
 	return nil
 }
