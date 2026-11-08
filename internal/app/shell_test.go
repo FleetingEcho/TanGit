@@ -614,7 +614,7 @@ func TestShellOverlaysRespectNativeWindowControls(t *testing.T) {
 			a.closeFileHistory()
 			a.diffFullscreen = true
 			tt.Frame()
-			assertClear("Close full-window diff")
+			assertClear("Restore diff view")
 		})
 	}
 }

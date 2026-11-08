@@ -512,7 +512,7 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 				a.diffLayoutButton(c)
 				a.diffWrapButton(c)
 				a.exportDiffButton(c)
-				iconButton(c, "Close full-window diff", "Escape", closeIcon, false, a.closeDiffFullscreen)
+				iconButton(c, "Restore diff view", "Restore diff view", shrinkIcon, false, a.closeDiffFullscreen)
 			})
 			if a.workspaceTab == sectionChanges && a.lineSelectionAvailable() {
 				ui.Column(c).Padding(10, 14).Children(func() {

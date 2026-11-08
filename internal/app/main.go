@@ -314,6 +314,8 @@ type app struct {
 	branchListWidth          float32
 	branchCommitsWidth       float32
 	branchCommitsCollapsed   bool
+	branchFullscreen         bool
+	branchHeaderHeight       float32
 	remoteList               ui.ListState
 	remoteFilter             string
 	selectedRemoteRow        int
@@ -650,6 +652,7 @@ func newApp(opener repositoryOpener) *app {
 		// subjects, so both stay narrow and leave the commit its room.
 		branchListWidth:    240,
 		branchCommitsWidth: 280,
+		branchHeaderHeight: 160,
 		// The Graph lays its lanes out from left to right, so the list pane
 		// takes the larger share of the workspace.
 		graphListPercent: 58,

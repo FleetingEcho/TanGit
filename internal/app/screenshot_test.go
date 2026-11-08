@@ -1323,7 +1323,7 @@ func TestScreenshot(t *testing.T) {
 		saveScreenshot(t, dir, "54-file-edit-light", tt)
 	})
 
-	// The full-window diff, with the close icon at its top right.
+	// The full-window diff, with the shrink icon at its top right.
 	t.Run("diff-fullscreen-light", func(t *testing.T) {
 		a, tt := newScreenshotApp(t, false)
 		a.openDiffFullscreen()
