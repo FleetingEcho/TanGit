@@ -39,6 +39,30 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: Cache Windows terminal libraries
+        if: matrix.name == 'Windows'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mygo_dir="$(go list -m -f '{{.Dir}}' github.com/egoist/mygo)"
+          manifest="$mygo_dir/plugins/terminal/mygo-plugin.json"
+          while IFS=$'\t' read -r name url sha; do
+            asset="${url##*/}"
+            release="${url%/*}"
+            release="${release##*/}"
+            asset_id="$(gh api "repos/egoist/mygo/releases/tags/$release" |
+              jq -r --arg name "$asset" '.assets[] | select(.name == $name) | .id')"
+            test -n "$asset_id"
+            cache="${XDG_CACHE_HOME:-$HOME/.cache}/mygo/natives/$sha"
+            mkdir -p "$cache"
+            gh api -H 'Accept: application/octet-stream' \
+              "repos/egoist/mygo/releases/assets/$asset_id" > "$cache/$name"
+            echo "$sha  $cache/$name" | sha256sum -c -
+          done < <(jq -r '
+            .libraries[] | select(.name == "libghostty-vt") | .files |
+            to_entries[] | select(.key | startswith("windows-")) |
+            [.value.name, .value.url, .value.sha256] | @tsv
+          ' "$manifest")
       - name: Install NSIS for Windows installers
         if: matrix.name == 'Windows'
         run: sudo apt-get update && sudo apt-get install -y nsis
