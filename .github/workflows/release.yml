@@ -70,32 +70,6 @@ jobs:
             to_entries[] | select(.key | startswith($prefix)) |
             [.value.name, .value.url, .value.sha256] | @tsv
           ' "$manifest")
-      - name: Warm previous update assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MYGO_PLATFORMS: ${{ matrix.platform }}
-        run: |
-          repo="$(jq -r '.updates.github' mygo.json)"
-          release="$(gh api "repos/$repo/releases/latest")"
-          IFS=',' read -ra platforms <<< "$MYGO_PLATFORMS"
-          for platform in "${platforms[@]}"; do
-            target="${platform//\//-}"
-            manifest="update-$target.json"
-            asset_id="$(jq -r --arg name "$manifest" \
-              '.assets[] | select(.name == $name) | .id' <<< "$release")"
-            test -n "$asset_id"
-            local_manifest="$RUNNER_TEMP/$manifest"
-            gh api -H 'Accept: application/octet-stream' \
-              "repos/$repo/releases/assets/$asset_id" > "$local_manifest"
-            {
-              echo "https://github.com/$repo/releases/latest/download/$manifest"
-              jq -r '.url, .previous[]?.url' "$local_manifest"
-            } | while read -r url; do
-              curl --fail --location --silent --show-error \
-                --retry 20 --retry-all-errors --retry-delay 2 \
-                --retry-max-time 300 --output /dev/null "$url"
-            done
-          done
       - name: Install NSIS for Windows installers
         if: matrix.name == 'Windows'
         run: sudo apt-get update && sudo apt-get install -y nsis
