@@ -78,7 +78,7 @@ func TestChangesListSectionsAndBadges(t *testing.T) {
 	if rows[3].header != "Changes" || rows[3].count != 3 {
 		t.Errorf("second header = %q with %d files, want \"Changes\" with 3", rows[3].header, rows[3].count)
 	}
-	want := []string{"staged:both.txt", "staged:staged.txt", "unstaged:both.txt", "unstaged:work.txt", "unstaged:untracked.txt"}
+	want := []string{"staged:both.txt", "staged:staged.txt", "unstaged:both.txt", "unstaged:untracked.txt", "unstaged:work.txt"}
 	got := changeRowPaths(rows)
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("rows = %v, want %v", got, want)
@@ -234,14 +234,14 @@ func TestChangesSelectionSkipsSectionHeaders(t *testing.T) {
 		t.Fatalf("the first frame chose row %d, which is not a file", h.app.selectedFile)
 	}
 
-	if err := h.tester.Click("work.txt"); err != nil {
+	if err := h.tester.Click("untracked.txt"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
 	h.settle(t)
 	// A click on a row opens its diff in the detail pane.
 	h.waitFor(t, "the clicked row's diff", func() bool {
-		return calls.has("diff:work.txt:unstaged")
+		return calls.has("diff:untracked.txt:unstaged")
 	})
 	start := h.app.selectedFile
 	h.press(t, ui.KeyDown)

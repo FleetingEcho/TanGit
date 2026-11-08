@@ -112,6 +112,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.worktreeFormModal(c)
 	a.submoduleFormModal(c)
 	a.recentRenameModal(c)
+	a.terminalRenameModal(c)
 	a.commandLogModal(c)
 	a.settingsModal(c)
 	a.keybindingsModal(c)
@@ -146,7 +147,7 @@ func (a *app) recoverView(c *ui.Context) {
 // describeFault turns a recovered value into a line worth showing.
 func describeFault(r any) string {
 	if err, ok := r.(error); ok {
-		return err.Error()
+		return safeError(err)
 	}
 	return fmt.Sprintf("%v", r)
 }
@@ -187,6 +188,7 @@ func (a *app) crashView(c *ui.Context) {
 func (a *app) applySettingsFor(c *ui.Context, systemDark bool) {
 	currentLanguage = normalizeLanguage(a.settings.Language)
 	c.SetTheme(themeForSettings(a.settings, systemDark))
+	a.applyBufferFonts()
 	a.syncHomeBackground()
 }
 
@@ -754,6 +756,7 @@ func (a *app) headerView(c *ui.Context) {
 						a.confirmAbortOperation()
 					})
 			}
+			// Labeled actions lead the toolbar; icon-only actions follow them.
 			iconButton(c, "Compare refs", "Compare two branches, tags, or commits (W)", compareIcon,
 				a.actionBusy, a.openCompare)
 			iconButton(c, "Fetch", "Fetch from the remotes", fetchIcon,
@@ -771,11 +774,6 @@ func (a *app) headerView(c *ui.Context) {
 				a.actionBusy, func() {
 					a.confirmPush()
 				})
-			ui.PopoverMenuButton(c, tr("Push options"), func(m *ui.Menu) {
-				if m.Item(tr("Force push with lease…")).Chosen() {
-					a.confirmForcePushWithLease()
-				}
-			}).Disabled(a.actionBusy || a.snapshot.Branch == "")
 			iconButton(c, "Refresh", "Refresh (F5)", refreshIcon, a.actionBusy, a.beginRefresh)
 			a.editorButton(c)
 			a.themeButton(c)

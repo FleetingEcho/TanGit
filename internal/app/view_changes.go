@@ -69,6 +69,23 @@ func pathMatches(query, path string) bool {
 	return strings.Contains(strings.ToLower(path), strings.ToLower(query))
 }
 
+// fileForChangeSide gives each row of a partially staged file the statistics
+// of the diff that row opens. The snapshot also keeps their combined total for
+// repository-wide operations; it is not the count of either individual side.
+func fileForChangeSide(file repository.File, staged bool) repository.File {
+	if !file.Staged || !file.Unstaged {
+		return file
+	}
+	if staged {
+		file.LinesAdded = file.StagedLinesAdded
+		file.LinesDeleted = file.StagedLinesDeleted
+	} else {
+		file.LinesAdded = file.UnstagedLinesAdded
+		file.LinesDeleted = file.UnstagedLinesDeleted
+	}
+	return file
+}
+
 // buildChangeRows lays out the Changes list: the merge changes, then the
 // staged and changes sections, each with its header and, while open, its
 // files. A conflicted file belongs to the merge changes alone: it is resolved,
@@ -88,10 +105,10 @@ func buildChangeRows(files []repository.File, search string, ignoreUntracked, me
 			continue
 		}
 		if file.Staged {
-			staged = append(staged, changeRow{file: file, staged: true})
+			staged = append(staged, changeRow{file: fileForChangeSide(file, true), staged: true})
 		}
 		if file.Unstaged && !(ignoreUntracked && !file.Tracked) {
-			changes = append(changes, changeRow{file: file})
+			changes = append(changes, changeRow{file: fileForChangeSide(file, false)})
 		}
 	}
 	rows := make([]changeRow, 0, len(merge)+len(staged)+len(changes)+3)
@@ -160,6 +177,7 @@ func buildChangeTreeRows(files []repository.File, search string, ignoreUntracked
 // changeRowsFrom filters the snapshot's files with the list's current search,
 // untracked setting and folded sections.
 func (a *app) changeRowsFrom(files []repository.File) []changeRow {
+	files = a.visibleReviewFiles(files)
 	if a.fileTreeMode {
 		return buildChangeTreeRows(files, a.fileSearch, a.ignoreUntracked, a.mergeExpanded, a.stagedExpanded, a.changesExpanded, a.fileTreeCollapsed)
 	}
@@ -303,6 +321,7 @@ func splitChangeRows(rows []changeRow) changeSections {
 // while its files scroll under it, and the two are set apart by a gap.
 func (a *app) filesView(c *ui.Context) {
 	theme := c.Theme()
+	a.requestReviewedFiles()
 	// Keep the choice on its file when a section folds or unfolds under it:
 	// the flat index shifts when rows leave or join the list.
 	chosen, hadChoice := a.selectedChange()
@@ -327,6 +346,7 @@ func (a *app) filesView(c *ui.Context) {
 		a.changesHeader(c)
 		a.commitBox(c)
 		a.changesFilter(c)
+		a.reviewFilterRow(c)
 		if len(a.snapshot.Files) == 0 {
 			ui.Column(c).Grow(1).Center().Children(func() {
 				ui.Text(c, tr("Working tree clean")).TextColor(theme.TextMuted)
@@ -650,7 +670,7 @@ func (a *app) changesHeader(c *ui.Context) {
 			if a.fileTreeMode {
 				treeLabel, treeTooltip = "Show files as a flat list", "Show every full file path"
 			}
-			flatIconButton(c, treeLabel, treeTooltip, folderIcon, 15, 5, false, func() {
+			flatToggleIconButton(c, treeLabel, treeTooltip, folderIcon, 15, 5, a.fileTreeMode, func() {
 				a.fileTreeMode = !a.fileTreeMode
 			})
 			flatIconButton(c, "Refresh", "F5", refreshIcon, 15, 5, a.actionBusy, a.beginRefresh)
@@ -664,7 +684,7 @@ func (a *app) changesHeader(c *ui.Context) {
 				ui.Text(c, "⋯").FontSize(16).TextColor(theme.TextMuted)
 			})
 			more.PopoverMenuButton(func(m *ui.Menu) {
-				if m.Item(tr("Commit with a description…")).Disabled(a.actionBusy).Chosen() {
+				if m.Item(tr("Commit with a description…")).Disabled(a.actionBusy || !hasStagedFiles(a.snapshot.Files)).Chosen() {
 					a.showCommitForm = true
 				}
 				if m.Item(tr("Commit (amend last)…")).Disabled(!a.canCommit()).Chosen() {
@@ -745,6 +765,22 @@ func (a *app) changesFilter(c *ui.Context) {
 		a.searchNavigationButtons(c, strings.TrimSpace(a.fileSearch) != "")
 		ui.Checkbox(c, &a.ignoreUntracked, tr("Untracked")).
 			Tooltip(tr("Leave untracked files out of the changes"))
+	})
+}
+
+// reviewFilterRow holds review progress and traversal outside the crowded
+// panel header. Its filter is content-current, not a second staging filter.
+func (a *app) reviewFilterRow(c *ui.Context) {
+	reviewed, total := a.reviewProgress()
+	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+		ui.Text(c, trf("%d/%d reviewed", reviewed, total)).
+			FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().TextMuted).
+			Tooltip(tr(reviewLocalStatusMessage) + " " + tr("Changed content automatically becomes unreviewed"))
+		ui.Spacer(c).Grow(1)
+		ui.Checkbox(c, &a.reviewFilter, tr("Unreviewed")).
+			Tooltip(tr("Show only files whose current content still needs review"))
+		flatIconButton(c, "Next unreviewed", "Go to the next unreviewed file (Shift+R)", chevronDownIcon, 14, 4,
+			!a.hasUnreviewedFiles(), a.selectNextUnreviewed)
 	})
 }
 
@@ -850,6 +886,29 @@ func (a *app) changeFileRow(row ui.ListRow, change changeRow, index int) {
 					SingleLine()
 			}
 		})
+		if reveal {
+			reviewLabel := "Mark reviewed " + file.Path
+			reviewIcon := commitIcon
+			if a.reviewedFiles[file.Path] {
+				// The action removes the existing mark, so it must not look like
+				// another check that marks the file reviewed again.
+				reviewLabel = "Mark unreviewed " + file.Path
+				reviewIcon = closeIcon
+			}
+			rowIconButton(row.Context, reviewLabel, reviewActionTooltip(), reviewIcon, func() {
+				a.setFileReviewed(file, !a.reviewedFiles[file.Path])
+			})
+		} else if a.reviewedFiles[file.Path] {
+			// Badge builds its text before TextColor can be chained onto it. Build
+			// this small pill directly so its label gets the contrasting
+			// foreground instead of inheriting the row's success green.
+			ui.Row(row.Context).Padding(0, theme.Space(1.5)).Radius(999).
+				Background(theme.Success).Shrink(0).
+				Tooltip(tr(reviewLocalStatusMessage)).Children(func() {
+				ui.Text(row.Context, tr("Reviewed")).FontSize(theme.FontSize - 2).
+					TextColor(theme.Background).SingleLine()
+			})
+		}
 		if file.HasMergeConflicts {
 			if reveal {
 				rowIconButton(row.Context, "Use current "+file.Path, "Resolve with the current side", useCurrentIcon, func() {

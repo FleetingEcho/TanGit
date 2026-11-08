@@ -36,6 +36,14 @@ type CommandLog struct {
 	// open is the entry the streamed output of the command now belongs to,
 	// -1 before the first command.
 	open int
+	// pendingOutput holds an incomplete line. A URL or authorization header
+	// may be split across arbitrary writes, so only complete lines are redacted
+	// and published; the next command or Note flushes the final partial line.
+	pendingOutput string
+	// discardingOutputLine bounds an unterminated stream just as the output
+	// limit bounds a complete one. Its text is omitted rather than publishing
+	// an unredactable credential fragment.
+	discardingOutputLine bool
 }
 
 func NewCommandLog() *CommandLog {
@@ -50,7 +58,8 @@ func (l *CommandLog) logCommand(command string, _ bool) {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.entries = append(l.entries, CommandEntry{At: time.Now(), Command: command})
+	l.flushPendingOutputLocked()
+	l.entries = append(l.entries, CommandEntry{At: time.Now(), Command: RedactSecrets(command)})
 	if len(l.entries) > commandLogLimit {
 		// Copy, so the log does not keep the trimmed prefix alive.
 		l.entries = append([]CommandEntry(nil), l.entries[len(l.entries)-commandLogLimit:]...)
@@ -82,6 +91,50 @@ func (l *CommandLog) appendOutput(text string) {
 	if l.open < 0 || l.open >= len(l.entries) {
 		return
 	}
+	if l.discardingOutputLine {
+		newline := strings.Index(text, "\n")
+		if newline < 0 {
+			return
+		}
+		l.discardingOutputLine = false
+		text = text[newline+1:]
+	}
+	l.pendingOutput += text
+	lastNewline := strings.LastIndex(l.pendingOutput, "\n")
+	if lastNewline < 0 {
+		if len(l.pendingOutput) > commandOutputLimit {
+			l.pendingOutput = ""
+			l.discardingOutputLine = true
+			l.appendOutputTextLocked("[unterminated output line omitted]\n")
+		}
+		return
+	}
+	complete := l.pendingOutput[:lastNewline+1]
+	l.pendingOutput = l.pendingOutput[lastNewline+1:]
+	l.appendOutputTextLocked(RedactSecrets(complete))
+	if len(l.pendingOutput) > commandOutputLimit {
+		l.pendingOutput = ""
+		l.discardingOutputLine = true
+		l.appendOutputTextLocked("[unterminated output line omitted]\n")
+	}
+}
+
+// flushPendingOutputLocked publishes the unterminated final line. Holding it
+// until this point is what prevents a split write from exposing half a secret.
+func (l *CommandLog) flushPendingOutputLocked() {
+	if l.pendingOutput == "" {
+		return
+	}
+	text := RedactSecrets(l.pendingOutput)
+	l.pendingOutput = ""
+	l.discardingOutputLine = false
+	l.appendOutputTextLocked(text)
+}
+
+func (l *CommandLog) appendOutputTextLocked(text string) {
+	if l.open < 0 || l.open >= len(l.entries) {
+		return
+	}
 	entry := &l.entries[l.open]
 	if len(entry.Output) >= commandOutputLimit {
 		return
@@ -101,12 +154,13 @@ func (l *CommandLog) Note(text string) {
 	if l == nil {
 		return
 	}
-	text = strings.TrimSpace(text)
+	text = strings.TrimSpace(RedactSecrets(text))
 	if text == "" {
 		return
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.flushPendingOutputLocked()
 	if len(l.entries) == 0 {
 		l.entries = append(l.entries, CommandEntry{At: time.Now(), Command: "Git action"})
 		l.open = 0
@@ -146,4 +200,6 @@ func (l *CommandLog) Clear() {
 	defer l.mu.Unlock()
 	l.entries = nil
 	l.open = -1
+	l.pendingOutput = ""
+	l.discardingOutputLine = false
 }

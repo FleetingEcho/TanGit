@@ -124,7 +124,7 @@ func (a *app) requestFileEdit() {
 				return
 			}
 			if err != nil {
-				a.fileEditError = err.Error()
+				a.fileEditError = safeError(err)
 				return
 			}
 			a.fileEditState = state
@@ -150,11 +150,11 @@ func (a *app) saveFileEdits() {
 
 	var content bytes.Buffer
 	if _, err := state.Buffer.WriteTo(&content); err != nil {
-		a.fileEditSaveError = err.Error()
+		a.fileEditSaveError = safeError(err)
 		return
 	}
 	if err := writeWorkingFile(a.workingFilePath(a.fileEditKey), content.Bytes()); err != nil {
-		a.fileEditSaveError = err.Error()
+		a.fileEditSaveError = safeError(err)
 		return
 	}
 	state.Buffer.MarkSaved()

@@ -210,6 +210,35 @@ func compactIconButton(button ui.Element) ui.Element {
 	return button.Size(34, 26).Padding(0).Center()
 }
 
+// compactTextButton gives labeled actions the same height and vertical rhythm
+// as compactIconButton while letting their translated text choose the width.
+func compactTextButton(button ui.Element) ui.Element {
+	return button.Height(26).Padding(2, 8).Center()
+}
+
+// flatToggleIconButton keeps a view mode's active state visible and exposes
+// it as a pressed toggle to assistive technology.
+func flatToggleIconButton(c *ui.Context, label, tooltip string, icon *ui.SVG, size, pad float32, active bool, run func()) {
+	theme := c.Theme()
+	button := ui.ButtonBase(c).Padding(pad).Radius(theme.Radius)
+	button.Label(tr(label)).Tooltip(tr(tooltip)).Checked(active)
+	color := theme.TextMuted
+	if active {
+		color = theme.Accent
+	}
+	button.Children(func() {
+		ui.Icon(c, icon).FontSize(size).TextColor(color)
+	})
+	if active {
+		button.Background(theme.Accent.Alpha(0.14))
+	} else if button.Hovered() {
+		button.Background(theme.SurfaceHover)
+	}
+	if button.Clicked() {
+		run()
+	}
+}
+
 // flatIconButton is a borderless icon button for a pane's header and its
 // section bars: it takes no face until hovered, and stays out of the way
 // while its action cannot run.
@@ -334,12 +363,19 @@ func paneSplitWithGrip(c *ui.Context, value *float32, vertical, percent bool,
 			minPane := theme.Space(10)
 			shown = min(max(shown, minPane), max(total-1-minPane, minPane))
 		}
-		// MyGo's splitter reaches the host's full height, past the rounded card
-		// borders. Mask only that overshoot, one DIP wide. Repainting the whole
-		// seam with the opaque backdrop also covered the cards' shadows and made
-		// a conspicuous dark stripe in dark themes. The native divider stays
-		// visible between these masks, including its accent hover feedback.
-		if !vertical {
+		// MyGo's splitter reaches the host's full cross-axis, past the rounded
+		// card borders. Mask only that overshoot, one DIP thick: a horizontal
+		// divider starts after the corner radius at each side, just as a vertical
+		// one starts below it. Repainting the whole seam with the opaque backdrop
+		// also covered the cards' shadows and made a conspicuous dark stripe in
+		// dark themes. The native divider stays visible between these masks,
+		// including its accent hover feedback.
+		if vertical {
+			ui.Box(c).Absolute().Top(shown).Left(0).Width(paneResizeLineInset).Height(1).
+				Background(islandBackdrop(theme)).PassThrough()
+			ui.Box(c).Absolute().Top(shown).Right(0).Width(paneResizeLineInset).Height(1).
+				Background(islandBackdrop(theme)).PassThrough()
+		} else {
 			ui.Box(c).Absolute().Left(shown).Top(0).Height(paneResizeLineInset).Width(1).
 				Background(islandBackdrop(theme)).PassThrough()
 			ui.Box(c).Absolute().Left(shown).Bottom(0).Height(paneResizeLineInset).Width(1).
@@ -460,6 +496,7 @@ func iconTextButtonState(c *ui.Context, label, tooltip string, icon *ui.SVG, pri
 	} else {
 		button = ui.Button(c, "")
 	}
+	button = compactTextButton(button)
 	clicked := button.Label(tr(label)).Tooltip(tr(tooltip)).Gap(6).Disabled(disabled).Clicked()
 	button.Children(func() {
 		ui.Icon(c, icon).FontSize(14)
@@ -488,6 +525,7 @@ func (a *app) closeAllForms() {
 	a.showCommitBranchForm = false
 	a.closeCommitRewordForm()
 	a.showRenameRecent = false
+	a.closeTerminalRename()
 	a.filterOpen = false
 	a.closeCompare()
 }
@@ -512,7 +550,8 @@ func (a *app) anyFormOpen() bool {
 		a.showCommitTagForm ||
 		a.showCommitBranchForm ||
 		a.showCommitRewordForm ||
-		a.showRenameRecent
+		a.showRenameRecent ||
+		a.term.renameID != 0
 }
 
 // modalOpen reports whether a dialog or a full-window view owns the keyboard,

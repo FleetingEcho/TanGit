@@ -35,6 +35,7 @@ func (a *app) graphView(c *ui.Context) {
 					} else if len(commits) > 0 {
 						ui.Badge(c, fmt.Sprintf("%d", len(commits)))
 					}
+					a.commitSelectionModeButton(c)
 					commitFilterButton(c, "Search and filter the commit graph", filtered, func() {
 						a.openCommitFilter(sectionGraph)
 					})

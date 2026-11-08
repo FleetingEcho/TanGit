@@ -115,7 +115,7 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 		}
 		if detailsErr != nil {
 			err := fmt.Errorf("load repository details: %w", detailsErr)
-			a.actionError = err.Error()
+			a.actionError = safeError(err)
 			a.notifyError(err)
 			return
 		}
@@ -146,7 +146,7 @@ func (a *app) setOpenError(path string, generation uint64, err error) {
 		return
 	}
 	a.state = stateError
-	a.errMessage = err.Error()
+	a.errMessage = safeError(err)
 }
 
 // installOpenedRepository establishes the state shared by legacy and core
@@ -158,6 +158,7 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 	a.commandLog = session.CommandLog()
 	a.commandLogOpen = false
 	a.confirm = nil
+	a.commitSelectionMode = false
 	a.commitSelection = nil
 	a.keyboardCopied = nil
 	a.keyboardSectionKnown = false
@@ -199,6 +200,11 @@ func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 	// A new repository shows every change and both sections open.
 	a.fileSearch = ""
 	a.ignoreUntracked = false
+	a.reviewedFiles = map[string]bool{}
+	a.reviewRequestedSeq = 0
+	a.reviewRequestToken++
+	a.reviewLoading = false
+	a.reviewFilter = false
 	a.fileTreeCollapsed = nil
 	a.stagedExpanded, a.changesExpanded = true, true
 	a.resetFileDiff()
@@ -275,10 +281,14 @@ func (a *app) resetFileDiff() {
 	a.diffKind = ""
 	a.diffPatch = ""
 	a.diffState = nil
+	a.diffMedia = nil
 	a.diffLoading = false
 	a.diffError = ""
 	a.conflictState = nil
 	a.conflictView = nil
+	a.conflictStages = repository.ConflictStages{}
+	a.conflictStageViews = [3]*editor.State{}
+	a.conflictStageTab = 3
 	a.conflictSides = nil
 	a.conflictScrollTo = -1
 	a.conflictSaveError = ""
@@ -287,7 +297,7 @@ func (a *app) resetFileDiff() {
 	a.conflictDiffPatch = ""
 	a.resetFileEdit()
 	a.lineSelectMode = false
-	a.lineSelectRange, a.lineSelectHas = editor.DiffLineRange{}, false
+	a.clearMultipleLineSelection()
 }
 
 // beginDiff reads the chosen change's diff again, as an action that rewrote
@@ -332,8 +342,12 @@ func (a *app) requestFileDiff() {
 	a.diffLoading = true
 	a.diffError = ""
 	a.diffState = nil
+	a.diffMedia = nil
 	a.conflictState = nil
 	a.conflictView = nil
+	a.conflictStages = repository.ConflictStages{}
+	a.conflictStageViews = [3]*editor.State{}
+	a.conflictStageTab = 3
 	a.conflictSides = nil
 	a.conflictSaveError = ""
 	a.conflictSaveVersion = 0
@@ -353,8 +367,12 @@ func (a *app) requestFileDiff() {
 		defer a.recoverBackground()
 		diff, err := session.Diff(ctx, file, options)
 		var state *editor.DiffState
+		var media *mediaReview
 		if err == nil {
 			state, err = buildDiffState(layout, wrap, file, diff, options)
+			if err == nil && state == nil && isMediaPath(file.Path) {
+				media, err = loadMediaReview(ctx, session, repository.MediaRequest{Source: repository.MediaWorkingTree, File: file})
+			}
 			if err == nil && state != nil {
 				state.LineSelection = canonicalDiffOptions(options) && diffSupportsLineStaging(file, diff.Kind)
 				if state.LineSelection {
@@ -375,12 +393,13 @@ func (a *app) requestFileDiff() {
 			a.cancelDiff = nil
 			a.diffLoading = false
 			if err != nil {
-				a.diffError = err.Error()
+				a.diffError = safeError(err)
 				return
 			}
 			a.diffKind = diff.Kind
 			a.diffPatch = diff.Patch
 			a.diffState = state
+			a.diffMedia = media
 		})
 	}()
 }
@@ -400,10 +419,10 @@ func (a *app) beginBlame() {
 	a.blameState = nil
 	go func() {
 		defer a.recoverBackground()
-		output, err := session.BlameFile(context.Background(), file)
+		lines, err := session.BlameFile(context.Background(), file)
 		var state *editor.State
 		if err == nil {
-			buffer := editor.NewBuffer(output)
+			buffer := editor.NewBuffer(formatBlame(lines))
 			state = &editor.State{Buffer: buffer, ReadOnly: true, SoftWrap: false, Label: "Git blame output"}
 		}
 		a.update(func() {
@@ -412,7 +431,7 @@ func (a *app) beginBlame() {
 			}
 			a.blameLoading = false
 			if err != nil {
-				a.blameError = err.Error()
+				a.blameError = safeError(err)
 				return
 			}
 			a.blameState = state
@@ -517,9 +536,9 @@ func (a *app) beginRepositoryActionMessage(
 				a.resetStashDetails()
 			}
 			if err != nil {
-				a.actionError = err.Error()
+				a.actionError = safeError(err)
 				if a.commandLog != nil {
-					a.commandLog.Note(err.Error())
+					a.commandLog.Note(safeError(err))
 				}
 				a.notifyError(err)
 				return
@@ -763,7 +782,7 @@ func (a *app) browse() {
 		a.update(func() {
 			if err != nil {
 				a.state = stateError
-				a.errMessage = err.Error()
+				a.errMessage = safeError(err)
 				return
 			}
 			if len(paths) == 0 {
@@ -809,7 +828,7 @@ func (a *app) initializeRepository() {
 			}
 			if err != nil {
 				a.state = stateError
-				a.errMessage = err.Error()
+				a.errMessage = safeError(err)
 				return
 			}
 			a.path = path

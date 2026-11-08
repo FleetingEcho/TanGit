@@ -25,6 +25,10 @@ func (a *app) reportBackgroundFault(reason string) {
 	}
 	// The pane the read was for shows the reason; one read runs at a time in
 	// each pane, so the loading flag names it.
+	terminalLoading := false
+	for i := range a.term.sessions {
+		terminalLoading = terminalLoading || a.term.sessions[i].loading
+	}
 	switch {
 	case a.diffLoading:
 		a.diffError = reason
@@ -58,8 +62,12 @@ func (a *app) reportBackgroundFault(reason string) {
 		a.fileHistoryDiffError = reason
 	case a.fileEditLoading:
 		a.fileEditError = reason
-	case a.term.loading:
-		a.term.err = reason
+	case terminalLoading:
+		for i := range a.term.sessions {
+			if a.term.sessions[i].loading {
+				a.term.sessions[i].err = reason
+			}
+		}
 	}
 	if a.actionBusy {
 		a.actionBusy = false
@@ -81,7 +89,9 @@ func (a *app) reportBackgroundFault(reason string) {
 	a.fileHistoryFilesLoading = false
 	a.fileHistoryDiffLoading = false
 	a.fileEditLoading = false
-	a.term.loading = false
+	for i := range a.term.sessions {
+		a.term.sessions[i].loading = false
+	}
 	// Failed opening or refresh work must free the way for a retry rather than
 	// leaving its loading flags set for the rest of the session.
 	a.repositoryDetailsLoading = false

@@ -23,10 +23,12 @@ type openResult struct {
 }
 
 type fakeOpener struct {
-	result  openResult
-	release <-chan struct{}
-	calls   *callRecorder
-	patch   string
+	result         openResult
+	release        <-chan struct{}
+	calls          *callRecorder
+	patch          string
+	conflictStages repository.ConflictStages
+	mediaPair      repository.MediaPair
 	// initErr makes the picker's offer to initialize a folder fail, as a
 	// folder the user may not write to does.
 	initErr error
@@ -44,7 +46,7 @@ func (f fakeOpener) Open(context.Context, string) (repository.Session, error) {
 	if f.result.err != nil {
 		return nil, f.result.err
 	}
-	return fakeSession{snapshot: f.result.snapshot, calls: f.calls, patch: f.patch}, nil
+	return fakeSession{snapshot: f.result.snapshot, calls: f.calls, patch: f.patch, conflictStages: f.conflictStages, mediaPair: f.mediaPair}, nil
 }
 
 // openFixture submits the picker's path field with Enter, which is how a
@@ -58,8 +60,13 @@ func openFixture(t *testing.T, tt *ui.Tester) {
 }
 
 type fakeSession struct {
-	snapshot repository.Snapshot
-	patch    string
+	snapshot       repository.Snapshot
+	patch          string
+	conflictStages repository.ConflictStages
+	mediaPair      repository.MediaPair
+	mediaErr       error
+	reviewed       map[string]bool
+	reviewErr      error
 	// calls records what the fake was asked to do, for tests that click an
 	// action and assert it reached the session. Nil records nothing.
 	calls *callRecorder
@@ -109,6 +116,30 @@ func (r *callRecorder) has(call string) bool {
 
 func (f fakeSession) Snapshot(context.Context) (repository.Snapshot, error) {
 	return f.snapshot, nil
+}
+
+func (f fakeSession) ReviewedFiles(context.Context, []repository.File) (map[string]bool, error) {
+	if f.reviewErr != nil {
+		return nil, f.reviewErr
+	}
+	reviewed := make(map[string]bool, len(f.reviewed))
+	for path, marked := range f.reviewed {
+		reviewed[path] = marked
+	}
+	return reviewed, nil
+}
+
+func (f fakeSession) SetFileReviewed(_ context.Context, file repository.File, reviewed bool) error {
+	f.calls.record("review:" + file.Path + ":" + strconv.FormatBool(reviewed))
+	return f.reviewErr
+}
+
+func (f fakeSession) ConflictStages(context.Context, repository.File) (repository.ConflictStages, error) {
+	return f.conflictStages, nil
+}
+
+func (f fakeSession) Media(context.Context, repository.MediaRequest) (repository.MediaPair, error) {
+	return f.mediaPair, f.mediaErr
 }
 
 func (f fakeSession) Diff(_ context.Context, file repository.File, options repository.DiffOptions) (repository.Diff, error) {
@@ -176,6 +207,11 @@ func (f fakeSession) ApplyCachedPatch(_ context.Context, patchText string, rever
 	return nil
 }
 
+func (f fakeSession) ApplyWorkingTreePatch(_ context.Context, patchText string, reverse bool) error {
+	f.calls.record("apply-worktree:" + strconv.FormatBool(reverse) + ":" + patchText)
+	return nil
+}
+
 func (f fakeSession) StageAll(context.Context) error {
 	f.calls.record("stage-all")
 	return nil
@@ -240,6 +276,31 @@ func (f fakeSession) CreateFixupCommit(_ context.Context, commit repository.Comm
 
 func (f fakeSession) ApplyFixupCommits(_ context.Context, commit repository.Commit) error {
 	f.calls.record("apply-fixups:" + commit.Hash)
+	return nil
+}
+
+func (f fakeSession) DiscardFiles(ctx context.Context, files []repository.File) error {
+	for _, file := range files {
+		if err := f.Discard(ctx, file); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (f fakeSession) WorkSnapshots(context.Context) ([]repository.WorkSnapshot, error) {
+	return f.snapshot.WorkSnapshots, nil
+}
+func (f fakeSession) CreateCheckpoint(_ context.Context, name string) (repository.WorkSnapshot, error) {
+	f.calls.record("checkpoint:" + name)
+	return repository.WorkSnapshot{ID: "checkpoint", Kind: repository.CheckpointSnapshotKind, Name: name}, nil
+}
+func (f fakeSession) RestoreWorkSnapshot(_ context.Context, snapshot repository.WorkSnapshot) error {
+	f.calls.record("restore-snapshot:" + snapshot.ID)
+	return nil
+}
+func (f fakeSession) DeleteWorkSnapshot(_ context.Context, snapshot repository.WorkSnapshot) error {
+	f.calls.record("delete-snapshot:" + snapshot.ID)
 	return nil
 }
 
@@ -356,6 +417,20 @@ func (f fakeSession) CheckoutRemoteBranch(context.Context, string, string, strin
 
 func (f fakeSession) DeleteRemoteBranch(_ context.Context, remote, branch string) error {
 	f.calls.record("delete-remote-branch:" + remote + ":" + branch)
+	return nil
+}
+
+func (f fakeSession) StashSelectedFiles(_ context.Context, message string, files []repository.File, includeUntracked bool) error {
+	paths := make([]string, 0, len(files))
+	for _, file := range files {
+		paths = append(paths, file.Path)
+	}
+	f.calls.record("stash-files:" + message + ":" + strings.Join(paths, ",") + ":" + strconv.FormatBool(includeUntracked))
+	return nil
+}
+
+func (f fakeSession) StashPatch(_ context.Context, message, patchText, _ string) error {
+	f.calls.record("stash-patch:" + message + ":" + patchText)
 	return nil
 }
 
@@ -477,8 +552,8 @@ func (f fakeSession) DeleteSubmodule(context.Context, string) error {
 	return nil
 }
 
-func (f fakeSession) BlameFile(context.Context, repository.File) (string, error) {
-	return "a1b2c3d (Ada 2026-01-01 1) changed", nil
+func (f fakeSession) BlameFile(context.Context, repository.File) ([]repository.BlameLine, error) {
+	return []repository.BlameLine{{Hash: "a1b2c3d4e5f60718", Author: "Ada", Date: "2026-01-01", Text: "changed"}}, nil
 }
 
 func (f fakeSession) CommitFiles(_ context.Context, commit repository.Commit) ([]repository.CommitFile, error) {

@@ -329,7 +329,7 @@ func (a *app) runCommitFilter(target int, selectedHash string) {
 			}
 			query.loading = false
 			if err != nil {
-				query.err = err.Error()
+				query.err = safeError(err)
 				return
 			}
 			query.matches = commits
@@ -376,7 +376,7 @@ func (a *app) loadCommitAuthors() {
 			}
 			a.authorsLoading = false
 			if err != nil {
-				a.authorsError = err.Error()
+				a.authorsError = safeError(err)
 				return
 			}
 			a.authors = authors

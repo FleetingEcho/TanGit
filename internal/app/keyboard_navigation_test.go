@@ -64,6 +64,39 @@ func TestKeyboardF6CyclesVisiblePanelsBothDirections(t *testing.T) {
 	}
 }
 
+func TestKeyboardPaneOutlineFollowsInputModality(t *testing.T) {
+	h, _ := changesTestApp(t, unstagedTrackedFile())
+	h.waitFor(t, "diff", func() bool { return h.app.diffState != nil })
+	h.tester.Frame()
+	if !h.tester.Focused("Changes") || h.app.keyboardFocusVisible {
+		t.Fatal("automatic initial focus drew a keyboard pane outline")
+	}
+
+	h.tester.Key(0, ui.KeyF6)
+	h.tester.Frame()
+	if !h.tester.Focused("Diff") || !h.app.keyboardFocusVisible {
+		t.Fatal("F6 did not show the outline of its keyboard-focused pane")
+	}
+	h.tester.Key(ui.Shift, ui.KeyF6)
+	h.tester.Frame()
+	if !h.tester.Focused("Changes") || !h.app.keyboardFocusVisible {
+		t.Fatal("Shift+F6 did not keep the keyboard pane outline visible")
+	}
+
+	if err := h.tester.Click("changed.txt"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if !h.tester.Focused("Changes") || h.app.keyboardFocusVisible {
+		t.Fatal("pointer selection left a keyboard outline on the file pane")
+	}
+	h.tester.Key(0, ui.KeyJ)
+	h.tester.Frame()
+	if !h.tester.Focused("Changes") || !h.app.keyboardFocusVisible {
+		t.Fatal("using the list from the keyboard did not restore its outline")
+	}
+}
+
 func TestKeyboardJKMovesSelectedFileAndUsesItsMenu(t *testing.T) {
 	h, calls := changesTestApp(t, []repository.File{{Path: "first.txt", Status: " M", Tracked: true, Unstaged: true}, {Path: "second.txt", Status: " M", Tracked: true, Unstaged: true}})
 	h.tester.Key(0, ui.KeyJ)
@@ -319,6 +352,10 @@ func TestKeyboardTabLeavesListRowCheckbox(t *testing.T) {
 	h.app.selectedCommit = 0
 	h.tester.Frame()
 	h.waitFor(t, "history details", func() bool { return len(h.app.commitFiles) > 0 })
+	if err := h.tester.Click("Select multiple commits"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
 	if err := h.tester.Click("Select commit for batch actions"); err != nil {
 		t.Fatal(err)
 	}
@@ -327,6 +364,51 @@ func TestKeyboardTabLeavesListRowCheckbox(t *testing.T) {
 	h.tester.Frame()
 	if !h.tester.Focused("Commit files") {
 		t.Fatalf("Tab was trapped among commit-row controls: commit=%v files=%v toolbar=%v pending=%q group=%q", h.tester.Focused("Commits"), h.tester.Focused("Commit files"), h.tester.Focused("Compare refs"), h.app.keyboardFocus, h.app.keyboardCurrentGroup)
+	}
+}
+
+func TestKeyboardConfirmationEscapeCancelsAndEnterContinues(t *testing.T) {
+	for _, focusProceed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "CancelFocused", true: "ProceedFocused"}[focusProceed], func(t *testing.T) {
+			h, _ := historyHarness(t)
+			runs := 0
+			h.app.askConfirm(confirmRequest{
+				title:        "Review",
+				confirmLabel: "Proceed",
+				destructive:  true,
+				run:          func() { runs++ },
+			})
+			h.tester.Frame()
+			if !h.tester.Focused("Cancel") {
+				t.Fatal("confirmation did not start safely focused on Cancel")
+			}
+			if focusProceed {
+				h.tester.Key(0, ui.KeyTab)
+				h.tester.Frame()
+				if !h.tester.Focused("Proceed") {
+					t.Fatal("could not focus Proceed")
+				}
+			}
+
+			h.tester.Key(0, ui.KeyEscape)
+			h.tester.Frame()
+			if h.app.confirm != nil || runs != 0 {
+				t.Fatalf("Escape must cancel without running: open=%v runs=%d", h.app.confirm != nil, runs)
+			}
+
+			h.app.askConfirm(confirmRequest{
+				title:        "Review",
+				confirmLabel: "Proceed",
+				destructive:  true,
+				run:          func() { runs++ },
+			})
+			h.tester.Frame()
+			h.tester.Key(0, ui.KeyEnter)
+			h.tester.Frame()
+			if h.app.confirm != nil || runs != 1 {
+				t.Fatalf("Enter must continue exactly once: open=%v runs=%d", h.app.confirm != nil, runs)
+			}
+		})
 	}
 }
 

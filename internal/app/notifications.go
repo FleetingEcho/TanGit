@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"lazygitapp/internal/repository"
 )
 
 // appToast is a notification queued by an action. Actions run while the
@@ -26,7 +28,7 @@ func (a *app) notify(kind, title, description string) {
 	a.pendingToasts = append(a.pendingToasts, appToast{
 		kind:        kind,
 		title:       tr(title),
-		description: shorten(description, 220),
+		description: shorten(repository.RedactSecrets(description), 220),
 		timeout:     4 * time.Second,
 	})
 }
@@ -40,11 +42,21 @@ func (a *app) notifyError(err error) {
 	a.pendingToasts = append(a.pendingToasts, appToast{
 		kind:        "error",
 		title:       tr("Git action failed"),
-		description: shorten(err.Error(), 220),
+		description: shorten(safeError(err), 220),
 		action:      tr("View log"),
 		onAction:    a.openCommandLog,
 		timeout:     8 * time.Second,
 	})
+}
+
+// safeError is the presentation boundary for errors from Git and the OS.
+// Keeping it beside the notification boundary makes it difficult for a new
+// pane or action to accidentally display a credential-bearing remote URL.
+func safeError(err error) string {
+	if err == nil {
+		return ""
+	}
+	return repository.RedactSecrets(err.Error())
 }
 
 // notifyCopied writes text to the clipboard and says so, so a copy is never

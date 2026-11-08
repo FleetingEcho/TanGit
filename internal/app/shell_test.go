@@ -627,6 +627,9 @@ func TestWindowOptionsFollowThePlatformControls(t *testing.T) {
 
 	systemWindowControls = true
 	mac := appWindowOptions(nil)
+	if !mac.Transparent || mac.Frameless {
+		t.Error("the window must expose rounded root corners without giving up its native resizing frame")
+	}
 	if mac.HideWindowButtons {
 		t.Error("macOS asked for its traffic lights to be hidden")
 	}
@@ -644,6 +647,24 @@ func TestWindowOptionsFollowThePlatformControls(t *testing.T) {
 	}
 	if other.TrafficLightPosition != nil {
 		t.Error("a platform without traffic lights was given a position for them")
+	}
+}
+
+func TestShellSurfaceClipsAllWindowCorners(t *testing.T) {
+	_, tt, _ := newShellTester(t, repository.Snapshot{Root: "/work/rounded"})
+	tt.Frame()
+	image := tt.Image()
+	width, height := image.Bounds().Dx(), image.Bounds().Dy()
+	for name, point := range map[string][2]int{
+		"top left": {0, 0}, "top right": {width - 1, 0},
+		"bottom left": {0, height - 1}, "bottom right": {width - 1, height - 1},
+	} {
+		if alpha := image.RGBAAt(point[0], point[1]).A; alpha != 0 {
+			t.Errorf("%s corner alpha = %d, want a transparent rounded cutout", name, alpha)
+		}
+	}
+	if alpha := image.RGBAAt(int(windowCornerRadius), 0).A; alpha != 0xff {
+		t.Errorf("surface after the corner radius has alpha %d, want opaque", alpha)
 	}
 }
 

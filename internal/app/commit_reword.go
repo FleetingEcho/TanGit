@@ -34,7 +34,7 @@ func (a *app) openCommitRewordForm(commit repository.Commit) {
 			}
 			a.commitRewordLoading = false
 			if err != nil {
-				a.commitRewordError = err.Error()
+				a.commitRewordError = safeError(err)
 				return
 			}
 			a.commitRewordSummary = message.Summary

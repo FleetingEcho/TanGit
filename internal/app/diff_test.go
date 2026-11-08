@@ -1,12 +1,52 @@
 package app
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
 
 	"lazygitapp/internal/repository"
 )
+
+func TestDiffWhitespaceButtonRendersOnce(t *testing.T) {
+	for _, ignore := range []bool{false, true} {
+		t.Run(fmt.Sprintf("ignore=%v", ignore), func(t *testing.T) {
+			a := newApp(fakeOpener{})
+			a.diffOptions.IgnoreWhitespace = ignore
+			tester := ui.NewTester(func(c *ui.Context) { a.diffWhitespaceButton(c) }, 300, 80)
+			tester.Frame()
+			labels := 0
+			for _, text := range tester.Texts() {
+				switch text {
+				case tr("Toggle whitespace-only diff changes"):
+					labels++
+				case tr("Ignore space"):
+					t.Fatalf("text-only whitespace button remains in the icon toolbar: %q", tester.Texts())
+				}
+			}
+			if labels != 1 {
+				t.Fatalf("whitespace button rendered %d times, want once: %q", labels, tester.Texts())
+			}
+		})
+	}
+}
+
+func TestDiffContextButtonKeepsOnlyItsCountVisible(t *testing.T) {
+	a := newApp(fakeOpener{})
+	a.diffOptions.ContextLines = 10
+	tester := ui.NewTester(func(c *ui.Context) { a.diffContextButton(c) }, 300, 80)
+	tester.Frame()
+	if _, found := tester.Find("Change diff context lines"); !found {
+		t.Fatalf("context control lost its accessible label: %q", tester.Texts())
+	}
+	if _, found := tester.Find("10"); !found {
+		t.Fatalf("context control does not show the current count: %q", tester.Texts())
+	}
+	if tester.HasText(tr("Context") + ":") {
+		t.Fatalf("text-only context label remains in the icon toolbar: %q", tester.Texts())
+	}
+}
 
 // The wrap icon is the answer to long diff lines: it turns wrapping on for
 // the diff already on screen and for the diffs read after it, and off again
