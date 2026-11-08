@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jesseduffield/lazygit/pkg/commands/models"
 )
 
 func TestCommitReadinessRetriesAllChecks(t *testing.T) {
@@ -99,6 +101,55 @@ func TestCommitReadinessRejectsConflictsAndActiveOperations(t *testing.T) {
 	}
 	if err := session.Commit(context.Background(), "wrong operation", "", false); err == nil || !strings.Contains(err.Error(), "merge in progress") {
 		t.Fatalf("active-operation readiness error = %v", err)
+	}
+}
+
+func TestCommandBlockingCommitOnlyExemptsSquashMerge(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		state models.WorkingTreeState
+		want  string
+	}{
+		{name: "none"},
+		{name: "squash only", state: models.WorkingTreeState{SquashMerging: true}},
+		{name: "squash and rebase", state: models.WorkingTreeState{SquashMerging: true, Rebasing: true}, want: "rebase"},
+		{name: "squash and am", state: models.WorkingTreeState{SquashMerging: true, ApplyingPatches: true}, want: "am"},
+		{name: "squash and cherry-pick", state: models.WorkingTreeState{SquashMerging: true, CherryPicking: true}, want: "cherry-pick"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := commandBlockingCommit(test.state); got != test.want {
+				t.Fatalf("commandBlockingCommit() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestCommitCompletesSquashMerge(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	runGit(t, dir, "config", "user.email", "desktop@example.com")
+	runGit(t, dir, "config", "user.name", "Desktop")
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("base\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "a.txt")
+	runGit(t, dir, "commit", "-m", "base")
+	runGit(t, dir, "checkout", "-b", "topic")
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("squashed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "commit", "-am", "topic")
+	runGit(t, dir, "checkout", "main")
+	runGit(t, dir, "merge", "--squash", "topic")
+	session, err := (Opener{}).Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Commit(context.Background(), "squashed topic", "", false); err != nil {
+		t.Fatalf("committing a squash merge: %v", err)
+	}
+	if subject := gitOutput(t, dir, "log", "-1", "--format=%s"); subject != "squashed topic\n" {
+		t.Fatalf("commit subject = %q", subject)
 	}
 }
 

@@ -247,7 +247,7 @@ func (s *gitSession) requireStagedChanges() error {
 // the paged, all-ref history used by the workspace lists.
 func (s *gitSession) editableHeadHistory(hash string) ([]*models.Commit, int, error) {
 	if state := s.git.Status.WorkingTreeState(); state.Any() {
-		return nil, -1, fmt.Errorf("finish or abort the %s in progress first", state.CommandName())
+		return nil, -1, fmt.Errorf("finish or abort the %s in progress first", state.Effective().CommandName())
 	}
 	if _, err := s.currentBranch(); err != nil {
 		return nil, -1, err

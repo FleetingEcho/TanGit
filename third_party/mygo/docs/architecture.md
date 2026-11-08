@@ -3977,10 +3977,22 @@ either.
     highlighter and the diff follow a buffer by the versions they last
     saw (`sync`): selections, folds, diagnostics and caches move through
     the changes since, with a bias at insertions, so that one buffer is
-    shown by several editors and both sides of a diff. Undo keeps the
-    texts before and after each step, grouped while typing of one kind
-    by one editor goes on within 300 ms, and each step the selections of
-    the editor that made it.
+    shown by several editors and both sides of a diff. A step of undo
+    keeps the edits that take it back, a list for each version it made,
+    grouped while typing of one kind by one editor goes on within 300 ms,
+    and the selections of the editor that made it. Taking a step back
+    applies its lists from the last, logging a version for each, whose
+    text is its changes' as tree-sitter needs, and keeps the edits taking
+    each back as the step of redo. `EditRemote` makes a version outside
+    the history and moves both stacks past it, from the top
+    (`rebase`): the edit's ranges (`span`) and a step's lists are of one
+    text, so each moves past the other (`rebaseEdits`), and the ranges go
+    on down. A step that overlaps them leaves the history, the text
+    staying as it is, so the steps under it move past that step and the
+    ranges together (`composeSpans`). The cost is a few integers for
+    each edit of the history, whatever the size of the text; a step's
+    replaced text is a string, so undoing `Set` builds the text again
+    where it used to swap versions.
   - *Display* (`display.go`, `view.go`). Every line is a row, several
     when it wraps, none when folded or collapsed by a diff; blocks are
     rows between lines (a diff's deleted lines, spacers, separators,
@@ -4000,6 +4012,17 @@ either.
     may count a row too few until they show. Closing CJK punctuation
     starts no row, nor opening punctuation ends one (`canBreak`). A new
     generation of the text system measures and shapes everything anew.
+  - *Replacements* (`replace.go`). A range shown as something else is a
+    segment of a line's displayed text, as a tab or an inlay is: its Text,
+    nothing, or for an element an object replacement character the text
+    system gives the element's width (`faceRun.obj`, `Span.ObjectWidth`),
+    so that shaping, carets, selections and wraps need no case of their
+    own, lines not laid out yet counting it too. Their elements are built
+    over the text at the places the lines laid out give, a frame painting
+    them elsewhere building again (`replacementsMoved`). Lines covered
+    through their newline join the hidden spans. Replacements move as
+    selections do, and a change lays out again only the lines of those
+    that differ, so that an app can set them every frame.
   - *Highlighting* (`syntax.go`). A `Highlighter` follows the buffer's
     edits and gives tokens per line; the default tokenizes lines from the
     state the line above ended in (`lexer.go`, `lexers.go`), keeping the
@@ -5286,7 +5309,11 @@ either.
     Waiting for a drawable remains separate from waiting for an instance
     buffer, so offscreen encode timings do not establish presentation latency.
     Opaque fill cores use an unblended pipeline in BGRA8; float16 keeps
-    blending to preserve its interpolation rounding. Fragment functions are
+    blending to preserve its interpolation rounding, and GPUs outside the
+    Mac2 family keep to the blended one: one such GPU, an Intel Haswell
+    whose driver OpenCore Legacy Patcher backported, hung in the unblended
+    pipeline (#1566), and blending them costs only that GPU's tile-based
+    win of writing without blending. Fragment functions are
     specialized by batch class and continuous corners, with general shaders
     as an identical fallback. Runs of small batches of different classes
     (each covering at most 128×128 pixels, as a box's shadow then its
@@ -5296,7 +5323,12 @@ either.
     cached per device, outside the frame path. Renderer release stops and
     joins that worker before releasing its shader library. Float16 shadows
     stay general, and fills with fractional opacity avoid the plain class,
-    because specialization otherwise changes rounding. Function constant
+    because specialization otherwise changes rounding. GPUs outside
+    Metal's Mac2 family (`supportsFamily:`), as Intel's Haswell, draw every
+    batch with the general pipeline, compiling and warming none, and keep
+    their batches together: one such GPU, on a driver backported by
+    OpenCore Legacy Patcher, hung while specialized pipelines compiled
+    (#1566). Function constant
     indices 0 through 7 belong to the renderer; effects start their own at 8.
     Two seconds after the last frame, as the
     driver frees its own memory of frames, a timer shrinks the drawables,

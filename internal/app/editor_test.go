@@ -336,9 +336,11 @@ func TestFilePaneEditorButtonOpensAndRevealsTheFileInBuiltInCode(t *testing.T) {
 	if h.app.workspaceTab != sectionCode || document != h.app.activeCodeDocument() {
 		t.Fatalf("the action did not open the file in Code: tab=%d active=%q", h.app.workspaceTab, h.app.code.active)
 	}
-	if got := h.app.selectedCodePath(); got != "internal/app/changed.txt" {
-		t.Fatalf("the explorer selected %q, want the opened file", got)
-	}
+	// The document and file index load independently; the reveal finishes when
+	// the index arrives, which can be after the document is ready.
+	h.waitFor(t, "the opened file explorer reveal", func() bool {
+		return h.app.selectedCodePath() == "internal/app/changed.txt"
+	})
 	if h.app.fileTreeCollapsed[fileTreeCollapseKey(codeFileTreeScope, "internal/app")] {
 		t.Fatal("the opened file's parent directory stayed collapsed")
 	}

@@ -586,7 +586,7 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 	workingTreeState := s.git.Status.WorkingTreeState()
 	operation := ""
 	if workingTreeState.Any() {
-		operation = workingTreeState.CommandName()
+		operation = workingTreeState.Effective().CommandName()
 	}
 
 	// Snapshots run unattended and the filesystem watcher observes .git. Keep
@@ -2459,7 +2459,7 @@ func (s *gitSession) finishOperation(ctx context.Context, action string) error {
 	if state.None() {
 		return fmt.Errorf("no merge, rebase, cherry-pick, or revert is in progress")
 	}
-	operation := state.CommandName()
+	operation := state.Effective().CommandName()
 	if err := s.finishGitOperation(operation, action); err != nil {
 		return fmt.Errorf("%s %s: %w", action, operation, err)
 	}

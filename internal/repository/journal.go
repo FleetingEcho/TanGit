@@ -370,7 +370,7 @@ func (s *gitSession) requireUnchangedOperation(record OperationRecord) error {
 		return fmt.Errorf("operation belongs to a different worktree")
 	}
 	if state := s.git.Status.WorkingTreeState(); state.Any() {
-		return fmt.Errorf("cannot undo while %s is in progress", state.CommandName())
+		return fmt.Errorf("cannot undo while %s is in progress", state.Effective().CommandName())
 	}
 	branch, head, err := s.currentOperationIdentity()
 	if err != nil {
