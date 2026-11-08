@@ -1,6 +1,7 @@
 package sshworkspace
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -63,6 +64,18 @@ func (c *Client) ReadDir(remotePath string) ([]os.FileInfo, error) {
 		return nil, err
 	}
 	return c.sftp.ReadDir(cleaned)
+}
+
+// ReadDirContext reads a directory with cancellation for the remote picker.
+func (c *Client) ReadDirContext(ctx context.Context, remotePath string) ([]os.FileInfo, error) {
+	if err := c.ready(); err != nil {
+		return nil, err
+	}
+	cleaned, err := cleanRemotePath(remotePath)
+	if err != nil {
+		return nil, err
+	}
+	return c.sftp.ReadDirContext(ctx, cleaned)
 }
 
 // ReadFile reads a complete remote regular file.
@@ -278,4 +291,24 @@ func randomSuffix() (string, error) {
 		return "", fmt.Errorf("generate remote temporary filename: %w", err)
 	}
 	return hex.EncodeToString(value[:]), nil
+}
+
+// CreateFileExclusive creates an empty file without overwriting an existing entry.
+func (c *Client) CreateFileExclusive(ctx context.Context, remotePath string) error {
+	if err := c.ready(); err != nil {
+		return err
+	}
+	cleaned, err := cleanRemotePath(remotePath)
+	if err != nil {
+		return err
+	}
+	file, err := openCancelable(ctx, func() (*sftp.File, error) { return c.sftp.OpenFile(cleaned, os.O_WRONLY|os.O_CREATE|os.O_EXCL) }, func(file *sftp.File) {
+		if file != nil {
+			_ = file.Close()
+		}
+	})
+	if err != nil {
+		return err
+	}
+	return file.Close()
 }

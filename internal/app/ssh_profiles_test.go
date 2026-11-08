@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -189,9 +190,6 @@ func TestHomeHasVisibleSSHWorkspaceEntryAndInlineProfileForm(t *testing.T) {
 		t.Fatalf("empty Home picker did not open its inline profile form: open=%v form=%v", a.sshWorkspaceOpen, a.sshProfileFormOpen)
 	}
 	for _, label := range []string{"Add SSH profile", "SSH host", "SSH username", "SSH port", "SSH password"} {
-		if label == "SSH password" {
-			continue // the default agent mode deliberately hides this field
-		}
 		if !tester.HasText(label) {
 			t.Errorf("inline profile form is missing %q: %q", label, tester.Texts())
 		}
@@ -226,7 +224,10 @@ func TestSettingsRailOpensSSHProfileForm(t *testing.T) {
 }
 
 func TestOpenSelectedSSHWorkspaceUsesCanonicalLocation(t *testing.T) {
-	a := newApp(fakeOpener{})
+	a, updates := sshBrowserTestApp(t)
+	a.sshBrowseFolder = func(_ context.Context, _ sshworkspace.Profile, _ string, _ bool) (sshFolderListing, error) {
+		return sshFolderListing{Root: "/srv/git/project", Repository: true}, nil
+	}
 	a.settings.SSHProfiles = []sshworkspace.Profile{{
 		ID: "Build_7", Name: "Build", Host: "build.example.com", Username: "git",
 		Port: 22, AuthMode: sshworkspace.AuthAgent, DefaultRoot: "/srv/git/project",
@@ -240,6 +241,7 @@ func TestOpenSelectedSSHWorkspaceUsesCanonicalLocation(t *testing.T) {
 		return true
 	}
 	a.openSelectedSSHWorkspace()
+	applySSHBrowserUpdate(t, updates)
 	const want = "ssh://Build_7/srv/git/project"
 	if a.path != want || claimed != want {
 		t.Fatalf("open path = %q, claimed = %q; want %q", a.path, claimed, want)

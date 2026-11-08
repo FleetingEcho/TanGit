@@ -711,6 +711,7 @@ func (a *app) requestBranchCommits(branch string) {
 			a.branchCommitsLoading = false
 			if err != nil {
 				a.branchCommitsError = safeError(err)
+				a.notify("error", "Could not load branch commits", safeError(err))
 				return a.workspaceTab == sectionBranches
 			}
 			a.branchCommits = commits
@@ -891,7 +892,6 @@ func (a *app) branchCommitsView(c *ui.Context, branch repository.Branch) {
 			paneCollapseButton(c, &a.branchCommitsCollapsed, "Collapse commit list")
 		})
 		if a.branchCommitsError != "" {
-			ui.Text(c, a.branchCommitsError).TextColor(theme.Danger).SingleLine()
 			if ui.Button(c, tr("Load again")).Clicked() {
 				// The next pass reads the branch afresh.
 				a.branchCommitsBranch = ""

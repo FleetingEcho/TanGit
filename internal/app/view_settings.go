@@ -107,7 +107,9 @@ func (a *app) settingsModal(c *ui.Context) {
 					a.openKeybindings()
 				}
 			}
-			if panel.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
+			// Testing an SSH profile can put host verification above Settings.
+			// A click in that overlay must not dismiss this dialog and cancel it.
+			if a.sshHostKeyPrompt == nil && (panel.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape)) {
 				a.closeSettings()
 			}
 		})

@@ -2852,7 +2852,15 @@ func (s *gitSession) BranchCommits(ctx context.Context, branch string, limit int
 		return nil, fmt.Errorf("read branch commits: no branch chosen")
 	}
 	modelCommits, err := s.branchCommits(branch, limit)
+	// The library can return an empty list for an unreadable ref too. Verify
+	// unexpected emptiness so only an unborn branch becomes the empty state.
+	if err == nil && len(modelCommits) == 0 && limit > 0 && !s.isUnbornBranch(branch) {
+		_, err = s.cmd.New([]string{"git", "rev-parse", "--verify", "--end-of-options", branch + "^{commit}"}).RunWithOutput()
+	}
 	if err != nil {
+		if s.isUnbornBranch(branch) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("read commits of %s: %w", branch, err)
 	}
 	commits := make([]Commit, 0, len(modelCommits))
@@ -2884,6 +2892,9 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 		return nil, fmt.Errorf("search commits: invalid branch %q", branch)
 	}
 	if commits, hashQuery, err := s.searchCommitHash(filter, query, branch); hashQuery {
+		if err != nil && s.isUnbornBranch(branch) {
+			return nil, nil
+		}
 		return commits, err
 	}
 
@@ -2905,9 +2916,31 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 	args = append(args, "--")
 	output, err := s.cmd.New(args).RunWithOutput()
 	if err != nil {
+		if s.isUnbornBranch(branch) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("search commits: %w", err)
 	}
 	return parseCommitLog(output), nil
+}
+
+// isUnbornBranch recognizes only the checked-out symbolic branch whose ref
+// does not exist yet. Missing unrelated branches and damaged refs remain errors.
+func (s *gitSession) isUnbornBranch(branch string) bool {
+	if branch == "" {
+		return false
+	}
+	output, err := s.cmd.New([]string{"git", "symbolic-ref", "--quiet", "HEAD"}).RunWithOutput()
+	if err != nil {
+		return false
+	}
+	ref := strings.TrimSpace(output)
+	if !strings.HasPrefix(ref, "refs/heads/") || (branch != "HEAD" && branch != ref && branch != strings.TrimPrefix(ref, "refs/heads/")) {
+		return false
+	}
+	err = s.cmd.New([]string{"git", "show-ref", "--verify", "--quiet", ref}).Run()
+	code, ok := commandExitCode(err)
+	return ok && code == 1
 }
 
 // searchCommitHash resolves a hexadecimal query to one commit. Git's --grep
