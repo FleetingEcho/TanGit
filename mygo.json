@@ -1,7 +1,7 @@
 {
   "name": "TanGit",
   "identifier": "dev.tangit.desktop",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "main": "./cmd/tangit",
   "out": "build",
   "updates": {
