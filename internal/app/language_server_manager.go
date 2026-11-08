@@ -373,7 +373,7 @@ func (a *app) additionalLanguageRequest(document *codeDocument, requestSequence 
 					if server.error == "" {
 						server.error = safeError(err)
 						server.requestError = true
-						a.notify("error", server.profile.Name+" request failed", server.error)
+						a.notify("error", trf("%s request failed", server.profile.Name), server.error)
 						return true
 					}
 					return false
@@ -527,7 +527,7 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 				return false
 			}
 			server.error = detail
-			a.notify("error", server.profile.Name+" cannot analyze this workspace", server.error)
+			a.notify("error", trf("%s cannot analyze this workspace", server.profile.Name), server.error)
 			return true
 		})
 		return

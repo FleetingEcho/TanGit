@@ -58,9 +58,9 @@ func (a *app) offerLanguageServerInstall(path string) {
 		a.languageServerInstallPrompted[profile.ID] = true
 		id, name := profile.ID, profile.Name
 		a.pendingToasts = append(a.pendingToasts, appToast{
-			kind: "info", title: "Install " + name + "?",
-			description: "Download and configure code intelligence for " + filepath.Ext(path) + " files.",
-			action:      "Download", onAction: func() { a.installLanguageServer(id) }, timeout: 12 * time.Second,
+			kind: "info", title: trf("Install %s?", name),
+			description: trf("Download and configure code intelligence for %s files.", filepath.Ext(path)),
+			action:      tr("Download"), onAction: func() { a.installLanguageServer(id) }, timeout: 12 * time.Second,
 		})
 	}
 }
@@ -72,14 +72,14 @@ func (a *app) installLanguageServer(id string) {
 	}
 	dataDir := a.dataDir()
 	if dataDir == "" {
-		a.notify("error", "Could not install "+profile.Name, "TanGit's user data directory is unavailable.")
+		a.notifyTranslated("error", trf("Could not install %s", profile.Name), "TanGit's user data directory is unavailable.")
 		return
 	}
 	if a.languageServerInstalling == nil {
 		a.languageServerInstalling = make(map[string]bool)
 	}
 	a.languageServerInstalling[id] = true
-	a.notify("info", "Installing "+profile.Name, "Downloading to TanGit's managed tools directory…")
+	a.notifyTranslated("info", trf("Installing %s", profile.Name), "Downloading to TanGit's managed tools directory…")
 	go func() {
 		defer a.recoverBackground()
 		var installation languageServerInstallation
@@ -92,7 +92,7 @@ func (a *app) installLanguageServer(id string) {
 		a.update(func() {
 			delete(a.languageServerInstalling, id)
 			if err != nil {
-				a.notify("error", "Could not install "+profile.Name, safeError(err))
+				a.notify("error", trf("Could not install %s", profile.Name), safeError(err))
 				return
 			}
 			if a.settings.LanguageServers == nil {
@@ -110,7 +110,7 @@ func (a *app) installLanguageServer(id string) {
 			}
 			a.saveSettings()
 			a.loadGoLanguageServerDraft()
-			a.notify("success", profile.Name+" installed", "Code intelligence is now enabled for matching files.")
+			a.notifyTranslated("success", trf("%s installed", profile.Name), "Code intelligence is now enabled for matching files.")
 		})
 	}()
 }

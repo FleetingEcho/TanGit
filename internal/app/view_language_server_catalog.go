@@ -167,7 +167,7 @@ func (a *app) languageServerCatalogRow(c *ui.Context, profile languageServerProf
 					}
 					ui.Text(c, status).TextColor(color).FontSize(theme.FontSize - 1)
 				})
-				ui.Text(c, profile.Description).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+				ui.Text(c, languageServerProfileDescription(profile)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 				source := languageServerDownloadURLs[profile.ID]
 				if profile.Custom {
 					source = profile.DownloadURL
@@ -184,11 +184,11 @@ func (a *app) languageServerCatalogRow(c *ui.Context, profile languageServerProf
 					Font("monospace").FontSize(theme.FontSize - 2).TextColor(theme.TextMuted)
 			})
 			if installing {
-				ui.Spinner(c).Label(tr("Installing " + profile.Name))
+				ui.Spinner(c).Label(trf("Installing %s", profile.Name))
 			}
-			toggleLabel, toggleIcon := "Enable "+profile.Name, switchIcon
+			toggleLabel, toggleIcon := trf("Enable %s", profile.Name), switchIcon
 			if enabled {
-				toggleLabel, toggleIcon = "Disable "+profile.Name, switchOnIcon
+				toggleLabel, toggleIcon = trf("Disable %s", profile.Name), switchOnIcon
 			}
 			flatToggleIconButton(c, toggleLabel, toggleLabel, toggleIcon, 16, 4, enabled, func() {
 				a.toggleLanguageServerProfile(c, profile, !enabled)
@@ -232,18 +232,18 @@ func (a *app) languageServerCatalogConfiguration(c *ui.Context, profile language
 		if toggle.Changed() {
 			a.toggleLanguageServerProfile(c, profile, a.goLanguageServerEnabled)
 		}
-		path := ui.TextInput(c, &a.goLanguageServerPath).Label(profile.Name + " executable path").
+		path := ui.TextInput(c, &a.goLanguageServerPath).Label(trf("%s executable path", profile.Name)).
 			Placeholder("gopls, /path/to/gopls").
 			Tooltip(tr("Comma-separated executables, tried in order")).Grow(1)
 		if path.Changed() {
 			a.storeGoLanguageServerDraft(c)
 		}
-		arguments := ui.TextArea(c, &a.goLanguageServerArgs).Label(profile.Name+" arguments").
+		arguments := ui.TextArea(c, &a.goLanguageServerArgs).Label(trf("%s arguments", profile.Name)).
 			Placeholder("-remote=auto").Lines(2, 5).Grow(1)
 		if arguments.Changed() {
 			a.storeGoLanguageServerDraft(c)
 		}
-		testLabel := "Test " + profile.Name
+		testLabel := trf("Test %s", profile.Name)
 		iconTextButtonState(c, testLabel, testLabel, terminalIcon, false,
 			a.languageServerTestBusy && a.languageServerTestID == profile.ID, a.testGoLanguageServer)
 		if a.languageServerTestBusy && a.languageServerTestID == profile.ID {
@@ -262,22 +262,22 @@ func (a *app) languageServerCatalogConfiguration(c *ui.Context, profile language
 	if draft == nil {
 		return
 	}
-	toggle := ui.Checkbox(c, &draft.Enabled, tr("Enable "+profile.Name)).Label(tr("Enable " + profile.Name))
+	toggle := ui.Checkbox(c, &draft.Enabled, trf("Enable %s", profile.Name)).Label(trf("Enable %s", profile.Name))
 	if toggle.Changed() {
 		a.toggleLanguageServerProfile(c, profile, draft.Enabled)
 	}
-	path := ui.TextInput(c, &draft.Path).Label(profile.Name + " executable path").
+	path := ui.TextInput(c, &draft.Path).Label(trf("%s executable path", profile.Name)).
 		Placeholder(profile.Program + ", /path/to/" + profile.Program).
 		Tooltip(tr("Comma-separated executables, tried in order")).Grow(1)
 	if path.Changed() {
 		a.storeAdditionalLanguageServerDraft(c, profile.ID)
 	}
-	arguments := ui.TextArea(c, &draft.Arguments).Label(profile.Name+" arguments").
+	arguments := ui.TextArea(c, &draft.Arguments).Label(trf("%s arguments", profile.Name)).
 		Placeholder(strings.Join(profile.Arguments, "\n")).Lines(2, 5).Grow(1)
 	if arguments.Changed() {
 		a.storeAdditionalLanguageServerDraft(c, profile.ID)
 	}
-	testLabel := "Test " + profile.Name
+	testLabel := trf("Test %s", profile.Name)
 	iconTextButtonState(c, testLabel, testLabel, terminalIcon, false,
 		a.languageServerTestBusy && a.languageServerTestID == profile.ID, func() { a.testLanguageServerProfile(profile.ID) })
 	if a.languageServerTestResult != "" && a.languageServerTestID == profile.ID {

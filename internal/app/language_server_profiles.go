@@ -80,6 +80,17 @@ var languageServerProfiles = []languageServerProfile{
 	{ID: "marksman", Name: "Marksman", Category: "optional", Description: "Markdown links, symbols, and navigation", Program: "marksman", VersionArguments: []string{"--version"}, Extensions: map[string]string{".md": "markdown", ".markdown": "markdown"}},
 }
 
+// languageServerProfileDescription is the presentation boundary for catalog
+// descriptions. Built-in descriptions are stable English message keys; custom
+// descriptions are user text and must pass through unchanged. Keep the profile
+// itself canonical so localization never mutates IDs, settings, or launch data.
+func languageServerProfileDescription(profile languageServerProfile) string {
+	if profile.Custom {
+		return profile.Description
+	}
+	return tr(profile.Description)
+}
+
 func languageServerProfileByID(id string) (languageServerProfile, bool) {
 	for _, profile := range languageServerProfiles {
 		if profile.ID == id {

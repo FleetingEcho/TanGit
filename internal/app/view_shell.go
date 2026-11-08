@@ -556,12 +556,12 @@ func (a *app) recentCardView(c *ui.Context, i int, services ui.Services) {
 			})
 			// The card's name, which is only ever the card's: a small
 			// pencil, apart from the click that opens it.
-			pickerCardAction(c, "Rename "+repo.Path, "Rename this card", editIcon, func() {
+			pickerCardAction(c, trf("Rename %s", repo.Path), "Rename this card", editIcon, func() {
 				a.openRecentRename(repo.Path)
 			})
 			// The card's way out of the history: a small trash button,
 			// apart from the click that opens it.
-			pickerCardAction(c, "Remove "+repo.Path+" from the recent list",
+			pickerCardAction(c, trf("Remove %s from the recent list", repo.Path),
 				"Remove from the recent list", trashIcon, func() {
 					// The build must not rewrite the list it is reading;
 					// view() applies it next pass.

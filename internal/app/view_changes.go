@@ -927,10 +927,10 @@ func (a *app) changeFileRow(row ui.ListRow, change changeRow, index int) {
 			}
 		})
 		if reveal {
-			reviewLabel := "Mark reviewed " + file.Path
+			reviewLabel := trf("Mark reviewed %s", file.Path)
 			reviewIcon := markReviewedIcon
 			if a.reviewedFiles[file.Path] {
-				reviewLabel = "Mark unreviewed " + file.Path
+				reviewLabel = trf("Mark unreviewed %s", file.Path)
 				reviewIcon = markUnreviewedIcon
 			}
 			rowIconButton(row.Context, reviewLabel, reviewActionTooltip(), reviewIcon, func() {
@@ -949,13 +949,13 @@ func (a *app) changeFileRow(row ui.ListRow, change changeRow, index int) {
 		}
 		if file.HasMergeConflicts {
 			if reveal {
-				rowIconButton(row.Context, "Use current "+file.Path, "Resolve with the current side", useCurrentIcon, func() {
+				rowIconButton(row.Context, trf("Use current %s", file.Path), "Resolve with the current side", useCurrentIcon, func() {
 					a.resolveConflictFile(file, true)
 				})
-				rowIconButton(row.Context, "Use incoming "+file.Path, "Resolve with the incoming side", useIncomingIcon, func() {
+				rowIconButton(row.Context, trf("Use incoming %s", file.Path), "Resolve with the incoming side", useIncomingIcon, func() {
 					a.resolveConflictFile(file, false)
 				})
-				rowIconButton(row.Context, "Mark resolved "+file.Path, "Mark resolved by staging the file as it is", commitIcon, func() {
+				rowIconButton(row.Context, trf("Mark resolved %s", file.Path), "Mark resolved by staging the file as it is", commitIcon, func() {
 					a.beginStageFile(file, true)
 				})
 			} else {
@@ -968,14 +968,14 @@ func (a *app) changeFileRow(row ui.ListRow, change changeRow, index int) {
 					// A staged row offers only unstage: discarding there would
 					// throw away the index and working tree at once, so the
 					// action stays in the row's context menu.
-					rowIconButton(row.Context, "Unstage "+file.Path, "Unstage this file", unstageIcon, func() {
+					rowIconButton(row.Context, trf("Unstage %s", file.Path), "Unstage this file", unstageIcon, func() {
 						a.beginStageFile(file, false)
 					})
 				} else {
-					rowIconButton(row.Context, "Stage "+file.Path, "Stage this file", stageIcon, func() {
+					rowIconButton(row.Context, trf("Stage %s", file.Path), "Stage this file", stageIcon, func() {
 						a.beginStageFile(file, true)
 					})
-					rowIconButton(row.Context, "Discard "+file.Path, "Discard changes…", revertIcon, func() {
+					rowIconButton(row.Context, trf("Discard %s", file.Path), "Discard changes…", revertIcon, func() {
 						a.confirmDiscardFile(file)
 					})
 				}

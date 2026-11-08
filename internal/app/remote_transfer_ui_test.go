@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -149,6 +150,170 @@ func TestRemoteTransferNotificationsKeepIdentityAndTerminalActions(t *testing.T)
 	a.publishRemoteTransfer(manager, generation, job, job.result)
 	if len(a.pendingToasts) != 0 {
 		t.Fatal("terminal result was notified more than once")
+	}
+}
+
+func TestRemoteTransferTextTranslatesStaticFormatsButNotErrors(t *testing.T) {
+	const payload = "server supplied transfer failure"
+	stubScopedTranslationCatalog(t, map[string]string{
+		"%d of %d items":       "%d / %d translated items",
+		"%s · %d%% · %s of %s": "%s | %d%% | %s / %s",
+		"%d completed":         "translated completed %d",
+		"%d skipped":           "translated skipped %d",
+		"%d failed":            "translated failed %d",
+		"failed":               "translated status failed",
+		"Status: %s\n":         "Translated status: %s\n",
+		"Items: %d total, %d completed, %d skipped, %d failed\n": "Translated items: %d, %d, %d, %d\n",
+		"Bytes: %s of %s\n":        "Translated bytes: %s / %s\n",
+		"Remote destination: %s\n": "Translated remote: %s\n",
+		"Local source: %s\n":       "Translated source: %s\n",
+		"Local output: %s\n":       "Translated output: %s\n",
+		"transfers are available only in an open SSH workspace": "translated unavailable transfers",
+		payload: "must not be used",
+	})
+	if _, _, _, err := (&app{}).remoteTransferManager(); err == nil || err.Error() != "translated unavailable transfers" {
+		t.Fatalf("manager availability error = %v", err)
+	}
+	job := &remoteTransferJob{
+		kind: "upload", localSources: []string{"/local/source"}, localOutputs: []string{"/local/output"},
+		remoteDirectory: "/remote/destination",
+		result: transfer.Result{
+			Status: transfer.StatusFailed, TotalItems: 3, CompletedItems: 1, SkippedItems: 1, FailedItems: 1,
+			CompletedBytes: 50, TotalBytes: 200, Err: errors.New(payload),
+		},
+	}
+	if got, want := remoteTransferProgressDescription(job, job.result), "3 / 3 translated items | 25% | 50 B / 200 B"; got != want {
+		t.Fatalf("progress = %q, want %q", got, want)
+	}
+	terminal := remoteTransferTerminalDescription(job.result)
+	for _, want := range []string{"translated completed 1", "translated skipped 1", "translated failed 1", payload} {
+		if !strings.Contains(terminal, want) {
+			t.Errorf("terminal description %q does not contain %q", terminal, want)
+		}
+	}
+	if strings.Contains(terminal, "must not be used") {
+		t.Fatalf("transfer error was treated as a translation key: %q", terminal)
+	}
+	details := remoteTransferJobDetails(job)
+	for _, want := range []string{
+		"Translated status: translated status failed", "Translated items: 3, 1, 1, 1",
+		"Translated bytes: 50 B / 200 B", "Translated remote: /remote/destination",
+		"Translated source: /local/source", "Translated output: /local/output", payload,
+	} {
+		if !strings.Contains(details, want) {
+			t.Errorf("details %q do not contain %q", details, want)
+		}
+	}
+	if strings.Contains(details, "must not be used") {
+		t.Fatalf("detail error was treated as a translation key: %q", details)
+	}
+}
+
+func TestRemoteTransferToastsUseRealCatalogsAcrossStates(t *testing.T) {
+	t.Cleanup(func() { currentLanguage = defaultLanguage })
+	for _, choice := range languageChoices[1:] {
+		t.Run(choice.Code, func(t *testing.T) {
+			currentLanguage = choice.Code
+			catalog := translations[choice.Code]
+			translate := func(key string) string {
+				t.Helper()
+				value := catalog[key]
+				if value == "" {
+					t.Errorf("%s has no real-catalog translation for remote-transfer toast %q", choice.Code, key)
+					return key
+				}
+				return value
+			}
+			a, updated := newRemoteTransferUITestApp(t)
+			manager, generation, _, err := a.remoteTransferManager()
+			if err != nil {
+				t.Fatal(err)
+			}
+			updated.waitForUpdate(t)
+			states := []struct {
+				name        string
+				status      transfer.Status
+				cancelling  bool
+				titleFormat string
+			}{
+				{name: "queued", status: transfer.StatusQueued, titleFormat: "%s queued"},
+				{name: "running", status: transfer.StatusRunning, titleFormat: "%s in progress"},
+				{name: "cancelling", status: transfer.StatusRunning, cancelling: true, titleFormat: "Cancelling %s"},
+				{name: "completed", status: transfer.StatusSucceeded, titleFormat: "%s complete"},
+				{name: "partial", status: transfer.StatusPartial, titleFormat: "%s partially completed"},
+				{name: "failed", status: transfer.StatusFailed, titleFormat: "%s failed"},
+				{name: "cancelled", status: transfer.StatusCancelled, titleFormat: "%s cancelled"},
+			}
+			const payload = "server supplied transfer failure"
+			id := transfer.ID(100)
+			for _, kind := range []string{"upload", "download"} {
+				base := "Upload"
+				if kind == "download" {
+					base = "Download"
+				}
+				for _, state := range states {
+					t.Run(kind+"/"+state.name, func(t *testing.T) {
+						id++
+						argument := translate(base)
+						if state.cancelling {
+							argument = strings.ToLower(argument)
+						}
+						wantTitle := fmt.Sprintf(translate(state.titleFormat), argument)
+						var outputs []string
+						if kind == "download" {
+							outputs = []string{"/tmp/report.zip"}
+						}
+						job := a.ensureRemoteTransferJob(id, kind, nil, "", outputs)
+						job.cancelling = state.cancelling
+						result := transfer.Result{ID: id, Status: state.status, TotalItems: 2, CompletedItems: 1}
+						if state.status == transfer.StatusFailed {
+							result.Err = errors.New(payload)
+						}
+						a.pendingToasts = nil
+						a.publishRemoteTransfer(manager, generation, job, result)
+						if len(a.pendingToasts) != 1 {
+							t.Fatalf("published %d toasts, want 1", len(a.pendingToasts))
+						}
+						toast := a.pendingToasts[0]
+						if toast.title != wantTitle {
+							t.Errorf("toast title = %q, want %q", toast.title, wantTitle)
+						}
+						wantAction := translate("Cancel")
+						var wantMore []string
+						if state.status.Terminal() {
+							switch state.status {
+							case transfer.StatusPartial, transfer.StatusFailed, transfer.StatusCancelled:
+								wantAction = translate("Retry")
+								wantMore = append(wantMore, translate("Details"))
+								if kind == "download" {
+									wantMore = append(wantMore, translate("Reveal"))
+								}
+							case transfer.StatusSucceeded:
+								if kind == "download" {
+									wantAction = translate("Reveal")
+									wantMore = []string{translate("Details")}
+								} else {
+									wantAction = translate("Details")
+								}
+							}
+						}
+						if toast.action != wantAction {
+							t.Errorf("toast action = %q, want %q", toast.action, wantAction)
+						}
+						var gotMore []string
+						for _, action := range toast.moreActions {
+							gotMore = append(gotMore, action.label)
+						}
+						if !reflect.DeepEqual(gotMore, wantMore) {
+							t.Errorf("secondary actions = %q, want %q", gotMore, wantMore)
+						}
+						if state.status == transfer.StatusFailed && !strings.Contains(toast.description, payload) {
+							t.Errorf("dynamic transfer error was not preserved verbatim: %q", toast.description)
+						}
+					})
+				}
+			}
+		})
 	}
 }
 

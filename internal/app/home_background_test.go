@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"hash/crc32"
 	"image"
 	"image/color"
@@ -48,6 +49,53 @@ func backgroundSettingsTester(t *testing.T) (*app, *ui.Tester, *updates) {
 	a.openSettings()
 	tt.Frame()
 	return a, tt, updated
+}
+
+func TestHomeBackgroundPickerErrorIsNotATranslationKey(t *testing.T) {
+	const payload = "native chooser supplied an arbitrary error"
+	stubScopedTranslationCatalog(t, map[string]string{
+		"Could not set Home background": "Translated background failure",
+		payload:                         "must not be used",
+	})
+	originalChoose := chooseHomeBackgroundPath
+	chooseHomeBackgroundPath = func(mygo.OpenDialogOptions) ([]string, error) {
+		return nil, errors.New(payload)
+	}
+	t.Cleanup(func() { chooseHomeBackgroundPath = originalChoose })
+	a := newApp(fakeOpener{})
+	updates := newUpdates()
+	a.update = updates.update
+	a.browseHomeBackground()
+	updates.waitForUpdate(t)
+	if len(a.pendingToasts) != 1 {
+		t.Fatalf("picker error notifications = %#v", a.pendingToasts)
+	}
+	toast := a.pendingToasts[0]
+	if toast.title != "Translated background failure" || toast.description != payload {
+		t.Fatalf("picker error notification = %#v", toast)
+	}
+}
+
+func TestHomeBackgroundErrorDescriptionTranslatesOnlyKnownValidation(t *testing.T) {
+	const payload = "filesystem or decoder supplied an arbitrary error"
+	known := []string{
+		"Choose an image no larger than 10 MiB",
+		"Choose a valid PNG, JPEG, GIF, WebP, or BMP image",
+		"Choose an image with at most 40 million pixels",
+	}
+	catalog := map[string]string{payload: "must not be used"}
+	for _, message := range known {
+		catalog[message] = "Translated " + message
+	}
+	stubScopedTranslationCatalog(t, catalog)
+	for _, message := range known {
+		if got, want := homeBackgroundErrorDescription(errors.New(message)), "Translated "+message; got != want {
+			t.Errorf("known validation description = %q, want %q", got, want)
+		}
+	}
+	if got := homeBackgroundErrorDescription(errors.New(payload)); got != payload {
+		t.Fatalf("external error description = %q, want raw payload", got)
+	}
 }
 
 func TestHomeBackgroundUploadPreviewsAndPersists(t *testing.T) {
