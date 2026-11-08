@@ -191,6 +191,7 @@ func (a *app) resetFileEdit() {
 // left to do it.
 func (a *app) flushEdits() {
 	a.saveFileEdits()
+	a.saveCodeEdits()
 	a.syncConflictEdits()
 }
 

@@ -97,8 +97,9 @@ func TestTerminalOpenLinkUsesEditorForRepositoryFilesAndLeavesURLsAlone(t *testi
 	if err := os.Mkdir(filepath.Join(root, "src"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	content := []byte("package main\n\n// 3\n// 4\n// 5\n// 6\n// 7\n// 8\n// 9\n// 10\n// 11\n// 12\n")
 	for _, name := range []string{"src/main.go", "space name.go"} {
-		if err := os.WriteFile(filepath.Join(root, name), []byte("package main\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(root, name), content, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -117,9 +118,8 @@ func TestTerminalOpenLinkUsesEditorForRepositoryFilesAndLeavesURLsAlone(t *testi
 	t.Cleanup(func() { newTerminal = original })
 	h := menuTestApp(t)
 	h.app.snapshot.Root = root
-	if err := h.tester.Click("Toggle terminal"); err != nil {
-		t.Fatal(err)
-	}
+	h.app.settings.EditorCommand = vsCodeEditorCommand
+	h.app.openTerminal()
 	h.tester.Frame()
 	h.waitFor(t, "the terminal", func() bool {
 		return len(h.app.term.sessions) > 0 && h.app.term.sessions[0].pane != nil
@@ -138,9 +138,9 @@ func TestTerminalOpenLinkUsesEditorForRepositoryFilesAndLeavesURLsAlone(t *testi
 		}
 	}
 	want := []launchedEditor{
-		{command: defaultEditorCommand, path: filepath.Join(root, "src/main.go"), line: 12},
-		{command: defaultEditorCommand, path: filepath.Join(root, "space name.go"), line: 7},
-		{command: defaultEditorCommand, path: filepath.Join(root, "src/main.go"), line: 9},
+		{command: vsCodeEditorCommand, path: filepath.Join(root, "src/main.go"), line: 12},
+		{command: vsCodeEditorCommand, path: filepath.Join(root, "space name.go"), line: 7},
+		{command: vsCodeEditorCommand, path: filepath.Join(root, "src/main.go"), line: 9},
 	}
 	if !slices.Equal(*opened, want) {
 		t.Fatalf("editor launches = %+v, want %+v", *opened, want)
@@ -170,5 +170,24 @@ func TestTerminalOpenLinkUsesEditorForRepositoryFilesAndLeavesURLsAlone(t *testi
 	}
 	if got := (*opened)[len(*opened)-1]; got.command != "zed {{filename}}" || got.line != 21 {
 		t.Fatalf("configured editor launch = %+v", got)
+	}
+
+	builtInBefore := len(*opened)
+	h.app.settings.EditorCommand = builtInEditorCommand
+	if !openLink("src/main.go:12:3") {
+		t.Fatal("Built-in did not handle the repository file link")
+	}
+	h.waitFor(t, "the terminal link in Code", func() bool {
+		document := h.app.code.documents["src/main.go"]
+		return document != nil && document.state != nil && h.app.selectedCodePath() == "src/main.go"
+	})
+	if h.app.workspaceTab != sectionCode || h.app.code.active != "src/main.go" {
+		t.Fatalf("the terminal link opened section=%d file=%q", h.app.workspaceTab, h.app.code.active)
+	}
+	if got := h.app.activeCodeDocument().state.CursorPos().Line; got != 11 {
+		t.Fatalf("the terminal link opened line %d, want zero-based line 11", got)
+	}
+	if len(*opened) != builtInBefore {
+		t.Fatalf("Built-in terminal link launched an external editor: %+v", (*opened)[builtInBefore:])
 	}
 }

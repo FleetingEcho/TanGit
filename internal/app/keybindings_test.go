@@ -29,6 +29,7 @@ func TestKeybindingsModalListsAndFiltersShortcuts(t *testing.T) {
 		"Commit the staged changes",
 		"Check out the chosen branch",
 		"Ctrl+Enter",
+		"Ctrl+~",
 		"Enable keyboard shortcuts",
 		"Done",
 	} {
@@ -117,10 +118,10 @@ func TestQuestionMarkWorksAfterReenablingShortcutsInReference(t *testing.T) {
 // and the list's own F1 stop firing, while the header icons still work.
 func TestDisablingAllShortcutsStopsTheKeyboard(t *testing.T) {
 	h := menuTestApp(t)
-	h.tester.Key(0, ui.Key3)
+	h.tester.Key(0, ui.Key4)
 	h.tester.Frame()
 	if h.app.workspaceTab != sectionGraph {
-		t.Fatalf("Key3 did not switch to the graph: tab=%v", h.app.workspaceTab)
+		t.Fatalf("Key4 did not switch to the graph: tab=%v", h.app.workspaceTab)
 	}
 
 	if err := h.tester.Click("Keyboard shortcuts"); err != nil {

@@ -17,6 +17,7 @@ func twoHunkChangesApp(t *testing.T, files []repository.File) (*harness, *callRe
 		calls:  calls,
 		patch:  twoHunkPatch,
 	})
+	a.workspaceTab = sectionChanges
 	h := &harness{app: a, updates: newUpdates()}
 	h.tester = ui.NewTester(a.view, 1280, 800)
 	a.update = h.updates.update

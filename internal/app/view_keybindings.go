@@ -37,7 +37,7 @@ func keyBindingGroups() []keyBindingGroup {
 				{"?", "Show shortcuts for the current page"},
 				{"Ctrl+,", "Open settings"},
 				{"Ctrl+L", "Show the command log"},
-				{"Ctrl+`", "Toggle the terminal"},
+				{"Ctrl+` / Ctrl+~", "Toggle the terminal"},
 				{"Ctrl+F", "Search the active terminal"},
 				{"F5", "Refresh the repository"},
 				{"/", "Search the active panel"},
@@ -154,6 +154,7 @@ func (a *app) keybindingsModal(c *ui.Context) {
 		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 			Justify(ui.Center).AlignItems(ui.Center).
 			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
+		a.registerTerminalModalShortcuts(back)
 		back.Children(func() {
 			panel := ui.Column(c).Width(760).MaxWidthPercent(94).MaxHeightPercent(96).
 				Padding(22).Gap(14).Background(theme.Background).

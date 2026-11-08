@@ -78,6 +78,10 @@ func (a *app) keyboardListID(s *ui.ListState) string {
 		return "submodules"
 	case &a.reflogList:
 		return "reflog"
+	case &a.code.list:
+		return "code-files"
+	case &a.code.searchList:
+		return "code-results"
 	case &a.fileHistoryList:
 		return "file-history"
 	case &a.fileHistoryFileList:
@@ -169,6 +173,8 @@ func (a *app) moveKeyboardList(s *ui.ListState, n, delta int) {
 		a.selectSubmoduleRow(selected)
 	case &a.reflogList:
 		a.selectReflogRow(selected)
+	case &a.code.list:
+		a.selectCodeRow(selected)
 	case &a.diffFullscreenFileList:
 		if selected < len(a.diffFullscreenRows) {
 			a.diffFullscreenRows[selected].choose()
@@ -249,6 +255,14 @@ func (a *app) cycleKeyboardPaneFrom(current string, delta int) {
 }
 
 func (a *app) primaryKeyboardPane() string {
+	if a.term.panelOpen {
+		if active := a.activeTerminal(); active != nil {
+			if active.searchOpen {
+				return ""
+			}
+			return fmt.Sprintf("terminal-%d", active.id)
+		}
+	}
 	switch a.workspaceTab {
 	case sectionChanges:
 		if len(a.mergeRows) > 0 && a.mergeExpanded {
@@ -274,6 +288,11 @@ func (a *app) primaryKeyboardPane() string {
 		return "submodules"
 	case sectionReflog:
 		return "reflog"
+	case sectionCode:
+		if a.code.sidebar == codeSidebarSearch {
+			return "code-results"
+		}
+		return "code-files"
 	}
 	return "sidebar"
 }
@@ -367,6 +386,22 @@ func (a *app) keyboardEnter(id string) {
 		a.keyboardFocus = "stash-files"
 	case "file-history":
 		a.keyboardFocus = "file-history-files"
+	case "code-files":
+		a.openSelectedCodeFile()
+		a.keyboardFocus = "code-editor"
+	case "code-results":
+		if a.code.searchSelectedRow < 0 || a.code.searchSelectedRow >= len(a.code.searchRows) {
+			return
+		}
+		item := a.code.searchRows[a.code.searchSelectedRow]
+		if item.isFile() {
+			a.toggleCodeSearchFile(item.path)
+			return
+		}
+		if item.match >= 0 && item.match < len(a.code.searchResults) {
+			a.openCodeSearchMatch(a.code.searchResults[item.match])
+			a.keyboardFocus = "code-editor"
+		}
 	}
 }
 
@@ -442,6 +477,10 @@ func keyboardPaneLabel(id string) string {
 		return "Submodules"
 	case "reflog":
 		return "Reflog"
+	case "code-files":
+		return "Files"
+	case "code-results":
+		return "Search results"
 	}
 	return "Workspace"
 }
@@ -590,6 +629,11 @@ func (a *app) keyboardToggleDirectory(id string) bool {
 	case "stash-files":
 		if dir := selectedFileTreeDirectory(a.stashFileRows, a.selectedStashFileRow); dir != "" {
 			a.toggleFileTreeDirectory(fileTreeStashScope, dir)
+			return true
+		}
+	case "code-files":
+		if dir := selectedFileTreeDirectory(a.code.rows, a.code.selectedRow); dir != "" {
+			a.toggleFileTreeDirectory(codeFileTreeScope, dir)
 			return true
 		}
 	}

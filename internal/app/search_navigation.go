@@ -182,6 +182,10 @@ func (a *app) navigateActiveSearch(direction int) {
 		a.navigateSubmoduleSearch(direction)
 	case sectionReflog:
 		a.navigateReflogSearch(direction)
+	case sectionCode:
+		if a.code.sidebar == codeSidebarSearch {
+			a.navigateCodeSearch(direction)
+		}
 	}
 }
 

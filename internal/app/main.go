@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -89,7 +90,7 @@ type app struct {
 	// page the user can see. Nil means a standalone app refreshes directly.
 	externalRefresh func()
 
-	// term is the shell pane the header button toggles.
+	// term owns the bottom panel's shells, tabs, splits and restored height.
 	term terminalState
 
 	// pathUserData caches the per-user directory the history is stored in,
@@ -117,6 +118,8 @@ type app struct {
 	settingsLoaded bool
 	settingsOpen   bool
 	settingsPage   int
+	// customAccent backs ColorWell while Accent keeps its serializable hex.
+	customAccent ui.Color
 	// homeBackground is decoded once for the path in settings, then reused
 	// by Home and its Settings preview. The pending/failed paths prevent a
 	// rebuild from starting the same read again; the two generations reject
@@ -180,7 +183,7 @@ type app struct {
 	// workspacePaneCollapsed independently remembers the primary list state
 	// of every other workspace page; collapsing History must not also hide
 	// Graph's list when the user switches pages.
-	workspacePaneCollapsed [sectionReflog + 1]bool
+	workspacePaneCollapsed [workspaceSectionCount]bool
 	// The Changes list as built this frame: a section header, then the files
 	// of that section. selectedFile indexes it, so it may point at a header
 	// until the next frame moves it to the first file. mergeRows, stagedRows
@@ -235,6 +238,9 @@ type app struct {
 	// active section on screen and a narrow restore rail within reach.
 	navPaneCollapsed bool
 	workspaceTab     int
+	// code owns the repository explorer, persistent editor documents and
+	// workspace search independently of the diff-specific file editor.
+	code codeState
 	// navSelected is the sidebar row the active section shows, which differs
 	// from workspaceTab once sections are hidden.
 	navSelected         int
@@ -272,7 +278,7 @@ type app struct {
 	selectedBranch    int
 	// sectionSearch gives the window-wide / shortcut a stable focus target
 	// for the active panel. remoteBranchSearch is the second search in Remotes.
-	sectionSearch      [sectionReflog + 1]ui.Handle
+	sectionSearch      [workspaceSectionCount]ui.Handle
 	remoteBranchSearch ui.Handle
 
 	// Selecting a branch reads its commits without checking it out, then the
@@ -679,7 +685,35 @@ func newApp(opener repositoryOpener) *app {
 			listWidth: 280,
 		},
 	}
-	a.term.percent = terminalPanelPercent
+	a.code.paneWidth = 300
+	a.code.selectedRow, a.code.selectedSource = -1, -1
+	a.code.searchSelected, a.code.searchSelectedRow = -1, -1
+	a.code.list.Selected = &a.code.selectedRow
+	a.code.list.Key = func(row int) any { return fileTreeKey(a.code.rows, row) }
+	a.code.list.Label = func(row int) string { return fileTreeLabel(a.code.rows, row) }
+	a.code.searchList.Selected = &a.code.searchSelectedRow
+	a.code.searchList.Key = func(row int) any {
+		if row < 0 || row >= len(a.code.searchRows) {
+			return row
+		}
+		item := a.code.searchRows[row]
+		if item.isFile() {
+			return "file\x00" + item.path
+		}
+		match := a.code.searchResults[item.match]
+		return fmt.Sprintf("%s\x00%d\x00%d", match.Path, match.Line, match.Column)
+	}
+	a.code.searchList.Label = func(row int) string {
+		if row < 0 || row >= len(a.code.searchRows) {
+			return ""
+		}
+		item := a.code.searchRows[row]
+		if item.isFile() {
+			return item.path
+		}
+		match := a.code.searchResults[item.match]
+		return fmt.Sprintf("%s:%d: %s", match.Path, match.Line, match.Text)
+	}
 	a.compare.list.Selected = &a.compare.selected
 	a.compare.list.Key = func(row int) any {
 		if row < 0 || row >= len(a.compare.files) {

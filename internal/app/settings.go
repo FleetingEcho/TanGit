@@ -2,11 +2,13 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -18,8 +20,8 @@ type appSettings struct {
 	// Theme is a name from themeNames, "System" following the desktop's
 	// light or dark appearance.
 	Theme string `json:"theme"`
-	// Accent is a name from accentNames, the color of buttons and
-	// highlights in place of the palette's own; empty keeps the palette's.
+	// Accent is a name from accentNames or a custom #rrggbb color, painting
+	// buttons and highlights in place of the palette's own; empty keeps it.
 	Accent string `json:"accent"`
 	// FontSize, Spacing and Radius are the theme metrics; 0 keeps the
 	// palette's own value (except Radius, where 0 is a sharp corner).
@@ -107,7 +109,11 @@ func normalizeSettings(s appSettings) appSettings {
 		s.Theme = defaultTheme
 	}
 	if _, ok := accentChoices[s.Accent]; !ok {
-		s.Accent = ""
+		if color, custom := parseCustomAccent(s.Accent); custom {
+			s.Accent = formatCustomAccent(color)
+		} else {
+			s.Accent = ""
+		}
 	}
 	if s.FontSize < 9 || s.FontSize > 26 {
 		s.FontSize = defaultSettings().FontSize
@@ -552,14 +558,46 @@ var accentChoices = map[string]ui.Color{
 	"Slate":   ui.Hex("#7d8aa0"),
 }
 
-// accentText is the text drawn on an accent fill: near black on a light
-// color, white on a dark one, as the palettes themselves choose.
-func accentText(color ui.Color) ui.Color {
-	lum := (0.2126*float32(color.R) + 0.7152*float32(color.G) + 0.0722*float32(color.B)) / 255
-	if lum > 0.58 {
-		return ui.Hex("#15171f")
+// parseCustomAccent accepts only the opaque six-digit hex form saved by the
+// picker. Settings files are untrusted input, so malformed values never reach
+// ui.Hex, which intentionally panics on programmer errors.
+func parseCustomAccent(value string) (ui.Color, bool) {
+	if len(value) != 7 || value[0] != '#' {
+		return ui.Color{}, false
 	}
-	return ui.Hex("#ffffff")
+	rgb, err := strconv.ParseUint(value[1:], 16, 24)
+	if err != nil {
+		return ui.Color{}, false
+	}
+	return ui.RGB(uint8(rgb>>16), uint8(rgb>>8), uint8(rgb)), true
+}
+
+func formatCustomAccent(color ui.Color) string {
+	return fmt.Sprintf("#%02x%02x%02x", color.R, color.G, color.B)
+}
+
+func accentColor(value string) (ui.Color, bool) {
+	if color, ok := accentChoices[value]; ok {
+		return color, true
+	}
+	return parseCustomAccent(value)
+}
+
+// accentText is the text drawn on an accent fill. Arbitrary picker colors need
+// a contrast comparison, rather than a hue-specific threshold, to remain legible.
+func accentText(color ui.Color) ui.Color {
+	linear := func(channel uint8) float64 {
+		value := float64(channel) / 255
+		if value <= 0.04045 {
+			return value / 12.92
+		}
+		return math.Pow((value+0.055)/1.055, 2.4)
+	}
+	luminance := 0.2126*linear(color.R) + 0.7152*linear(color.G) + 0.0722*linear(color.B)
+	if luminance < 0.179 {
+		return ui.Hex("#ffffff")
+	}
+	return ui.Hex("#15171f")
 }
 
 // applyAccent paints a palette with the chosen accent color: the button
@@ -567,6 +605,7 @@ func accentText(color ui.Color) ui.Color {
 // washes that follow the accent elsewhere.
 func applyAccent(t *ui.Theme, color ui.Color) {
 	white, black := ui.RGB(255, 255, 255), ui.RGB(0, 0, 0)
+	color = ui.RGB(color.R, color.G, color.B)
 	t.Accent = color
 	t.AccentText = accentText(color)
 	if t.Dark {
@@ -607,7 +646,7 @@ func themeForSettings(s appSettings, systemDark bool) *ui.Theme {
 		t.Spacing = float32(s.Spacing)
 	}
 	t.Radius = float32(s.Radius)
-	if color, ok := accentChoices[s.Accent]; ok {
+	if color, ok := accentColor(s.Accent); ok {
 		applyAccent(t, color)
 	}
 	return t

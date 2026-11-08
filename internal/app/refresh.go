@@ -166,6 +166,10 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 	}
 	a.snapshot = snapshot
 	a.snapshotSeq++
+	if filesChanged && a.code.filesLoaded {
+		a.code.filesLoaded = false
+		a.requestCodeFiles()
+	}
 	if refsChanged {
 		a.resetCommitPaging(snapshot)
 	}

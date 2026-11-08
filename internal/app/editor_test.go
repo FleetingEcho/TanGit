@@ -39,7 +39,7 @@ func stubEditor(t *testing.T, run func(command, path string, line int) error) *[
 func TestEditorButtonOpensTheRepositoryWithTheChosenEditor(t *testing.T) {
 	h, _ := changesTestApp(t, unstagedTrackedFile())
 	opened := stubEditor(t, nil)
-	h.app.settings.EditorCommand = editorPresets[1].Command
+	h.app.settings.EditorCommand = editorPresets[2].Command
 
 	if err := h.tester.Click("Open in editor"); err != nil {
 		t.Fatalf("the header has no editor button: %v", err)
@@ -68,13 +68,32 @@ func TestEditorButtonOpensTheRepositoryWithTheChosenEditor(t *testing.T) {
 	}
 }
 
+func TestEditorButtonOpensBuiltInCodeByDefault(t *testing.T) {
+	h := menuTestApp(t)
+	stubCodeWorkspace(t, nil)
+	opened := stubEditor(t, nil)
+	if got := h.app.settings.EditorCommand; got != builtInEditorCommand {
+		t.Fatalf("fresh editor setting = %q, want Built-in", got)
+	}
+	if err := h.tester.Click("Open in editor"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.workspaceTab != sectionCode {
+		t.Fatalf("the header editor button opened section %d, want Code", h.app.workspaceTab)
+	}
+	if len(*opened) != 0 {
+		t.Fatalf("Built-in launched an external editor: %+v", *opened)
+	}
+}
+
 // A Home card can open its repository in the configured editor without
 // opening that repository in TanGit; its context menu offers the same action.
 func TestRecentCardOpensTheRepositoryWithTheConfiguredEditor(t *testing.T) {
 	a, tt, _ := recentTester(t, recentRepository{Path: "/work/project", LastOpened: timeNow()})
 	opened := stubEditor(t, nil)
-	a.settings.EditorCommand = editorPresets[1].Command
-	want := launchedEditor{command: editorPresets[1].Command, path: "/work/project"}
+	a.settings.EditorCommand = editorPresets[2].Command
+	want := launchedEditor{command: editorPresets[2].Command, path: "/work/project"}
 
 	if err := tt.Click("Open /work/project in editor"); err != nil {
 		t.Fatalf("the recent card has no editor button: %v", err)
@@ -96,6 +115,24 @@ func TestRecentCardOpensTheRepositoryWithTheConfiguredEditor(t *testing.T) {
 	}
 	if !slices.Equal(*opened, []launchedEditor{want, want}) {
 		t.Fatalf("menu editor opened %+v, want a second launch of %+v", *opened, want)
+	}
+}
+
+func TestRecentCardOpensItsRepositoryInBuiltInCode(t *testing.T) {
+	stubCodeWorkspace(t, nil)
+	a, tt, updated := recentTester(t, recentRepository{Path: "/work/project", LastOpened: timeNow()})
+	a.workspaceTab = sectionChanges
+	opened := stubEditor(t, nil)
+	if err := tt.Click("Open /work/project in editor"); err != nil {
+		t.Fatalf("the recent card has no editor button: %v", err)
+	}
+	h := &harness{app: a, tester: tt, updates: updated}
+	h.settle(t)
+	if a.state != stateReady || a.workspaceTab != sectionCode {
+		t.Fatalf("Built-in opened state=%v section=%d, want the repository's Code page", a.state, a.workspaceTab)
+	}
+	if len(*opened) != 0 {
+		t.Fatalf("Built-in launched an external editor: %+v", *opened)
 	}
 }
 
@@ -122,19 +159,33 @@ func TestRecentCardEditorSitsAtTheTopRight(t *testing.T) {
 	}
 }
 
-func TestFilePaneEditorButtonOpensTheFile(t *testing.T) {
-	h, _ := changesTestApp(t, unstagedTrackedFile())
+func TestFilePaneEditorButtonOpensAndRevealsTheFileInBuiltInCode(t *testing.T) {
+	files := unstagedTrackedFile()
+	files[0].Path = "internal/app/changed.txt"
+	stubCodeWorkspace(t, map[string]string{"internal/app/changed.txt": "changed\n"})
+	h, _ := changesTestApp(t, files)
 	opened := stubEditor(t, nil)
+	if _, found := h.tester.Find("Edit"); found {
+		t.Fatal("the file header still has the redundant pencil edit button")
+	}
 
 	if err := h.tester.Click("Open file in editor"); err != nil {
 		t.Fatalf("the file pane has no editor button: %v", err)
 	}
 	h.tester.Frame()
-	h.settle(t)
+	document := waitForCodeDocument(t, h, "internal/app/changed.txt")
 
-	want := launchedEditor{command: defaultEditorCommand, path: "/work/project/changed.txt"}
-	if !slices.Equal(*opened, []launchedEditor{want}) {
-		t.Fatalf("opened %+v, want %+v", *opened, want)
+	if len(*opened) != 0 {
+		t.Fatalf("Built-in launched an external editor: %+v", *opened)
+	}
+	if h.app.workspaceTab != sectionCode || document != h.app.activeCodeDocument() {
+		t.Fatalf("the action did not open the file in Code: tab=%d active=%q", h.app.workspaceTab, h.app.code.active)
+	}
+	if got := h.app.selectedCodePath(); got != "internal/app/changed.txt" {
+		t.Fatalf("the explorer selected %q, want the opened file", got)
+	}
+	if h.app.fileTreeCollapsed[fileTreeCollapseKey(codeFileTreeScope, "internal/app")] {
+		t.Fatal("the opened file's parent directory stayed collapsed")
 	}
 }
 
@@ -161,6 +212,7 @@ func TestFileActionsMenuComesLast(t *testing.T) {
 // to change, not the shell's own wording.
 func TestMissingEditorSaysHowToInstallIt(t *testing.T) {
 	h, _ := changesTestApp(t, unstagedTrackedFile())
+	h.app.settings.EditorCommand = vsCodeEditorCommand
 	stubEditor(t, func(string, string, int) error { return errEditorMissing })
 
 	if err := h.tester.Click("Open in editor"); err != nil {
@@ -201,7 +253,7 @@ func TestEditorFindsVSCodeOutsideTheMacOSGUIPath(t *testing.T) {
 	argumentsFile := filepath.Join(t.TempDir(), "arguments")
 	t.Setenv("TANGIT_EDITOR_TEST_ARGS", argumentsFile)
 
-	if err := runEditorTemplate(defaultEditorCommand, "/work/project/one.txt", 0); err != nil {
+	if err := runEditorTemplate(vsCodeEditorCommand, "/work/project/one.txt", 0); err != nil {
 		t.Fatalf("an installed VS Code app did not open when its command was outside the GUI PATH: %v", err)
 	}
 	for range 100 {
@@ -220,6 +272,7 @@ func TestEditorFindsVSCodeOutsideTheMacOSGUIPath(t *testing.T) {
 // The editor command remains reachable through the Editor settings page.
 func TestEditorConfigurationLivesInSettings(t *testing.T) {
 	h, _ := changesTestApp(t, unstagedTrackedFile())
+	h.app.settings.EditorCommand = vsCodeEditorCommand
 	h.app.openSettings()
 	h.tester.Frame()
 	if err := h.tester.Click("Editor settings"); err != nil {
@@ -246,7 +299,7 @@ func TestSettingsPresetsFillTheEditorCommand(t *testing.T) {
 		t.Fatalf("the settings offer no Neovim preset: %v", err)
 	}
 	h.tester.Frame()
-	if got, want := h.app.settings.EditorCommand, editorPresets[2].Command; got != want {
+	if got, want := h.app.settings.EditorCommand, editorPresets[3].Command; got != want {
 		t.Fatalf("the preset stored %q, want %q", got, want)
 	}
 }

@@ -44,6 +44,7 @@ func TestBinaryImageChangeShowsBeforeAfterAndFullscreen(t *testing.T) {
 			New: repository.MediaBlob{Present: true, Data: newData},
 		},
 	})
+	a.workspaceTab = sectionChanges
 	h := &harness{app: a, updates: newUpdates()}
 	h.tester = ui.NewTester(a.view, 1100, 760)
 	a.update = h.updates.update

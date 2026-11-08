@@ -56,7 +56,7 @@ func TestModalHotkeysSwitchDisablesAndRestoresShortcuts(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	h.tester.Key(0, ui.Key3)
+	h.tester.Key(0, ui.Key4)
 	h.tester.Frame()
 	if h.app.workspaceTab != sectionGraph {
 		t.Fatal("re-enabled shortcuts did not take effect")

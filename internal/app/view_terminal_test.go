@@ -12,6 +12,8 @@ import (
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
+
+	"lazygitapp/internal/repository"
 )
 
 type monitoredTerminalConn struct {
@@ -74,9 +76,7 @@ func monitoredTerminalTestApp(t *testing.T) (*harness, chan monitoredTerminalPee
 	}
 	t.Cleanup(func() { newTerminal = original })
 	h := menuTestApp(t)
-	if err := h.tester.Click("Toggle terminal"); err != nil {
-		t.Fatal(err)
-	}
+	h.app.openTerminal()
 	h.tester.Frame()
 	h.waitFor(t, "the first terminal", func() bool {
 		return len(h.app.term.sessions) > 0 && h.app.term.sessions[0].pane != nil
@@ -112,6 +112,352 @@ func splitMonitoredTerminal(t *testing.T, h *harness, peers chan monitoredTermin
 	return second
 }
 
+func TestTerminalPlusCreatesIndependentTabsAndRetainsTheirSplits(t *testing.T) {
+	h, peers, first := monitoredTerminalTestApp(t)
+	firstPane := h.app.term.sessions[0].pane
+
+	if err := h.tester.Click("New terminal tab"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.waitFor(t, "the second terminal tab", func() bool {
+		return h.app.terminalSessionCount() == 2 && h.app.activeTerminal().pane != nil
+	})
+	second := <-peers
+	t.Cleanup(func() { _ = second.Close() })
+	secondPane := h.app.activeTerminal().pane
+	if secondPane == firstPane || h.app.activeTerminalGroup() != 2 {
+		t.Fatalf("Plus did not create an independent second tab: %+v", h.app.term)
+	}
+	h.tester.Frame()
+	if _, found := h.tester.Find("Select terminal 1"); found {
+		t.Fatal("Plus split the first terminal instead of giving it a separate tab")
+	}
+	if _, found := h.tester.Find("Select terminal 2"); !found {
+		t.Fatal("the new terminal tab is not selected")
+	}
+
+	third := splitMonitoredTerminal(t, h, peers, false)
+	thirdPane := h.app.activeTerminal().pane
+	secondGroup := h.app.activeTerminalGroup()
+	secondLayout := h.app.term.layout
+	if h.app.activeTerminal().groupID != secondGroup || h.app.terminalGroupSize(secondGroup) != 2 {
+		t.Fatalf("the split escaped its top-level tab: %+v", h.app.term.sessions)
+	}
+	if err := h.tester.Click("Terminal tab 1"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.tester.Frame()
+	if h.app.activeTerminal().pane != firstPane || h.app.activeTerminalGroup() != 1 {
+		t.Fatalf("the first tab did not restore its shell: %+v", h.app.term)
+	}
+	if _, found := h.tester.Find("Select terminal 2"); found {
+		t.Fatal("switching tabs left an inactive terminal bound to a view")
+	}
+	if err := h.tester.Click("Terminal tab 2"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.tester.Frame()
+	if h.app.term.layout != secondLayout || h.app.activeTerminal().pane != thirdPane {
+		t.Fatal("returning to a tab replaced its split layout or active shell")
+	}
+	if h.app.term.sessions[1].pane != secondPane {
+		t.Fatal("switching tabs replaced the second shell")
+	}
+	for _, peer := range []monitoredTerminalPeer{first, second, third} {
+		requireTerminalRunning(t, peer)
+	}
+	if h.tester.HasText("Handle bound to two controls in one build") {
+		t.Fatal("a terminal was rendered in two tabs at once")
+	}
+}
+
+func TestTerminalClosingLastActiveSplitStaysInItsTopLevelTab(t *testing.T) {
+	h, peers, first := monitoredTerminalTestApp(t)
+
+	if err := h.tester.Click("New terminal tab"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.waitFor(t, "the middle terminal tab", func() bool {
+		return h.app.terminalSessionCount() == 2 && h.app.activeTerminal().pane != nil
+	})
+	second := <-peers
+	t.Cleanup(func() { _ = second.Close() })
+	secondPane := h.app.activeTerminal().pane
+
+	third := splitMonitoredTerminal(t, h, peers, false)
+	thirdPane := h.app.activeTerminal().pane
+	if err := h.tester.Click("New terminal tab"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.waitFor(t, "the last terminal tab", func() bool {
+		return h.app.terminalSessionCount() == 4 && h.app.activeTerminal().pane != nil
+	})
+	fourth := <-peers
+	t.Cleanup(func() { _ = fourth.Close() })
+
+	if err := h.tester.Click("Terminal tab 2"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.tester.Frame()
+	if h.app.activeTerminal().pane != thirdPane {
+		t.Fatal("the middle tab did not restore its active split")
+	}
+	if err := h.tester.Click("Close terminal 3"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+
+	active := h.app.activeTerminal()
+	if active == nil || active.groupID != 2 || active.pane != secondPane {
+		t.Fatalf("closing the last split switched top-level tabs: active=%+v state=%+v", active, h.app.term)
+	}
+	requireTerminalClosed(t, third)
+	for _, peer := range []monitoredTerminalPeer{first, second, fourth} {
+		requireTerminalRunning(t, peer)
+	}
+}
+
+func TestTerminalDockStaysSharedAcrossWorkspacePages(t *testing.T) {
+	h, peers, first := monitoredTerminalTestApp(t)
+	firstPane := h.app.term.sessions[0].pane
+
+	if err := h.tester.Click("New terminal tab"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.waitFor(t, "the docked terminal tab", func() bool {
+		return h.app.terminalSessionCount() == 2 && h.app.activeTerminal().pane != nil
+	})
+	second := <-peers
+	t.Cleanup(func() { _ = second.Close() })
+	secondPane := h.app.activeTerminal().pane
+
+	h.app.setWorkspaceTab(sectionHistory)
+	h.tester.Frame()
+	if !h.app.term.panelOpen || h.app.workspaceTab != sectionHistory ||
+		h.app.term.sessions[0].pane != firstPane || h.app.activeTerminal().pane != secondPane {
+		t.Fatalf("changing workspace pages replaced the docked sessions: %+v", h.app.term)
+	}
+	if err := h.tester.Click("Toggle terminal"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Advance(250 * time.Millisecond)
+	h.tester.Frame()
+	if h.app.term.panelOpen || h.app.workspaceTab != sectionHistory || h.app.terminalSessionCount() != 2 {
+		t.Fatal("the status icon did not hide the dock without closing its shells")
+	}
+
+	h.app.setWorkspaceTab(sectionCode)
+	if err := h.tester.Click("Toggle terminal"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Advance(250 * time.Millisecond)
+	h.tester.Frame()
+	if !h.app.term.panelOpen || h.app.terminalSessionCount() != 2 ||
+		h.app.term.sessions[0].pane != firstPane || h.app.activeTerminal().pane != secondPane {
+		t.Fatal("restoring the dock created different terminal sessions")
+	}
+	if err := h.tester.Click("Hide terminal"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Advance(250 * time.Millisecond)
+	h.tester.Frame()
+	if h.app.term.panelOpen || h.app.terminalSessionCount() != 2 {
+		t.Fatal("hiding the dock closed its shared sessions")
+	}
+	requireTerminalRunning(t, first)
+}
+
+func TestTerminalTopLevelTabsShareHeaderAndCloseWithConfirmation(t *testing.T) {
+	h, peers, first := monitoredTerminalTestApp(t)
+	if err := h.tester.Click("New terminal tab"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.waitFor(t, "the second top-level tab", func() bool {
+		return h.app.terminalSessionCount() == 2 && h.app.activeTerminal().pane != nil
+	})
+	second := <-peers
+	t.Cleanup(func() { _ = second.Close() })
+	third := splitMonitoredTerminal(t, h, peers, false)
+	h.tester.Frame()
+
+	header, headerFound := h.tester.Find("Terminal actions")
+	tabOne, oneFound := h.tester.Find("Terminal tab 1")
+	tabTwo, twoFound := h.tester.Find("Terminal tab 2")
+	if !headerFound || !oneFound || !twoFound ||
+		tabOne.Y+tabOne.H/2 != header.Y+header.H/2 || tabTwo.Y+tabTwo.H/2 != header.Y+header.H/2 {
+		t.Fatalf("top-level tabs are not in the terminal header: header=%+v one=%+v two=%+v", header, tabOne, tabTwo)
+	}
+	for _, group := range []int{1, 2} {
+		if _, found := h.tester.Find(fmt.Sprintf("Rename tab %d", group)); !found {
+			t.Fatalf("top-level tab %d has no rename button", group)
+		}
+	}
+	if err := h.tester.Click("Close terminal tab 2"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.confirm == nil || h.app.confirm.title != tr("Close terminal tab") || !h.app.confirm.destructive {
+		t.Fatalf("closing a multi-shell tab did not ask for confirmation: %+v", h.app.confirm)
+	}
+	for _, peer := range []monitoredTerminalPeer{first, second, third} {
+		requireTerminalRunning(t, peer)
+	}
+	if err := h.tester.Click("Cancel"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Close terminal tab 2"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Close tab"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.terminalSessionCount() != 1 || h.app.activeTerminalGroup() != 1 || !h.app.term.panelOpen {
+		t.Fatalf("confirmed tab close disturbed the other top-level tab: %+v", h.app.term)
+	}
+	requireTerminalRunning(t, first)
+	requireTerminalClosed(t, second)
+	requireTerminalClosed(t, third)
+}
+
+func TestTerminalTopLevelTabRenameAndContextMenu(t *testing.T) {
+	h, peers, first := monitoredTerminalTestApp(t)
+	firstID := h.app.term.sessions[0].id
+	if label := terminalSessionLabel(&h.app.term.sessions[0]); label == "" || label == "Terminal 1" {
+		t.Fatalf("the shell has a numeric tab label: %q", label)
+	}
+	if detail := terminalSessionDetail(&h.app.term.sessions[0]); detail == "" {
+		t.Fatal("the top-level shell has no working-directory context")
+	}
+	if err := h.tester.Click("New terminal tab"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.waitFor(t, "the second tab for renaming", func() bool {
+		return h.app.terminalSessionCount() == 2 && h.app.activeTerminal().pane != nil
+	})
+	second := <-peers
+	t.Cleanup(func() { _ = second.Close() })
+
+	// The pencil opens the same stable-ID form directly.
+	if err := h.tester.Click("Rename tab 2"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.term.renameID != h.app.activeTerminal().id {
+		t.Fatalf("rename targeted %d, want active shell %d", h.app.term.renameID, h.app.activeTerminal().id)
+	}
+	h.app.closeTerminalRename()
+	h.tester.Frame()
+
+	// Right-click offers both actions and does not redirect them to tab one.
+	h.rightClick(t, "Terminal tab 2")
+	h.chooseMenuItem(t, "Rename tab")
+	h.tester.Type("Database shell")
+	h.tester.Frame()
+	if err := h.tester.Click("Save name"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.term.sessions[0].name != "" || h.app.activeTerminal().name != "Database shell" || !h.tester.HasText("Database shell") {
+		t.Fatalf("the context-menu rename missed its tab: %+v", h.app.term.sessions)
+	}
+
+	h.rightClick(t, "Terminal tab 2")
+	h.chooseMenuItem(t, "Close terminal tab")
+	if h.app.confirm == nil || h.app.confirm.title != tr("Close terminal tab") {
+		t.Fatalf("context-menu close did not confirm the running shells: %+v", h.app.confirm)
+	}
+	if err := h.tester.Click("Close tab"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.terminalSessionCount() != 1 || h.app.activeTerminal().id != firstID || h.app.term.sessions[0].name != "" {
+		t.Fatalf("context-menu close disturbed the remaining tab: %+v", h.app.term)
+	}
+	requireTerminalRunning(t, first)
+	requireTerminalClosed(t, second)
+}
+
+func TestTerminalMaximizeRestoresPanelHeightAndSessions(t *testing.T) {
+	h, peers, first := monitoredTerminalTestApp(t)
+	if err := h.tester.Click("New terminal tab"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.waitFor(t, "the maximizable terminal tab", func() bool {
+		return h.app.terminalSessionCount() == 2 && h.app.activeTerminal().pane != nil
+	})
+	second := <-peers
+	t.Cleanup(func() { _ = second.Close() })
+	secondPane := h.app.activeTerminal().pane
+	h.tester.Advance(250 * time.Millisecond)
+	h.tester.Frame()
+	resizing, found := h.tester.Find("Terminal pane")
+	if !found {
+		t.Fatal("the dock is missing before resizing")
+	}
+	defaultPercent := h.app.term.percent
+	dragTo(t, h.tester, resizing.X+100, resizing.Y-islandGap/2, 0, -60)
+	if h.app.term.percent <= defaultPercent {
+		t.Fatalf("the dock divider did not resize the panel: %v%% -> %v%%", defaultPercent, h.app.term.percent)
+	}
+	h.tester.Advance(250 * time.Millisecond)
+	h.tester.Frame()
+	restorePercent := h.app.term.percent
+	before, found := h.tester.Find("Terminal pane")
+	if !found {
+		t.Fatal("the dock is missing before maximizing")
+	}
+	if _, found := h.tester.Find("Select terminal 2"); !found {
+		t.Fatal("the per-shell title bar is missing before maximizing")
+	}
+
+	if err := h.tester.Click("Maximize terminal"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Advance(250 * time.Millisecond)
+	h.tester.Frame()
+	maximized, found := h.tester.Find("Terminal pane")
+	if !found || !h.app.term.panelMaximized || maximized.H <= before.H*2 {
+		t.Fatalf("maximize did not give the terminal the content area: before=%+v after=%+v state=%+v", before, maximized, h.app.term)
+	}
+	if h.app.activeTerminal().pane != secondPane || h.app.term.percent != restorePercent {
+		t.Fatal("maximizing replaced the active shell or overwrote its restored height")
+	}
+	if _, found := h.tester.Find("Select terminal 2"); found {
+		t.Fatal("maximizing kept the redundant per-shell title bar")
+	}
+	if _, found := h.tester.Find("Terminal actions"); !found {
+		t.Fatal("maximizing hid the toolbar containing the restore control")
+	}
+	if err := h.tester.Click("Restore terminal size"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Advance(250 * time.Millisecond)
+	h.tester.Frame()
+	restored, found := h.tester.Find("Terminal pane")
+	if !found || h.app.term.panelMaximized || restored.H != before.H || h.app.term.percent != restorePercent {
+		t.Fatalf("restore did not recover the original dock height: before=%+v after=%+v state=%+v", before, restored, h.app.term)
+	}
+	if _, found := h.tester.Find("Select terminal 2"); !found {
+		t.Fatal("restoring the dock did not restore its per-shell title bar")
+	}
+	for _, peer := range []monitoredTerminalPeer{first, second} {
+		requireTerminalRunning(t, peer)
+	}
+}
+
 func TestTerminalCloseAllRequiresConfirmationButTabCloseDoesNot(t *testing.T) {
 	h, peers, first := monitoredTerminalTestApp(t)
 	second := splitMonitoredTerminal(t, h, peers, false)
@@ -141,7 +487,7 @@ func TestTerminalCloseAllRequiresConfirmationButTabCloseDoesNot(t *testing.T) {
 	}
 	requireTerminalClosed(t, second)
 	requireTerminalRunning(t, first)
-	if !h.app.term.open || h.app.term.active != 0 || h.app.terminalSessionCount() != 1 {
+	if !h.app.term.panelOpen || h.app.term.active != 0 || h.app.terminalSessionCount() != 1 {
 		t.Fatalf("per-tab close disturbed the remaining shell: %+v", h.app.term)
 	}
 }
@@ -159,7 +505,7 @@ func TestTerminalCloseAllConfirmationExitsEveryShell(t *testing.T) {
 	h.tester.Frame()
 	requireTerminalClosed(t, first)
 	requireTerminalClosed(t, second)
-	if h.app.term.open || h.app.terminalSessionCount() != 0 || h.app.confirm != nil {
+	if h.app.term.panelOpen || h.app.terminalSessionCount() != 0 || h.app.confirm != nil {
 		t.Fatalf("confirmed close all left terminal state behind: %+v", h.app.term)
 	}
 }
@@ -331,6 +677,20 @@ func TestTerminalTabsRenameAndContainTheirActions(t *testing.T) {
 	if !h.tester.HasText("Build shell") {
 		t.Fatalf("the renamed terminal is not shown: %q", h.texts())
 	}
+	h.rightClick(t, "Focus terminal 1")
+	h.chooseMenuItem(t, "Rename terminal")
+	if h.app.term.renameID != h.app.term.sessions[0].id {
+		t.Fatal("the split context menu targeted another shell")
+	}
+	if err := h.tester.Click("Cancel"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.rightClick(t, "Focus terminal 1")
+	h.chooseMenuItem(t, "Close terminal")
+	if h.app.terminalSessionCount() != 0 || h.app.term.panelOpen {
+		t.Fatalf("the split context menu did not close its shell: %+v", h.app.term)
+	}
 }
 
 func TestTerminalLimitIsSixAndAnotherSplitReportsAnError(t *testing.T) {
@@ -412,9 +772,7 @@ func TestTerminalSplitHideAndCloseHaveIndependentLifetimes(t *testing.T) {
 	defer func() { newTerminal = original }()
 
 	h := menuTestApp(t)
-	if err := h.tester.Click("Toggle terminal"); err != nil {
-		t.Fatal(err)
-	}
+	h.app.openTerminal()
 	h.tester.Frame()
 	h.waitFor(t, "the first terminal", func() bool {
 		return len(h.app.term.sessions) > 0 && h.app.term.sessions[0].pane != nil
@@ -442,14 +800,12 @@ func TestTerminalSplitHideAndCloseHaveIndependentLifetimes(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if h.app.term.open {
+	if h.app.term.panelOpen {
 		t.Fatal("Hide did not hide the terminal panel")
 	}
 	requireTerminalRunning(t, first)
 	requireTerminalRunning(t, second)
-	if err := h.tester.Click("Toggle terminal"); err != nil {
-		t.Fatal(err)
-	}
+	h.app.openTerminal()
 	h.tester.Frame()
 	if h.app.term.sessions[0].pane != firstPane || h.app.term.sessions[1].pane != secondPane {
 		t.Fatal("reopening replaced the hidden terminals")
@@ -462,7 +818,7 @@ func TestTerminalSplitHideAndCloseHaveIndependentLifetimes(t *testing.T) {
 	h.tester.Frame()
 	requireTerminalClosed(t, second)
 	requireTerminalRunning(t, first)
-	if !h.app.term.open || h.app.term.active != 0 || h.app.terminalSessionCount() != 1 || h.app.term.sessions[0].pane != firstPane {
+	if !h.app.term.panelOpen || h.app.term.active != 0 || h.app.terminalSessionCount() != 1 || h.app.term.sessions[0].pane != firstPane {
 		t.Fatalf("closing the split disturbed the remaining shell: %+v", h.app.term)
 	}
 
@@ -471,8 +827,85 @@ func TestTerminalSplitHideAndCloseHaveIndependentLifetimes(t *testing.T) {
 	}
 	h.tester.Frame()
 	requireTerminalClosed(t, first)
-	if h.app.term.open || h.app.terminalSessionCount() != 0 {
+	if h.app.term.panelOpen || h.app.terminalSessionCount() != 0 {
 		t.Fatalf("closing the last shell left the empty panel open: %+v", h.app.term)
+	}
+	if h.app.term.layouts != nil || h.app.term.activeSessions != nil {
+		t.Fatalf("closing the last shell retained tab state: layouts=%v active=%v", h.app.term.layouts, h.app.term.activeSessions)
+	}
+}
+
+func TestTerminalWorkspaceSwitchPreservesSessionsSplitsAndSearch(t *testing.T) {
+	h, peers, first := monitoredTerminalTestApp(t)
+	second := splitMonitoredTerminal(t, h, peers, false)
+	layout := h.app.term.layout
+	firstPane := h.app.term.sessions[0].pane
+	secondPane := h.app.term.sessions[1].pane
+	active := h.app.activeTerminal()
+	active.searchOpen = true
+	active.searchText = "needle"
+
+	h.app.setWorkspaceTab(sectionHistory)
+	h.tester.Frame()
+	if !h.app.term.panelOpen || h.app.workspaceTab != sectionHistory {
+		t.Fatalf("switching workspace pages hid the shared dock: tab=%d open=%v", h.app.workspaceTab, h.app.term.panelOpen)
+	}
+	requireTerminalRunning(t, first)
+	requireTerminalRunning(t, second)
+
+	h.app.hideTerminalView()
+	h.tester.Frame()
+	h.app.openTerminal()
+	h.tester.Frame()
+	if !h.app.term.panelOpen || h.app.term.active != 1 || h.app.term.layout != layout ||
+		h.app.term.sessions[0].pane != firstPane || h.app.term.sessions[1].pane != secondPane {
+		t.Fatalf("restoring the dock replaced terminal state: %+v", h.app.term)
+	}
+	if active = h.app.activeTerminal(); !active.searchOpen || active.searchText != "needle" {
+		t.Fatalf("restoring the dock lost the active terminal search: %+v", active)
+	}
+	requireTerminalRunning(t, first)
+	requireTerminalRunning(t, second)
+}
+
+func TestTerminalHasNoWorkspacePageAndShortcutReopensDock(t *testing.T) {
+	original := newTerminal
+	newTerminal = func(terminal.Options) (*terminal.Terminal, error) {
+		return nil, errors.New("no shell here")
+	}
+	defer func() { newTerminal = original }()
+
+	h := menuTestApp(t)
+	for _, section := range workspaceSections {
+		if section == "Terminal" {
+			t.Fatal("Terminal still has a standalone workspace page")
+		}
+	}
+	h.app.settings.VisibleSections = normalizeVisibleSections([]string{"terminal"})
+	h.app.applySettingsChange()
+	h.tester.Frame()
+	if slices.Contains(h.app.settings.VisibleSections, "terminal") {
+		t.Fatal("the removed Terminal page was retained in workspace settings")
+	}
+	h.app.setWorkspaceTab(sectionHistory)
+	h.tester.Key(ui.Ctrl, ui.KeyBackquote)
+	h.tester.Frame()
+	h.waitFor(t, "the docked terminal to report its error", func() bool {
+		return len(h.app.term.sessions) == 1 && h.app.term.sessions[0].err != ""
+	})
+	if h.app.workspaceTab != sectionHistory || !h.app.term.panelOpen || h.app.terminalSessionCount() != 1 {
+		t.Fatalf("the shortcut did not open the dock over History: tab=%d state=%+v", h.app.workspaceTab, h.app.term)
+	}
+
+	h.tester.Key(ui.Ctrl, ui.KeyBackquote)
+	h.tester.Frame()
+	if h.app.term.panelOpen || h.app.workspaceTab != sectionHistory || h.app.terminalSessionCount() != 1 {
+		t.Fatalf("the shortcut did not hide the dock over its current page: tab=%d state=%+v", h.app.workspaceTab, h.app.term)
+	}
+	h.tester.Key(ui.Ctrl, ui.KeyBackquote)
+	h.tester.Frame()
+	if h.app.workspaceTab != sectionHistory || !h.app.term.panelOpen || h.app.terminalSessionCount() != 1 {
+		t.Fatalf("the shortcut did not reopen the same dock: tab=%d state=%+v", h.app.workspaceTab, h.app.term)
 	}
 }
 
@@ -492,9 +925,7 @@ func TestClosingAStartingSplitDiscardsItsLateShell(t *testing.T) {
 	defer func() { newTerminal = original }()
 
 	h := menuTestApp(t)
-	if err := h.tester.Click("Toggle terminal"); err != nil {
-		t.Fatal(err)
-	}
+	h.app.openTerminal()
 	h.tester.Frame()
 	h.waitFor(t, "the first terminal", func() bool {
 		return len(h.app.term.sessions) > 0 && h.app.term.sessions[0].pane != nil
@@ -523,7 +954,122 @@ func TestClosingAStartingSplitDiscardsItsLateShell(t *testing.T) {
 	}
 }
 
-func TestTerminalButtonOpensAndHidesThePane(t *testing.T) {
+func TestTerminalShortcutIsGlobalAcrossFormsAndShortcutPreference(t *testing.T) {
+	original := newTerminal
+	newTerminal = func(terminal.Options) (*terminal.Terminal, error) {
+		return nil, errors.New("no shell here")
+	}
+	t.Cleanup(func() { newTerminal = original })
+
+	for _, test := range []struct {
+		name      string
+		open      func(*app)
+		stillOpen func(*app) bool
+	}{
+		{name: "workspace"},
+		{name: "commit form", open: func(a *app) { a.showCommitForm = true }, stillOpen: func(a *app) bool { return a.showCommitForm }},
+		{name: "confirmation", open: func(a *app) {
+			a.askConfirm(confirmRequest{title: "Discard changes", run: func() {}})
+		}, stillOpen: func(a *app) bool { return a.confirm != nil }},
+		{name: "settings", open: func(a *app) { a.openSettings() }, stillOpen: func(a *app) bool { return a.settingsOpen }},
+		{name: "other shortcuts disabled", open: func(a *app) { a.settings.DisableShortcuts = true }, stillOpen: func(a *app) bool { return a.settings.DisableShortcuts }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := menuTestApp(t)
+			h.app.setWorkspaceTab(sectionHistory)
+			if test.open != nil {
+				test.open(h.app)
+			}
+			h.tester.Frame()
+
+			// Shift often remains held for the physical tilde key. Accept that
+			// form as well as the literal Ctrl+backquote binding, in both forms.
+			h.tester.Key(ui.Ctrl|ui.Shift, ui.KeyBackquote)
+			h.tester.Frame()
+			h.waitFor(t, "the terminal behind the focused mode", func() bool {
+				return len(h.app.term.sessions) == 1 && h.app.term.sessions[0].err != ""
+			})
+			if !h.app.term.panelOpen || h.app.workspaceTab != sectionHistory || h.app.terminalSessionCount() != 1 {
+				t.Fatalf("Ctrl+~ did not open the global dock: %+v", h.app.term)
+			}
+			if test.stillOpen != nil && !test.stillOpen(h.app) {
+				t.Fatal("opening the terminal dismissed the focused mode")
+			}
+
+			h.tester.Key(ui.Ctrl, ui.KeyBackquote)
+			h.tester.Frame()
+			if h.app.term.panelOpen || h.app.workspaceTab != sectionHistory || h.app.terminalSessionCount() != 1 {
+				t.Fatal("Ctrl+` did not hide the global dock without ending its shell")
+			}
+			if test.stillOpen != nil && !test.stillOpen(h.app) {
+				t.Fatal("hiding the terminal dismissed the focused mode")
+			}
+
+			h.tester.Key(ui.Ctrl, ui.KeyBackquote)
+			h.tester.Frame()
+			if !h.app.term.panelOpen || h.app.workspaceTab != sectionHistory || h.app.terminalSessionCount() != 1 {
+				t.Fatal("Ctrl+` did not reopen the same global dock")
+			}
+			if test.stillOpen != nil && !test.stillOpen(h.app) {
+				t.Fatal("reopening the terminal dismissed the focused mode")
+			}
+		})
+	}
+}
+
+func TestShellTerminalShortcutTogglesRepeatedlyAfterClickingEmptyEditor(t *testing.T) {
+	original := newTerminal
+	peers := make(chan monitoredTerminalPeer, 1)
+	newTerminal = func(options terminal.Options) (*terminal.Terminal, error) {
+		return newMonitoredTerminal(options, peers)
+	}
+	t.Cleanup(func() { newTerminal = original })
+
+	s, tt, updated := newShellTester(t, repository.Snapshot{})
+	tab := readyShellTab(s, "/work/project")
+	tab.app.code.filesLoaded = true
+	s.active = len(s.tabs) - 1
+	a := tab.app
+	a.setWorkspaceTab(sectionCode)
+	tt.Frame()
+	empty, found := tt.Find("Open a file from the explorer")
+	if !found {
+		t.Fatalf("the shell's empty Editor is missing: %q", tt.Texts())
+	}
+	tt.ClickAt(empty.X+empty.W/2, empty.Y+empty.H/2)
+	tt.Frame()
+
+	var first monitoredTerminalPeer
+	for press := 1; press <= 20; press++ {
+		wantOpen := !a.term.panelOpen
+		tt.Key(ui.Ctrl|ui.Shift, ui.KeyBackquote)
+		tt.Frame()
+		if press == 1 && !a.term.panelOpen {
+			t.Fatalf("shell Ctrl+~ did not open the terminal after the empty-Editor click: %+v", a.term)
+		}
+		if press == 1 {
+			for range 8 {
+				if len(a.term.sessions) == 1 && a.term.sessions[0].pane != nil {
+					break
+				}
+				updated.waitForUpdate(t)
+				tt.Frame()
+			}
+			first = <-peers
+			t.Cleanup(func() { _ = first.Close() })
+			tt.Advance(250 * time.Millisecond)
+			tt.Frame()
+		}
+		if a.term.panelOpen != wantOpen {
+			t.Fatalf("shell Ctrl+~ press %d left terminal open = %v, want %v", press, a.term.panelOpen, wantOpen)
+		}
+		if a.workspaceTab != sectionCode {
+			t.Fatalf("shell Ctrl+~ press %d changed the workspace to %d", press, a.workspaceTab)
+		}
+	}
+}
+
+func TestTerminalButtonTogglesDockWithoutChangingWorkspace(t *testing.T) {
 	original := newTerminal
 	newTerminal = func(terminal.Options) (*terminal.Terminal, error) {
 		return nil, errors.New("no shell here")
@@ -531,30 +1077,29 @@ func TestTerminalButtonOpensAndHidesThePane(t *testing.T) {
 	defer func() { newTerminal = original }()
 
 	h := menuTestApp(t)
-	if err := h.tester.Click("Toggle terminal"); err != nil {
-		t.Fatal(err)
-	}
+	h.app.setWorkspaceTab(sectionHistory)
+	h.app.openTerminal()
 	h.tester.Frame()
 	h.waitFor(t, "the terminal to report its error", func() bool {
 		return h.app.term.sessions[0].err != ""
 	})
-	if !h.app.term.open {
-		t.Fatal("the button did not open the terminal pane")
-	}
-	// The panel slides up over 200ms; let the animation finish.
 	h.tester.Advance(250 * time.Millisecond)
-	if !slices.Contains(h.texts(), "no shell here") {
-		t.Fatalf("the pane shows no error: %q", h.texts())
+	h.tester.Frame()
+	if !h.app.term.panelOpen || h.app.workspaceTab != sectionHistory {
+		t.Fatalf("the button changed the workspace instead of opening the dock: tab=%d open=%v", h.app.workspaceTab, h.app.term.panelOpen)
 	}
-	if title, ok := h.tester.Find("Terminal"); !ok || title.Y < 400 {
-		t.Fatalf("the terminal pane sits at y=%v, want the bottom of the window", title.Y)
+	if !h.tester.HasText("no shell here") {
+		t.Fatalf("the dock shows no error: %q", h.texts())
+	}
+	if pane, ok := h.tester.Find("Terminal pane"); !ok || pane.H <= 0 {
+		t.Fatalf("the terminal dock is not visible: %+v", pane)
 	}
 
-	// Ctrl+` toggles the pane too, and hides it without ending the shell.
+	// Ctrl+backquote hides the dock over History without ending its session.
 	h.tester.Key(ui.Ctrl, ui.KeyBackquote)
 	h.tester.Frame()
-	if h.app.term.open {
-		t.Fatal("Ctrl+` did not hide the terminal pane")
+	if h.app.term.panelOpen || h.app.workspaceTab != sectionHistory || h.app.terminalSessionCount() != 1 {
+		t.Fatalf("Ctrl+` did not hide the dock over History: tab=%d open=%v sessions=%d", h.app.workspaceTab, h.app.term.panelOpen, h.app.terminalSessionCount())
 	}
 }
 
@@ -574,9 +1119,7 @@ func TestLeavingARepositoryDropsAStartingTerminal(t *testing.T) {
 
 	h := menuTestApp(t)
 	h.tester.Frame()
-	if err := h.tester.Click("Toggle terminal"); err != nil {
-		t.Fatal(err)
-	}
+	h.app.openTerminal()
 	<-started
 
 	// Leave the repository while the shell is still starting, then let it
@@ -589,7 +1132,7 @@ func TestLeavingARepositoryDropsAStartingTerminal(t *testing.T) {
 	if len(h.app.term.sessions) != 0 {
 		t.Fatalf("the left repository retained terminal state: %+v", h.app.term.sessions)
 	}
-	if h.app.term.open {
-		t.Fatal("the terminal pane stayed open after the repository was left")
+	if h.app.term.panelOpen {
+		t.Fatalf("the terminal dock stayed open after the repository was left: tab=%d", h.app.workspaceTab)
 	}
 }

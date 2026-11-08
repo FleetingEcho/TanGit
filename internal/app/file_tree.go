@@ -49,7 +49,13 @@ func fileTreeCollapseKey(scope, path string) string { return scope + "\x00" + pa
 // path, inserts each visible directory once, and retains every file's source
 // index so collapsing or reordering rows cannot change an action's target.
 func buildFileTreeRows(paths []string, tree bool, collapsed map[string]bool, scope string) []fileTreeRow {
-	rows := make([]fileTreeRow, 0, len(paths))
+	return buildFileTreeRowsWithDirectories(paths, nil, tree, collapsed, scope)
+}
+
+// buildFileTreeRowsWithDirectories also admits explicitly known empty
+// directories. Git does not index those, but they still belong in the Editor.
+func buildFileTreeRowsWithDirectories(paths, directories []string, tree bool, collapsed map[string]bool, scope string) []fileTreeRow {
+	rows := make([]fileTreeRow, 0, len(paths)+len(directories))
 	if !tree {
 		for source, path := range paths {
 			rows = append(rows, fileTreeRow{source: source, path: path, name: path})
@@ -57,17 +63,35 @@ func buildFileTreeRows(paths []string, tree bool, collapsed map[string]bool, sco
 		return rows
 	}
 
-	ordered := make([]int, len(paths))
-	for source := range paths {
-		ordered[source] = source
+	type entry struct {
+		path      string
+		source    int
+		directory bool
 	}
-	sort.SliceStable(ordered, func(i, j int) bool { return paths[ordered[i]] < paths[ordered[j]] })
+	ordered := make([]entry, 0, len(paths)+len(directories))
+	for source, path := range paths {
+		ordered = append(ordered, entry{path: path, source: source})
+	}
+	for _, directory := range directories {
+		ordered = append(ordered, entry{path: directory, source: -1, directory: true})
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].path == ordered[j].path {
+			return ordered[i].directory && !ordered[j].directory
+		}
+		return ordered[i].path < ordered[j].path
+	})
 	seenDirectories := make(map[string]bool)
-	for _, source := range ordered {
-		path := paths[source]
+	for _, entry := range ordered {
+		path := entry.path
+		source := entry.source
 		parts := strings.Split(path, "/")
 		hidden := false
-		for depth := 0; depth < len(parts)-1; depth++ {
+		directoryDepth := len(parts) - 1
+		if entry.directory {
+			directoryDepth = len(parts)
+		}
+		for depth := 0; depth < directoryDepth; depth++ {
 			directory := strings.Join(parts[:depth+1], "/")
 			if !seenDirectories[directory] {
 				seenDirectories[directory] = true
@@ -81,7 +105,7 @@ func buildFileTreeRows(paths []string, tree bool, collapsed map[string]bool, sco
 				hidden = true
 			}
 		}
-		if !hidden {
+		if !entry.directory && !hidden {
 			rows = append(rows, fileTreeRow{
 				source: source, path: path, name: parts[len(parts)-1], depth: len(parts) - 1,
 			})
@@ -265,7 +289,7 @@ func (a *app) fileTreeMenuItems(m *ui.Menu, scope string, paths []string) {
 	}
 }
 
-func (a *app) fileTreeDirectoryRow(c *ui.Context, scope string, item fileTreeRow, selected bool, selectRow func()) {
+func (a *app) fileTreeDirectoryRow(c *ui.Context, scope string, item fileTreeRow, selected bool, selectRow func()) ui.Element {
 	theme := c.Theme()
 	arrow := "▾"
 	action := "Collapse directory"
@@ -273,7 +297,8 @@ func (a *app) fileTreeDirectoryRow(c *ui.Context, scope string, item fileTreeRow
 		arrow = "▸"
 		action = "Expand directory"
 	}
-	ui.Row(c).AlignItems(ui.Center).Padding(6, 8, 6, float32(8+16*item.depth)).Children(func() {
+	row := ui.Row(c).AlignItems(ui.Center).Padding(6, 8, 6, float32(8+16*item.depth))
+	row.Children(func() {
 		button := ui.ButtonBase(c).Grow(1).Gap(7).Padding(0)
 		clicked := button.Label(tr(action) + " " + item.path).Tooltip(item.path).Clicked()
 		button.Children(func() {
@@ -297,4 +322,5 @@ func (a *app) fileTreeDirectoryRow(c *ui.Context, scope string, item fileTreeRow
 			a.toggleFileTreeDirectory(scope, item.path)
 		}
 	})
+	return row
 }

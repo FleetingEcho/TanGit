@@ -579,10 +579,51 @@ func TestNormalizeSettingsKeepsOnlyKnownAccents(t *testing.T) {
 			t.Fatalf("the accent %q became %q", name, got.Accent)
 		}
 	}
+	if got := normalizeSettings(appSettings{Theme: defaultTheme, Accent: "#12AbEF"}); got.Accent != "#12abef" {
+		t.Fatalf("a custom accent became %q, want canonical hex", got.Accent)
+	}
+	for _, invalid := range []string{"#12ab", "#11223344", "112233", "#gg0000"} {
+		if got := normalizeSettings(appSettings{Theme: defaultTheme, Accent: invalid}); got.Accent != "" {
+			t.Fatalf("invalid custom accent %q became %q", invalid, got.Accent)
+		}
+	}
 }
 
 // The row is a pick, not a name to type: clicking a color repaints the window
 // on the next frame, and the palette's dot takes it back.
+func TestCustomAccentColorAppliesAnOpaqueReadableTheme(t *testing.T) {
+	for _, color := range []ui.Color{ui.RGB(0, 0, 0), ui.RGB(255, 255, 255), ui.RGB(239, 68, 68)} {
+		settings := appSettings{Theme: defaultTheme, Accent: formatCustomAccent(color)}
+		theme := themeForSettings(settings, true)
+		if theme.Accent != color || theme.Accent.A != 255 {
+			t.Fatalf("custom accent %v became %v", color, theme.Accent)
+		}
+		if theme.AccentText != accentText(color) {
+			t.Fatalf("custom accent %v has unreadable text %v", color, theme.AccentText)
+		}
+	}
+}
+
+func TestSettingsAccentColorWellPicksACustomColor(t *testing.T) {
+	h := menuTestApp(t)
+	h.tester.Key(ui.Ctrl, ui.KeyComma)
+	h.tester.Frame()
+	if err := h.tester.Click("Custom accent color"); err != nil {
+		t.Fatalf("open the custom color picker: %v; texts=%q", err, h.texts())
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Black"); err != nil {
+		t.Fatalf("pick the color well's black: %v; texts=%q", err, h.texts())
+	}
+	h.tester.Frame()
+	if got, want := h.app.settings.Accent, "#000000"; got != want {
+		t.Fatalf("the color well stored %q, want %q", got, want)
+	}
+	if got := themeForSettings(h.app.settings, true).Accent; got != ui.Hex("#000000") {
+		t.Fatalf("the picked color did not reach the theme: %v", got)
+	}
+}
+
 func TestSettingsAccentRowPicksAColor(t *testing.T) {
 	h := menuTestApp(t)
 	h.tester.Key(ui.Ctrl, ui.KeyComma)

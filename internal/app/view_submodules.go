@@ -85,7 +85,7 @@ func (a *app) submoduleRowMenu(m *ui.Menu, row ui.ListRow) {
 }
 
 func (a *app) submoduleFormModal(c *ui.Context) {
-	repositoryFormModal(c, &a.showSubmoduleForm, 600, "Add Submodule",
+	a.repositoryFormModal(c, &a.showSubmoduleForm, 600, "Add Submodule",
 		"Vendor another repository inside this one.", submodulesIcon, func() {
 			ui.Row(c).Gap(10).Children(func() {
 				ui.TextInput(c, &a.submoduleName).Label(tr("Submodule name")).

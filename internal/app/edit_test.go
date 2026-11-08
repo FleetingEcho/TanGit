@@ -47,9 +47,8 @@ func TestFilePaneEditsTheWorkingFile(t *testing.T) {
 		{Path: "data.json", Status: "??", Unstaged: true, Added: true},
 	})
 	h.tester.Frame()
-	if err := h.tester.Click("Edit"); err != nil {
-		t.Fatalf("open the file editor: %v", err)
-	}
+	h.app.openFileEdit()
+	h.tester.Frame()
 	h.waitFor(t, "the file read", func() bool {
 		return !h.app.fileEditLoading && h.app.fileEditState != nil
 	})
@@ -85,8 +84,8 @@ func TestFilePaneEditsTheWorkingFile(t *testing.T) {
 	if h.app.fileEditing {
 		t.Fatal("closing the editor left it open")
 	}
-	if !slices.Contains(h.texts(), "Edit") {
-		t.Fatalf("the diff does not offer the editor again: %q", h.texts())
+	if !slices.Contains(h.texts(), "Open file in editor") {
+		t.Fatalf("the diff does not offer the Code editor again: %q", h.texts())
 	}
 }
 
@@ -99,9 +98,8 @@ func TestFilePaneRefusesABinaryFile(t *testing.T) {
 		{Path: "blob.bin", Status: "??", Unstaged: true, Added: true},
 	})
 	h.tester.Frame()
-	if err := h.tester.Click("Edit"); err != nil {
-		t.Fatalf("open the file editor: %v", err)
-	}
+	h.app.openFileEdit()
+	h.tester.Frame()
 	h.waitFor(t, "the binary check", func() bool {
 		return !h.app.fileEditLoading && h.app.fileEditBinary
 	})
@@ -124,9 +122,8 @@ func TestFilePaneReportsAnUnreadableFile(t *testing.T) {
 		{Path: "notes.txt", Status: "??", Unstaged: true, Added: true},
 	})
 	h.tester.Frame()
-	if err := h.tester.Click("Edit"); err != nil {
-		t.Fatalf("open the file editor: %v", err)
-	}
+	h.app.openFileEdit()
+	h.tester.Frame()
 	h.waitFor(t, "the failed read", func() bool {
 		return !h.app.fileEditLoading && h.app.fileEditError != ""
 	})
@@ -142,10 +139,9 @@ func TestFilePaneReportsAnUnreadableFile(t *testing.T) {
 	}
 }
 
-// The pane edits the working tree, so only a file with unstaged changes offers
-// its editor: a file that is only staged shows what the index holds, and has
-// no Edit icon.
-func TestOnlyAWorkingTreeChangeOffersTheEditor(t *testing.T) {
+// Both staged and working-tree rows can open the working file in Code; neither
+// shows the removed pencil action for the legacy in-pane editor.
+func TestFileRowsOfferCodeWithoutThePencilAction(t *testing.T) {
 	h, _ := changesTestApp(t, []repository.File{
 		{Path: "staged.txt", Status: "M ", Staged: true, Tracked: true},
 		{Path: "work.txt", Status: " M", Unstaged: true, Tracked: true},
@@ -163,13 +159,13 @@ func TestOnlyAWorkingTreeChangeOffersTheEditor(t *testing.T) {
 	}
 	h.tester.Frame()
 	h.settle(t)
-	if !slices.Contains(h.texts(), "Edit") {
-		t.Fatalf("a working-tree change offers no editor: %q", h.texts())
+	if !slices.Contains(h.texts(), "Open file in editor") {
+		t.Fatalf("a working-tree change offers no Code editor: %q", h.texts())
 	}
 }
 
-// A file with both a staged and a working-tree change shows the editor only
-// on its working-tree row: its staged row is the index's side.
+// A file with both staged and working-tree changes keeps the same Code action
+// on either row and never restores the legacy pencil action.
 func TestBothSidesOfAFileOfferTheEditorOnlyInTheChangesSection(t *testing.T) {
 	h, _ := changesTestApp(t, []repository.File{
 		{Path: "both.txt", Status: "MM", Staged: true, Unstaged: true, Tracked: true},
@@ -198,8 +194,8 @@ func TestBothSidesOfAFileOfferTheEditorOnlyInTheChangesSection(t *testing.T) {
 	if h.app.changeRows[h.app.selectedFile].staged {
 		t.Fatalf("the chosen row is not the file's working-tree one: %+v", h.app.changeRows)
 	}
-	if !slices.Contains(h.texts(), "Edit") {
-		t.Fatalf("the working-tree side offers no editor: %q", h.texts())
+	if !slices.Contains(h.texts(), "Open file in editor") {
+		t.Fatalf("the working-tree side offers no Code editor: %q", h.texts())
 	}
 }
 

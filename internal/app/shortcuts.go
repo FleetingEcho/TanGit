@@ -15,17 +15,33 @@ var sectionKeys = []ui.Key{
 	ui.Key6, ui.Key7, ui.Key8, ui.Key9, ui.Key0,
 }
 
-// registerShortcuts installs the keyboard shortcuts of the window. They
-// register on the view's root, so they are window shortcuts that fire
-// wherever the focus is; a shortcut on a container would fire only while
-// something inside that container has the focus, which leaves the keyboard
-// dead as a repository opens.
+// registerTerminalModalShortcuts keeps the terminal toggle in the active
+// dialog's focus scope. MyGo deliberately suspends window shortcuts built
+// behind a Modal, so the root registrations alone cannot provide a global
+// toggle while a dialog is open.
+func (a *app) registerTerminalModalShortcuts(back ui.Element) {
+	if a.state != stateReady {
+		return
+	}
+	back.OnShortcut(ui.Ctrl, ui.KeyBackquote, a.toggleTerminal)
+	back.OnShortcut(ui.Ctrl|ui.Shift, ui.KeyBackquote, a.toggleTerminal)
+}
+
+// registerShortcuts installs the page's action shortcuts and the terminal's
+// window-wide exception. The app view is nested in the tabbed shell, so the
+// terminal must use OnWindowShortcut rather than the app container's scope.
 //
-// While a form is open only Escape is registered: a text input still takes
-// the letters it types before a window shortcut, but keeping them
-// unregistered is what lets the list type-ahead and every other key press
-// reach the form.
+// While a form is open its ordinary action shortcuts stay unregistered so
+// text input and type-ahead receive those keys. The terminal toggle is the
+// exception: it is registered before every modal and preference early return.
 func (a *app) registerShortcuts(c *ui.Context) {
+	if a.state == stateReady {
+		// Ctrl+` works regardless of focus, terminal ownership, open forms or
+		// the general shortcuts switch. Also accept the shifted physical key,
+		// commonly written Ctrl+~, rather than making the user release Shift.
+		c.OnWindowShortcut(ui.Ctrl, ui.KeyBackquote, a.toggleTerminal)
+		c.OnWindowShortcut(ui.Ctrl|ui.Shift, ui.KeyBackquote, a.toggleTerminal)
+	}
 	// An open question owns Escape, whether or not the shortcuts themselves
 	// are switched on. Its modal owns Enter, ahead of the focused button.
 	if a.confirm != nil {
@@ -114,9 +130,7 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		return
 	}
 
-	// Ctrl+` is always live: it is how the terminal's keyboard is given back.
-	c.OnShortcut(ui.Ctrl, ui.KeyBackquote, a.toggleTerminal)
-	if a.term.open {
+	if a.terminalVisible() {
 		c.OnShortcut(ui.Ctrl, ui.KeyF, a.openTerminalSearch)
 		if active := a.activeTerminal(); active != nil && active.searchOpen {
 			c.OnShortcut(0, ui.KeyEscape, a.closeActiveTerminalSearch)
@@ -149,6 +163,11 @@ func (a *app) registerShortcuts(c *ui.Context) {
 	}
 
 	c.OnShortcut(0, ui.KeyF5, a.beginRefresh)
+	if a.workspaceTab == sectionCode {
+		c.OnShortcut(ui.Cmd, ui.KeyP, a.focusCodeQuickOpen)
+		c.OnShortcut(ui.Cmd|ui.Shift, ui.KeyF, a.focusCodeSearch)
+		c.OnShortcut(ui.Cmd, ui.KeyW, func() { a.closeCodeFile(a.code.active) })
+	}
 	c.OnShortcut(0, ui.KeyF3, func() { a.navigateActiveSearch(1) })
 	c.OnShortcut(ui.Shift, ui.KeyF3, func() { a.navigateActiveSearch(-1) })
 	if c.FocusTakesText() {
@@ -186,6 +205,13 @@ func (a *app) registerShortcuts(c *ui.Context) {
 func (a *app) focusActiveSearch() {
 	count := 1 // Changes always draws its search, even with a clean tree.
 	switch a.workspaceTab {
+	case sectionCode:
+		if a.code.sidebar == codeSidebarSearch {
+			a.focusCodeSearch()
+		} else {
+			a.focusCodeQuickOpen()
+		}
+		return
 	case sectionHistory, sectionGraph:
 		a.openCommitFilter(a.workspaceTab)
 		return

@@ -102,6 +102,11 @@ func (a *app) applyBufferFonts() {
 	}
 	states := []*editor.State{a.fileEditState, a.conflictView, a.blameState}
 	states = append(states, a.conflictStageViews[:]...)
+	for _, document := range a.code.documents {
+		if document != nil {
+			states = append(states, document.state)
+		}
+	}
 	if a.conflictSides != nil {
 		states = append(states, a.conflictSides.view)
 	}
@@ -493,6 +498,7 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 	ui.Overlay(c, func() {
 		panel := ui.Column(c).Absolute().Left(0).Top(overlayTopInset).Right(0).Bottom(0).
 			Padding(islandGap / 2).Gap(0).Background(islandBackdrop(theme)).Modal()
+		a.registerTerminalModalShortcuts(panel)
 		if !a.settings.DisableShortcuts {
 			panel.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
 			panel.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })

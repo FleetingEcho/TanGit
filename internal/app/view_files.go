@@ -541,7 +541,6 @@ func (a *app) fileDetailsView(c *ui.Context) {
 				// The markers are edited in place, and the whole file is
 				// edited here as any changed file is; the review of the
 				// sides is a diff, so it brings the layout toggle with it.
-				iconButton(c, "Edit", "Edit this file in the pane", editIcon, a.actionBusy, a.openFileEdit)
 				a.fileEditorButton(c, file)
 				a.conflictReviewButton(c)
 				if a.conflictReview {
@@ -552,12 +551,6 @@ func (a *app) fileDetailsView(c *ui.Context) {
 				a.expandDiffButton(c)
 				a.fileActionsMenu(c, theme, file)
 			} else {
-				// The pane's editor works on the working tree, so only a row in
-				// the Changes section offers it: a staged-only file shows what
-				// the index holds, and has no Edit icon.
-				if !side.Deleted && side.Unstaged {
-					iconButton(c, "Edit", "Edit this file in the pane", editIcon, a.actionBusy, a.openFileEdit)
-				}
 				// A file the working tree no longer holds has nothing for an
 				// editor to open.
 				if !file.Deleted {
@@ -568,7 +561,7 @@ func (a *app) fileDetailsView(c *ui.Context) {
 			}
 		}
 		// A conflicted file carries the same bar as a changed one, with the
-		// way to review its sides where a changed file keeps its Edit icon.
+		// way to review its sides beside the action that opens it in Code.
 		// The way to mark it resolved is a resolution, so it sits on the
 		// conflict toolbar below rather than beside the name: the extra
 		// button would leave the name no room in the default window and make
@@ -810,7 +803,7 @@ func (a *app) conflictReviewButton(c *ui.Context) {
 	icon := diffSplitIcon
 	if a.conflictReview {
 		// Back to the file, not to editing: the pane edits it either way,
-		// and the Edit icon beside this one opens the whole file.
+		// and the Code action beside this one opens the whole file.
 		label = "Show conflict markers"
 		tooltip = "Show the file with its conflict markers"
 		icon = conflictIcon

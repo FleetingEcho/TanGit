@@ -68,6 +68,7 @@ func TestFailedActionOffersTheCommandLog(t *testing.T) {
 		commandLog: repository.NewCommandLog(),
 	}}
 	a := newApp(fixedSessionOpener{session: session})
+	a.workspaceTab = sectionChanges
 	h := &harness{app: a, updates: newUpdates()}
 	h.tester = ui.NewTester(a.view, 1280, 800)
 	a.update = h.updates.update
@@ -324,6 +325,7 @@ func TestLongActionErrorStaysOnOneStatusLine(t *testing.T) {
 		commandLog: repository.NewCommandLog(),
 	}}
 	a := newApp(fixedSessionOpener{session: session})
+	a.workspaceTab = sectionChanges
 	h := &harness{app: a, updates: newUpdates()}
 	h.tester = ui.NewTester(a.view, 1280, 800)
 	a.update = h.updates.update

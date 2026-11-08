@@ -525,6 +525,7 @@ func (a *app) closeAllForms() {
 	a.showCommitBranchForm = false
 	a.closeCommitRewordForm()
 	a.showRenameRecent = false
+	a.closeCodeFileForm()
 	a.closeTerminalRename()
 	a.filterOpen = false
 	a.closeCompare()
@@ -551,6 +552,7 @@ func (a *app) anyFormOpen() bool {
 		a.showCommitBranchForm ||
 		a.showCommitRewordForm ||
 		a.showRenameRecent ||
+		a.code.fileForm != codeFileFormNone ||
 		a.term.renameID != 0
 }
 
@@ -641,7 +643,7 @@ func paneTitleAction(c *ui.Context, icon *ui.SVG, title, actionLabel, tooltip st
 // repositoryFormModal gives repository-creation forms one shared dialog
 // frame: a recognizable action header, background input blocking, and
 // Escape/outside-click dismissal. The caller builds only its specific body.
-func repositoryFormModal(c *ui.Context, open *bool, width float32, title, subtitle string,
+func (a *app) repositoryFormModal(c *ui.Context, open *bool, width float32, title, subtitle string,
 	icon *ui.SVG, body func()) {
 	if !*open {
 		return
@@ -651,6 +653,7 @@ func repositoryFormModal(c *ui.Context, open *bool, width float32, title, subtit
 		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 			Justify(ui.Center).AlignItems(ui.Center).
 			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
+		a.registerTerminalModalShortcuts(back)
 		back.Children(func() {
 			panel := ui.Column(c).Width(width).MaxWidthPercent(92).
 				Padding(22).Gap(16).Background(theme.Background).

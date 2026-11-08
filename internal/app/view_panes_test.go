@@ -1,12 +1,9 @@
 package app
 
 import (
-	"errors"
 	"image/color"
 	"testing"
-	"time"
 
-	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -139,7 +136,7 @@ func TestEveryDetailPageCollapsesAndRestoresItsListPane(t *testing.T) {
 		{"history", sectionHistory, "Commits"},
 		{"graph", sectionGraph, "Commit graph"},
 		{"branches", sectionBranches, "Local branches"},
-		{"remotes", sectionRemotes, "Remotes"},
+		{"remotes", sectionRemotes, "Add remote…"},
 		{"stash", sectionStash, "Saved work"},
 		{"tags", sectionTags, "Repository tags"},
 		{"worktrees", sectionWorktrees, "Linked worktrees"},
@@ -155,7 +152,6 @@ func TestEveryDetailPageCollapsesAndRestoresItsListPane(t *testing.T) {
 			if !h.tester.HasText(page.title) {
 				t.Fatalf("the %s list did not render: %q", page.name, h.texts())
 			}
-
 			if err := h.tester.Click("Collapse list pane"); err != nil {
 				t.Fatal(err)
 			}
@@ -276,55 +272,5 @@ func TestDetailPagesRememberCollapseStateIndependently(t *testing.T) {
 	h.tester.Frame()
 	if !h.tester.HasText("Expand list pane") || h.tester.HasText("Commits") {
 		t.Fatalf("History forgot that its list was collapsed: %q", h.texts())
-	}
-}
-
-func TestTerminalDividerResizesThePane(t *testing.T) {
-	original := newTerminal
-	newTerminal = func(terminal.Options) (*terminal.Terminal, error) {
-		return nil, errors.New("no shell here")
-	}
-	defer func() { newTerminal = original }()
-
-	h := menuTestApp(t)
-	if err := h.tester.Click("Toggle terminal"); err != nil {
-		t.Fatal(err)
-	}
-	h.tester.Frame()
-	h.waitFor(t, "the terminal to report its error", func() bool {
-		return h.app.term.sessions[0].err != ""
-	})
-	// The panel slides up over 200ms; let the animation finish.
-	h.tester.Advance(250 * time.Millisecond)
-	h.tester.Frame()
-
-	pane, ok := h.tester.Find("Terminal pane")
-	if !ok {
-		t.Fatalf("the terminal pane did not show: %q", h.texts())
-	}
-	beforePercent := h.app.term.percent
-	beforeHeight := pane.H
-
-	// The divider is the island seam, islandGap/2 above the pane's top
-	// edge: dragging it up makes the pane taller, and the app keeps that
-	// height.
-	dragTo(t, h.tester, pane.X+100, pane.Y-islandGap/2, 0, -60)
-
-	if h.app.term.percent <= beforePercent {
-		t.Fatalf("the pane did not follow the divider: %v%% -> %v%%", beforePercent, h.app.term.percent)
-	}
-	resized, ok := h.tester.Find("Terminal pane")
-	if !ok {
-		t.Fatal("the terminal pane disappeared")
-	}
-	if resized.H < beforeHeight+40 {
-		t.Fatalf("the pane is %v tall, was %v", resized.H, beforeHeight)
-	}
-	// The divider keeps the height the drag left it at, without sliding back.
-	h.tester.Advance(250 * time.Millisecond)
-	h.tester.Frame()
-	settled, ok := h.tester.Find("Terminal pane")
-	if !ok || settled.H < beforeHeight+40 {
-		t.Fatalf("the pane slid back to %v tall", settled.H)
 	}
 }

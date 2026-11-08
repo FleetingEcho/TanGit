@@ -33,7 +33,7 @@ func TestNeovimTerminalCommandPreservesPathsAndLineNumbers(t *testing.T) {
 		if file {
 			path, line = filepath.Join(dir, "file's `touch UNEXPECTED` name.txt"), 23
 		}
-		args, err := editorCommandArgs(editorPresets[2].Command, path, line)
+		args, err := editorCommandArgs(editorPresets[3].Command, path, line)
 		if err != nil {
 			t.Fatal(err)
 		}

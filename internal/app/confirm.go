@@ -78,6 +78,7 @@ func (a *app) confirmModal(c *ui.Context) {
 			Justify(ui.Center).AlignItems(ui.Center).
 			Background(ui.RGBA(0, 0, 0, 0.35)).Modal().
 			OnShortcut(0, ui.KeyEnter, a.acceptConfirm)
+		a.registerTerminalModalShortcuts(back)
 		back.Children(func() {
 			panel := ui.Column(c).Width(470).MaxWidthPercent(92).
 				Padding(22).Gap(14).Background(theme.Background).

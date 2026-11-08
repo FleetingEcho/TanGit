@@ -226,6 +226,7 @@ func (a *app) compareModal(c *ui.Context) {
 		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 			Justify(ui.Center).AlignItems(ui.Center).
 			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
+		a.registerTerminalModalShortcuts(back)
 		if !a.settings.DisableShortcuts {
 			back.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
 			back.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })

@@ -10,24 +10,26 @@ import (
 // newTerminal is a seam so tests can drive the pane without a real shell.
 var newTerminal = terminal.New
 
-// terminalPanelPercent is the share of the window height the terminal opens
-// at: one third, sitting at the bottom and pushing the workspace up. Its
-// divider moves it from there.
+// terminalPanelPercent is the bottom panel's initial share of the workspace.
 const terminalPanelPercent = 100.0 / 3.0
 
 const terminalSessionLimit = 6
 
 // terminalSessionState is one independent shell. Its attempt rejects startup
 // and exit callbacks after Close, including a Close while the shell starts.
-// name is the user's label; title remains the shell's OSC-reported title.
+// name is the user's label; shell and directory provide its default identity,
+// while title remains the shell's latest OSC-reported title.
 type terminalSessionState struct {
-	id      uint64
-	pane    *terminal.Terminal
-	loading bool
-	err     string
-	name    string
-	title   string
-	attempt uint64
+	id        uint64
+	groupID   uint64
+	pane      *terminal.Terminal
+	loading   bool
+	err       string
+	name      string
+	shell     string
+	directory string
+	title     string
+	attempt   uint64
 	// Search belongs to this shell alone. Keeping the handle and latest status
 	// here preserves an independent find bar across splits and drag reordering.
 	searchOpen   bool
@@ -40,20 +42,28 @@ type terminalSessionState struct {
 // may reorder the views without redirecting that shell's asynchronous events.
 type terminalTabDrag struct{ id uint64 }
 
-// terminalState is the shell pane the header button opens. Hiding it keeps
-// every shell running; only an explicit close or a shell's own exit ends one.
+// terminalState owns the bottom panel. Hiding or maximizing it keeps every
+// shell running; only an explicit close or a shell's own exit ends one.
 type terminalState struct {
-	sessions []terminalSessionState
-	nextID   uint64
-	active   int
-	open     bool
-	// percent is the share of the window the pane takes when open, which its
-	// divider drags. shown is that share as the frame being built lays it out,
-	// which a drag moves before the app adopts it.
+	sessions       []terminalSessionState
+	nextID         uint64
+	nextGroupID    uint64
+	active         int
+	panelOpen      bool
+	panelMaximized bool
+	// percent is the bottom panel's restored height; shown is the workspace
+	// share in the current split. Maximizing does not overwrite either one.
 	percent float32
 	shown   float32
-	// layout remembers each local split's direction and size independently.
-	layout *terminalLayoutNode
+	// Each top-level terminal tab owns an independent local split tree. layout
+	// mirrors the active tab for the existing split code; layouts retains the
+	// other tabs while they are not rendered.
+	layout         *terminalLayoutNode
+	layouts        map[uint64]*terminalLayoutNode
+	activeSessions map[uint64]uint64
+	// Group selection is deferred so a tab is never replaced halfway through
+	// the build that owns its terminal handles.
+	pendingGroup uint64
 	// A drop is applied before the next build, never while its cards are
 	// being constructed: moving a session midway through a build would bind
 	// that terminal's persistent handle to two views in the same frame.
@@ -91,32 +101,163 @@ func terminalSessionNumber(session *terminalSessionState) uint64 {
 	return 1
 }
 
-func terminalSessionLabel(session *terminalSessionState) string {
-	if session.name != "" {
-		return session.name
-	}
-	return fmt.Sprintf("%s %d", tr("Terminal"), terminalSessionNumber(session))
-}
-
 func (a *app) terminalSessionCount() int { return len(a.term.sessions) }
 
-// toggleTerminal shows the pane, starting the shell the first time, or hides
-// it while keeping every shell and its scrollback for the next time.
-func (a *app) toggleTerminal() {
-	if a.term.open {
-		a.term.open = false
+func (a *app) activeTerminalGroup() uint64 {
+	active := a.activeTerminal()
+	if active == nil {
+		return 0
+	}
+	if active.groupID == 0 {
+		a.term.nextGroupID++
+		active.groupID = a.term.nextGroupID
+	}
+	return active.groupID
+}
+
+// storeTerminalLayout keeps the active tab's split tree while another tab is
+// selected. No terminal view is removed or rebuilt by this bookkeeping.
+func (a *app) storeTerminalLayout() {
+	group := a.activeTerminalGroup()
+	if group == 0 || a.term.layout == nil {
 		return
 	}
-	a.term.open = true
+	if a.term.layouts == nil {
+		a.term.layouts = make(map[uint64]*terminalLayoutNode)
+	}
+	a.term.layouts[group] = a.term.layout
+	if a.term.activeSessions == nil {
+		a.term.activeSessions = make(map[uint64]uint64)
+	}
+	if active := a.activeTerminal(); active != nil {
+		a.term.activeSessions[group] = active.id
+	}
+}
+
+func (a *app) terminalGroups() []uint64 {
+	groups := make([]uint64, 0, len(a.term.sessions))
+	for _, session := range a.term.sessions {
+		if len(groups) == 0 || groups[len(groups)-1] != session.groupID {
+			groups = append(groups, session.groupID)
+		}
+	}
+	return groups
+}
+
+func (a *app) terminalGroupSize(group uint64) int {
+	count := 0
+	for _, session := range a.term.sessions {
+		if session.groupID == group {
+			count++
+		}
+	}
+	return count
+}
+
+func (a *app) selectTerminalGroup(group uint64) {
+	if group == 0 || group == a.activeTerminalGroup() {
+		return
+	}
+	a.storeTerminalLayout()
+	activeID := a.term.activeSessions[group]
+	selected := -1
+	var session terminalSessionState
+	for index, candidate := range a.term.sessions {
+		if candidate.groupID != group {
+			continue
+		}
+		if selected < 0 || candidate.id == activeID {
+			selected = index
+			session = candidate
+		}
+		if candidate.id == activeID {
+			break
+		}
+	}
+	if selected < 0 {
+		return
+	}
+	a.term.active = selected
+	a.term.layout = a.term.layouts[group]
+	if a.term.layout == nil {
+		a.term.layout = &terminalLayoutNode{sessionID: session.id}
+		a.storeTerminalLayout()
+	}
+}
+
+func (a *app) setTerminalLayout(group uint64, layout *terminalLayoutNode) {
+	if group == 0 {
+		return
+	}
+	if a.term.layouts == nil {
+		a.term.layouts = make(map[uint64]*terminalLayoutNode)
+	}
+	if layout == nil {
+		delete(a.term.layouts, group)
+		delete(a.term.activeSessions, group)
+	} else {
+		a.term.layouts[group] = layout
+	}
+	if group == a.activeTerminalGroup() {
+		a.term.layout = layout
+	}
+}
+
+// ensureTerminalSession starts the first shell on demand. Existing sessions,
+// tabs, splits and scrollback are reused by either terminal presentation.
+func (a *app) ensureTerminalSession() {
 	if a.activeTerminal() == nil {
-		a.term.sessions = append(a.term.sessions, terminalSessionState{})
+		a.term.nextGroupID++
+		a.term.sessions = append(a.term.sessions, terminalSessionState{groupID: a.term.nextGroupID})
 		a.term.active = 0
 	}
-	if a.activeTerminal().pane == nil {
+	active := a.activeTerminal()
+	group := a.activeTerminalGroup()
+	a.term.layout = a.term.layouts[group]
+	if active.pane == nil {
 		a.startTerminal()
 	}
 	if a.term.layout == nil {
-		a.term.layout = &terminalLayoutNode{sessionID: a.activeTerminal().id}
+		a.term.layout = &terminalLayoutNode{sessionID: active.id}
+		a.storeTerminalLayout()
+	}
+}
+
+// toggleTerminal opens or hides the bottom panel without changing the active
+// workspace page. Every shell and its scrollback stays alive while hidden.
+func (a *app) toggleTerminal() { a.toggleTerminalPanel() }
+
+// openTerminal restores the bottom panel and starts its first shell on demand.
+func (a *app) openTerminal() {
+	a.term.panelOpen = true
+	if a.term.percent <= 0 || a.term.percent >= 100 {
+		a.term.percent = terminalPanelPercent
+	}
+	a.ensureTerminalSession()
+}
+
+func (a *app) toggleTerminalPanel() {
+	if a.term.panelOpen {
+		a.leaveTerminal()
+		return
+	}
+	a.openTerminal()
+}
+
+func (a *app) terminalVisible() bool { return a.term.panelOpen }
+
+func (a *app) hideTerminalView() { a.leaveTerminal() }
+
+func (a *app) leaveTerminal() {
+	a.term.panelOpen = false
+	a.term.panelMaximized = false
+}
+
+// toggleTerminalMaximized gives the panel the whole content area, then returns
+// it to the exact percentage height it had before maximization.
+func (a *app) toggleTerminalMaximized() {
+	if a.term.panelOpen {
+		a.term.panelMaximized = !a.term.panelMaximized
 	}
 }
 
@@ -145,6 +286,8 @@ func (a *app) startTerminalAt(index int) {
 	session.loading = true
 	session.err = ""
 	dir := a.snapshot.Root
+	session.shell = terminalDefaultShellName()
+	session.directory = terminalDisplayDirectory(dir)
 	generation := a.generation
 	go func() {
 		defer a.recoverBackground()
@@ -208,6 +351,34 @@ func (a *app) startTerminalAt(index int) {
 	}()
 }
 
+func (a *app) terminalAtLimit() bool {
+	if a.terminalSessionCount() < terminalSessionLimit {
+		return false
+	}
+	a.notify("error", "Terminal limit reached",
+		trf("TanGit keeps up to %d terminal tabs and split panes open at once. Close a terminal before opening another.", terminalSessionLimit))
+	return true
+}
+
+// newTerminalTab opens a shell in its own top-level tab rather than splitting
+// the current card. Each tab retains its own local split layout when revisited.
+func (a *app) newTerminalTab() {
+	if !a.terminalVisible() || a.terminalAtLimit() {
+		return
+	}
+	a.storeTerminalLayout()
+	a.term.nextID++
+	a.term.nextGroupID++
+	index := len(a.term.sessions)
+	a.term.sessions = append(a.term.sessions, terminalSessionState{
+		id: a.term.nextID, groupID: a.term.nextGroupID,
+	})
+	a.term.active = index
+	a.startTerminalAt(index)
+	a.term.layout = &terminalLayoutNode{sessionID: a.term.nextID}
+	a.storeTerminalLayout()
+}
+
 func (a *app) splitTerminalRight() { a.splitTerminal(false) }
 func (a *app) splitTerminalBelow() { a.splitTerminal(true) }
 
@@ -215,22 +386,21 @@ func (a *app) splitTerminalBelow() { a.splitTerminal(true) }
 // The buttons stay available at the limit so selecting one explains the limit.
 func (a *app) splitTerminal(below bool) {
 	active := a.activeTerminal()
-	if !a.term.open || active == nil || active.pane == nil {
+	if !a.terminalVisible() || active == nil || active.pane == nil {
 		return
 	}
-	if a.terminalSessionCount() >= terminalSessionLimit {
-		a.notify("error", "Terminal limit reached",
-			trf("TanGit keeps up to %d terminal cards open at once. Close a terminal before splitting again.", terminalSessionLimit))
+	if a.terminalAtLimit() {
 		return
 	}
 	activeIndex := a.term.active
 	activeID := active.id
+	activeGroup := active.groupID
 	insert := activeIndex + 1
 	a.term.nextID++
 	newID := a.term.nextID
 	a.term.sessions = append(a.term.sessions, terminalSessionState{})
 	copy(a.term.sessions[insert+1:], a.term.sessions[insert:])
-	a.term.sessions[insert] = terminalSessionState{id: newID}
+	a.term.sessions[insert] = terminalSessionState{id: newID, groupID: activeGroup}
 	if a.term.layout == nil {
 		a.term.layout = &terminalLayoutNode{sessionID: activeID}
 	}
@@ -240,6 +410,7 @@ func (a *app) splitTerminal(below bool) {
 		return
 	}
 	a.term.active = insert
+	a.storeTerminalLayout()
 	a.startTerminalAt(insert)
 }
 
@@ -251,6 +422,7 @@ func (a *app) closeTerminalAt(index int) {
 	if index < 0 || index >= len(a.term.sessions) {
 		return
 	}
+	a.storeTerminalLayout()
 	a.endTerminalSearch(&a.term.sessions[index])
 	session := a.term.sessions[index]
 	activeID := uint64(0)
@@ -263,30 +435,73 @@ func (a *app) closeTerminalAt(index int) {
 	if a.term.renameID == session.id {
 		a.closeTerminalRename()
 	}
+	layout := a.term.layouts[session.groupID]
+	if session.groupID == a.activeTerminalGroup() {
+		layout = a.term.layout
+	}
+	layout = removeTerminalLayout(layout, session.id)
 	a.term.sessions = append(a.term.sessions[:index], a.term.sessions[index+1:]...)
-	a.term.layout = removeTerminalLayout(a.term.layout, session.id)
 	if len(a.term.sessions) == 0 {
-		a.term.open = false
 		a.term.active = 0
 		a.term.pendingMoveID = 0
 		a.term.pendingMoveTarget = 0
+		a.term.pendingGroup = 0
+		a.term.layout = nil
+		a.term.layouts = nil
+		a.term.activeSessions = nil
+		a.term.panelOpen = false
+		a.leaveTerminal()
 		return
 	}
+	a.setTerminalLayout(session.groupID, layout)
 	if session.id == activeID {
+		// Keep another split in this tab active even when the next global
+		// session belongs to a different top-level tab.
 		a.term.active = min(index, len(a.term.sessions)-1)
+		if a.term.sessions[a.term.active].groupID != session.groupID && index > 0 &&
+			a.term.sessions[index-1].groupID == session.groupID {
+			a.term.active = index - 1
+		}
+	} else if activeIndex, _ := a.terminalSessionByID(activeID); activeIndex >= 0 {
+		a.term.active = activeIndex
+	}
+	a.term.layout = a.term.layouts[a.activeTerminalGroup()]
+}
+
+// requestCloseTerminalGroup closes one top-level tab and all of its splits.
+// With multiple shells running, the destructive action is confirmed first.
+func (a *app) requestCloseTerminalGroup(group uint64) {
+	if a.terminalGroupSize(group) == 0 {
 		return
 	}
-	if activeIndex, _ := a.terminalSessionByID(activeID); activeIndex >= 0 {
-		a.term.active = activeIndex
+	if a.terminalSessionCount() == 1 {
+		a.closeTerminalGroup(group)
+		return
+	}
+	a.askConfirm(confirmRequest{
+		title:        "Close terminal tab",
+		message:      trf("%d terminals are still running.", a.terminalSessionCount()),
+		detail:       "This closes the selected terminal tab and exits its shells. Unsaved work in those shells will be lost.",
+		confirmLabel: "Close tab",
+		destructive:  true,
+		run:          func() { a.closeTerminalGroup(group) },
+	})
+}
+
+func (a *app) closeTerminalGroup(group uint64) {
+	for index := len(a.term.sessions) - 1; index >= 0; index-- {
+		if a.term.sessions[index].groupID == group {
+			a.closeTerminalAt(index)
+		}
 	}
 }
 
-// requestCloseAllTerminals makes a multi-shell exit explicit. Closing one tab
-// remains immediate; this guard is only for terminating every shell at once.
+// requestCloseAllTerminals makes a multi-shell exit explicit. Closing one
+// split remains immediate; closing every shell has its own confirmation.
 func (a *app) requestCloseAllTerminals() {
 	count := a.terminalSessionCount()
 	if count == 0 {
-		a.term.open = false
+		a.leaveTerminal()
 		return
 	}
 	if count == 1 {
@@ -311,7 +526,8 @@ func (a *app) requestCloseAllTerminals() {
 // its stable ID, terminal handle and callbacks; intermediate cards shift over.
 func (a *app) moveTerminalTab(sourceID uint64, target int) {
 	source, session := a.terminalSessionByID(sourceID)
-	if source < 0 || session == nil || target < 0 || target >= len(a.term.sessions) || source == target {
+	if source < 0 || session == nil || target < 0 || target >= len(a.term.sessions) || source == target ||
+		a.term.sessions[target].groupID != session.groupID {
 		return
 	}
 	moved := *session
@@ -323,25 +539,28 @@ func (a *app) moveTerminalTab(sourceID uint64, target int) {
 }
 
 // resetTerminal drops every shell and anything still starting one, so a
-// repository opens without a pane, title or error left from the one before.
-// Its outer height is a preference and stays; the local layout belongs to
-// the shells being closed.
+// repository opens without a session, title or error from the one before.
 func (a *app) resetTerminal() {
 	for len(a.term.sessions) > 0 {
 		a.closeTerminalAt(0)
 	}
-	a.term.open = false
+	a.leaveTerminal()
+	a.term.panelOpen = false
 	a.term.active = 0
 	a.term.pendingMoveID = 0
 	a.term.pendingMoveTarget = 0
+	a.term.pendingGroup = 0
+	a.term.layout = nil
+	a.term.layouts = nil
+	a.term.activeSessions = nil
 	a.closeTerminalRename()
 }
 
-// terminalButton is the status-bar icon that toggles the pane, in the accent
-// color while the pane is open.
+// terminalButton is the status-bar entry to the application's only terminal
+// presentation, the persistent bottom dock.
 func (a *app) terminalButton(c *ui.Context) {
 	var button ui.Element
-	if a.term.open {
+	if a.term.panelOpen {
 		button = compactIconButton(ui.PrimaryButton(c, ""))
 	} else {
 		button = compactIconButton(ui.Button(c, ""))
@@ -354,47 +573,112 @@ func (a *app) terminalButton(c *ui.Context) {
 		ui.Icon(c, terminalIcon).FontSize(14)
 	})
 	if clicked {
-		a.toggleTerminal()
+		a.toggleTerminalPanel()
 	}
 }
 
 // terminalPaneView keeps page-wide actions separate from each shell's island.
 // Every card owns its title, drag handle, rename and immediate-close buttons.
 func (a *app) terminalPaneView(c *ui.Context) {
+	if a.term.pendingGroup != 0 {
+		a.selectTerminalGroup(a.term.pendingGroup)
+		a.term.pendingGroup = 0
+	}
 	if a.term.pendingMoveID != 0 {
 		a.moveTerminalTab(a.term.pendingMoveID, a.term.pendingMoveTarget)
 		a.term.pendingMoveID = 0
 		a.term.pendingMoveTarget = 0
 	}
-	if len(a.term.sessions) == 0 {
-		return
-	}
 	ui.Column(c).Grow(1).Gap(0).Label(tr("Terminal pane")).Children(func() {
 		islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(4).Padding(4, 8)).Label(tr("Terminal actions")).Children(func() {
 			ui.Icon(c, terminalIcon).FontSize(13).TextColor(c.Theme().TextMuted)
-			ui.Text(c, tr("Terminal")).Bold()
-			if count := a.terminalSessionCount(); count > 1 {
-				ui.Badge(c, fmt.Sprintf("%d", count))
-			}
-			ui.Spacer(c).Grow(1)
+			a.terminalTabsView(c)
 			active := a.activeTerminal()
 			splitDisabled := active == nil || active.pane == nil
+			flatIconButton(c, "New terminal tab", "Open an independent terminal in a new tab", plusIcon, 15, 5, false, a.newTerminalTab)
 			flatIconButton(c, "Search terminal", "Search the active terminal (Ctrl+F)", searchIcon, 15, 5, splitDisabled, a.openTerminalSearch)
 			flatIconButton(c, "Split terminal right", "Open another independent terminal to the right", splitIcon, 15, 5, splitDisabled, a.splitTerminalRight)
 			flatIconButton(c, "Split terminal below", "Open another independent terminal below", splitBelowIcon, 15, 5, splitDisabled, a.splitTerminalBelow)
+			maximizeLabel, maximizeButtonIcon := "Maximize terminal", expandIcon
+			if a.term.panelMaximized {
+				maximizeLabel, maximizeButtonIcon = "Restore terminal size", shrinkIcon
+			}
+			flatIconButton(c, maximizeLabel, maximizeLabel, maximizeButtonIcon, 15, 5, false, a.toggleTerminalMaximized)
 			// Hide never closes a terminal: all processes and their scrollback
 			// stay in app state for the next time the pane opens.
-			flatIconButton(c, "Hide terminal", "Keep terminal processes running", chevronDownIcon, 15, 5, false, func() {
-				a.term.open = false
-			})
+			flatIconButton(c, "Hide terminal", "Keep terminal processes running", chevronDownIcon, 15, 5, false, a.hideTerminalView)
 			closeLabel := "Close terminal"
 			if a.terminalSessionCount() > 1 {
 				closeLabel = "Close all terminals"
 			}
 			flatIconButton(c, closeLabel, closeLabel, closeIcon, 15, 5, false, a.requestCloseAllTerminals)
 		})
-		a.terminalSessionsView(c)
+		if len(a.term.sessions) > 0 {
+			a.terminalSessionsView(c)
+		}
 	})
+}
+
+// terminalTabsView puts top-level selection, renaming and closing in the main
+// toolbar. Each tab is identified by its selected shell, not its group number.
+func (a *app) terminalTabsView(c *ui.Context) {
+	theme := c.Theme()
+	activeGroup := a.activeTerminalGroup()
+	ui.Row(c).Grow(1).MinWidth(0).AlignItems(ui.Center).Gap(3).Label(tr("Terminal tabs")).Children(func() {
+		for _, group := range a.terminalGroups() {
+			session := a.terminalGroupSession(group)
+			if session == nil {
+				continue
+			}
+			c.Key(fmt.Sprintf("terminal-group-%d", group))
+			tab := ui.Row(c).Grow(1).MinWidth(0).AlignItems(ui.Center).Gap(2).Padding(1, 3).Radius(theme.Radius)
+			if group == activeGroup || tab.Hovered() {
+				tab.Background(theme.SurfaceHover)
+			}
+			tab.Children(func() {
+				button := ui.ButtonBase(c).Grow(1).MinWidth(0).AlignItems(ui.Center).Gap(5).Padding(3, 5).Radius(theme.Radius).
+					Label(fmt.Sprintf("%s %d", tr("Terminal tab"), group)).Tooltip(tr("Switch terminal tabs"))
+				button.PopoverMenu(func(m *ui.Menu) { a.terminalGroupMenu(m, group) })
+				button.Children(func() {
+					ui.Icon(c, terminalIcon).FontSize(13).TextColor(theme.TextMuted)
+					ui.Text(c, terminalSessionLabel(session)).Bold().SingleLine()
+					if detail := terminalSessionDetail(session); detail != "" {
+						ui.Text(c, detail).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).SingleLine().Grow(1).MinWidth(0)
+					} else {
+						ui.Spacer(c).Grow(1)
+					}
+					if count := a.terminalGroupSize(group); count > 1 {
+						ui.Badge(c, fmt.Sprintf("%d", count))
+					}
+				})
+				if button.Clicked() {
+					a.term.pendingGroup = group
+				}
+				renameLabel := fmt.Sprintf("%s %d", tr("Rename tab"), group)
+				flatIconButton(c, renameLabel, renameLabel, editIcon, 12, 2, false, func() {
+					a.openTerminalRename(session.id)
+				})
+				closeLabel := fmt.Sprintf("%s %d", tr("Close terminal tab"), group)
+				flatIconButton(c, closeLabel, closeLabel, closeIcon, 12, 2, false, func() {
+					a.requestCloseTerminalGroup(group)
+				})
+			})
+		}
+	})
+}
+
+func (a *app) terminalGroupMenu(m *ui.Menu, group uint64) {
+	session := a.terminalGroupSession(group)
+	if session == nil {
+		return
+	}
+	if m.Item(tr("Rename tab")).Chosen() {
+		a.openTerminalRename(session.id)
+	}
+	m.Separator()
+	if m.Item(tr("Close terminal tab")).Chosen() {
+		a.requestCloseTerminalGroup(group)
+	}
 }
 
 // terminalSessionView builds one card from a stable snapshot. Drops queue a
@@ -419,36 +703,41 @@ func (a *app) terminalSessionView(c *ui.Context, index int) {
 		card.Border(1, theme.Accent)
 	}
 	card.Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Children(func() {
-			tab := ui.Row(c).Grow(1).AlignItems(ui.Center).Gap(2).Padding(2, 4).Radius(theme.Radius).
-				Drag(terminalTabDrag{id: session.id})
-			tab.Label(tr("Select terminal") + fmt.Sprintf(" %d", number)).Tooltip(tr("Drag to reorder terminals"))
-			if index == a.term.active || tab.Hovered() {
-				tab.Background(theme.SurfaceHover)
-			}
-			tab.Children(func() {
-				button := ui.ButtonBase(c).Grow(1).MinWidth(0).Gap(6).Padding(2).Radius(theme.Radius)
-				button.Label(tr("Focus terminal") + fmt.Sprintf(" %d", number))
-				button.Children(func() {
-					ui.Icon(c, terminalIcon).FontSize(13).TextColor(theme.TextMuted)
-					ui.Text(c, title).Bold().SingleLine()
-					if session.title != "" {
-						ui.Text(c, session.title).TextColor(theme.TextMuted).SingleLine().Grow(1)
-					}
-				})
-				if button.Clicked() {
-					a.term.active = index
+		// The maximized dock already names its shells in the main toolbar. Drop
+		// this redundant card header so the terminal buffer gets the extra rows.
+		if !a.term.panelMaximized {
+			ui.Row(c).AlignItems(ui.Center).Children(func() {
+				tab := ui.Row(c).Grow(1).AlignItems(ui.Center).Gap(2).Padding(2, 4).Radius(theme.Radius).
+					Drag(terminalTabDrag{id: session.id})
+				tab.Label(tr("Select terminal") + fmt.Sprintf(" %d", number)).Tooltip(tr("Drag to reorder terminals"))
+				if index == a.term.active || tab.Hovered() {
+					tab.Background(theme.SurfaceHover)
 				}
-				renameLabel := fmt.Sprintf("%s %d", tr("Rename terminal"), number)
-				flatIconButton(c, renameLabel, renameLabel, editIcon, 13, 4, false, func() {
-					a.openTerminalRename(session.id)
-				})
-				closeLabel := fmt.Sprintf("%s %d", tr("Close terminal"), number)
-				flatIconButton(c, closeLabel, closeLabel, closeIcon, 13, 4, false, func() {
-					a.closeTerminalAt(index)
+				tab.Children(func() {
+					button := ui.ButtonBase(c).Grow(1).MinWidth(0).Gap(6).Padding(2).Radius(theme.Radius)
+					button.Label(tr("Focus terminal") + fmt.Sprintf(" %d", number))
+					button.PopoverMenu(func(m *ui.Menu) { a.terminalSessionMenu(m, session.id) })
+					button.Children(func() {
+						ui.Icon(c, terminalIcon).FontSize(13).TextColor(theme.TextMuted)
+						ui.Text(c, title).Bold().SingleLine()
+						if detail := terminalSessionDetail(&session); detail != "" {
+							ui.Text(c, detail).TextColor(theme.TextMuted).SingleLine().Grow(1)
+						}
+					})
+					if button.Clicked() {
+						a.term.active = index
+					}
+					renameLabel := fmt.Sprintf("%s %d", tr("Rename terminal"), number)
+					flatIconButton(c, renameLabel, renameLabel, editIcon, 13, 4, false, func() {
+						a.openTerminalRename(session.id)
+					})
+					closeLabel := fmt.Sprintf("%s %d", tr("Close terminal"), number)
+					flatIconButton(c, closeLabel, closeLabel, closeIcon, 13, 4, false, func() {
+						a.closeTerminalAt(index)
+					})
 				})
 			})
-		})
+		}
 		if targeted {
 			ui.Column(c).Grow(1).Center().Gap(6).Margin(2).
 				Background(theme.Accent.Alpha(0.08)).Border(1, theme.Accent).Radius(theme.Radius).
@@ -461,6 +750,20 @@ func (a *app) terminalSessionView(c *ui.Context, index int) {
 		a.terminalSearchView(c, session.id)
 		a.terminalSessionContent(c, index, &session)
 	})
+}
+
+func (a *app) terminalSessionMenu(m *ui.Menu, id uint64) {
+	index, session := a.terminalSessionByID(id)
+	if session == nil {
+		return
+	}
+	if m.Item(tr("Rename terminal")).Chosen() {
+		a.openTerminalRename(id)
+	}
+	m.Separator()
+	if m.Item(tr("Close terminal")).Chosen() {
+		a.closeTerminalAt(index)
+	}
 }
 
 func (a *app) terminalSessionContent(c *ui.Context, index int, session *terminalSessionState) {
