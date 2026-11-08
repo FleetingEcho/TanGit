@@ -15,7 +15,11 @@ import (
 	"time"
 )
 
-const storeVersion = 1
+const (
+	storeVersion          = 1
+	checkpointHistoryKeep = 24
+	activityHistoryKeep   = 100
+)
 
 // Status describes what TanGit knows, not what it infers from terminal text.
 // In particular, a zero exit is Exited, not ReadyForReview: only an adapter or
@@ -87,28 +91,81 @@ func (r TestResult) Clone() TestResult {
 	return clone
 }
 
+// Checkpoint records a task-owned snapshot without changing task readiness.
+// The store assigns its identity and base commit; SnapshotID is the immutable
+// repository snapshot returned when HeadCommit and the work in progress were
+// captured together.
+type Checkpoint struct {
+	ID         string    `json:"id"`
+	SnapshotID string    `json:"snapshotId"`
+	BaseCommit string    `json:"baseCommit"`
+	HeadCommit string    `json:"headCommit"`
+	Reason     string    `json:"reason"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
+// ActivityKind identifies a durable task event without deriving lifecycle or
+// review readiness from process output.
+type ActivityKind string
+
+const (
+	ActivityStatus     ActivityKind = "status"
+	ActivityTest       ActivityKind = "test"
+	ActivityCheckpoint ActivityKind = "checkpoint"
+	ActivityLaunch     ActivityKind = "launch"
+	ActivityResume     ActivityKind = "resume"
+)
+
+func (k ActivityKind) valid() bool {
+	switch k {
+	case ActivityStatus, ActivityTest, ActivityCheckpoint, ActivityLaunch, ActivityResume:
+		return true
+	default:
+		return false
+	}
+}
+
+// Activity is one append-only task event. StatusFrom and StatusTo contain task
+// lifecycle values for status events and TestStatus values for test events.
+// Reference optionally identifies a terminal or other artifact; checkpoints
+// also retain their stable checkpoint and repository snapshot IDs.
+type Activity struct {
+	ID           string       `json:"id"`
+	Kind         ActivityKind `json:"kind"`
+	CreatedAt    time.Time    `json:"createdAt"`
+	StatusFrom   string       `json:"statusFrom,omitempty"`
+	StatusTo     string       `json:"statusTo,omitempty"`
+	Command      string       `json:"command,omitempty"`
+	SessionID    string       `json:"sessionId,omitempty"`
+	Reference    string       `json:"reference,omitempty"`
+	CheckpointID string       `json:"checkpointId,omitempty"`
+	SnapshotID   string       `json:"snapshotId,omitempty"`
+}
+
 // Task is the durable identity shared by worktrees, runs, reviews and later
 // checkpoints. RepositoryID is an opaque workspace identity, not a branch or
 // currently selected tab. Paths remain native paths of their local/SSH host.
 type Task struct {
-	ID           string      `json:"id"`
-	RepositoryID string      `json:"repositoryId"`
-	Title        string      `json:"title"`
-	Request      string      `json:"request"`
-	BaseRef      string      `json:"baseRef"`
-	BaseCommit   string      `json:"baseCommit"`
-	Branch       string      `json:"branch"`
-	WorktreePath string      `json:"worktreePath"`
-	Profile      Profile     `json:"profile"`
-	Status       Status      `json:"status"`
-	SessionID    string      `json:"sessionId,omitempty"`
-	Summary      string      `json:"summary,omitempty"`
-	ExitCode     *int        `json:"exitCode,omitempty"`
-	LastTest     *TestResult `json:"lastTest,omitempty"`
-	CreatedAt    time.Time   `json:"createdAt"`
-	UpdatedAt    time.Time   `json:"updatedAt"`
-	LastActiveAt time.Time   `json:"lastActiveAt,omitempty"`
-	ArchivedAt   time.Time   `json:"archivedAt,omitempty"`
+	ID           string       `json:"id"`
+	RepositoryID string       `json:"repositoryId"`
+	Title        string       `json:"title"`
+	Request      string       `json:"request"`
+	BaseRef      string       `json:"baseRef"`
+	BaseCommit   string       `json:"baseCommit"`
+	Branch       string       `json:"branch"`
+	WorktreePath string       `json:"worktreePath"`
+	Profile      Profile      `json:"profile"`
+	Status       Status       `json:"status"`
+	SessionID    string       `json:"sessionId,omitempty"`
+	Summary      string       `json:"summary,omitempty"`
+	ExitCode     *int         `json:"exitCode,omitempty"`
+	LastTest     *TestResult  `json:"lastTest,omitempty"`
+	Checkpoints  []Checkpoint `json:"checkpoints,omitempty"`
+	Activity     []Activity   `json:"activity,omitempty"`
+	CreatedAt    time.Time    `json:"createdAt"`
+	UpdatedAt    time.Time    `json:"updatedAt"`
+	LastActiveAt time.Time    `json:"lastActiveAt,omitempty"`
+	ArchivedAt   time.Time    `json:"archivedAt,omitempty"`
 }
 
 func canTransition(from, to Status) bool {
@@ -165,6 +222,8 @@ func (t Task) Clone() Task {
 		result := t.LastTest.Clone()
 		clone.LastTest = &result
 	}
+	clone.Checkpoints = append([]Checkpoint(nil), t.Checkpoints...)
+	clone.Activity = append([]Activity(nil), t.Activity...)
 	return clone
 }
 
@@ -297,6 +356,8 @@ func (s *Store) Create(task Task) (Task, error) {
 	now := s.now().UTC()
 	task.ID, task.CreatedAt, task.UpdatedAt = id, now, now
 	task.LastActiveAt = now
+	// Activity identity and timestamps belong to subsequent store operations.
+	task.Activity = nil
 	task = task.Clone()
 
 	disk, err := s.read()
@@ -315,6 +376,57 @@ func (s *Store) Create(task Task) (Task, error) {
 		return Task{}, err
 	}
 	return task.Clone(), nil
+}
+
+func newActivity(kind ActivityKind, createdAt time.Time) (Activity, error) {
+	id, err := newTaskID()
+	if err != nil {
+		return Activity{}, fmt.Errorf("create agent activity ID: %w", err)
+	}
+	return Activity{ID: id, Kind: kind, CreatedAt: createdAt}, nil
+}
+
+func appendActivity(history []Activity, activity Activity) []Activity {
+	history = append(history, activity)
+	if len(history) > activityHistoryKeep {
+		history = history[len(history)-activityHistoryKeep:]
+	}
+	return append([]Activity(nil), history...)
+}
+
+func testActivityStatus(result *TestResult) string {
+	if result == nil {
+		return ""
+	}
+	return string(result.Status)
+}
+
+func automaticActivities(previous, updated Task, now time.Time) ([]Activity, error) {
+	var activities []Activity
+	if previous.Status != updated.Status {
+		activity, err := newActivity(ActivityStatus, now)
+		if err != nil {
+			return nil, err
+		}
+		activity.StatusFrom = string(previous.Status)
+		activity.StatusTo = string(updated.Status)
+		activities = append(activities, activity)
+	}
+	if testActivityStatus(previous.LastTest) != testActivityStatus(updated.LastTest) {
+		activity, err := newActivity(ActivityTest, now)
+		if err != nil {
+			return nil, err
+		}
+		activity.StatusFrom = testActivityStatus(previous.LastTest)
+		activity.StatusTo = testActivityStatus(updated.LastTest)
+		if updated.LastTest != nil {
+			activity.Command = updated.LastTest.Command
+		} else if previous.LastTest != nil {
+			activity.Command = previous.LastTest.Command
+		}
+		activities = append(activities, activity)
+	}
+	return activities, nil
 }
 
 // Update applies an explicit-target mutation as one durable read/modify/write.
@@ -341,6 +453,10 @@ func (s *Store) Update(taskID string, mutate func(*Task) error) (Task, error) {
 	updated.BaseRef = previous.BaseRef
 	updated.BaseCommit = previous.BaseCommit
 	updated.CreatedAt = previous.CreatedAt
+	// Checkpoint and activity identity and history have dedicated append-only
+	// operations; general mutations cannot rewrite or inject past events.
+	updated.Checkpoints = append([]Checkpoint(nil), previous.Checkpoints...)
+	updated.Activity = append([]Activity(nil), previous.Activity...)
 	if !canTransition(previous.Status, updated.Status) {
 		return Task{}, fmt.Errorf("agent task cannot transition from %s to %s", previous.Status, updated.Status)
 	}
@@ -356,6 +472,13 @@ func (s *Store) Update(taskID string, mutate func(*Task) error) (Task, error) {
 	if updated.Status != StatusArchived {
 		updated.ArchivedAt = time.Time{}
 	}
+	activities, err := automaticActivities(previous, updated, now)
+	if err != nil {
+		return Task{}, err
+	}
+	for _, activity := range activities {
+		updated.Activity = appendActivity(updated.Activity, activity)
+	}
 
 	oldRequestPath, _ := s.RequestFile(taskID)
 	requestChanged := updated.Request != previous.Request
@@ -369,6 +492,96 @@ func (s *Store) Update(taskID string, mutate func(*Task) error) (Task, error) {
 		if requestChanged {
 			_ = writeFileAtomic(oldRequestPath, []byte(previous.Request), 0o600)
 		}
+		return Task{}, err
+	}
+	return updated.Clone(), nil
+}
+
+// RecordActivity appends an explicit command event without changing lifecycle
+// or test state. In particular, launch and resume history never recursively
+// synthesizes additional status or test transitions.
+func (s *Store) RecordActivity(taskID string, activity Activity) (Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !activity.Kind.valid() {
+		return Task{}, fmt.Errorf("invalid agent activity kind %q", activity.Kind)
+	}
+	disk, err := s.read()
+	if err != nil {
+		return Task{}, err
+	}
+	index, previous, err := findTask(disk.Tasks, taskID)
+	if err != nil {
+		return Task{}, err
+	}
+	now := s.now().UTC()
+	id, err := newTaskID()
+	if err != nil {
+		return Task{}, fmt.Errorf("create agent activity ID: %w", err)
+	}
+	activity.ID = id
+	activity.CreatedAt = now
+	activity.SessionID = strings.TrimSpace(activity.SessionID)
+	activity.Reference = strings.TrimSpace(activity.Reference)
+	updated := previous.Clone()
+	updated.Activity = appendActivity(updated.Activity, activity)
+	updated.UpdatedAt = now
+	updated.LastActiveAt = now
+	disk.Tasks[index] = updated
+	if err := s.write(disk); err != nil {
+		return Task{}, err
+	}
+	return updated.Clone(), nil
+}
+
+// RecordCheckpoint durably appends one repository snapshot to an explicit
+// task. Task identity, base and timestamps come from the store, not its caller,
+// and general task updates cannot rewrite existing checkpoint records.
+func (s *Store) RecordCheckpoint(taskID string, checkpoint Checkpoint) (Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	checkpoint.SnapshotID = strings.TrimSpace(checkpoint.SnapshotID)
+	checkpoint.HeadCommit = strings.TrimSpace(checkpoint.HeadCommit)
+	checkpoint.Reason = strings.TrimSpace(checkpoint.Reason)
+	if checkpoint.SnapshotID == "" {
+		return Task{}, errors.New("agent checkpoint snapshot ID is required")
+	}
+	if checkpoint.HeadCommit == "" {
+		return Task{}, errors.New("agent checkpoint HEAD commit is required")
+	}
+	if checkpoint.Reason == "" {
+		return Task{}, errors.New("agent checkpoint reason is required")
+	}
+	id, err := newTaskID()
+	if err != nil {
+		return Task{}, fmt.Errorf("create agent checkpoint ID: %w", err)
+	}
+	disk, err := s.read()
+	if err != nil {
+		return Task{}, err
+	}
+	index, previous, err := findTask(disk.Tasks, taskID)
+	if err != nil {
+		return Task{}, err
+	}
+	checkpoint.ID = id
+	checkpoint.BaseCommit = previous.BaseCommit
+	now := s.now().UTC()
+	checkpoint.CreatedAt = now
+	activity, err := newActivity(ActivityCheckpoint, now)
+	if err != nil {
+		return Task{}, err
+	}
+	activity.CheckpointID = checkpoint.ID
+	activity.SnapshotID = checkpoint.SnapshotID
+	updated := previous.Clone()
+	updated.Checkpoints = append(updated.Checkpoints, checkpoint)
+	updated.Activity = appendActivity(updated.Activity, activity)
+	if len(updated.Checkpoints) > checkpointHistoryKeep {
+		updated.Checkpoints = append([]Checkpoint(nil), updated.Checkpoints[len(updated.Checkpoints)-checkpointHistoryKeep:]...)
+	}
+	disk.Tasks[index] = updated
+	if err := s.write(disk); err != nil {
 		return Task{}, err
 	}
 	return updated.Clone(), nil
@@ -412,6 +625,36 @@ func (s *Store) read() (diskStore, error) {
 		seen[task.ID] = true
 		if err := task.validate(); err != nil {
 			return diskStore{}, fmt.Errorf("agent task %s: %w", task.ID, err)
+		}
+		if len(task.Activity) > activityHistoryKeep {
+			return diskStore{}, fmt.Errorf("agent task %s contains too much activity", task.ID)
+		}
+		activities := map[string]bool{}
+		for _, activity := range task.Activity {
+			if !validTaskID(activity.ID) {
+				return diskStore{}, fmt.Errorf("agent task %s contains an invalid activity ID", task.ID)
+			}
+			if activities[activity.ID] {
+				return diskStore{}, fmt.Errorf("agent task %s contains duplicate activity ID %s", task.ID, activity.ID)
+			}
+			activities[activity.ID] = true
+			if !activity.Kind.valid() || activity.CreatedAt.IsZero() {
+				return diskStore{}, fmt.Errorf("agent task %s contains an incomplete activity %s", task.ID, activity.ID)
+			}
+		}
+		checkpoints := map[string]bool{}
+		for _, checkpoint := range task.Checkpoints {
+			if !validTaskID(checkpoint.ID) {
+				return diskStore{}, fmt.Errorf("agent task %s contains an invalid checkpoint ID", task.ID)
+			}
+			if checkpoints[checkpoint.ID] {
+				return diskStore{}, fmt.Errorf("agent task %s contains duplicate checkpoint ID %s", task.ID, checkpoint.ID)
+			}
+			checkpoints[checkpoint.ID] = true
+			if checkpoint.SnapshotID == "" || checkpoint.HeadCommit == "" || checkpoint.Reason == "" ||
+				checkpoint.BaseCommit != task.BaseCommit || checkpoint.CreatedAt.IsZero() {
+				return diskStore{}, fmt.Errorf("agent task %s contains an incomplete checkpoint %s", task.ID, checkpoint.ID)
+			}
 		}
 	}
 	return disk, nil

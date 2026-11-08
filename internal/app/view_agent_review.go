@@ -61,6 +61,7 @@ func (a *app) agentReviewView(c *ui.Context) {
 			ui.Text(c, tr("Accept is available after the agent commits its remaining staged, unstaged, and untracked output.")).TextColor(theme.Warning)
 		}
 		a.agentReviewExecution(c)
+		a.agentCheckpointControls(c)
 		switch {
 		case review.loading:
 			ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
@@ -135,6 +136,68 @@ func agentTestStatusLabel(status agentwork.TestStatus) string {
 	default:
 		return string(status)
 	}
+}
+
+func (a *app) agentCheckpointControls(c *ui.Context) {
+	theme := c.Theme()
+	review := &a.agents.review
+	task, ok := a.agentReviewTask()
+	if !ok {
+		return
+	}
+	busy := a.agents.checkpointBusy[task.ID]
+	ids := make([]string, len(task.Checkpoints))
+	for index, checkpoint := range task.Checkpoints {
+		ids[index] = checkpoint.ID
+	}
+	if _, selected := a.selectedAgentCheckpoint(task); !selected && len(ids) > 0 {
+		review.checkpointID = ids[len(ids)-1]
+	}
+	ui.Row(c).Gap(8).AlignItems(ui.End).Children(func() {
+		if len(ids) > 0 {
+			ui.Select(c, &review.checkpointID, ids).Label(tr("Task checkpoint")).Grow(1)
+		} else {
+			ui.Text(c, tr("No task checkpoints yet.")).TextColor(theme.TextMuted).Grow(1)
+		}
+		if ui.Button(c, tr("Create checkpoint")).Disabled(busy).Clicked() {
+			a.createAgentCheckpoint(task.ID, "Manual review checkpoint", func(err error) {
+				if err != nil || !review.open || review.taskID != task.ID {
+					return
+				}
+				if current, found := a.agentReviewTask(); found && len(current.Checkpoints) > 0 {
+					review.checkpointID = current.Checkpoints[len(current.Checkpoints)-1].ID
+				}
+			})
+		}
+		_, canRestore := a.selectedAgentCheckpoint(task)
+		if ui.Button(c, tr("Restore checkpoint")).Disabled(busy || !canRestore).Clicked() {
+			a.confirmRestoreAgentCheckpoint(task, review.checkpointID)
+		}
+	})
+	if checkpoint, found := a.selectedAgentCheckpoint(task); found {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, checkpoint.Reason).Bold().Grow(1).SingleLine().Tooltip(checkpoint.Reason)
+			ui.Textf(c, tr("Captured HEAD: %s"), agentShortHash(checkpoint.HeadCommit)).TextColor(theme.TextMuted)
+			ui.Text(c, checkpoint.CreatedAt.Local().Format("2006-01-02 15:04")).TextColor(theme.TextMuted)
+		})
+	}
+	ui.Text(c, tr("Checkpoints preserve staged, unstaged, and untracked WIP. Restore requires the captured HEAD and saves the current WIP first.")).TextColor(theme.TextMuted)
+}
+
+func (a *app) confirmRestoreAgentCheckpoint(task agentwork.Task, checkpointID string) {
+	checkpoint, ok := a.selectedAgentCheckpoint(task)
+	if !ok || checkpoint.ID != checkpointID || a.agents.checkpointBusy[task.ID] {
+		return
+	}
+	a.askConfirm(confirmRequest{
+		title:        "Restore agent checkpoint",
+		message:      trf("Restore %s?", checkpoint.Reason),
+		detail:       tr("TanGit saves the current WIP first, then restores the checkpoint's staged, unstaged, and untracked files. Newer commits prevent restoration."),
+		confirmLabel: "Restore checkpoint",
+		run: func() {
+			a.restoreAgentCheckpoint(task.ID, checkpoint.ID)
+		},
+	})
 }
 
 func (a *app) agentReviewList(c *ui.Context) {
