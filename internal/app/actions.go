@@ -279,6 +279,15 @@ func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 		a.selectedTag, a.selectedTagRow = 0, 0
 	}
 	a.worktreeFilter = ""
+	a.resetAgentReview()
+	a.agents.loadToken++
+	a.agents.tasks = nil
+	a.agents.loadedRepo = ""
+	a.agents.selectedTaskID = ""
+	a.agents.selectedRow = 0
+	a.agents.loading = false
+	a.agents.err = ""
+	a.agents.mutating = nil
 	a.selectedWorktreeRow, a.selectedWorktree = -1, -1
 	if len(snapshot.Worktrees) > 0 {
 		a.selectedWorktreeRow, a.selectedWorktree = 0, 0

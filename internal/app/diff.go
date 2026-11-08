@@ -145,6 +145,7 @@ func (a *app) liveDiffs() []*editor.DiffState {
 		a.fileHistoryDiffState,
 		a.conflictDiffState,
 		a.compare.diffState,
+		a.agents.review.diffState,
 	}
 }
 
@@ -224,6 +225,18 @@ func (a *app) activeDiff() (shownDiff, bool) {
 		}, true
 	}
 	switch a.workspaceTab {
+	case sectionAgents:
+		path := a.agentReviewFileLabel()
+		if !a.agents.review.open || path == "" {
+			return shownDiff{}, false
+		}
+		return shownDiff{
+			title:    path,
+			subtitle: a.agents.review.title + " · " + agentShortHash(a.agents.review.base),
+			path:     path,
+			patch:    a.agents.review.diffPatch,
+			state:    a.agents.review.diffState,
+		}, true
 	case sectionChanges:
 		change, ok := a.selectedChange()
 		if !ok {
@@ -325,6 +338,8 @@ func (a *app) activeDiffLoading() bool {
 		return a.fileHistoryDiffLoading
 	}
 	switch a.workspaceTab {
+	case sectionAgents:
+		return a.agents.review.diffLoading
 	case sectionChanges:
 		return a.diffLoading
 	case sectionHistory, sectionGraph:
@@ -346,6 +361,8 @@ func (a *app) activeDiffError() string {
 		return a.fileHistoryDiffError
 	}
 	switch a.workspaceTab {
+	case sectionAgents:
+		return a.agents.review.diffError
 	case sectionChanges:
 		return a.diffError
 	case sectionHistory, sectionGraph:

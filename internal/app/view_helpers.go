@@ -530,6 +530,7 @@ func (a *app) closeAllForms() {
 	a.showWorktreeRepairForm = false
 	a.showWorktreePruneForm = false
 	a.worktreePruneToken++
+	a.agents.formOpen = false
 	a.showSubmoduleForm = false
 	a.showCommitTagForm = false
 	a.showCommitBranchForm = false
@@ -579,6 +580,7 @@ func (a *app) anyFormOpen() bool {
 		a.showWorktreeLockForm ||
 		a.showWorktreeRepairForm ||
 		a.showWorktreePruneForm ||
+		a.agents.formOpen ||
 		a.showSubmoduleForm ||
 		a.showCommitTagForm ||
 		a.showCommitBranchForm ||

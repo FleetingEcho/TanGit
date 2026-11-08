@@ -43,18 +43,24 @@ func TestWorktreeMaintenanceActionsReachSession(t *testing.T) {
 	}
 
 	h.app.toggleSelectedWorktreeLock()
+	if !h.app.showWorktreeLockForm {
+		t.Fatal("locking did not open its reason form")
+	}
+	h.app.beginLockWorktree()
 	h.waitFor(t, "worktree lock", func() bool {
 		return calls.has("lock-worktree:/work/feature:TanGit") && !h.app.actionBusy
 	})
 
 	h.app.repairWorktrees()
+	if !h.app.showWorktreeRepairForm {
+		t.Fatal("repair did not open its path form")
+	}
+	h.app.beginRepairWorktrees()
 	h.waitFor(t, "worktree repair", func() bool { return calls.has("repair-worktrees") && !h.app.actionBusy })
 
 	h.app.confirmPruneWorktrees()
-	if h.app.confirm == nil || h.app.confirm.confirmLabel != "Prune" {
-		t.Fatal("prune did not require its explicit confirmation")
-	}
-	h.app.acceptConfirm()
+	h.waitFor(t, "worktree prune preview", func() bool { return !h.app.worktreePruneLoading })
+	h.app.beginPruneWorktrees()
 	h.waitFor(t, "worktree prune", func() bool { return calls.has("prune-worktrees") && !h.app.actionBusy })
 
 	h.app.snapshot.Worktrees = []repository.Worktree{{Name: "feature", Path: "/work/feature", Branch: "feature"}}
