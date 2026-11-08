@@ -1081,6 +1081,11 @@ func newApp(opener repositoryOpener) *app {
 // argument that is not a flag, since a bundle on macOS passes -psn_… and
 // other platforms pass their own switches.
 func launchPath(args []string) string {
+	workingDir, _ := os.Getwd()
+	return launchPathFrom(workingDir, args)
+}
+
+func launchPathFrom(workingDir string, args []string) string {
 	for _, arg := range args {
 		if arg == "" || strings.HasPrefix(arg, "-") {
 			continue
@@ -1093,6 +1098,11 @@ func launchPath(args []string) string {
 		// Resolve a terminal path while the caller's working directory is
 		// unambiguous. The initial tab, errors, and recent list then all use
 		// the same repository name, including when the argument contains spaces.
+		// A second instance supplies its working directory explicitly because
+		// the existing app's working directory is unrelated to the caller's.
+		if workingDir != "" && !filepath.IsAbs(arg) {
+			return filepath.Join(workingDir, arg)
+		}
 		absolute, err := filepath.Abs(arg)
 		if err != nil {
 			return arg
@@ -1109,6 +1119,19 @@ func Main() {
 	// initialization, or Git would open another TanGit window and hang the rebase.
 	if daemon.InDaemonMode() {
 		daemon.Handle(logrus.New().WithField("component", "git-editor"))
+		return
+	}
+
+	launched, err := launchInBackground()
+	if err != nil {
+		log.Printf("Could not detach the TanGit launcher: %v", err)
+	}
+	if launched {
+		return
+	}
+	// A command typed while TanGit is running forwards its path to that app's
+	// tabbed window instead of creating a second process and window.
+	if !mygo.App.RequestSingleInstanceLock() {
 		return
 	}
 
@@ -1145,6 +1168,7 @@ func openAppWindow(opener repositoryOpener, path string) {
 	s.invalidate = win.Invalidate
 	watchUpdater(s)
 	mainWindow = win
+	mygo.App.OnSecondInstance(s.openSecondInstance)
 	allowClose := false
 	win.OnClose(func(e *mygo.CloseEvent) {
 		if hideOnCloseEnabled() {

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -251,6 +252,41 @@ func TestShellPlusOpensThePickerAndClaimsAnOpenRepository(t *testing.T) {
 	openShellRepo(t, s, tt, updated, "/work/another")
 	if len(s.tabs) != 2 || s.activeTab().path() != "/work/another" {
 		t.Fatalf("a new repository did not take the picker's page: %s", s.tabTitles())
+	}
+}
+
+func TestSecondInstanceOpensOrActivatesRepositoryTab(t *testing.T) {
+	s, tt, updated := newShellTester(t, repository.Snapshot{})
+	parent := t.TempDir()
+	firstPath := filepath.Join(parent, "first")
+	openShellRepo(t, s, tt, updated, firstPath)
+
+	// The second process forwards both its path and working directory. Its
+	// relative argument must not be resolved against the first app's directory.
+	s.openSecondInstance([]string{"./second repository"}, parent)
+	second := s.activeApp()
+	for range 12 {
+		if second.state == stateReady && len(updated.done) == 0 {
+			break
+		}
+		updated.waitForUpdate(t)
+		tt.Frame()
+	}
+	tt.Frame()
+	secondPath := filepath.Join(parent, "second repository")
+	if len(s.tabs) != 2 || s.active != 1 || second.path != secondPath {
+		t.Fatalf("second launch did not open a new repository tab: tabs=%d active=%d path=%q", len(s.tabs), s.active, second.path)
+	}
+
+	s.activate(0)
+	s.openSecondInstance([]string{filepath.Join(parent, ".", "second repository")}, "/some/other/directory")
+	if len(s.tabs) != 2 || s.active != 1 {
+		t.Fatalf("an already open repository was duplicated: tabs=%d active=%d", len(s.tabs), s.active)
+	}
+
+	s.openSecondInstance(nil, parent)
+	if len(s.tabs) != 2 || s.active != 1 {
+		t.Fatalf("a plain second launch changed the tabs: tabs=%d active=%d", len(s.tabs), s.active)
 	}
 }
 
