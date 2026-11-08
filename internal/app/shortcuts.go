@@ -64,6 +64,14 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		})
 		return
 	}
+	if a.branchFullscreen {
+		c.OnShortcut(0, ui.KeyEscape, a.escapeBranchFullscreen)
+		if !a.settings.DisableShortcuts {
+			c.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
+			c.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })
+		}
+		return
+	}
 	if a.state == stateLoading {
 		c.OnShortcut(0, ui.KeyEscape, a.cancelLoading)
 		return

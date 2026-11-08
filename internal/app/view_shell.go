@@ -102,6 +102,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	} else {
 		a.welcomeView(c)
 	}
+	a.branchFullscreenView(c, overlayTopInset)
 	a.diffFullscreenView(c, overlayTopInset)
 	a.compareModal(c)
 	a.commitActionModals(c)

@@ -562,6 +562,7 @@ func (a *app) modalOpen() bool {
 		a.keybindingsOpen ||
 		a.commandLogOpen ||
 		a.diffFullscreen ||
+		a.branchFullscreen ||
 		a.anyFormOpen() ||
 		a.lineSelectMode ||
 		a.crash != ""

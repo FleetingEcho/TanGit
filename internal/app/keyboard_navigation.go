@@ -196,12 +196,21 @@ func (a *app) visibleKeyboardPanes() []keyboardPane {
 	if len(panes) == 0 {
 		panes = a.keyboardPrevious
 	}
-	if !a.diffFullscreen && !a.compare.open {
+	if !a.diffFullscreen && !a.compare.open && !a.branchFullscreen {
 		return panes
 	}
 	visible := make([]keyboardPane, 0, len(panes))
 	for _, pane := range panes {
-		if a.diffFullscreen && strings.HasPrefix(pane.id, "fullscreen-") || a.compare.open && strings.HasPrefix(pane.id, "comparison-") {
+		shown := false
+		switch {
+		case a.diffFullscreen:
+			shown = strings.HasPrefix(pane.id, "fullscreen-")
+		case a.compare.open:
+			shown = strings.HasPrefix(pane.id, "comparison-")
+		case a.branchFullscreen:
+			shown = strings.HasPrefix(pane.id, "branch-")
+		}
+		if shown {
 			visible = append(visible, pane)
 		}
 	}
@@ -270,7 +279,7 @@ func (a *app) primaryKeyboardPane() string {
 }
 
 func (a *app) finishKeyboardFrame(c *ui.Context) {
-	paneModal := a.diffFullscreen || a.compare.open
+	paneModal := a.diffFullscreen || a.compare.open || a.branchFullscreen
 	if a.modalOpen() {
 		if !a.keyboardModalWasOpen {
 			a.keyboardModalReturn = a.keyboardLastPane
@@ -603,6 +612,9 @@ func (a *app) keyboardPanelTabs(id string, e ui.Element) ui.Element {
 			return e
 		}
 		if a.compare.open && !strings.HasPrefix(id, "comparison-") {
+			return e
+		}
+		if a.branchFullscreen && !strings.HasPrefix(id, "branch-") {
 			return e
 		}
 	}
