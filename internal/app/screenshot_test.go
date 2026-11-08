@@ -837,10 +837,12 @@ func TestScreenshot(t *testing.T) {
 		}
 		tt.Frame()
 		saveScreenshot(t, dir, "61-terminal-rename-dark", tt)
-		if err := tt.Click("Cancel"); err != nil {
+		tt.Type("Build output")
+		if err := tt.Click("Save name"); err != nil {
 			t.Fatal(err)
 		}
 		tt.Frame()
+		saveScreenshot(t, dir, "67-terminal-independent-names-dark", tt)
 		a.term.layout.below = true
 		tt.Frame()
 		saveScreenshot(t, dir, "59-terminal-split-below-dark", tt)

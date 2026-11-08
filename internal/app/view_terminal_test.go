@@ -387,8 +387,11 @@ func TestTerminalTopLevelTabRenameAndContextMenu(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if h.app.term.renameID != h.app.activeTerminal().id {
-		t.Fatalf("rename targeted %d, want active shell %d", h.app.term.renameID, h.app.activeTerminal().id)
+	if !h.app.anyFormOpen() {
+		t.Fatal("the top-level rename modal did not take ownership of text input")
+	}
+	if h.app.term.renameGroup != h.app.activeTerminalGroup() || h.app.term.renameID != 0 {
+		t.Fatalf("rename targeted group %d/shell %d, want group %d", h.app.term.renameGroup, h.app.term.renameID, h.app.activeTerminalGroup())
 	}
 	h.app.closeTerminalRename()
 	h.tester.Frame()
@@ -402,8 +405,9 @@ func TestTerminalTopLevelTabRenameAndContextMenu(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if h.app.term.sessions[0].name != "" || h.app.activeTerminal().name != "Database shell" || !h.tester.HasText("Database shell") {
-		t.Fatalf("the context-menu rename missed its tab: %+v", h.app.term.sessions)
+	if h.app.term.sessions[0].name != "" || h.app.activeTerminal().name != "" ||
+		h.app.term.groupNames[2] != "Database shell" || !h.tester.HasText("Database shell") {
+		t.Fatalf("the context-menu rename missed its tab: groups=%+v sessions=%+v", h.app.term.groupNames, h.app.term.sessions)
 	}
 
 	h.rightClick(t, "Terminal tab 2")
@@ -809,6 +813,56 @@ func TestTerminalTabsRenameAndContainTheirActions(t *testing.T) {
 	if h.app.terminalSessionCount() != 0 || h.app.term.panelOpen {
 		t.Fatalf("the split context menu did not close its shell: %+v", h.app.term)
 	}
+}
+
+func TestTerminalTopLevelAndSplitNamesAreIndependent(t *testing.T) {
+	h, peers, first := monitoredTerminalTestApp(t)
+	second := splitMonitoredTerminal(t, h, peers, true)
+	countLabel := func(label string) int {
+		count := 0
+		for _, text := range h.texts() {
+			if text == label {
+				count++
+			}
+		}
+		return count
+	}
+
+	if err := h.tester.Click("Rename terminal 2"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.tester.Type("Build output")
+	h.tester.Frame()
+	if err := h.tester.Click("Save name"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if got := countLabel("Build output"); got != 2 {
+		t.Fatalf("renaming a split changed its top-level tab too (%d copies): %q", got, h.texts())
+	}
+	if h.app.term.sessions[1].name != "Build output" {
+		t.Fatalf("the split did not retain its custom name: %+v", h.app.term.sessions)
+	}
+
+	if err := h.tester.Click("Rename tab 1"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.tester.Type("Primary tab")
+	h.tester.Frame()
+	if err := h.tester.Click("Save name"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if got := countLabel("Primary tab"); got != 1 {
+		t.Fatalf("renaming the top-level tab changed its split too (%d copies): %q", got, h.texts())
+	}
+	if h.app.term.sessions[1].name != "Build output" || !h.tester.HasText("Build output") {
+		t.Fatalf("top-level rename replaced the split name: %+v", h.app.term.sessions)
+	}
+	requireTerminalRunning(t, first)
+	requireTerminalRunning(t, second)
 }
 
 func TestTerminalLimitIsSixAndAnotherSplitReportsAnError(t *testing.T) {

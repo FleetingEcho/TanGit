@@ -14,33 +14,70 @@ func (a *app) openTerminalRename(id uint64) {
 		return
 	}
 	a.term.renameID = id
+	a.term.renameGroup = 0
 	a.term.renameName = session.name
+}
+
+func (a *app) openTerminalGroupRename(group uint64) {
+	if a.terminalGroupSession(group) == nil {
+		return
+	}
+	a.term.renameID = 0
+	a.term.renameGroup = group
+	a.term.renameName = a.term.groupNames[group]
 }
 
 func (a *app) closeTerminalRename() {
 	a.term.renameID = 0
+	a.term.renameGroup = 0
 	a.term.renameName = ""
 }
 
 func (a *app) beginTerminalRename() {
+	name := normalizedTerminalName(a.term.renameName)
+	if group := a.term.renameGroup; group != 0 {
+		if a.terminalGroupSession(group) == nil {
+			a.closeTerminalRename()
+			return
+		}
+		if name == "" {
+			delete(a.term.groupNames, group)
+		} else {
+			if a.term.groupNames == nil {
+				a.term.groupNames = make(map[uint64]string)
+			}
+			a.term.groupNames[group] = name
+		}
+		a.closeTerminalRename()
+		return
+	}
 	_, session := a.terminalSessionByID(a.term.renameID)
 	if session == nil {
 		a.closeTerminalRename()
 		return
 	}
-	name := strings.TrimSpace(a.term.renameName)
+	session.name = name
+	a.closeTerminalRename()
+}
+
+func normalizedTerminalName(value string) string {
+	name := strings.TrimSpace(value)
 	runes := []rune(name)
 	if len(runes) > terminalNameLimit {
 		name = string(runes[:terminalNameLimit])
 	}
-	session.name = name
-	a.closeTerminalRename()
+	return name
 }
 
 // terminalRenameModal changes only the card's label. The shell process, its
 // OSC title and its working directory remain independent of this name.
 func (a *app) terminalRenameModal(c *ui.Context) {
-	_, session := a.terminalSessionByID(a.term.renameID)
+	var session *terminalSessionState
+	if a.term.renameGroup != 0 {
+		session = a.terminalGroupSession(a.term.renameGroup)
+	} else {
+		_, session = a.terminalSessionByID(a.term.renameID)
+	}
 	if session == nil {
 		return
 	}
