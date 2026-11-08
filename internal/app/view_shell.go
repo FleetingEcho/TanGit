@@ -341,6 +341,7 @@ func (a *app) pickerHeroView(c *ui.Context) {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(16).Wrap().Children(func() {
 			pickerHint(c, "↵", "Enter opens the path")
 			pickerHint(c, "Ctrl+,", "Settings")
+			pickerHint(c, "tangit <path>", "Terminal: open a repository path directly in TanGit")
 		})
 	})
 }

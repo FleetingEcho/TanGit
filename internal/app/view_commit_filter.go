@@ -126,7 +126,9 @@ func (a *app) applyDefaultCommitFilters(snapshot repository.Snapshot) {
 			break
 		}
 	}
-	if branch == "" {
+	// A symbolic unborn branch can appear before it names a readable commit.
+	// Keep the empty-repository view instead of starting a failing log search.
+	if branch == "" || len(snapshot.Commits) == 0 {
 		return
 	}
 	for _, target := range [...]int{sectionHistory, sectionGraph} {

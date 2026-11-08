@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -870,7 +871,14 @@ func launchPath(args []string) string {
 		if arg == "" || strings.HasPrefix(arg, "-") {
 			continue
 		}
-		return arg
+		// Resolve a terminal path while the caller's working directory is
+		// unambiguous. The initial tab, errors, and recent list then all use
+		// the same repository name, including when the argument contains spaces.
+		absolute, err := filepath.Abs(arg)
+		if err != nil {
+			return arg
+		}
+		return absolute
 	}
 	return ""
 }
