@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,6 +9,49 @@ import (
 	"strings"
 	"testing"
 )
+
+// The Windows installer makes the app executable discoverable as `tangit`.
+// Keep the packager hook, its install/uninstall halves, and the environment
+// notification together: a missing half leaves either no command or a stale
+// PATH entry.
+func TestWindowsCommandLineLauncherPackaging(t *testing.T) {
+	_, source, _, _ := runtime.Caller(0)
+	root := filepath.Join(filepath.Dir(source), "..", "..")
+	data, err := os.ReadFile(filepath.Join(root, "mygo.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config struct {
+		Windows struct {
+			InstallerInclude string `json:"installerInclude"`
+		} `json:"windows"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		t.Fatal(err)
+	}
+	if config.Windows.InstallerInclude == "" {
+		t.Fatal("the Windows package does not install the tangit command on PATH")
+	}
+	include, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(config.Windows.InstallerInclude)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(include)
+	for _, want := range []string{"!macro customInstall", "!macro customUnInstall", "TANGIT_INSTALL_DIR", "tangit-path.ps1", "WM_SETTINGCHANGE"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("the Windows installer hook lacks %q", want)
+		}
+	}
+	helper, err := os.ReadFile(filepath.Join(root, "resources", "windows", "tangit-path.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"ValidateSet('Add', 'Remove')", "SetEnvironmentVariable('Path'"} {
+		if !strings.Contains(string(helper), want) {
+			t.Errorf("the Windows PATH helper lacks %q", want)
+		}
+	}
+}
 
 // Exercise the distributed launcher with a recorder standing in for macOS
 // LaunchServices, so CI verifies argument delivery without opening a GUI.

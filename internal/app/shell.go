@@ -450,7 +450,7 @@ func (s *shell) activate(i int) {
 	s.invalidate()
 	// The page coming in may have been hidden while its repository moved:
 	// read it again so it shows what Git holds now.
-	s.tabs[i].app.requestQuietRefresh()
+	s.tabs[i].app.requestAmbientRefresh()
 }
 
 // activateTab is activate for a page that may have moved.
@@ -523,7 +523,7 @@ func (s *shell) handleWindowHidden() {
 // refreshActiveTab reads the repository of the page on screen again.
 func (s *shell) refreshActiveTab() {
 	if a := s.activeApp(); a != nil {
-		a.requestQuietRefresh()
+		a.requestAmbientRefresh()
 	}
 }
 
@@ -532,7 +532,7 @@ func (s *shell) refreshActiveTab() {
 func (s *shell) refreshAllTabs() {
 	for _, t := range s.tabs {
 		if t.app != nil {
-			t.app.requestQuietRefresh()
+			t.app.requestAmbientRefresh()
 		}
 	}
 }
