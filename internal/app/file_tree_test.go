@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/egoist/mygo/ui"
+
 	"lazygitapp/internal/repository"
 )
 
@@ -193,6 +195,34 @@ func TestFileTreeFlatRowsKeepRealDirectoriesButNotTheSyntheticRoot(t *testing.T)
 	rows := buildFileTreeRowsWithDirectories([]string{"dir/file.txt"}, []string{"", "empty"}, false, nil, codeFileTreeScope)
 	if len(rows) != 2 || rows[0].path != "empty" || !rows[0].isDirectory() || rows[1].path != "dir/file.txt" {
 		t.Fatalf("flat Quick open rows = %+v", rows)
+	}
+}
+
+func TestFileTreeDirectoryRowBlankAreaTogglesFold(t *testing.T) {
+	a := newApp(fakeOpener{})
+	a.fileTreeCollapsed = map[string]bool{fileTreeCollapseKey(codeFileTreeScope, "dir"): false}
+	selected := 0
+	tester := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Width(300).Children(func() {
+			a.fileTreeDirectoryRow(c, codeFileTreeScope, fileTreeRow{
+				source: -1, path: "dir", name: "dir",
+			}, false, func() { selected++ }).FillWidth()
+		})
+	}, 320, 80)
+	tester.Frame()
+	text, ok := tester.Find("dir")
+	if !ok {
+		t.Fatal("directory row did not render")
+	}
+	// The right padding belongs to the directory item, outside the label's
+	// old nested button. Clicking it must fold the row as its chevron does.
+	tester.ClickAt(295, text.Y+text.H/2)
+	tester.Frame()
+	if !a.fileTreeCollapsed[fileTreeCollapseKey(codeFileTreeScope, "dir")] {
+		t.Fatal("clicking the directory row's blank area did not collapse it")
+	}
+	if selected != 1 {
+		t.Fatalf("blank-area click selected the row %d times, want 1", selected)
 	}
 }
 

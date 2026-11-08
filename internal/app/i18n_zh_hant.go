@@ -367,6 +367,7 @@ var zhHant = map[string]string{
 	"No files here":                 "此處沒有檔案",
 	"Line-by-line history (B)":      "逐行歷史 (B)",
 	"Blame":                         "追溯",
+	"Find file histories":           "尋找檔案歷史",
 	"Blame at HEAD":                 "在 HEAD 處追溯",
 	"Close blame":                   "關閉追溯",
 	"Loading blame…":                "正在載入追溯…",

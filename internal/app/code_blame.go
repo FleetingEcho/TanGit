@@ -30,6 +30,14 @@ type codeBlameHoverState struct {
 	token     uint64
 }
 
+// codeBlameHistoryTarget survives the asynchronous History, file-list and
+// diff reads needed to reveal one blamed source location.
+type codeBlameHistoryTarget struct {
+	hash string
+	path string
+	line int
+}
+
 func codeBlameAvailable(document *codeDocument) bool {
 	return document != nil && !document.readOnly && !document.binary &&
 		document.loadError == "" && document.state != nil && document.state.Buffer != nil
@@ -387,6 +395,14 @@ func (a *app) openCodeBlameCommitInHistory() {
 		return
 	}
 	hash := hover.blame.Hash
+	path := hover.blame.CommitPath
+	if path == "" {
+		path = hover.path
+	}
+	line := hover.blame.CommitLine
+	if line < 1 {
+		line = hover.line
+	}
 	a.closeCodeBlameDetails()
 	query := a.commitQueryFor(sectionHistory)
 	query.applied = repository.CommitFilter{Query: hash}
@@ -399,5 +415,6 @@ func (a *app) openCodeBlameCommitInHistory() {
 	a.setWorkspaceTab(sectionHistory)
 	a.selectedCommit = -1
 	a.resetCommitDetails()
+	a.codeBlameHistoryTarget = &codeBlameHistoryTarget{hash: hash, path: path, line: line}
 	a.runCommitFilter(sectionHistory, hash)
 }
