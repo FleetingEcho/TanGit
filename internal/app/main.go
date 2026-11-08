@@ -1038,7 +1038,37 @@ func openAppWindow(opener repositoryOpener, path string) {
 	s.invalidate = win.Invalidate
 	watchUpdater(s)
 	mainWindow = win
-	win.OnClose(hideOnClose)
+	allowClose := false
+	win.OnClose(func(e *mygo.CloseEvent) {
+		if hideOnCloseEnabled() {
+			hideOnClose(e)
+			return
+		}
+		if allowClose {
+			allowClose = false
+			return
+		}
+		dirty := false
+		for _, page := range s.tabs {
+			dirty = dirty || len(page.app.dirtyCodePaths()) > 0
+		}
+		if !dirty {
+			return
+		}
+		e.PreventDefault()
+		wasQuitting := quitting
+		quitting = false
+		win.Show()
+		win.Focus()
+		s.confirmCodeTabs(append([]*tab(nil), s.tabs...), func() {
+			allowClose = true
+			if wasQuitting {
+				mygo.App.Quit()
+			} else {
+				win.Close()
+			}
+		})
+	})
 	win.OnClosed(s.shutdown)
 	// A window shown, focused or restored reads its repositories again, so
 	// what another app changed while TanGit was hidden appears without an

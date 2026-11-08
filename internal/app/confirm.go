@@ -9,12 +9,14 @@ import (
 // confirmRequest is a question an operation asks before it runs:
 // what it is about to do, why, and the label of the button that does it.
 type confirmRequest struct {
-	title        string
-	message      string
-	detail       string
-	confirmLabel string
-	destructive  bool
-	run          func()
+	title            string
+	message          string
+	detail           string
+	confirmLabel     string
+	alternativeLabel string
+	alternative      func()
+	destructive      bool
+	run              func()
 }
 
 // askConfirm opens the app's own confirmation dialog. It replaces the
@@ -32,6 +34,7 @@ func (a *app) askConfirm(request confirmRequest) {
 	request.detail = tr(request.detail)
 	request.confirmLabel = tr(request.confirmLabel)
 	run := request.run
+	alternative := request.alternative
 	generation, root, branch := a.generation, a.snapshot.Root, a.snapshot.Branch
 	request.run = func() {
 		if a.generation != generation || a.snapshot.Root != root || a.snapshot.Branch != branch {
@@ -41,6 +44,12 @@ func (a *app) askConfirm(request confirmRequest) {
 			run()
 		}
 	}
+	request.alternative = func() {
+		if a.generation == generation && a.snapshot.Root == root && a.snapshot.Branch == branch && alternative != nil {
+			alternative()
+		}
+	}
+	request.alternativeLabel = tr(request.alternativeLabel)
 	a.confirm = &request
 }
 
@@ -99,6 +108,10 @@ func (a *app) confirmModal(c *ui.Context) {
 					ui.Row(c).Justify(ui.End).Gap(8).Padding(4, 0).Children(func() {
 						if ui.Button(c, tr("Cancel")).Clicked() {
 							a.cancelConfirm()
+						}
+						if request.alternativeLabel != "" && ui.Button(c, request.alternativeLabel).Clicked() {
+							a.confirm = nil
+							request.alternative()
 						}
 						button := ui.Button(c, request.confirmLabel)
 						if request.destructive {

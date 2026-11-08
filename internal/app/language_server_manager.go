@@ -2,18 +2,22 @@ package app
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/egoist/mygo/ui/editor"
 )
 
 type managedLanguageServer struct {
-	profile    languageServerProfile
-	connection languageServerConnection
-	starting   bool
-	sequence   uint64
-	error      string
-	documents  map[string]uint64
+	profile      languageServerProfile
+	connection   languageServerConnection
+	starting     bool
+	sequence     uint64
+	error        string
+	documents    map[string]uint64
+	workspaceKey string
 }
 
 func (a *app) syncAdditionalLanguageServers() {
@@ -52,6 +56,25 @@ func (a *app) syncAdditionalLanguageServers() {
 			server = &managedLanguageServer{profile: profile}
 			a.additionalLanguageServers[id] = server
 		}
+		if id == "rust" {
+			var inputs []string
+			for path := range documents {
+				inputs = append(inputs, path)
+			}
+			for _, path := range a.code.files {
+				if filepath.Base(path) == "Cargo.toml" || filepath.Base(path) == "rust-project.json" {
+					inputs = append(inputs, path)
+				}
+			}
+			sort.Strings(inputs)
+			key := strings.Join(inputs, "\x00")
+			if key != server.workspaceKey {
+				if server.workspaceKey != "" {
+					a.stopManagedLanguageServer(server)
+				}
+				server.workspaceKey = key
+			}
+		}
 		if server.connection == nil {
 			if !server.starting && server.error == "" {
 				a.startManagedLanguageServer(server)
@@ -72,6 +95,14 @@ func (a *app) syncAdditionalLanguageServers() {
 
 func (a *app) startManagedLanguageServer(server *managedLanguageServer) {
 	program, arguments := languageServerProgram(a.settings.LanguageServers, server.profile)
+	id, dataDir := server.profile.ID, a.dataDir()
+	workspaceFiles := append([]string(nil), a.code.files...)
+	var openFiles []string
+	for path := range a.code.documents {
+		if _, matches := languageServerProfileForPath(server.profile, path); matches {
+			openFiles = append(openFiles, path)
+		}
+	}
 	server.sequence++
 	sequence := server.sequence
 	server.starting = true
@@ -84,6 +115,10 @@ func (a *app) startManagedLanguageServer(server *managedLanguageServer) {
 	}
 	go func() {
 		defer a.recoverBackground()
+		launch.InitializationOptions = languageServerInitializationOptions(id, dataDir)
+		if id == "rust" {
+			launch.InitializationOptions = rustLanguageServerInitializationOptions(launch.Root, workspaceFiles, openFiles)
+		}
 		connection, err := connectLanguageServer(launch)
 		a.update(func() {
 			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence || a.snapshot.Root != launch.Root {
@@ -102,6 +137,77 @@ func (a *app) startManagedLanguageServer(server *managedLanguageServer) {
 			a.watchManagedLanguageServer(server, connection, sequence)
 		})
 	}()
+}
+
+// Git roots often contain nested Cargo projects (for example src-tauri).
+// Link those manifests explicitly, and treat loose Rust files as standalone
+// projects instead of asking rust-analyzer to discover a nonexistent workspace.
+func rustLanguageServerInitializationOptions(root string, files, openFiles []string) map[string]any {
+	projects := make(map[string]bool)
+	addManifest := func(relative string) bool {
+		full := filepath.Join(root, filepath.FromSlash(relative))
+		if info, err := os.Stat(full); err == nil && info.Mode().IsRegular() {
+			projects[full] = true
+			return true
+		}
+		return false
+	}
+	// A root workspace owns its members; avoid loading it once per crate.
+	rootProject := addManifest("Cargo.toml") || addManifest("rust-project.json")
+	if !rootProject {
+		for _, file := range files {
+			if validCodeRelativePath(file) && (filepath.Base(file) == "Cargo.toml" || filepath.Base(file) == "rust-project.json") {
+				addManifest(file)
+			}
+		}
+		for _, file := range openFiles {
+			if !validCodeRelativePath(file) {
+				continue
+			}
+			found := false
+			for directory := filepath.Dir(filepath.FromSlash(file)); directory != "."; directory = filepath.Dir(directory) {
+				if addManifest(filepath.Join(directory, "Cargo.toml")) || addManifest(filepath.Join(directory, "rust-project.json")) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				projects[filepath.Join(root, filepath.FromSlash(file))] = true
+			}
+		}
+	}
+	onlyStandalone := true
+	for project := range projects {
+		if filepath.Ext(project) != ".rs" {
+			onlyStandalone = false
+		}
+	}
+	linked := make([]string, 0, len(projects))
+	for project := range projects {
+		linked = append(linked, project)
+	}
+	sort.Strings(linked)
+	options := map[string]any{"linkedProjects": linked}
+	// Cargo's single-file check requires nightly; keep ordinary loose files
+	// usable on stable Rust while retaining semantic editor features.
+	if onlyStandalone {
+		options["checkOnSave"] = false
+	}
+	return options
+}
+
+// The managed TypeScript package lives outside the workspace. Supply it as a
+// fallback so the server still prefers the repository's own TypeScript version.
+// Resolve this at startup, including for installations saved by older versions.
+func languageServerInitializationOptions(id, dataDir string) map[string]any {
+	if id != "typescript" || dataDir == "" {
+		return nil
+	}
+	path := filepath.Join(dataDir, "tools", "node", "node_modules", "typescript", "lib", "tsserver.js")
+	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
+		return nil
+	}
+	return map[string]any{"tsserver": map[string]any{"fallbackPath": path}}
 }
 
 func (a *app) watchManagedLanguageServer(server *managedLanguageServer, connection languageServerConnection, sequence uint64) {
@@ -274,7 +380,11 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence {
 				return
 			}
-			server.error = strings.TrimSpace(message.Message)
+			detail := strings.TrimSpace(message.Message)
+			if detail == server.error {
+				return
+			}
+			server.error = detail
 			a.notify("error", server.profile.Name+" cannot analyze this workspace", server.error)
 		})
 		return

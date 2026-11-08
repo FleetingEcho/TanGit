@@ -857,7 +857,7 @@ func (a *app) closeRepository() {
 		a.closeTab()
 		return
 	}
-	a.shutdown()
+	a.confirmCodeChanges(a.dirtyCodePaths(), a.shutdown)
 }
 
 // shutdown releases everything the open repository held, leaving the app on

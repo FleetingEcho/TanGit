@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -174,7 +176,8 @@ func TestRealManagedTypeScriptInstall(t *testing.T) {
 	if !ok {
 		t.Fatal("TypeScript language-server profile is missing")
 	}
-	installation, err := installLanguageServerTool(profile, t.TempDir())
+	dataDir := t.TempDir()
+	installation, err := installLanguageServerTool(profile, dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,6 +194,42 @@ func TestRealManagedTypeScriptInstall(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(output)) == "" {
 		t.Fatalf("managed TypeScript server version = %q, %v", output, err)
 	}
+
+	// A version probe succeeds even when the server cannot locate TypeScript.
+	// Use a workspace without node_modules to exercise the managed fallback.
+	root := t.TempDir()
+	path := filepath.Join(root, "main.ts")
+	source := "const answer: number = 42;\nanswer;\n"
+	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	connection, err := connectStdioLanguageServer(languageServerLaunch{
+		Program: installation.Path, Arguments: installation.Arguments, Root: root,
+		InitializationOptions: languageServerInitializationOptions(profile.ID, dataDir),
+	})
+	if err != nil {
+		t.Fatalf("initialize managed TypeScript in a workspace without TypeScript: %v", err)
+	}
+	defer connection.Close()
+	connection.DidOpen(languageServerFileURI(path), "typescript", source, 1)
+	type hoverResult struct {
+		raw json.RawMessage
+		err error
+	}
+	result := make(chan hoverResult, 1)
+	connection.Request("textDocument/hover", map[string]any{
+		"textDocument": map[string]string{"uri": languageServerFileURI(path)},
+		"position":     map[string]int{"line": 1, "character": 2},
+	}, func(raw json.RawMessage, err error) { result <- hoverResult{raw, err} })
+	select {
+	case response := <-result:
+		if response.err != nil || !strings.Contains(string(response.raw), "number") {
+			t.Fatalf("TypeScript hover = %s, %v", response.raw, response.err)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("TypeScript hover timed out")
+	}
+
 }
 
 func hasToastTitle(toasts []appToast, title string) bool {
@@ -200,4 +239,56 @@ func hasToastTitle(toasts []appToast, title string) bool {
 		}
 	}
 	return false
+}
+
+func TestTypeScriptInstallerPinsCompatibleCompilerAndChecksItsServer(t *testing.T) {
+	binDir := t.TempDir()
+	for _, name := range []string{"node", "npm"} {
+		if err := os.WriteFile(filepath.Join(binDir, executableName(name)), []byte("unused"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", binDir)
+	original := runLanguageServerInstallCommand
+	t.Cleanup(func() { runLanguageServerInstallCommand = original })
+	for _, withServer := range []bool{false, true} {
+		t.Run(fmt.Sprint("tsserver=", withServer), func(t *testing.T) {
+			dataDir := t.TempDir()
+			prefix := filepath.Join(dataDir, "tools", "node")
+			runLanguageServerInstallCommand = func(_ context.Context, _ string, arguments, _ []string) ([]byte, error) {
+				want := []string{"install", "--no-audit", "--no-fund", "--prefix", prefix, "typescript-language-server@latest", "typescript@6"}
+				if !reflect.DeepEqual(arguments, want) {
+					t.Errorf("npm arguments = %q, want %q", arguments, want)
+				}
+				serverDir := filepath.Join(prefix, "node_modules", "typescript-language-server")
+				if err := os.MkdirAll(serverDir, 0o755); err != nil {
+					return nil, err
+				}
+				if err := os.WriteFile(filepath.Join(serverDir, "package.json"), []byte(`{"bin":"cli.mjs"}`), 0o644); err != nil {
+					return nil, err
+				}
+				if err := os.WriteFile(filepath.Join(serverDir, "cli.mjs"), nil, 0o644); err != nil {
+					return nil, err
+				}
+				if withServer {
+					tsDir := filepath.Join(prefix, "node_modules", "typescript", "lib")
+					if err := os.MkdirAll(tsDir, 0o755); err != nil {
+						return nil, err
+					}
+					if err := os.WriteFile(filepath.Join(tsDir, "tsserver.js"), nil, 0o644); err != nil {
+						return nil, err
+					}
+				}
+				return nil, nil
+			}
+			profile, _ := languageServerProfileByID("typescript")
+			_, err := installLanguageServerTool(profile, dataDir)
+			if withServer && err != nil {
+				t.Fatal(err)
+			}
+			if !withServer && (err == nil || !strings.Contains(err.Error(), "tsserver.js")) {
+				t.Fatalf("missing tsserver error = %v", err)
+			}
+		})
+	}
 }
