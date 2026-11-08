@@ -585,6 +585,11 @@ func TestGoLanguageServerReportsWorkspaceErrors(t *testing.T) {
 	if h.tester.HasText("gopls issue") || !h.tester.HasText("gopls cannot analyze this workspace") {
 		t.Fatalf("workspace error notification changed: %q", h.texts())
 	}
+	// The error toast occupies the same top-right corner as the status icon.
+	// Dismiss it before hovering the control, as a user would.
+	if err := h.tester.Click("Dismiss notification"); err != nil {
+		t.Fatal(err)
+	}
 	button, ok := h.tester.Find("Language servers")
 	if !ok {
 		t.Fatal("the workspace error has no language-server status icon")

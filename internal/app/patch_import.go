@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"os"
+
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
@@ -23,12 +25,13 @@ func (a *app) beginPatchImport() {
 	a.patchPreviewToken++
 	token := a.patchPreviewToken
 	generation := a.generation
+	remote := a.location.IsRemote()
 	session := a.session
 	parent := a.window
 	options := mygo.OpenDialogOptions{
 		Parent:      parent,
 		Title:       tr("Open patch"),
-		DefaultPath: a.snapshot.Root,
+		DefaultPath: a.patchDialogDefaultPath(""),
 		ButtonLabel: tr("Preview patch"),
 		Filters: []mygo.FileFilter{
 			{Name: tr("Patch files"), Extensions: []string{"patch", "diff"}},
@@ -57,7 +60,17 @@ func (a *app) beginPatchImport() {
 			return
 		}
 
-		preview, previewErr := session.PreviewPatch(context.Background(), paths[0])
+		var preview repository.PatchPreview
+		var previewErr error
+		if remote {
+			var data []byte
+			data, previewErr = os.ReadFile(paths[0])
+			if previewErr == nil {
+				preview, previewErr = session.PreviewPatchText(context.Background(), string(data))
+			}
+		} else {
+			preview, previewErr = session.PreviewPatch(context.Background(), paths[0])
+		}
 		a.update(func() {
 			if token != a.patchPreviewToken || generation != a.generation {
 				return

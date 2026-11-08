@@ -121,6 +121,11 @@ func (a *app) stopGoLanguageServer() {
 }
 
 func (a *app) syncGoLanguageServer() {
+	if a.location.IsRemote() {
+		a.stopGoLanguageServer()
+		a.stopAdditionalLanguageServers()
+		return
+	}
 	a.syncAdditionalLanguageServers()
 	if a.settingsOpen {
 		return

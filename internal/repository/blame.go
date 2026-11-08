@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -64,11 +63,11 @@ func (s *gitSession) BlameWorkingTreeFile(ctx context.Context, path string) ([]B
 	if _, headErr := s.cmd.New([]string{"git", "cat-file", "-e", "HEAD:" + path}).DontLog().RunWithOutput(); headErr == nil {
 		return nil, err
 	}
-	filename, pathErr := worktreeFilePath(s.git.RepoPaths.WorktreePath(), filepath.FromSlash(path))
+	filename, pathErr := s.worktreeFilePath(s.git.RepoPaths.WorktreePath(), filepath.FromSlash(path))
 	if pathErr != nil {
 		return nil, pathErr
 	}
-	content, readErr := os.ReadFile(filename)
+	content, readErr := s.fileService().ReadFile(filename)
 	if readErr != nil {
 		return nil, err
 	}

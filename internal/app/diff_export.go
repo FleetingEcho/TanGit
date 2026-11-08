@@ -16,6 +16,18 @@ var chooseSavePath = func(opts mygo.SaveDialogOptions) (string, error) {
 	return mygo.Dialog.Save(opts)
 }
 
+// patchDialogDefaultPath is always local. A remote POSIX repository root must
+// never be handed to the desktop's native file chooser.
+func (a *app) patchDialogDefaultPath(name string) string {
+	if a.location.IsRemote() {
+		return name
+	}
+	if name == "" {
+		return a.snapshot.Root
+	}
+	return filepath.Join(a.snapshot.Root, name)
+}
+
 // exportDiffButton saves the diff on screen to a file: the patch as Git
 // printed it, so it can be kept, sent, or applied elsewhere. It is disabled
 // while the pane shows no diff.
@@ -36,7 +48,7 @@ func (a *app) exportDiff() {
 	opts := mygo.SaveDialogOptions{
 		Parent:      a.window,
 		Title:       tr("Save diff"),
-		DefaultPath: filepath.Join(a.snapshot.Root, diffFileName(shown)),
+		DefaultPath: a.patchDialogDefaultPath(diffFileName(shown)),
 		ButtonLabel: tr("Save"),
 		Filters: []mygo.FileFilter{
 			{Name: tr("Patch files"), Extensions: []string{"patch", "diff"}},
@@ -66,7 +78,7 @@ func (a *app) exportCompareDiff() {
 	opts := mygo.SaveDialogOptions{
 		Parent:      a.window,
 		Title:       tr("Save comparison diff"),
-		DefaultPath: filepath.Join(a.snapshot.Root, "comparison.patch"),
+		DefaultPath: a.patchDialogDefaultPath("comparison.patch"),
 		ButtonLabel: tr("Save"),
 		Filters: []mygo.FileFilter{
 			{Name: tr("Patch files"), Extensions: []string{"patch", "diff"}},

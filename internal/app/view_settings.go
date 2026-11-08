@@ -23,6 +23,7 @@ const (
 	settingsPageEditor
 	settingsPageWorkspace
 	settingsPageUpdates
+	settingsPageSSHProfiles
 )
 
 func (a *app) openSettings() {
@@ -66,6 +67,7 @@ func (a *app) themeMenuItems(m *ui.Menu, c *ui.Context) {
 func (a *app) closeSettings() {
 	a.settingsOpen = false
 	a.closeCustomEditorForm()
+	a.closeSSHProfileForm()
 	a.saveSettings()
 }
 
@@ -176,6 +178,7 @@ func (a *app) settingsBody(c *ui.Context) {
 				a.settingsPageButton(c, settingsPageBehavior, commitIcon, "Behavior")
 				a.settingsPageButton(c, settingsPageEditor, fileCodeIcon, "Editor")
 				a.settingsPageButton(c, settingsPageWorkspace, worktreesIcon, "Workspace")
+				a.settingsPageButton(c, settingsPageSSHProfiles, remotesIcon, "SSH profiles")
 				a.settingsPageButton(c, settingsPageUpdates, updateIcon, "Updates")
 			})
 		ui.Box(c).Width(1).Background(theme.Border)
@@ -190,6 +193,8 @@ func (a *app) settingsBody(c *ui.Context) {
 					a.editorSettings(c)
 				case settingsPageWorkspace:
 					a.workspaceSettings(c)
+				case settingsPageSSHProfiles:
+					a.sshProfileSettings(c)
 				case settingsPageUpdates:
 					settingsSection(c, func() { a.updatesSettings(c) })
 				default:
@@ -824,6 +829,8 @@ func (a *app) settingsFooter(c *ui.Context) {
 		if ui.Button(c, tr("Reset to defaults")).Tooltip(tr("Restore every setting")).
 			Clicked() {
 			a.invalidateHomeBackgroundWork()
+			a.clearSSHProfileSecrets()
+			a.closeSSHProfileForm()
 			a.settings = defaultSettings()
 			a.loadGoLanguageServerDraft()
 			a.applySettingsChange()

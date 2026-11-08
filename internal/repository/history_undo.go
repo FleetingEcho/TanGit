@@ -71,7 +71,7 @@ func (s *gitSession) replayReflog(ctx context.Context, redo bool) error {
 	if redo {
 		verb = "redo"
 	}
-	if state := s.git.Status.WorkingTreeState(); state.Any() {
+	if state := s.workingTreeState(); state.Any() {
 		return fmt.Errorf("cannot %s while a %s is in progress", verb, state.Effective().CommandName())
 	}
 
@@ -241,8 +241,11 @@ func (s *gitSession) resetForReflogReplay(ref string, mode ResetMode, marker str
 }
 
 func (s *gitSession) hasTrackedChangesExceptSubmodules() (bool, error) {
-	files := s.git.Loaders.FileLoader.GetStatusFiles(git_commands.GetStatusFileOptions{})
-	configs, err := s.git.Submodule.GetConfigs(nil)
+	files, err := s.statusFiles(git_commands.GetStatusFileOptions{})
+	if err != nil {
+		return false, err
+	}
+	configs, err := s.submoduleConfigs(nil)
 	if err != nil {
 		return false, err
 	}

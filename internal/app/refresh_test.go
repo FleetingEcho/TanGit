@@ -510,9 +510,10 @@ func TestAQuietRefreshQueuesAnEventThatArrivesWhileReading(t *testing.T) {
 		t.Fatal("a refresh requested during a read was discarded")
 	}
 	close(session.release)
-	drainRefresh(t, updated, 2)
-	if a.refreshBusy || a.refreshPending {
-		t.Fatalf("the queued refresh did not finish: busy=%v pending=%v", a.refreshBusy, a.refreshPending)
+	// Other window updates can share the queue with the two snapshot results.
+	// Drain to quiescence rather than assuming one UI callback per Git read.
+	for a.refreshBusy || a.refreshPending {
+		updated.waitForUpdate(t)
 	}
 	if got := atomic.LoadInt32(&session.hits); got != 2 {
 		t.Fatalf("an event during a read caused %d reads, want 2", got)

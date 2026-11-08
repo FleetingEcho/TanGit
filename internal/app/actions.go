@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 
 	"lazygitapp/internal/repository"
+	"lazygitapp/internal/workspace"
 )
 
 func (a *app) beginOpen() {
@@ -30,6 +31,15 @@ func (a *app) beginOpen() {
 
 	if a.cancelOpen != nil {
 		a.cancelOpen()
+	}
+	// Opening another location transfers ownership away from the old session.
+	// Remote implementations use Close to cancel I/O and release SSH channels.
+	closeRepositorySession(a.session)
+	a.session = nil
+	if location, err := workspace.Parse(path); err == nil {
+		a.location = location
+	} else {
+		a.location = workspace.Location{}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -57,12 +67,16 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 	}
 	progressive, ok := session.(repository.ProgressiveSession)
 	if !ok {
-		snapshot, err := session.Snapshot(ctx)
+		snapshot, err := readBeforeInstall(session, func() (repository.Snapshot, error) {
+			return session.Snapshot(ctx)
+		})
 		a.update(func() {
 			if generation != a.generation {
+				closeRepositorySession(session)
 				return
 			}
 			if err != nil {
+				closeRepositorySession(session)
 				a.setOpenError(path, generation, err)
 				return
 			}
@@ -72,14 +86,18 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 		return
 	}
 
-	core, coreErr := progressive.CoreSnapshot(ctx)
+	core, coreErr := readBeforeInstall(session, func() (repository.Snapshot, error) {
+		return progressive.CoreSnapshot(ctx)
+	})
 	coreReady := make(chan uint64, 1)
 	a.update(func() {
 		if generation != a.generation {
+			closeRepositorySession(session)
 			coreReady <- 0
 			return
 		}
 		if coreErr != nil {
+			closeRepositorySession(session)
 			a.setOpenError(path, generation, coreErr)
 			coreReady <- 0
 			return
@@ -165,8 +183,9 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 	a.snapshot = snapshot
 	a.snapshotSeq++
 	a.repositoryDetailsLoading = false
-	a.path = snapshot.Root
-	a.rememberOpened(snapshot.Root)
+	a.location = openedLocation(session, snapshot, a.path)
+	a.path = a.location.String()
+	a.rememberOpened(a.path)
 	a.resetRepositoryState(snapshot)
 	a.startRepositoryWatch(session)
 	a.refreshWindowTitle()
@@ -175,6 +194,7 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 // resetRepositoryState clears everything a frame would read from the
 // repository that was open before, so a new one starts with its own choices.
 func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
+	a.shutdownLocalTransfers()
 	// The first frame of the Changes section chooses its first file and
 	// reads its diff, so nothing here reads the old repository's rows.
 	a.changeRows = nil
@@ -789,10 +809,16 @@ var chooseRepositoryFolder = func(options mygo.OpenDialogOptions) ([]string, err
 
 func (a *app) browse() {
 	generation := a.generation
+	defaultPath := a.path
+	if a.location.IsRemote() {
+		defaultPath = ""
+	} else if location, err := workspace.Parse(defaultPath); err == nil && location.IsRemote() {
+		defaultPath = ""
+	}
 	options := mygo.OpenDialogOptions{
 		Parent:      a.window,
 		Title:       "Open Git Repository",
-		DefaultPath: a.path,
+		DefaultPath: defaultPath,
 		ButtonLabel: "Open",
 		Directory:   true,
 	}
@@ -877,10 +903,54 @@ func (a *app) chooseAnotherFolder() {
 // is closing the page, and on its own it leaves the picker in place.
 func (a *app) closeRepository() {
 	if a.closeTab != nil {
+		// The shell performs the same preparation immediately before removing
+		// the tab. Keeping its confirmation flow here avoids prompting twice.
 		a.closeTab()
 		return
 	}
-	a.confirmCodeChanges(a.dirtyCodePaths(), a.shutdown)
+	a.confirmCodeChanges(a.dirtyCodePaths(), func() {
+		a.prepareShutdown(func(ok bool) {
+			if ok {
+				a.shutdown()
+			}
+		})
+	})
+}
+
+// prepareShutdown flushes local editors synchronously. For SSH it leaves the
+// workspace and session untouched until every dirty or in-flight Changes-pane
+// save has completed, then reports whether closing may proceed. Concurrent
+// callers join the same save rather than starting duplicate writes.
+func (a *app) prepareShutdown(done func(bool)) {
+	if done == nil {
+		done = func(bool) {}
+	}
+	preparation := &a.code.shutdown
+	if preparation.running {
+		preparation.callbacks = append(preparation.callbacks, done)
+		return
+	}
+
+	// Home/profile operations and their callbacks belong to this page too.
+	// They are independent of the repository save and can be retired now.
+	a.closeSSHWorkspacePicker()
+	a.respondSSHHostKey(false)
+	if !a.location.IsRemote() {
+		a.flushEdits()
+		done(true)
+		return
+	}
+
+	preparation.running = true
+	preparation.callbacks = append(preparation.callbacks, done)
+	a.saveRemoteFileEditsWithClient(a.code.remoteFileEdit.client, func(ok bool) {
+		preparation.running = false
+		callbacks := preparation.callbacks
+		preparation.callbacks = nil
+		for _, callback := range callbacks {
+			callback(ok)
+		}
+	})
 }
 
 // shutdown releases everything the open repository held, leaving the app on
@@ -907,7 +977,9 @@ func (a *app) shutdown() {
 	a.branchFullscreen = false
 	a.closeAllForms()
 	a.resetRepositoryState(repository.Snapshot{})
+	closeRepositorySession(a.session)
 	a.session = nil
+	a.location = workspace.Location{}
 	a.commandLog = nil
 	a.commandLogOpen = false
 	a.confirm = nil

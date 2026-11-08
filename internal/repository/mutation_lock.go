@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"path"
 	"path/filepath"
 	"sync"
 )
@@ -12,8 +13,16 @@ import (
 // and, for branch deletion, the expected-old-value ref update.
 var worktreeMutationLocks sync.Map
 
+func (s *gitSession) repositoryIdentity() string {
+	root := filepath.Clean(s.git.RepoPaths.WorktreePath())
+	if s.sshClient == nil {
+		return root
+	}
+	return "ssh\x00" + s.location.ProfileID + "\x00" + path.Clean(s.git.RepoPaths.WorktreePath())
+}
+
 func (s *gitSession) lockWorktreeMutation() func() {
-	key := filepath.Clean(s.git.RepoPaths.WorktreePath())
+	key := s.repositoryIdentity()
 	value, _ := worktreeMutationLocks.LoadOrStore(key, &sync.Mutex{})
 	mutex := value.(*sync.Mutex)
 	mutex.Lock()

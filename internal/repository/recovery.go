@@ -98,7 +98,7 @@ func (s *gitSession) captureWorkSnapshotWithIgnored(ctx context.Context, kind, n
 	}
 	ref, err := workSnapshotRef(kind, hash)
 	if err != nil {
-		return WorkSnapshot{}, err
+		return WorkSnapshot{}, fmt.Errorf("prepare recovery ref for %q: %w", hash, err)
 	}
 	output, err := s.cmd.New([]string{"git", "update-ref", "-m", name, ref, hash}).RunWithOutput()
 	if err != nil {
@@ -218,27 +218,19 @@ func (s *gitSession) addUntrackedSnapshotParent(hash, name, listing string) (str
 	if listing == "" {
 		return hash, nil
 	}
-	index, err := os.CreateTemp("", "tangit-recovery-index-")
+	indexName, removeIndex, err := s.temporaryFile("tangit-recovery-index-", nil, 0o600)
 	if err != nil {
 		return "", err
 	}
-	indexName := index.Name()
-	index.Close()
-	os.Remove(indexName)
-	defer os.Remove(indexName)
-	paths, err := os.CreateTemp("", "tangit-recovery-paths-")
+	defer removeIndex()
+	if err := s.fileService().Remove(indexName); err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+	pathsName, removePaths, err := s.temporaryFile("tangit-recovery-paths-", []byte(listing), 0o600)
 	if err != nil {
 		return "", err
 	}
-	pathsName := paths.Name()
-	defer os.Remove(pathsName)
-	if _, err := paths.WriteString(listing); err != nil {
-		paths.Close()
-		return "", err
-	}
-	if err := paths.Close(); err != nil {
-		return "", err
-	}
+	defer removePaths()
 	env := []string{"GIT_INDEX_FILE=" + indexName, "GIT_AUTHOR_NAME=TanGit", "GIT_AUTHOR_EMAIL=recovery@localhost", "GIT_COMMITTER_NAME=TanGit", "GIT_COMMITTER_EMAIL=recovery@localhost"}
 	output, err := s.cmd.New([]string{"git", "add", "--all", "--force", "--pathspec-from-file=" + pathsName, "--pathspec-file-nul"}).AddEnvVars(env...).RunWithOutput()
 	if err != nil {
