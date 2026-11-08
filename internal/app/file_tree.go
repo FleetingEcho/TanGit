@@ -223,9 +223,18 @@ func (a *app) fileTreeButtons(c *ui.Context, scope string, paths []string) {
 	if a.fileTreeMode {
 		label, tooltip = "Show files as a flat list", "Show every full file path"
 	}
-	iconButton(c, label, tooltip, folderIcon, false, func() {
-		a.fileTreeMode = !a.fileTreeMode
+	button := compactIconButton(ui.Button(c, "")).Label(tr(label)).Tooltip(tr(tooltip)).Checked(a.fileTreeMode)
+	color := c.Theme().Text
+	if a.fileTreeMode {
+		button.Background(c.Theme().Accent.Alpha(0.14))
+		color = c.Theme().Accent
+	}
+	button.Children(func() {
+		ui.Icon(c, folderIcon).FontSize(14).TextColor(color)
 	})
+	if button.Clicked() {
+		a.fileTreeMode = !a.fileTreeMode
+	}
 	if !a.fileTreeMode {
 		return
 	}

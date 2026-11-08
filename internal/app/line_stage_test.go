@@ -226,20 +226,32 @@ func TestSpaceStagesTheSelectedLines(t *testing.T) {
 func clickDiffLine(t *testing.T, h *harness, line editor.DiffLineRange) {
 	t.Helper()
 	h.app.diffState.SetSelectedLines(line, true)
-	h.app.extendLineSelection(h.app.diffState, line)
+	if h.app.diffState.OnLineSelection == nil {
+		t.Fatal("the diff has no line-selection callback")
+	}
+	h.app.diffState.OnLineSelection(line)
 	h.tester.Frame()
 }
 
-// Without the mode a click picks one line, as it always did.
-func TestPlainLineClickPicksOneLine(t *testing.T) {
+// The first click enters multiple-line mode and retains its line; subsequent
+// plain clicks add independent lines without selecting the gap between them.
+func TestPlainLineClickStartsMultipleSelection(t *testing.T) {
 	h, _ := changesTestApp(t, unstagedTrackedFile())
 	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
 	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1})
 	if got, ok := h.app.diffState.SelectedLines(); !ok || got != (editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1}) {
 		t.Fatalf("a click picked %+v, want one line", got)
 	}
-	if !h.tester.HasText("Select multiple lines") {
-		t.Fatalf("the pane offers no way into the multi-line mode: %q", h.texts())
+	if !h.app.lineSelectMode || !h.tester.HasText("Selecting multiple lines") {
+		t.Fatalf("the first click did not enter multiple-line mode: %q", h.texts())
+	}
+	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 3, End: 3})
+	if count, ok := h.app.selectedLineCount(); !ok || count != 2 {
+		t.Fatalf("two clicks selected %d lines, want 2", count)
+	}
+	h.tester.Frame()
+	if !h.tester.HasText("2 lines selected") {
+		t.Fatalf("the selection did not survive another frame: %q", h.texts())
 	}
 }
 
@@ -300,14 +312,8 @@ func TestMultipleLineModeSelectsOnlyTheChangedLinesClicked(t *testing.T) {
 	if got, _ := h.app.diffState.SelectedLines(); got != (editor.DiffLineRange{Side: editor.DiffNew, Start: 5, End: 5}) {
 		t.Fatalf("the native highlight spans the gap: %+v", got)
 	}
-	markers := 0
-	for _, annotation := range h.app.diffState.Annotations {
-		if _, ok := annotation.Key.(selectedLineMarker); ok {
-			markers++
-		}
-	}
-	if markers != 2 {
-		t.Fatalf("disjoint choices have %d individual markers, want 2", markers)
+	if h.tester.HasText("Selected line") || len(h.app.diffState.Annotations) != 0 {
+		t.Fatal("selecting separate lines added bottom borders to the diff")
 	}
 }
 
@@ -355,10 +361,6 @@ func TestCancelLeavesTheLineSelectionMode(t *testing.T) {
 		t.Run(leave.name, func(t *testing.T) {
 			h, _ := changesTestApp(t, unstagedTrackedFile())
 			h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
-			if err := h.tester.Click("Select multiple lines"); err != nil {
-				t.Fatalf("enter the multi-line mode: %v", err)
-			}
-			h.tester.Frame()
 			clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1})
 			leave.act(t, h)
 			h.tester.Frame()
@@ -390,27 +392,31 @@ func TestANewDiffLeavesTheLineSelectionMode(t *testing.T) {
 	}
 }
 
-// The mode works through the pane's own clicks, not just the app's bookkeeping:
-// the editor reports each click on a line number, and two clicks pick the two
-// lines between them.
-func TestClickingLineNumbersInTheModeExtendsTheRange(t *testing.T) {
+// Clicking line numbers enters the mode through the editor's input callbacks,
+// and the next click extends the selection without using the toolbar button.
+func TestClickingLineNumbersAutomaticallyEntersMultipleSelection(t *testing.T) {
 	h, _ := changesTestApp(t, unstagedTrackedFile())
 	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
-	if err := h.tester.Click("Select multiple lines"); err != nil {
-		t.Fatalf("enter the multi-line mode: %v", err)
-	}
 	h.tester.Frame()
-	caption, ok := h.tester.Find("Selecting multiple lines")
+	caption, ok := h.tester.Find("Click line numbers to select lines")
 	if !ok {
-		t.Fatalf("the line-selection mode caption is not on screen: %q", h.texts())
+		t.Fatalf("the line-selection hint is not on screen: %q", h.texts())
 	}
+	button, _ := h.tester.Find("Select multiple lines")
 	// The pane's rows: the column's gap, a row for the hunk's header, then a
-	// row a line, at the default theme's 20 points. The numbers are just left
-	// of the caption's text.
+	// row a line, at the default theme's 20 points. The line numbers align
+	// with the start of the selection toolbar.
 	row := func(i int) float32 { return caption.Y + caption.H + 10 + float32(i)*20 + 10 }
-	h.tester.ClickAt(caption.X+20, row(4)) // new-side line 1
+	h.tester.ClickAt(button.X+20, row(4)) // new-side line 1
 	h.tester.Frame()
-	h.tester.ClickAt(caption.X+20, row(5)) // new-side line 2
+	if !h.app.lineSelectMode || !h.tester.HasText("Selecting multiple lines") {
+		t.Fatalf("clicking a line number did not enter multiple-line mode: %q", h.texts())
+	}
+	diff, ok := h.tester.Find("Diff")
+	if !ok {
+		t.Fatal("the diff disappeared after selecting a line")
+	}
+	h.tester.ClickAt(diff.X+20, diff.Y+5*20+10) // new-side line 2
 	h.tester.Frame()
 	if got, ok := h.app.diffState.SelectedLines(); !ok ||
 		got != (editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 2}) {

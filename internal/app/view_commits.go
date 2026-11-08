@@ -12,27 +12,18 @@ import (
 // commitActionIcons is the action bar of a commit: copy its hash, reset the
 // branch to it, tag it, branch from it, or cherry-pick it. Every button has a
 // tooltip, so the glyphs are never a guess.
-func (a *app) commitActionIcons(c *ui.Context, commit repository.Commit, services ui.Services, compact bool) {
-	a.commitActionIconsWithHistory(c, commit, services, compact, true)
+func (a *app) commitActionIcons(c *ui.Context, commit repository.Commit, services ui.Services) {
+	a.commitActionIconsWithHistory(c, commit, services, true)
 }
 
 // commitActionIconsWithHistory hides operations that move or rewrite the
 // checked-out branch while the detail pane browses a different branch.
-func (a *app) commitActionIconsWithHistory(c *ui.Context, commit repository.Commit, services ui.Services, compact, historyEditable bool) {
-	size := float32(14)
-	if compact {
-		// The compact bar shares the subject's line, so it must not be
-		// taller than the line: a hover would grow the row.
-		size = rowActionIconSizeCompact(c.Theme())
-	}
+func (a *app) commitActionIconsWithHistory(c *ui.Context, commit repository.Commit, services ui.Services, historyEditable bool) {
 	button := func(label, tooltip string, icon *ui.SVG, disabled bool, run func()) {
 		b := ui.ButtonBase(c).Padding(3)
-		if compact {
-			b = b.Padding(2)
-		}
 		clicked := b.Label(tr(label)).Tooltip(tr(tooltip)).Disabled(disabled || a.actionBusy).Clicked()
 		b.Children(func() {
-			ui.Icon(c, icon).FontSize(size)
+			ui.Icon(c, icon).FontSize(14)
 		})
 		if clicked {
 			run()

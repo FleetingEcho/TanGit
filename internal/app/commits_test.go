@@ -422,8 +422,8 @@ func TestCommitRowMenuCreatesABranchAtTheCommit(t *testing.T) {
 	})
 }
 
-// Hovering a commit reveals its action bar on the subject's line, and that
-// must not change the height of the row or move the rows below it.
+// Hovering a commit keeps its subject stable and leaves its actions in the
+// detail pane, without adding a duplicate toolbar to the list row.
 func TestHoveringACommitRowKeepsItsHeight(t *testing.T) {
 	for _, fontSize := range []float64{9, 14} {
 		t.Run(fmt.Sprintf("font %g", fontSize), func(t *testing.T) {
@@ -442,8 +442,17 @@ func TestHoveringACommitRowKeepsItsHeight(t *testing.T) {
 			if hovered.H != row.H {
 				t.Fatalf("hovering grew the commit row from %v to %v", row.H, hovered.H)
 			}
-			if _, found := h.tester.Find("Copy commit hash"); !found {
-				t.Fatalf("the hovered row hides its actions: %q", h.texts())
+			if hovered.W != row.W {
+				t.Fatalf("hovering squeezed the commit subject from %v to %v", row.W, hovered.W)
+			}
+			count := 0
+			for _, text := range h.texts() {
+				if text == "Copy commit hash" {
+					count++
+				}
+			}
+			if count != 1 {
+				t.Fatalf("want only the detail pane's copy action, got %d", count)
 			}
 		})
 	}

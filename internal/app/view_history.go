@@ -330,25 +330,11 @@ func (a *app) historyView(c *ui.Context) {
 					commit := commits[row.Index]
 					services := row.Context.Services()
 					rowElement := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(7, 8)
-					reveal := rowElement.Hovered() || row.Selected()
 					rowElement.Children(func() {
 						a.commitSelectionCheckbox(row.Context, commit)
 						authorAvatar(row.Context, commit.AuthorName, commit.AuthorEmail, 18)
 						ui.Column(row.Context).Gap(2).Grow(1).Children(func() {
-							// The actions sit on the subject's line, at the row's
-							// right, so the metadata below keeps its full width.
-							subject := ui.Row(row.Context).Gap(6).AlignItems(ui.Center)
-							subject.Children(func() {
-								ui.Text(row.Context, commit.Subject).SingleLine().Grow(1)
-								// The actions show on the row the pointer is
-								// over, or the chosen one, so six glyphs do not
-								// crowd every row.
-								if reveal {
-									ui.Row(row.Context).Gap(1).AlignItems(ui.Center).Children(func() {
-										a.commitActionIcons(row.Context, commit, services, true)
-									})
-								}
-							})
+							ui.Text(row.Context, commit.Subject).SingleLine().Grow(1)
 							ui.Row(row.Context).Gap(8).Children(func() {
 								ui.Text(row.Context, commit.ShortHash).TextColor(secondaryRowColor(theme, row)).SingleLine()
 								ui.Text(row.Context, commit.AuthorName).TextColor(secondaryRowColor(theme, row)).SingleLine()
@@ -453,7 +439,7 @@ func (a *app) commitDetailPane(c *ui.Context) {
 	}
 	commit := commits[a.selectedCommit]
 	a.commitDetailCard(c, &commit, "Select a commit", func(c *ui.Context, commit repository.Commit) {
-		a.commitActionIcons(c, commit, c.Services(), false)
+		a.commitActionIcons(c, commit, c.Services())
 	})
 }
 
@@ -487,24 +473,23 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 			})
 			return
 		}
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Text(c, commit.Subject).FontSize(18).Bold().Grow(1).SingleLine().Tooltip(commit.Subject)
-			a.diffViewOptions(c)
-		})
+		ui.Text(c, commit.Subject).FontSize(18).Bold().SingleLine().Tooltip(commit.Subject)
 		if actionIcons != nil {
-			ui.Row(c).AlignItems(ui.Center).Gap(1).Children(func() { actionIcons(c, *commit) })
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(4).Wrap().Children(func() { actionIcons(c, *commit) })
 		}
-		ui.Text(c, commit.Hash).TextColor(theme.TextMuted).Selectable()
+		a.diffViewOptions(c)
+		ui.Text(c, commit.Hash).TextColor(theme.TextMuted).SingleLine().Tooltip(commit.Hash).Selectable()
 		if commit.AuthorName != "" || commit.AuthorEmail != "" {
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				authorAvatar(c, commit.AuthorName, commit.AuthorEmail, 24)
 				switch {
 				case commit.AuthorName == "":
-					ui.Text(c, commit.AuthorEmail).Grow(1)
+					ui.Text(c, commit.AuthorEmail).Grow(1).SingleLine().Tooltip(commit.AuthorEmail)
 				case commit.AuthorEmail == "":
-					ui.Text(c, commit.AuthorName).Grow(1)
+					ui.Text(c, commit.AuthorName).Grow(1).SingleLine().Tooltip(commit.AuthorName)
 				default:
-					ui.Textf(c, "%s <%s>", commit.AuthorName, commit.AuthorEmail).Grow(1)
+					ui.Textf(c, "%s <%s>", commit.AuthorName, commit.AuthorEmail).Grow(1).SingleLine().
+						Tooltip(fmt.Sprintf("%s <%s>", commit.AuthorName, commit.AuthorEmail))
 				}
 			})
 		}

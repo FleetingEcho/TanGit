@@ -1072,18 +1072,19 @@ func TestLaunchPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	absolute := filepath.Join(cwd, "absolute repository")
 	cases := []struct {
 		args []string
 		want string
 	}{
 		{nil, ""},
-		{[]string{"/tmp/repo"}, "/tmp/repo"},
+		{[]string{absolute}, absolute},
 		{[]string{"./"}, cwd},
 		{[]string{"./work/repo"}, filepath.Join(cwd, "work", "repo")},
 		{[]string{"./repository with spaces"}, filepath.Join(cwd, "repository with spaces")},
 		{[]string{"-psn_0_12345"}, ""},
-		{[]string{"-psn_0_12345", "/tmp/repo"}, "/tmp/repo"},
-		{[]string{"", "/tmp/repo"}, "/tmp/repo"},
+		{[]string{"-psn_0_12345", absolute}, absolute},
+		{[]string{"", absolute}, absolute},
 	}
 	for _, tt := range cases {
 		if got := launchPath(tt.args); got != tt.want {

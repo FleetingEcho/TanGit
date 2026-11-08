@@ -556,7 +556,6 @@ func (a *app) selectKeyboardDiffLines(state *editor.DiffState, delta int, extend
 	state.SetSelectedLines(selected, true)
 	a.lineSelectRanges = []editor.DiffLineRange{selected}
 	a.lineSelectRange, a.lineSelectHas = selected, true
-	a.syncLineSelectionMarkers()
 }
 
 func (a *app) keyboardToggleDirectory(id string) bool {

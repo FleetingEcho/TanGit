@@ -131,7 +131,6 @@ func (a *app) stopLineSelection() {
 	if a.diffState != nil {
 		a.diffState.SetSelectedLines(editor.DiffLineRange{}, false)
 	}
-	a.syncLineSelectionMarkers()
 }
 
 // syncLineSelection preserves independent selections across frames. The native
@@ -139,7 +138,6 @@ func (a *app) stopLineSelection() {
 func (a *app) syncLineSelection() {
 	if !a.lineSelectMode || a.diffState == nil {
 		a.clearMultipleLineSelection()
-		a.syncLineSelectionMarkers()
 		return
 	}
 	if len(a.lineSelectRanges) == 0 {
@@ -148,7 +146,6 @@ func (a *app) syncLineSelection() {
 			a.lineSelectRange, a.lineSelectHas = selection, true
 		}
 	}
-	a.syncLineSelectionMarkers()
 }
 
 // mergeLineSelections coalesces adjacent clicks into one range while retaining
@@ -182,65 +179,25 @@ func mergeLineSelections(ranges []editor.DiffLineRange) []editor.DiffLineRange {
 	return merged
 }
 
-// extendLineSelection handles a line-number click in multiple-line mode. A
-// plain click adds just that line; only an actual Shift/drag range adds the
-// unchanged lines between its endpoints.
+// extendLineSelection enters multiple-line mode on the first line-number
+// click. A plain click adds just that line; only an actual Shift/drag range
+// adds the unchanged lines between its endpoints.
 func (a *app) extendLineSelection(state *editor.DiffState, clicked editor.DiffLineRange) {
-	if !a.lineSelectMode || state == nil || state != a.diffState || clicked.End < clicked.Start {
+	if state == nil || state != a.diffState || !a.lineSelectionAvailable() || clicked.End < clicked.Start {
 		return
+	}
+	if !a.lineSelectMode {
+		a.clearMultipleLineSelection()
+		a.lineSelectMode = true
 	}
 	a.lineSelectRanges = mergeLineSelections(append(a.currentLineSelections(), clicked))
 	a.lineSelectRange, a.lineSelectHas = clicked, true
-	// MyGo paints one range. Keep the latest click/range as its Shift anchor;
-	// syncLineSelectionMarkers underlines every other disjoint choice instead
-	// of falsely highlighting everything between the outermost lines.
+	// MyGo paints one range. Keep the latest click/range as its Shift anchor
+	// without highlighting the gaps between independent selections.
 	state.SetSelectedLines(clicked, true)
 	if len(a.lineSelectRanges) == 1 {
 		state.SetSelectedLines(a.lineSelectRanges[0], true)
 	}
-	a.syncLineSelectionMarkers()
-}
-
-// selectedLineMarker distinguishes TanGit's disjoint-selection underlines from
-// moved-line explanations already attached to the diff viewer.
-type selectedLineMarker struct{}
-
-// syncLineSelectionMarkers marks disjoint lines individually. MyGo's native
-// range painter cannot represent gaps; an underline annotation per selected
-// line can, without modifying the renderer or its surrounding diff behavior.
-func (a *app) syncLineSelectionMarkers() {
-	if a.diffState == nil {
-		return
-	}
-	annotations := a.diffState.Annotations[:0]
-	for _, annotation := range a.diffState.Annotations {
-		if _, selected := annotation.Key.(selectedLineMarker); !selected {
-			annotations = append(annotations, annotation)
-		}
-	}
-	if a.lineSelectMode && len(a.lineSelectRanges) > 1 {
-		for _, selection := range a.lineSelectRanges {
-			for line := selection.Start; line <= selection.End; line++ {
-				annotations = append(annotations, editor.DiffAnnotation{
-					Side: selection.Side, Line: line, Height: 3, Key: selectedLineMarker{},
-				})
-			}
-		}
-	}
-	a.diffState.Annotations = annotations
-	if len(annotations) == 0 {
-		a.diffState.RenderAnnotation = nil
-	} else {
-		a.diffState.RenderAnnotation = renderDiffAnnotation
-	}
-}
-
-func renderDiffAnnotation(c *ui.Context, annotation editor.DiffAnnotation) {
-	if _, selected := annotation.Key.(selectedLineMarker); selected {
-		ui.Box(c).Fill().Background(c.Theme().Accent).Label(tr("Selected line"))
-		return
-	}
-	renderMovedLine(c, annotation)
 }
 
 // lineSelectionControls draws what the pane says and offers about staging
@@ -249,50 +206,63 @@ func renderDiffAnnotation(c *ui.Context, annotation editor.DiffAnnotation) {
 func (a *app) lineSelectionControls(c *ui.Context, withHint bool) {
 	theme := c.Theme()
 	count, selected := a.selectedLineCount()
-	if a.lineSelectMode {
-		ui.Text(c, tr("Selecting multiple lines")).TextColor(theme.Accent).Bold().
-			FontSize(theme.FontSize - 1)
-		switch {
-		case selected:
-			ui.Text(c, selectedLinesLabel(count)).TextColor(theme.Accent).
-				FontSize(theme.FontSize - 1)
-			a.diffLineButton(c)
-		case withHint:
-			ui.Text(c, tr("Click line numbers to choose changes; Shift-click to choose a range.")).
-				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-		}
-		iconButton(c, "Cancel", "Leave the selection alone and stop choosing lines",
-			closeIcon, false, a.stopLineSelection)
-		return
-	}
-	iconButton(c, "Select multiple lines",
-		"Click line numbers to add them to one selection, then stage them together",
-		selectLinesIcon, false, a.startLineSelection)
-	if selected {
-		ui.Text(c, selectedLinesLabel(count)).TextColor(theme.Accent).
-			FontSize(theme.FontSize - 1)
-		a.diffLineButton(c)
-	} else if withHint {
-		ui.Text(c, tr("Click line numbers to select lines")).
-			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-	}
+	ui.Column(c).FillWidth().Gap(4).Children(func() {
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+			ui.Row(c).Grow(1).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
+				if a.lineSelectMode {
+					ui.Icon(c, selectLinesIcon).FontSize(14).TextColor(theme.Accent).
+						Label(tr("Selecting multiple lines")).Tooltip(tr("Selecting multiple lines")).Shrink(0)
+				} else {
+					iconButton(c, "Select multiple lines",
+						"Click line numbers to add them to one selection, then stage them together",
+						selectLinesIcon, false, a.startLineSelection)
+				}
+				if selected {
+					ui.Text(c, selectedLinesLabel(count)).TextColor(theme.TextMuted).
+						FontSize(theme.FontSize - 2).SingleLine().Shrink(0)
+					a.diffLineButton(c)
+				} else if withHint {
+					hint := "Click line numbers to select lines"
+					if a.lineSelectMode {
+						hint = "Click line numbers to choose changes; Shift-click to choose a range."
+					}
+					ui.Text(c, tr(hint)).
+						TextColor(theme.TextMuted).FontSize(theme.FontSize - 2).
+						SingleLine().Width(0).Grow(1).Tooltip(tr(hint))
+				}
+			})
+			if a.lineSelectMode {
+				button := ui.ButtonBase(c).Size(22, 22).Padding(3).Radius(4).
+					Label(tr("Cancel")).Tooltip(tr("Leave the selection alone and stop choosing lines"))
+				button.Children(func() {
+					ui.Icon(c, closeIcon).FontSize(12).TextColor(theme.TextMuted)
+				})
+				if button.Clicked() {
+					a.stopLineSelection()
+				}
+			}
+		})
+	})
 }
 
 // diffLineButton offers staging/unstaging and stashing for exactly the lines
 // selected in the pane. Stashing belongs only to the working-tree side.
 func (a *app) diffLineButton(c *ui.Context) {
-	label := tr("Stage selected lines")
+	label, caption := tr("Stage selected lines"), tr("Stage")
 	tooltip := tr("Stage only the selected lines, leaving the rest of the file in the working tree")
 	if a.diffKind == "Staged" {
-		label = tr("Unstage selected lines")
+		label, caption = tr("Unstage selected lines"), tr("Unstage")
 		tooltip = tr("Take only the selected lines out of the index, leaving them in the working tree")
 	}
-	if compactTextButton(ui.PrimaryButton(c, label)).Label(label).
+	compact := func(button ui.Element) ui.Element {
+		return button.Height(22).Padding(2, 7).FontSize(c.Theme().FontSize - 2).Shrink(0).Center()
+	}
+	if compact(ui.PrimaryButton(c, caption)).Label(label).
 		Tooltip(tooltip).Disabled(a.actionBusy).Clicked() {
 		a.beginLineAction()
 	}
 	if a.diffKind != "Staged" {
-		if compactTextButton(ui.Button(c, tr("Stash selected lines…"))).Label(tr("Stash selected lines…")).
+		if compact(ui.Button(c, tr("Stash")+"…")).Label(tr("Stash selected lines…")).
 			Tooltip(tr("Save only the selected lines in a stash")).Disabled(a.actionBusy).Clicked() {
 			a.openLineStash()
 		}
@@ -692,9 +662,7 @@ func (a *app) fileDetailsView(c *ui.Context) {
 		// Selecting lines turns this row into the stage or unstage action for
 		// just those lines. The section and row above already name the side.
 		if a.lineSelectionAvailable() {
-			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-				a.lineSelectionControls(c, true)
-			})
+			a.lineSelectionControls(c, true)
 		}
 		a.keyboardDiffViewer(c, a.diffState)
 	})

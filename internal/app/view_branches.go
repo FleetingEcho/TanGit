@@ -909,20 +909,20 @@ func (a *app) branchCommitDetailView(c *ui.Context, branch repository.Branch) {
 		commit := a.branchCommits[a.selectedBranchCommit]
 		// The column is narrow, so the subject, the metadata and the actions
 		// each take their own row.
-		ui.Text(c, commit.Subject).FontSize(16).Bold()
-		ui.Text(c, commit.Hash).TextColor(theme.TextMuted).SingleLine()
+		ui.Text(c, commit.Subject).FontSize(16).Bold().SingleLine().Tooltip(commit.Subject)
+		ui.Text(c, commit.Hash).TextColor(theme.TextMuted).SingleLine().Tooltip(commit.Hash)
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			authorAvatar(c, commit.AuthorName, commit.AuthorEmail, 20)
-			ui.Textf(c, "%s <%s>", commit.AuthorName, commit.AuthorEmail).TextColor(theme.TextMuted).SingleLine().Grow(1)
+			ui.Textf(c, "%s <%s>", commit.AuthorName, commit.AuthorEmail).TextColor(theme.TextMuted).
+				SingleLine().Grow(1).MinWidth(0).Tooltip(fmt.Sprintf("%s <%s>", commit.AuthorName, commit.AuthorEmail))
 			if rel := relTime(commit.UnixTimestamp); rel != "" {
-				ui.Text(c, rel).TextColor(theme.TextMuted)
+				ui.Text(c, rel).TextColor(theme.TextMuted).SingleLine().Shrink(0)
 			}
 		})
-		ui.Row(c).Gap(1).AlignItems(ui.Center).Children(func() {
-			a.commitActionIconsWithHistory(c, commit, c.Services(), false, branch.Head)
-			ui.Spacer(c).Grow(1)
-			a.diffViewOptions(c)
+		ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Wrap().Children(func() {
+			a.commitActionIconsWithHistory(c, commit, c.Services(), branch.Head)
 		})
+		a.diffViewOptions(c)
 		a.requestBranchCommitFiles(commit)
 		if a.branchCommitFilesLoading {
 			ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
