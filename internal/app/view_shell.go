@@ -108,6 +108,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.diffFullscreenView(c, overlayTopInset)
 	a.commitActionModals(c)
 	a.branchFormModal(c)
+	a.moveCommitsModal(c)
 	a.stashFormModal(c)
 	a.remoteFormModal(c)
 	a.remoteWebURLFormModal(c)
@@ -118,11 +119,16 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.codeFileFormModal(c)
 	a.terminalRenameModal(c)
 	a.cloneModal(c)
+	a.bisectFormModal(c)
+	a.exportPatchFormModal(c)
+	a.pullRequestFormModal(c)
+	a.pullRequestChecksModal(c)
 	a.sshWorkspaceModal(c)
 	a.patchPreviewModal(c)
 	a.customPatchModal(c)
 	a.changeCourierModal(c)
 	a.commandLogModal(c)
+	a.commandPromptModal(c)
 	a.settingsModal(c)
 	a.keybindingsModal(c)
 	a.commitFilterModal(c)
@@ -713,6 +719,11 @@ func (a *app) workspaceView(c *ui.Context) {
 
 func (a *app) headerView(c *ui.Context) {
 	theme := c.Theme()
+	// A service callback is safe to keep for this window's lifetime. This one
+	// deliberately targets the user's desktop, never a remote SSH browser.
+	if a.openExternalURL == nil {
+		a.openExternalURL = c.Services().OpenURL
+	}
 	a.keyboardPane(c, "toolbar", islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(6, 14)).Focusable()).Children(func() {
 		base := filepath.Base(a.snapshot.Root)
 		if base == "." || base == string(filepath.Separator) || base == "" {
@@ -775,9 +786,9 @@ func (a *app) headerView(c *ui.Context) {
 			// Labeled actions lead the toolbar; icon-only actions follow them.
 			iconButton(c, "Fetch", "Fetch from the remotes", fetchIcon,
 				a.actionBusy || len(a.snapshot.Remotes) == 0, func() {
-					a.beginRepositoryActionMessage(tr("Fetched from the remotes"), "",
+					a.beginRepositoryActionMessage(tr(a.fetchSuccessMessage()), "",
 						func(ctx context.Context, session repository.Session) error {
-							return session.Fetch(ctx)
+							return a.fetchWithSetting(ctx, session)
 						}, nil)
 				})
 			iconButton(c, "Pull", "Pull from the upstream branch", pullIcon,
@@ -976,6 +987,17 @@ func (a *app) sectionCount(section int) int {
 }
 
 func (a *app) contentView(c *ui.Context) {
+	if isCommitSection(a.workspaceTab) && a.snapshot.Bisect != nil && a.snapshot.Bisect.Active {
+		ui.Column(c).Grow(1).Gap(10).Children(func() {
+			a.bisectBanner(c)
+			a.workspaceContentView(c)
+		})
+		return
+	}
+	a.workspaceContentView(c)
+}
+
+func (a *app) workspaceContentView(c *ui.Context) {
 	switch a.workspaceTab {
 	case sectionChanges:
 		a.collapsibleContentPaneSplit(c, &a.filePaneWidth, &a.filePaneCollapsed,
@@ -1076,10 +1098,12 @@ func (a *app) statusBar(c *ui.Context) {
 				SingleLine().MaxWidth(520).Tooltip(shorten(a.actionError, 400))
 		}
 		a.keyboardPane(c, "status", ui.Row(c).Grow(1).Justify(ui.End).Gap(8).Focusable()).Children(func() {
-			if a.actionBusy {
+			if a.actionBusy || a.customCommandRunning {
 				ui.Spinner(c).Label(tr("Working"))
 				ui.Text(c, tr("Working…")).TextColor(theme.TextMuted)
 			}
+			a.commandsMenuButton(c)
+			a.pullRequestMenuButton(c)
 			a.terminalButton(c)
 			iconButton(c, "Keyboard shortcuts", "Keyboard shortcuts (F1)", keyboardIcon,
 				false, a.openKeybindings)

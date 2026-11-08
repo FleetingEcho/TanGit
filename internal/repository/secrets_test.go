@@ -78,8 +78,12 @@ func TestCommandLogBoundsAndOmitsOverlongUnterminatedLines(t *testing.T) {
 	if !strings.Contains(output, "unterminated output line omitted") || !strings.Contains(output, "safe output") {
 		t.Fatalf("overlong line was not bounded cleanly: %q", output)
 	}
-	if len(log.pendingOutput) > commandOutputLimit {
-		t.Fatalf("pending output grew to %d bytes", len(log.pendingOutput))
+	if _, err := writer.Write([]byte("trailing unterminated text")); err != nil {
+		t.Fatal(err)
+	}
+	pending := log.streams[writer.(commandWriter).id].pending
+	if len(pending) > commandOutputLimit {
+		t.Fatalf("pending output grew to %d bytes", len(pending))
 	}
 }
 

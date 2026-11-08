@@ -540,6 +540,17 @@ func (a *app) closeAllForms() {
 	a.closeCodeBlameDetails()
 	a.filterOpen = false
 	a.closeCompare()
+	a.showTagRemoteDeleteForm = false
+	a.showMoveCommitsForm = false
+	a.showBisectForm = false
+	a.bisectFormError = ""
+	a.showExportPatchForm = false
+	a.exportPatchCommits = nil
+	a.showPRForm = false
+	a.prChecksOpen = false
+	a.prChecksToken++
+	a.commandPromptOpen = false
+	a.customCommandFormOpen = false
 }
 
 // anyFormOpen reports whether a text-entry form is showing. Plain-letter
@@ -557,6 +568,7 @@ func (a *app) anyFormOpen() bool {
 		a.showStashRenameForm ||
 		a.showTagForm ||
 		a.showTagPushForm ||
+		a.showTagRemoteDeleteForm ||
 		a.showWorktreeForm ||
 		a.showSubmoduleForm ||
 		a.showCommitTagForm ||
@@ -566,7 +578,13 @@ func (a *app) anyFormOpen() bool {
 		a.sshProfileFormOpen ||
 		a.cloneOpen ||
 		a.code.fileForm != codeFileFormNone ||
-		a.term.renameID != 0 || a.term.renameGroup != 0
+		a.term.renameID != 0 || a.term.renameGroup != 0 ||
+		a.customCommandFormOpen ||
+		a.commandPromptOpen ||
+		a.showBisectForm ||
+		a.showExportPatchForm ||
+		a.showPRForm ||
+		a.prChecksOpen
 }
 
 // modalOpen reports whether a dialog or a full-window view owns the keyboard,
@@ -576,6 +594,7 @@ func (a *app) modalOpen() bool {
 		a.settingsOpen ||
 		a.keybindingsOpen ||
 		a.commandLogOpen ||
+		a.commandPromptOpen ||
 		a.patchPreviewOpen ||
 		a.customPatch.open ||
 		a.courier.open ||

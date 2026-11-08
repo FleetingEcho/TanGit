@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -340,9 +341,25 @@ func (a *app) branchRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) {
 		if m.Item(tr("Push")).Disabled(a.actionBusy).Chosen() {
 			a.confirmPush()
 		}
+		if m.Item(tr("Push with tags")).Disabled(a.actionBusy).Chosen() {
+			a.confirmPushFollowTags()
+		}
+		m.Separator()
+		if m.Item(tr("Create pull request…")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Chosen() {
+			a.openCreatePullRequestForm()
+		}
+		if m.Item(tr("Open pull request in browser")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Chosen() {
+			a.confirmOpenPullRequest()
+		}
+		if m.Item(tr("View pull request checks")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Chosen() {
+			a.openPullRequestChecks()
+		}
 
 		if m.Item(tr("Force push with lease…")).Disabled(a.actionBusy).Chosen() {
 			a.confirmForcePushWithLease()
+		}
+		if m.Item(tr("Move unpushed commits to new branch…")).Disabled(a.actionBusy).Chosen() {
+			a.openMoveCommitsForm()
 		}
 	}
 	if !branch.Head {
@@ -491,6 +508,11 @@ func (a *app) branchListView(c *ui.Context) {
 		ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
 			ui.Icon(c, branchesIcon).FontSize(14).TextColor(theme.Accent)
 			ui.Text(c, tr("Local branches")).Bold().Grow(1)
+			if stale := a.staleGoneBranches(); len(stale) > 0 {
+				flatIconButton(c, trf("Delete %d stale branch%s", len(stale), pluralS(len(stale))),
+					tr("Delete branches whose upstream is gone"), trashIcon, 14, 6,
+					a.actionBusy, a.confirmDeleteStaleBranches)
+			}
 			rowIconButton(c, "New branch…", "Create a branch from a local branch",
 				stageIcon, func() { a.openBranchForm("") })
 			paneCollapseButton(c, &a.workspacePaneCollapsed[sectionBranches], "Collapse list pane")
@@ -1061,3 +1083,177 @@ func (a *app) branchCommitDetailView(c *ui.Context, branch repository.Branch) {
 		}).Grow(1)
 	})
 }
+
+// unpushedCommitCount reports how many commits the checked-out branch is
+// ahead of its upstream, when Git can tell.
+func (a *app) unpushedCommitCount() (int, bool) {
+	for _, branch := range a.snapshot.Branches {
+		if !branch.Head {
+			continue
+		}
+		ahead, _, known := aheadBehind(branch)
+		if !known {
+			return 0, false
+		}
+		count, err := strconv.Atoi(ahead)
+		if err != nil {
+			return 0, false
+		}
+		return count, true
+	}
+	return 0, false
+}
+
+// openMoveCommitsForm opens the dialog for moving the branch's unpushed
+// commits onto a new branch.
+func (a *app) openMoveCommitsForm() {
+	if a.actionBusy || a.session == nil {
+		return
+	}
+	a.moveCommitsName = ""
+	a.showMoveCommitsForm = true
+}
+
+func (a *app) moveCommitsModal(c *ui.Context) {
+	if !a.showMoveCommitsForm {
+		return
+	}
+	theme := c.Theme()
+	count, known := a.unpushedCommitCount()
+	ui.Overlay(c, func() {
+		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
+			Justify(ui.Center).AlignItems(ui.Center).
+			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
+		a.registerTerminalModalShortcuts(back)
+		back.Children(func() {
+			panel := ui.Column(c).Width(500).MaxWidthPercent(92).
+				Padding(22).Gap(16).Background(theme.Background).
+				Border(1, theme.Border).Radius(theme.Radius + 4).
+				Role(ui.RoleDialog).Label(tr("Move Commits")).
+				Children(func() {
+					ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
+						ui.Box(c).Size(34, 34).Radius(9).Center().
+							Background(theme.Accent.Alpha(0.14)).Children(func() {
+							ui.Icon(c, branchIcon).FontSize(18).TextColor(theme.Accent)
+						})
+						ui.Column(c).Gap(2).Grow(1).Children(func() {
+							ui.Text(c, tr("Move Unpushed Commits")).FontSize(17).Bold()
+							if known {
+								ui.Text(c, trf("%d commit(s) move; %s returns to its fork point.", count, a.snapshot.Branch)).
+									TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+							} else {
+								ui.Text(c, tr("The current branch returns to where it forked from its upstream.")).
+									TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+							}
+						})
+						iconButton(c, "Close branch form", "Escape", closeIcon, false,
+							func() { a.showMoveCommitsForm = false })
+					})
+					ui.Column(c).Gap(4).Children(func() {
+						ui.Text(c, tr("New branch name")).TextColor(theme.TextMuted).
+							FontSize(theme.FontSize - 1)
+						input := ui.TextInput(c, &a.moveCommitsName).
+							Label(tr("New branch name")).
+							Placeholder(tr("feature/my-branch")).
+							AutoFocus()
+						if input.Submitted() && strings.TrimSpace(a.moveCommitsName) != "" {
+							a.beginMoveCommitsToNewBranch()
+						}
+					})
+					ui.Row(c).AlignItems(ui.Center).Gap(12).Children(func() {
+						ui.Text(c, tr("Tracked edits must be committed or stashed first. Untracked files stay untouched.")).
+							TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1)
+						if ui.Button(c, tr("Cancel")).Clicked() {
+							a.showMoveCommitsForm = false
+						}
+						if ui.PrimaryButton(c, tr("Move commits")).
+							Disabled(a.actionBusy || strings.TrimSpace(a.moveCommitsName) == "").
+							Clicked() {
+							a.beginMoveCommitsToNewBranch()
+						}
+					})
+				})
+			if panel.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
+				a.showMoveCommitsForm = false
+			}
+		})
+	})
+}
+
+func (a *app) beginMoveCommitsToNewBranch() {
+	name := strings.TrimSpace(a.moveCommitsName)
+	if name == "" || a.actionBusy {
+		return
+	}
+	a.showMoveCommitsForm = false
+	a.askConfirm(confirmRequest{
+		title:        "Move Unpushed Commits",
+		message:      trf("Move the unpushed commits from %s to %s?", a.snapshot.Branch, name),
+		detail:       tr("The current branch is reset to where it forked from its upstream; the unpushed commits land on the new branch, which is checked out. Uncommitted changes stay in the working tree."),
+		confirmLabel: "Move commits",
+		run: func() {
+			a.beginRepositoryActionMessage(trf("Moved unpushed commits to %s", name), "",
+				func(ctx context.Context, session repository.Session) error {
+					_, err := session.MoveUnpushedCommits(ctx, name)
+					return err
+				}, func() {
+					a.moveCommitsName = ""
+				})
+		},
+	})
+}
+
+// staleGoneBranches lists local branches whose upstream is gone on the
+// remote and that carry no unpushed work of their own. They are the residue
+// left behind when the merge happens on the server.
+func (a *app) staleGoneBranches() []repository.Branch {
+	var stale []repository.Branch
+	for _, branch := range a.snapshot.Branches {
+		if branch.Head || !branch.UpstreamGone {
+			continue
+		}
+		if ahead, _, known := aheadBehind(branch); known {
+			if n, err := strconv.Atoi(ahead); err == nil && n > 0 {
+				continue
+			}
+		}
+		stale = append(stale, branch)
+	}
+	return stale
+}
+
+func (a *app) confirmDeleteStaleBranches() {
+	stale := a.staleGoneBranches()
+	if len(stale) == 0 || a.actionBusy || a.session == nil {
+		return
+	}
+	names := make([]string, 0, len(stale))
+	for _, branch := range stale {
+		names = append(names, branch.Name)
+	}
+	a.askConfirm(confirmRequest{
+		title:        "Delete Stale Branches",
+		message:      trf("Delete %d local branch%s whose upstream is gone?", len(stale), pluralS(len(stale))),
+		detail:       strings.Join(names, ", ") + "\n\n" + tr("Branches that are not fully merged are skipped; deletions can be undone from the Safety Journal."),
+		confirmLabel: "Delete",
+		destructive:  true,
+		run: func() {
+			a.beginRepositoryActionMessage(trf("Deleted stale branches"), "", func(ctx context.Context, session repository.Session) error {
+				var failed []string
+				for _, name := range names {
+					if err := session.DeleteBranch(ctx, name, false); err != nil {
+						failed = append(failed, name)
+					}
+				}
+				if len(failed) > 0 {
+					return fmt.Errorf("could not delete: %s (not fully merged or checked out elsewhere)", strings.Join(failed, ", "))
+				}
+				return nil
+			}, nil)
+		},
+	})
+}
+
+// moveCommitsModal preserves existing files while committing only the branch
+// movement. Tracked edits are rejected before Git runs; untracked work must
+// survive even when the fork point bears a file of the same name.

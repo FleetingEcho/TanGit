@@ -32,6 +32,7 @@ func keyboardCommands() []keyboardCommand {
 		}},
 		{"Changes", "Ctrl+Enter", "Commit the staged changes", ui.Ctrl, ui.KeyEnter, (*app).beginCommit},
 		{"Changes", "Ctrl+I", "Preview and apply a patch or diff file", ui.Ctrl, ui.KeyI, (*app).beginPatchImport},
+		{"Changes", "M", "Apply a mailbox patch with a three-way fallback…", ui.Shift, ui.KeyM, (*app).beginMailboxPatchImport},
 		{"Changes", "A", "Amend the chosen commit with staged changes", ui.Shift, ui.KeyA, func(a *app) {
 			if hasStagedFiles(a.snapshot.Files) {
 				a.commitAmend = true
@@ -43,7 +44,7 @@ func keyboardCommands() []keyboardCommand {
 		}},
 		{"Changes", "s", "Stash changes…", 0, ui.KeyS, (*app).openStashForm},
 		{"Changes", "f", "Fetch from the remotes", 0, ui.KeyF, func(a *app) {
-			a.beginRepositoryActionMessage(tr("Fetched from the remotes"), "", func(ctx context.Context, s repository.Session) error { return s.Fetch(ctx) }, nil)
+			a.beginRepositoryActionMessage(tr(a.fetchSuccessMessage()), "", func(ctx context.Context, s repository.Session) error { return a.fetchWithSetting(ctx, s) }, nil)
 		}},
 		{"Changes", "i", "Ignore file in .gitignore", 0, ui.KeyI, func(a *app) { a.ignoreSelectedFile(false) }},
 		{"Changes", "I", "Exclude file locally", ui.Shift, ui.KeyI, func(a *app) { a.ignoreSelectedFile(true) }},
@@ -56,7 +57,24 @@ func keyboardCommands() []keyboardCommand {
 		{"History and graph", "Ctrl+Space", "Toggle batch selection", ui.Ctrl, ui.KeySpace, (*app).toggleSelectedCommitForBatch},
 		{"History and graph", "Ctrl+B", "Add all files from the chosen commit to Custom Patch", ui.Ctrl, ui.KeyB, (*app).addSelectedCustomPatchCommit},
 		{"History and graph", "B", "Review Custom Patch", ui.Shift, ui.KeyB, (*app).openCustomPatchBuilder},
+		{"History and graph", "e", "Edit commit (pause rebase)", 0, ui.KeyE, func(a *app) {
+			if c, ok := a.selectedVisibleCommit(); ok {
+				a.confirmEditCommit(c)
+			}
+		}},
 		{"History and graph", "r", "Reword the chosen commit", 0, ui.KeyR, (*app).rewordSelectedCommit},
+		{"History and graph", "b", "Start bisect, or mark the current test commit bad", 0, ui.KeyB, func(a *app) {
+			if a.snapshot.Bisect != nil && a.snapshot.Bisect.Active {
+				a.confirmBisectMark("bad", "")
+				return
+			}
+			if c, ok := a.selectedVisibleCommit(); ok {
+				a.openBisectStartForm(c)
+			}
+		}},
+		{"History and graph", "g", "Mark the current test commit good (bisect)", 0, ui.KeyG, func(a *app) { a.confirmBisectMark("good", "") }},
+		{"History and graph", "k", "Skip the current test commit (bisect)", 0, ui.KeyK, func(a *app) { a.confirmBisectMark("skip", "") }},
+		{"History and graph", "R", "Reset the current bisect", ui.Shift, ui.KeyR, (*app).confirmBisectReset},
 		{"History and graph", "A", "Amend the chosen commit with staged changes", ui.Shift, ui.KeyA, (*app).confirmSelectedAmendCommit},
 		{"History and graph", "s", "Squash the chosen commit into its older neighbor", 0, ui.KeyS, func(a *app) { a.confirmSelectedCombineCommit(repository.CombineSquash) }},
 		{"History and graph", "f", "Fix up the chosen commit into its older neighbor", 0, ui.KeyF, func(a *app) { a.confirmSelectedCombineCommit(repository.CombineFixup) }},
@@ -91,6 +109,9 @@ func keyboardCommands() []keyboardCommand {
 		}},
 		{"Branches", "d", "Delete the chosen branch", 0, ui.KeyD, (*app).confirmDeleteSelectedBranch},
 		{"Branches", "u", "Unset upstream", 0, ui.KeyU, (*app).unsetSelectedUpstream},
+		{"Branches", "Shift+O", "Create pull request…", ui.Shift, ui.KeyO, (*app).openCreatePullRequestForm},
+		{"Branches", "Shift+G", "Open pull request in browser", ui.Shift, ui.KeyG, (*app).confirmOpenPullRequest},
+		{"Branches", "Shift+K", "View pull request checks", ui.Shift, ui.KeyK, (*app).openPullRequestChecks},
 		{"Remotes", "n", "Add remote", 0, ui.KeyN, (*app).openAddRemote},
 		{"Remotes", "f", "Fetch remote", 0, ui.KeyF, (*app).fetchSelectedRemote},
 		{"Remotes", "e", "Edit remote…", 0, ui.KeyE, (*app).editSelectedRemote},
@@ -110,6 +131,7 @@ func keyboardCommands() []keyboardCommand {
 		{"Tags", "n", "Create tag", 0, ui.KeyN, (*app).openTagForm},
 		{"Tags", "d", "Delete tag…", 0, ui.KeyD, (*app).confirmDeleteSelectedTag},
 		{"Tags", "Shift+P", "Push tag…", ui.Shift, ui.KeyP, (*app).beginPushSelectedTag},
+		{"Tags", "Shift+A", "Push all tags…", ui.Shift, ui.KeyA, (*app).beginPushAllTags},
 		{"Worktrees", "n", "Create worktree", 0, ui.KeyN, (*app).beginNewWorktree},
 		{"Worktrees", "o", "Open worktree", 0, ui.KeyO, (*app).openSelectedWorktree},
 		{"Worktrees", "d", "Remove worktree…", 0, ui.KeyD, (*app).confirmDeleteSelectedWorktree},
@@ -164,6 +186,30 @@ func (a *app) keyboardActionGroup(c *ui.Context) string {
 		return "Reflog"
 	}
 	return ""
+}
+
+// registerCustomCommandKeys gives user bindings first refusal across all
+// global workspace shortcuts. Callers must invoke it before global keys, after
+// modal and text-input early returns so typing and dialogs remain intact.
+func (a *app) registerCustomCommandKeys(c *ui.Context) {
+	if c.FocusTakesText() || a.state != stateReady || a.terminalVisible() || a.fileEditing {
+		return
+	}
+	if a.workspaceTab == sectionChanges && a.conflictState != nil && a.conflictStageTab == 3 {
+		return
+	}
+	group := a.keyboardActionGroup(c)
+	for _, command := range a.settings.CustomCommands {
+		if !customCommandInContext(command, group) {
+			continue
+		}
+		mods, key, ok := parseCustomCommandKey(command.Key)
+		if !ok {
+			continue
+		}
+		command := command
+		c.OnShortcut(mods, key, func() { a.runCustomCommandByMenu(command) })
+	}
 }
 
 func (a *app) registerGitCommands(c *ui.Context) {

@@ -89,6 +89,58 @@ func (s *gitSession) RewordCommit(ctx context.Context, commit Commit, summary, d
 	})
 }
 
+// EditCommit rewrites history up to the selected commit and then stops the
+// rebase at it, leaving the commit checked out for in-flight editing. The
+// rebase stays open until the user continues from the toolbar; Git stops
+// with the commit staged in the index and HEAD detached at it.
+func (s *gitSession) EditCommit(ctx context.Context, commit Commit) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
+	commits, index, err := s.editableHeadHistory(commit.Hash)
+	if err != nil {
+		return fmt.Errorf("edit commit: %w", err)
+	}
+	if commits[index].IsMerge() {
+		return fmt.Errorf("edit commit: merge commits cannot be edited in a rebase")
+	}
+	return s.runPausedEditRebase("Edit "+commit.ShortHash, commit.Hash, func() error {
+		if err := s.interactiveRebase(commits, index, index, todo.Edit, ""); err != nil {
+			return fmt.Errorf("edit %s: %w", commit.ShortHash, err)
+		}
+		return nil
+	})
+}
+
+// runPausedEditRebase records an intentional edit-stop rather than
+// finalizing recovery at its transient detached HEAD.
+func (s *gitSession) runPausedEditRebase(summary, stoppedAt string, run func() error) error {
+	record, err := s.beginOperation(OperationRebase, summary, UndoResetHead, nil)
+	if err != nil {
+		return err
+	}
+	if record, err = s.pinOperationBefore(record); err != nil {
+		return err
+	}
+	if err := run(); err != nil {
+		return s.completeJournalOperation(record, err)
+	}
+	if state := s.workingTreeState(); state.Effective().CommandName() != "rebase" {
+		return fmt.Errorf("expected an edit-stop rebase, but no rebase is active")
+	}
+	head, err := s.gitText("rev-parse", "--verify", "HEAD")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(head) != strings.TrimSpace(stoppedAt) {
+		return fmt.Errorf("rebase stopped at %s instead of the selected commit", strings.TrimSpace(head))
+	}
+	record.RebasePaused = true
+	return s.completeJournalOperation(record, nil)
+}
+
 // DropCommit removes the selected commit. Lazygit uses a dedicated todo edit
 // for a merge commit because dropping its ordinary pick line would corrupt the
 // merge-aware rebase plan.
@@ -206,6 +258,23 @@ func (s *gitSession) AmendCommit(ctx context.Context, commit Commit) error {
 	if err := s.requireStagedChanges(); err != nil {
 		return fmt.Errorf("amend commit: %w", err)
 	}
+	if paused, err := s.pausedAtRebaseEdit(commit.Hash); err != nil {
+		return fmt.Errorf("amend commit: %w", err)
+	} else if paused {
+		// Only amend HEAD at the edit-stop. Starting a nested rewrite of
+		// history would invalidate the open rebase's state.
+		output, inspectErr := s.cmd.New([]string{"git", "ls-files", "-u", "-z"}).RunWithOutput()
+		if inspectErr != nil {
+			return fmt.Errorf("amend commit: inspect unresolved conflicts: %w", inspectErr)
+		}
+		if output != "" {
+			return fmt.Errorf("amend commit: resolve all conflicts first")
+		}
+		if err := s.git.Commit.AmendHead(); err != nil {
+			return fmt.Errorf("amend paused rebase commit: %w", err)
+		}
+		return nil
+	}
 	commits, index, err := s.editableHeadHistory(commit.Hash)
 	if err != nil {
 		return fmt.Errorf("amend commit: %w", err)
@@ -285,6 +354,20 @@ func (s *gitSession) requireStagedChanges() error {
 		return fmt.Errorf("stage changes first")
 	}
 	return nil
+}
+
+// pausedAtRebaseEdit reports whether Git is stopped at hash for interactive
+// editing. Amending HEAD is permitted here without asking history for a clear
+// branch checkout, which intentionally is absent during this rebase state.
+func (s *gitSession) pausedAtRebaseEdit(hash string) (bool, error) {
+	if s.workingTreeState().Effective().CommandName() != "rebase" {
+		return false, nil
+	}
+	head, err := s.gitText("rev-parse", "--verify", "HEAD")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(head) == strings.TrimSpace(hash), nil
 }
 
 // editableHeadHistory returns fresh, unfiltered HEAD history and the selected

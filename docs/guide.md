@@ -82,6 +82,12 @@ their package installer.
 | Build a Custom Patch | In History or Graph, use `Ctrl+B` on a commit or historical file to add canonical whole-file patches. In its diff, select changed lines and press `Space`, or press `A` for the current hunk. Press `B` to review the basket, preview the combined patch, then export it, apply it atomically to the working tree without staging, or send it to another worktree. This never rewrites history. Different commits cannot contribute changes to the same old/new path; additions, deletions, renames, binary files, and mode-only changes require whole-file selection. |
 | Copy changes to another worktree | Open a changed file's menu and choose **Send file to worktree…**, use the diff's **Send current hunk** or **Send selected lines** action, or choose **Send to worktree…** in Custom Patch Builder. Change Courier freezes the selected patch, previews it against an existing destination worktree, and reports conflicts without writing. A clean delivery applies atomically as unstaged destination changes; the source and all commit history remain unchanged. To target an unchecked-out branch, create a worktree for it first. |
 | Apply an external patch | In **Changes**, choose **Apply patch…** or press `Ctrl+I`, then select a `.patch` or `.diff` file. Review its files, diagnostics and text before applying. Clean patches apply atomically to the working tree and stay unstaged; conflicted patches cannot be applied. Cancel or Discard Patch changes neither the repository nor the source file. |
+| Exchange mailbox patches | Export selected commits from their History context menu or the batch-actions menu into a local folder as `format-patch` files. Import a patch series with **Changes → Apply mailbox patch…**. The import runs like `git am --3way`: authors and messages are preserved, context drift gets a three-way fallback, and conflicts use the normal Continue/Abort controls. |
+| Pause and edit an older commit | Select the commit in History or Graph, press `e`, and confirm **Edit commit**. The later commits are replayed up to that point, and the rebase pauses with the chosen commit checked out. Edit or amend it, then press **Continue**; **Abort** restores the original history. |
+| Bisect a regression | In History or Graph, right-click a known-bad commit and start bisect, naming a known-good revision. Use **Good** / **Bad** / **Skip** for each tested revision from the banner or commit menu. Git reports the first bad commit. **Reset bisect** returns to your original checkout. |
+| Move work to a new branch | In Branches, right-click the checked-out branch and choose **Move unpushed commits to new branch…**. TanGit creates the new branch with those commits, rewinds the original branch to the fork point from its upstream or the default branch, and checks out the new branch. Commit or stash tracked changes first. This requires an upstream or a recognizable default branch. |
+| Create a pull request and read checks | Authenticate `gh` for GitHub or `glab` for GitLab, then open the hosting menu in the toolbar or the current branch's menu. Choose **Create pull request**, **Open pull request in browser**, or **View pull request checks**. The CLIs run in the repository, including over SSH; authentication and other CLI output appear in the command log. |
+| Add custom commands | Use **Settings → Commands**. Each command runs in the repository root and can have an optional shortcut and workspace scopes. Placeholders such as `{{branch}}`, `{{commit}}`, `{{file}}`, `{{tag}}`, `{{stash}}`, `{{remote}}`, and `{{root}}` expand to shell-quoted values. Press `:` for a one-off command (locally, not for an SSH workspace); output is recorded in the command log. |
 | Edit files in TanGit | Open **Editor**, select or quick-open a file, and edit its persistent tab. Use Ctrl/Cmd+S to save; a dot marks unsaved tabs. Closing asks whether to save or discard changes. |
 | Manage editor tabs | Right-click a file tab to close it, other tabs, tabs to the right, or all tabs, or to copy its absolute or repository-relative path. |
 | Manage files and folders | Use **Editor → New File / New Folder**, or right-click an explorer row to create, rename, delete, view Git file history, or copy paths. Creation starts in the selected folder; deleting asks for confirmation. **Open in explorer** uses the host file manager locally and launches `Narwhal` with `DISPLAY=:0` on an SSH host. |
@@ -109,18 +115,24 @@ Commands follow the focused panel. Uppercase letters mean **Shift + letter**.
 | Repository tabs | `Cmd/Ctrl+T` new, `Cmd/Ctrl+W` close; `Ctrl+Tab` / `Ctrl+Shift+Tab` switch |
 | Home | `C` opens remote clone; `Escape` closes the form or cancels cloning |
 | Global Git actions | `p` pull, `P` push, `z` / `Z` undo / redo, `F5` refresh |
-| Changes | `Space` stage/unstage, `a` stage all, `c` compose, `A` amend, `s` stash, `d` discard, `b` blame, `Ctrl+I` import patch |
+| Changes | `Space` stage/unstage, `a` stage all, `c` compose, `A` amend, `s` stash, `d` discard, `b` blame, `Ctrl+I` import patch, `M` import mailbox patch |
 | Commit form | `Enter` submits the summary; `Ctrl+Enter` commits; `Escape` closes |
 | Editor | `Ctrl+P` quick open; `Ctrl+Shift+F` searches workspace content; `Ctrl+W` closes the editor tab |
-| History / Graph | `r` reword, `s` squash, `f` fixup, `d` drop, `t` revert; `Ctrl+J` / `Ctrl+K` reorder; `Ctrl+B` adds the selected commit/file to Custom Patch; `B` reviews it |
+| History / Graph | `e` pauses a rebase to edit a commit; `r` reword, `s` squash, `f` fixup, `d` drop, `t` revert; `Ctrl+J` / `Ctrl+K` reorder; `Ctrl+B` adds the selected commit/file to Custom Patch; `B` reviews it |
+| Bisect | `b` start / mark bad; `g` good; `k` skip; `R` reset |
 | Cherry-pick | `C` copies selected commits; `V` confirms applying them |
-| Branches | `Space` checkout, `n` create, `M` merge, `r` rebase, `u` unset upstream, `d` delete |
-| Stash / tags | Stash: `Space` apply, `g` pop, `d` drop. Tags: `n` create, `P` push, `d` delete |
+| Branches | `Space` checkout, `n` create, `M` merge, `r` rebase, `u` unset upstream, `d` delete; `Shift+O` / `Shift+G` / `Shift+K` create / open / check a pull request |
+| Stash / tags | Stash: `Space` apply, `g` pop, `d` drop. Tags: `n` create, `P` push, `Shift+A` push all, `d` delete |
 | Diff review | `[` / `]` changes hunk; `v` starts line selection; `Shift+Up/Down` extends it; `Space` stages/unstages in Changes or adds selected lines to a historical Custom Patch; `A` adds the current historical hunk |
 | Diff display | `W` compares refs; `Alt+W` toggles whitespace; `Alt+U` cycles context |
 | Conflicts | `F7` / `Shift+F7` moves; `Alt+1`–`Alt+4` selects current/ancestor/incoming/both; `Alt+Z` undoes a choice |
 | Terminal | ``Ctrl+` `` or `Ctrl+~` shows or hides the bottom panel from any workspace or form without changing sections; its tabs, splits, search and scrollback stay alive while hidden |
-| Tools | `Ctrl+L` command log, `Ctrl+,` Settings |
+| Tools | `Ctrl+L` command log with user/background sections and highlighted search; `:` one-off command, `Ctrl+,` Settings |
+
+**Background fetching:** **Settings → Behavior** controls how often every remote is
+fetched and whether stale remote-tracking branches are pruned. The Branches
+header offers bulk deletion of local branches whose upstream is gone. Pushing
+also offers dependent branches stacked below the current branch, oldest first.
 
 ## Development
 

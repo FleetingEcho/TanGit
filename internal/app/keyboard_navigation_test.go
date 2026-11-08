@@ -159,7 +159,7 @@ func TestKeyboardLazygitPullPushAndCopyPaste(t *testing.T) {
 	h.tester.Key(0, ui.KeyEscape)
 	h.tester.Frame()
 	h.tester.Key(ui.Shift, ui.KeyP)
-	h.tester.Frame()
+	h.waitFor(t, "push confirmation", func() bool { return h.app.confirm != nil })
 	if h.app.confirm == nil || h.app.confirm.title != "Push" {
 		t.Fatal("P did not ask to push")
 	}
