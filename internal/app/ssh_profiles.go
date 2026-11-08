@@ -421,8 +421,11 @@ func normalizeSSHProfileID(value string) string {
 }
 
 func (a *app) openSSHWorkspacePicker() {
+	a.cancelSSHWorkspaceResolve()
 	a.loadSettings()
 	a.sshWorkspaceOpen = true
+	a.sshWorkspaceProfileID = ""
+	a.sshWorkspaceRoot = "/home"
 	a.sshBrowser = sshBrowserState{}
 	a.sshWorkspaceError = ""
 	a.sshProfileFormError = ""
@@ -431,13 +434,6 @@ func (a *app) openSSHWorkspacePicker() {
 		a.openSSHProfileForm("")
 		return
 	}
-	for _, profile := range a.settings.SSHProfiles {
-		if profile.ID == a.sshWorkspaceProfileID {
-			a.refreshSSHBrowserOnSelection()
-			return
-		}
-	}
-	a.selectSSHWorkspaceProfile(a.settings.SSHProfiles[0].ID)
 }
 
 func (a *app) cancelSSHWorkspaceResolve() {
@@ -462,7 +458,7 @@ func (a *app) selectSSHWorkspaceProfile(profileID string) {
 		if profile.ID == profileID {
 			a.sshBrowser = sshBrowserState{}
 			a.sshWorkspaceProfileID = profileID
-			a.sshWorkspaceRoot = profile.DefaultRoot
+			a.sshWorkspaceRoot = "/home"
 			a.sshWorkspaceError = ""
 			a.refreshSSHBrowserOnSelection()
 			return
