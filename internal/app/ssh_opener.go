@@ -169,6 +169,17 @@ func (o appSSHRepositoryOpener) acquire(ctx context.Context, location workspace.
 	return lease, nil
 }
 
+// Clone delegates the local Git operation through the per-tab binding. Remote
+// workspace support does not change where the clone form creates a repository.
+func (o appSSHRepositoryOpener) Clone(ctx context.Context, options repository.CloneOptions, report func(repository.CloneProgress)) error {
+	if o.base != nil {
+		if cloner, ok := o.base.local.(repositoryCloner); ok {
+			return cloner.Clone(ctx, options, report)
+		}
+	}
+	return errors.New("Cloning is unavailable in this window.")
+}
+
 func (o appSSHRepositoryOpener) Open(ctx context.Context, reference string) (repository.Session, error) {
 	location, err := workspace.Parse(reference)
 	if err != nil {

@@ -45,7 +45,7 @@ func (o *cloneTestOpener) Clone(ctx context.Context, options repository.CloneOpt
 	return o.cloneErr
 }
 
-func cloneTestApp(t *testing.T, opener *cloneTestOpener) *harness {
+func cloneTestApp(t *testing.T, opener repositoryOpener) *harness {
 	t.Helper()
 	a := newApp(opener)
 	h := &harness{app: a, updates: newUpdates(), tester: ui.NewTester(a.view, 1280, 800)}
@@ -99,6 +99,34 @@ func TestCloneFormSuccessUsesExistingOpenPipeline(t *testing.T) {
 	}
 	if h.app.cloneOpen || h.app.cancelClone != nil {
 		t.Fatal("successful clone left its form or cancellation active")
+	}
+}
+
+func TestCloneThroughProductionWorkspaceOpener(t *testing.T) {
+	options, destination := cloneOptionsFixture()
+	opener := &cloneTestOpener{
+		fakeOpener: fakeOpener{result: openResult{snapshot: repository.Snapshot{Root: destination, Branch: "topic"}}},
+		started:    make(chan cloneAttempt, 1), release: make(chan error, 1),
+	}
+	workspace := newSSHWorkspaceOpener(opener)
+	t.Cleanup(func() { _ = workspace.Close() })
+	h := cloneTestApp(t, workspace)
+	h.app.openCloneForm()
+	h.app.cloneURL = options.URL
+	h.app.cloneDestination = options.Destination
+	h.app.cloneBranch = options.Branch
+	h.app.beginClone()
+	if h.app.cloneError != "" {
+		t.Fatalf("the production window rejected cloning before Git started: %q", h.app.cloneError)
+	}
+	attempt := <-opener.started
+	if attempt.options != options {
+		t.Fatalf("clone options = %+v, want %+v", attempt.options, options)
+	}
+	opener.release <- nil
+	h.settle(t)
+	if h.app.state != stateReady || h.app.path != destination {
+		t.Fatalf("clone through the production opener did not open %q: state=%v path=%q error=%q", destination, h.app.state, h.app.path, h.app.cloneError)
 	}
 }
 
