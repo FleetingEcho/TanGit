@@ -1919,7 +1919,7 @@ func TestWorktreeLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	linked := filepath.Join(t.TempDir(), "feature-worktree")
-	if err := session.CreateWorktree(context.Background(), linked, "main", "feature", false); err != nil {
+	if err := session.CreateWorktree(context.Background(), WorktreeCreateOptions{Path: linked, Base: "main", Branch: "feature"}); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := session.Snapshot(context.Background())
@@ -1931,12 +1931,34 @@ func TestWorktreeLifecycle(t *testing.T) {
 	}
 	found := false
 	for _, worktree := range snapshot.Worktrees {
-		if worktree.Path == linked && worktree.Branch == "feature" && !worktree.Current {
+		if filepath.Clean(filepath.FromSlash(worktree.Path)) == filepath.Clean(linked) && worktree.Branch == "feature" && !worktree.Current {
 			found = true
 		}
 	}
 	if !found {
 		t.Fatalf("linked worktree missing from %#v", snapshot.Worktrees)
+	}
+	if err := session.LockWorktree(context.Background(), linked, "integration test"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = session.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	locked := false
+	for _, worktree := range snapshot.Worktrees {
+		if filepath.Clean(filepath.FromSlash(worktree.Path)) == filepath.Clean(linked) && worktree.Locked && worktree.LockReason == "integration test" {
+			locked = true
+		}
+	}
+	if !locked {
+		t.Fatalf("locked worktree metadata missing from %#v", snapshot.Worktrees)
+	}
+	if err := session.UnlockWorktree(context.Background(), linked); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.RepairWorktrees(context.Background(), nil); err != nil {
+		t.Fatal(err)
 	}
 	if err := session.DeleteWorktree(context.Background(), linked, false); err != nil {
 		t.Fatal(err)
@@ -1950,6 +1972,73 @@ func TestWorktreeLifecycle(t *testing.T) {
 	}
 	if len(snapshot.Worktrees) != 1 || !snapshot.Worktrees[0].Current {
 		t.Fatalf("unexpected worktrees after delete %#v", snapshot.Worktrees)
+	}
+}
+
+func TestForceRemoveLockedDirtyWorktree(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	runGit(t, dir, "config", "user.name", "Desktop Test")
+	runGit(t, dir, "config", "user.email", "desktop@example.com")
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "file.txt")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	session, err := (Opener{}).Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linked := filepath.Join(t.TempDir(), "locked-dirty")
+	if err := session.CreateWorktree(context.Background(), WorktreeCreateOptions{Path: linked, Base: "main", Branch: "feature"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(linked, "file.txt"), []byte("dirty\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.LockWorktree(context.Background(), linked, "keep"); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.DeleteWorktree(context.Background(), linked, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(linked); !os.IsNotExist(err) {
+		t.Fatalf("forced locked worktree path still exists: %v", err)
+	}
+}
+
+func TestPruneMissingWorktreeRecord(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	runGit(t, dir, "config", "user.name", "Desktop Test")
+	runGit(t, dir, "config", "user.email", "desktop@example.com")
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "file.txt")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	session, err := (Opener{}).Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linked := filepath.Join(t.TempDir(), "missing")
+	if err := session.CreateWorktree(context.Background(), WorktreeCreateOptions{Path: linked, Base: "main", Branch: "feature"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(linked); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.PruneWorktrees(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := session.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Worktrees) != 1 || !snapshot.Worktrees[0].Current {
+		t.Fatalf("stale worktree survived prune: %#v", snapshot.Worktrees)
 	}
 }
 

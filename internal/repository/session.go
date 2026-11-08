@@ -179,6 +179,32 @@ type Worktree struct {
 	Main          bool
 	Missing       bool
 	OperationLive bool
+	Locked        bool
+	LockReason    string
+	Prunable      bool
+	PruneReason   string
+	Staged        int
+	Modified      int
+	Untracked     int
+	Ahead         int
+	Behind        int
+	LastCommitAt  int64
+	LastSubject   string
+}
+
+type WorktreeCreateOptions struct {
+	Path        string
+	Base        string
+	Branch      string
+	Detach      bool
+	Force       bool
+	Track       bool
+	GuessRemote bool
+	Lock        bool
+	LockReason  string
+	Orphan      bool
+	NoCheckout  bool
+	SparsePaths []string
 }
 
 type Submodule struct {
@@ -423,8 +449,16 @@ type Session interface {
 	ConflictStages(context.Context, File) (ConflictStages, error)
 	ContinueOperation(context.Context) error
 	AbortOperation(context.Context) error
-	CreateWorktree(context.Context, string, string, string, bool) error
+	CreateWorktree(context.Context, WorktreeCreateOptions) error
 	DeleteWorktree(context.Context, string, bool) error
+	MoveWorktree(context.Context, string, string, bool) error
+	FetchWorktree(context.Context, string) error
+	PullWorktree(context.Context, string) error
+	LockWorktree(context.Context, string, string) error
+	UnlockWorktree(context.Context, string) error
+	PreviewPruneWorktrees(context.Context, string) ([]string, error)
+	PruneWorktrees(context.Context, string) error
+	RepairWorktrees(context.Context, []string) error
 	AddSubmodule(context.Context, string, string, string) error
 	UpdateSubmodule(context.Context, string) error
 	DeleteSubmodule(context.Context, string) error
@@ -863,12 +897,15 @@ func (s *gitSession) DetailsSnapshot(ctx context.Context) (Snapshot, error) {
 	for _, tag := range modelTags {
 		tags = append(tags, Tag{Name: tag.Name, Message: tag.Message})
 	}
-	modelWorktrees, err := s.sessionWorktrees()
+	modelWorktrees, worktreeMetadata, err := s.sessionWorktrees()
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("load worktrees: %w", err)
 	}
+	worktreeStatuses := s.sessionWorktreeStatuses(modelWorktrees)
 	worktrees := make([]Worktree, 0, len(modelWorktrees))
 	for _, worktree := range modelWorktrees {
+		metadata := worktreeMetadata[worktree.Path]
+		status := worktreeStatuses[worktree.Path]
 		worktrees = append(worktrees, Worktree{
 			Name:          worktree.Name,
 			Path:          worktree.Path,
@@ -878,6 +915,17 @@ func (s *gitSession) DetailsSnapshot(ctx context.Context) (Snapshot, error) {
 			Main:          worktree.IsMain,
 			Missing:       worktree.IsPathMissing,
 			OperationLive: worktree.IsRebasingOrBisecting,
+			Locked:        metadata.Locked,
+			LockReason:    metadata.LockReason,
+			Prunable:      metadata.Prunable,
+			PruneReason:   metadata.PruneReason,
+			Staged:        status.Staged,
+			Modified:      status.Modified,
+			Untracked:     status.Untracked,
+			Ahead:         status.Ahead,
+			Behind:        status.Behind,
+			LastCommitAt:  status.LastCommitAt,
+			LastSubject:   status.LastSubject,
 		})
 	}
 	modelSubmodules, err := s.submoduleConfigs(nil)
@@ -1801,7 +1849,7 @@ func (s *gitSession) fastForwardNonCheckoutBranch(name, upstream string) error {
 // out branch is name. Session paths keep local and SSH layouts distinct;
 // there is deliberately no host-filesystem probe for remote worktrees.
 func (s *gitSession) linkedWorktreeFor(branch string) (string, error) {
-	worktrees, err := s.sessionWorktrees()
+	worktrees, _, err := s.sessionWorktrees()
 	if err != nil {
 		return "", fmt.Errorf("list linked worktrees: %w", err)
 	}
@@ -2329,7 +2377,7 @@ func stashFileNames(file CommitFile) []string {
 // gitText runs a git subcommand and returns its output trimmed, for the
 // plumbing the stash rewrite needs.
 func (s *gitSession) gitText(args ...string) (string, error) {
-	output, err := s.cmd.New(append([]string{"git"}, args...)).RunWithOutput()
+	output, _, err := s.cmd.New(append([]string{"git"}, args...)).RunWithOutputs()
 	if err != nil {
 		return "", err
 	}
@@ -2865,18 +2913,70 @@ func (s *gitSession) finishOperation(ctx context.Context, action string) error {
 	return s.finalizePausedRebaseJournal(ctx, action)
 }
 
-func (s *gitSession) CreateWorktree(ctx context.Context, path string, base string, branch string, detach bool) error {
+func (s *gitSession) CreateWorktree(ctx context.Context, options WorktreeCreateOptions) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	path = strings.TrimSpace(path)
-	base = strings.TrimSpace(base)
-	branch = strings.TrimSpace(branch)
-	if path == "" || base == "" {
-		return fmt.Errorf("worktree path and base ref are required")
+	options.Path = strings.TrimSpace(options.Path)
+	options.Base = strings.TrimSpace(options.Base)
+	options.Branch = strings.TrimSpace(options.Branch)
+	options.LockReason = strings.TrimSpace(options.LockReason)
+	if options.Path == "" {
+		return fmt.Errorf("worktree path is required")
 	}
-	if err := s.git.Worktree.New(git_commands.NewWorktreeOpts{Path: path, Base: base, Branch: branch, Detach: detach}); err != nil {
+	if !options.Orphan && options.Base == "" && !options.GuessRemote {
+		return fmt.Errorf("worktree base ref is required")
+	}
+	if options.Detach && (options.Branch != "" || options.Orphan) {
+		return fmt.Errorf("detached worktree cannot create a branch")
+	}
+	args := []string{"git", "worktree", "add"}
+	if options.Force {
+		args = append(args, "--force")
+	}
+	if options.Detach {
+		args = append(args, "--detach")
+	}
+	if options.NoCheckout {
+		args = append(args, "--no-checkout")
+	}
+	if options.GuessRemote {
+		args = append(args, "--guess-remote")
+	}
+	if options.Track {
+		args = append(args, "--track")
+	}
+	if options.Lock {
+		args = append(args, "--lock")
+		if options.LockReason != "" {
+			args = append(args, "--reason", options.LockReason)
+		}
+	}
+	if options.Orphan {
+		args = append(args, "--orphan")
+	}
+	if options.Branch != "" {
+		args = append(args, "-b", options.Branch)
+	}
+	args = append(args, options.Path)
+	if options.Base != "" && !options.Orphan {
+		args = append(args, options.Base)
+	}
+	if err := s.cmd.New(args).Run(); err != nil {
 		return fmt.Errorf("create worktree: %w", err)
+	}
+	if len(options.SparsePaths) > 0 {
+		args = []string{"git", "-C", options.Path, "sparse-checkout", "set", "--"}
+		for _, sparsePath := range options.SparsePaths {
+			if sparsePath = strings.TrimSpace(sparsePath); sparsePath != "" {
+				args = append(args, sparsePath)
+			}
+		}
+		if len(args) > 6 {
+			if err := s.cmd.New(args).Run(); err != nil {
+				return fmt.Errorf("worktree created but sparse checkout setup failed: %w", err)
+			}
+		}
 	}
 	return nil
 }
@@ -2885,8 +2985,153 @@ func (s *gitSession) DeleteWorktree(ctx context.Context, path string, force bool
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if force {
+		// Git deliberately requires --force twice for a locked worktree. The UI
+		// puts this path behind a destructive confirmation, so its force action
+		// must cover both dirty and explicitly locked linked worktrees.
+		if err := s.cmd.New([]string{"git", "worktree", "remove", "--force", "--force", path}).Run(); err != nil {
+			return fmt.Errorf("force remove worktree: %w", err)
+		}
+		return nil
+	}
 	if err := s.git.Worktree.Delete(path, force); err != nil {
 		return fmt.Errorf("remove worktree: %w", err)
+	}
+	return nil
+}
+
+func (s *gitSession) MoveWorktree(ctx context.Context, oldPath string, newPath string, force bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	oldPath, newPath = strings.TrimSpace(oldPath), strings.TrimSpace(newPath)
+	if oldPath == "" || newPath == "" {
+		return fmt.Errorf("old and new worktree paths are required")
+	}
+	args := []string{"git", "worktree", "move"}
+	if force {
+		args = append(args, "--force", "--force")
+	}
+	args = append(args, oldPath, newPath)
+	if err := s.cmd.New(args).Run(); err != nil {
+		return fmt.Errorf("move worktree: %w", err)
+	}
+	return nil
+}
+
+func (s *gitSession) FetchWorktree(ctx context.Context, worktreePath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	worktreePath = strings.TrimSpace(worktreePath)
+	if worktreePath == "" {
+		return fmt.Errorf("worktree path is required")
+	}
+	if err := s.cmd.New([]string{"git", "-C", worktreePath, "fetch", "--all"}).PromptOnCredentialRequest(nil).Run(); err != nil {
+		return fmt.Errorf("fetch worktree: %w", safeNetworkError(err, false))
+	}
+	return nil
+}
+
+func (s *gitSession) PullWorktree(ctx context.Context, worktreePath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	worktreePath = strings.TrimSpace(worktreePath)
+	if worktreePath == "" {
+		return fmt.Errorf("worktree path is required")
+	}
+	if err := s.cmd.New([]string{"git", "-C", worktreePath, "pull", "--ff-only"}).PromptOnCredentialRequest(nil).Run(); err != nil {
+		return fmt.Errorf("pull worktree: %w", safeNetworkError(err, false))
+	}
+	return nil
+}
+
+func (s *gitSession) LockWorktree(ctx context.Context, path string, reason string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	path = strings.TrimSpace(path)
+	reason = strings.TrimSpace(reason)
+	if path == "" {
+		return fmt.Errorf("worktree path is required")
+	}
+	args := []string{"git", "worktree", "lock"}
+	if reason != "" {
+		args = append(args, "--reason", reason)
+	}
+	args = append(args, path)
+	if err := s.cmd.New(args).Run(); err != nil {
+		return fmt.Errorf("lock worktree: %w", err)
+	}
+	return nil
+}
+
+func (s *gitSession) UnlockWorktree(ctx context.Context, path string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("worktree path is required")
+	}
+	if err := s.cmd.New([]string{"git", "worktree", "unlock", path}).Run(); err != nil {
+		return fmt.Errorf("unlock worktree: %w", err)
+	}
+	return nil
+}
+
+func (s *gitSession) PreviewPruneWorktrees(ctx context.Context, expire string) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	args := []string{"git", "worktree", "prune", "--dry-run", "--verbose"}
+	if expire = strings.TrimSpace(expire); expire != "" {
+		args = append(args, "--expire", expire)
+	}
+	stdout, stderr, err := s.cmd.New(args).RunWithOutputs()
+	if err != nil {
+		return nil, fmt.Errorf("preview worktree prune: %w: %s", err, strings.TrimSpace(stdout+stderr))
+	}
+	return nonemptyLines(stdout + "\n" + stderr), nil
+}
+
+func nonemptyLines(text string) []string {
+	var lines []string
+	for _, line := range strings.Split(utils.NormalizeLinefeeds(text), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+func (s *gitSession) PruneWorktrees(ctx context.Context, expire string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	args := []string{"git", "worktree", "prune", "--verbose"}
+	if expire = strings.TrimSpace(expire); expire != "" {
+		args = append(args, "--expire", expire)
+	}
+	if err := s.cmd.New(args).Run(); err != nil {
+		return fmt.Errorf("prune worktrees: %w", err)
+	}
+	return nil
+}
+
+func (s *gitSession) RepairWorktrees(ctx context.Context, paths []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	args := []string{"git", "worktree", "repair"}
+	for _, path := range paths {
+		if path = strings.TrimSpace(path); path != "" {
+			args = append(args, path)
+		}
+	}
+	if err := s.cmd.New(args).Run(); err != nil {
+		return fmt.Errorf("repair worktrees: %w", err)
 	}
 	return nil
 }
