@@ -648,9 +648,11 @@ func (a *app) mainArea(c *ui.Context) {
 	height := box.Animate("terminal-height", target, 200*time.Millisecond)
 
 	switch {
-	case height <= 0.5:
+	case !a.term.panelOpen || height <= 0.5:
+		// Hiding must not shrink the live shell along with the animation. Once
+		// its view is gone MyGo retains the last grid until it is shown again.
 		a.workspaceView(c)
-	case a.term.panelOpen && a.term.panelMaximized && box.Settled("terminal-height"):
+	case a.term.panelMaximized && box.Settled("terminal-height"):
 		a.terminalPaneView(c)
 	case box.Settled("terminal-height"):
 		a.term.shown = 100 - a.term.percent
@@ -669,9 +671,10 @@ func (a *app) mainArea(c *ui.Context) {
 				a.workspaceView(c)
 			})
 			ui.Divider(c)
-			ui.Column(c).FillWidth().HeightPercent(height).Children(func() {
-				a.terminalPaneView(c)
-			})
+			// Animate empty dock space on the way in. Mounting terminal.View at
+			// every fractional height would make fish/zsh print a new prompt for
+			// each PTY resize, including their one-row intermediate layouts.
+			ui.Column(c).FillWidth().HeightPercent(height)
 		})
 	}
 }
