@@ -219,11 +219,11 @@ go tool mygo dev
 # Build for the host platform.
 go tool mygo build
 
-# Build every release target for v1.0.2.
+# Build every release target for v1.0.3.
 go tool mygo build -platform darwin/universal,windows/amd64,windows/arm64,linux/amd64,linux/arm64
 
 # Install on Debian or Ubuntu.
-sudo apt install ./build/linux-amd64/tangit_1.0.2_amd64.deb
+sudo apt install ./build/linux-amd64/tangit_1.0.3_amd64.deb
 ```
 
 ### Open a repository from the terminal
@@ -331,15 +331,15 @@ Each target gets its own directory under `build/`:
 build/
 ├── darwin-universal/
 │   ├── TanGit.app                  # arm64 + Intel, one bundle
-│   └── tangit-1.0.2.dmg            # on macOS, signed when configured
+│   └── tangit-1.0.3.dmg            # on macOS, signed when configured
 ├── windows-amd64/  windows-arm64/
 │   ├── TanGit.exe
 │   ├── ghostty-vt.dll
-│   └── tangit-setup-1.0.2-<arch>.exe   # when NSIS is installed
+│   └── tangit-setup-1.0.3-<arch>.exe   # when NSIS is installed
 ├── linux-amd64/    linux-arm64/
 │   ├── tangit
-│   ├── tangit_1.0.2_<arch>.deb
-│   ├── tangit-1.0.2-linux-<arch>.tar.gz
+│   ├── tangit_1.0.3_<arch>.deb
+│   ├── tangit-1.0.3-linux-<arch>.tar.gz
 │   ├── PKGBUILD                    # Arch package recipe
 │   └── install.sh
 └── ...
@@ -367,7 +367,7 @@ gh secret set MYGO_UPDATER_PRIVATE_KEY \
 ```
 
 For each release, bump `version` in `mygo.json`, commit it, then push the
-matching tag (for example, `v1.0.2`). After the workflow finishes, review and
+matching tag (for example, `v1.0.3`). After the workflow finishes, review and
 publish its draft release. Installed copies will then discover the signed
 update automatically.
 
