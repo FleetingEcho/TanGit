@@ -1016,3 +1016,18 @@ func TestLaunchPath(t *testing.T) {
 		}
 	}
 }
+
+func (f fakeSession) ForcePushWithLease(context.Context) error {
+	f.calls.record("force-push-with-lease")
+	return nil
+}
+func (f fakeSession) CherryPickCommits(_ context.Context, commits []repository.Commit) error {
+	for _, c := range commits {
+		f.calls.record("batch-cherry-pick:" + c.Hash)
+	}
+	return nil
+}
+func (f fakeSession) EditCommitRange(_ context.Context, commits []repository.Commit, action repository.CommitRangeAction) error {
+	f.calls.record("batch-edit:" + string(action))
+	return nil
+}

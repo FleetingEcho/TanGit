@@ -37,6 +37,25 @@ type repositoryOpener interface {
 }
 
 type app struct {
+	// Keyboard state belongs to the UI thread; only stable handles survive builds.
+	keyboardDiffCanSelect bool
+	keyboardTextFocus     bool
+	keyboardModalWasOpen  bool
+	keyboardModalReturn   string
+	keyboardLastPane      string
+	keyboardCurrentGroup  string
+	keybindingsScope      string
+	keyboardPrevious      []keyboardPane
+	keyboardLastList      *ui.ListState
+	keyboardLineAnchor    int
+	keyboardCopied        []repository.Commit
+	keyboardPanes         []keyboardPane
+	keyboardHandles       map[string]*ui.Handle
+	keyboardFocus         string
+	keyboardSection       int
+	keyboardSectionKnown  bool
+	keyboardMoved         map[*ui.ListState]bool
+
 	opener repositoryOpener
 	update func(func())
 	window *mygo.Window
@@ -210,10 +229,11 @@ type app struct {
 	workspaceTab     int
 	// navSelected is the sidebar row the active section shows, which differs
 	// from workspaceTab once sections are hidden.
-	navSelected    int
-	navList        ui.ListState
-	commitList     ui.ListState
-	selectedCommit int
+	navSelected     int
+	navList         ui.ListState
+	commitList      ui.ListState
+	selectedCommit  int
+	commitSelection map[string]bool
 	// commitsMore says the commit list has another page below it; loading
 	// and error are that read's own state, and token drops one a newer
 	// snapshot or page replaced.

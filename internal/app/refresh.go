@@ -148,6 +148,9 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 		// the ones the list paged in, and nothing about them changed.
 		snapshot.Commits = old.Commits
 	}
+	if a.snapshot.Branch != snapshot.Branch || a.snapshot.Root != snapshot.Root {
+		a.commitSelection = nil
+	}
 	a.snapshot = snapshot
 	a.snapshotSeq++
 	if refsChanged {

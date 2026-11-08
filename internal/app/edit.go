@@ -255,5 +255,5 @@ func (a *app) fileEditPane(c *ui.Context, theme *ui.Theme) {
 				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1)
 		}
 	})
-	editor.View(c, a.fileEditState).Grow(1)
+	a.keyboardPane(c, "file-editor", editor.View(c, a.fileEditState).Grow(1))
 }

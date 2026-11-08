@@ -78,6 +78,7 @@ func TestChangesHeaderStashesWithAMessage(t *testing.T) {
 	if err := h.tester.Click("Stash changes"); err != nil {
 		t.Fatalf("stash the changes: %v", err)
 	}
+	h.confirmAttentionForTest(t)
 	h.waitFor(t, "the stash", func() bool {
 		return calls.has("stash:keep my work") && calls.has("stash-untracked")
 	})
@@ -98,6 +99,7 @@ func TestChangesHeaderStashesWithADefaultMessage(t *testing.T) {
 	if err := h.tester.Click("Stash changes"); err != nil {
 		t.Fatalf("stash the changes: %v", err)
 	}
+	h.confirmAttentionForTest(t)
 	h.waitFor(t, "the default-named stash", func() bool {
 		for _, call := range calls.all() {
 			if strings.HasPrefix(call, "stash:WIP on main at ") {

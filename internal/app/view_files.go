@@ -22,14 +22,21 @@ func (a *app) beginCommit() {
 	if amend {
 		message = trf("Amended %s", summary)
 	}
-	a.beginRepositoryActionMessage(message, "", func(ctx context.Context, session repository.Session) error {
-		return session.Commit(ctx, summary, body, amend)
-	}, func() {
-		a.commitSummary = ""
-		a.commitBody = ""
-		a.commitAmend = false
-		a.showCommitForm = false
-	})
+	run := func() {
+		a.beginRepositoryActionMessage(message, "", func(ctx context.Context, session repository.Session) error {
+			return session.Commit(ctx, summary, body, amend)
+		}, func() {
+			a.commitSummary = ""
+			a.commitBody = ""
+			a.commitAmend = false
+			a.showCommitForm = false
+		})
+	}
+	if amend {
+		a.confirmAttention("Amend commit", summary, "This rewrites the latest commit with the staged changes and the entered message. Published history will require a force push.", run)
+	} else {
+		run()
+	}
 }
 
 // toggleStageSelected stages the selected file when it has unstaged changes,
@@ -376,7 +383,7 @@ func (a *app) commitForm(c *ui.Context) {
 	theme := c.Theme()
 	islandCard(c, ui.Column(c).Grow(1).Gap(14).Padding(20)).Children(func() {
 		ui.Text(c, tr("Create commit")).FontSize(20).Bold()
-		ui.TextInput(c, &a.commitSummary).Label(tr("Summary")).Placeholder(tr("Describe the change"))
+		ui.TextInput(c, &a.commitSummary).Label(tr("Summary")).Placeholder(tr("Describe the change")).AutoFocus().OnSubmit(a.beginCommit)
 		ui.TextArea(c, &a.commitBody).Label(tr("Description")).Placeholder(tr("Optional details")).Height(150)
 		ui.Checkbox(c, &a.commitAmend, tr("Amend the latest commit"))
 		ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
@@ -529,7 +536,7 @@ func (a *app) fileDetailsView(c *ui.Context) {
 			if !closed {
 				// Blame is read-only, as a diff is: a click keeps the keyboard
 				// where it is rather than putting a caret in its text.
-				editor.View(c, a.blameState).Grow(1).KeepFocus()
+				a.keyboardPane(c, "blame", editor.View(c, a.blameState).Grow(1)).Label(tr("Blame"))
 			}
 			return
 		}
@@ -562,7 +569,7 @@ func (a *app) fileDetailsView(c *ui.Context) {
 				a.lineSelectionControls(c, true)
 			}
 		})
-		diffViewer(c, a.diffState)
+		a.keyboardDiffViewer(c, a.diffState)
 	})
 }
 
@@ -675,7 +682,7 @@ func (a *app) conflictPane(c *ui.Context, theme *ui.Theme) {
 		a.conflictView.ScrollTo(a.conflictScrollTo)
 		a.conflictScrollTo = -1
 	}
-	editor.View(c, a.conflictView).Grow(1)
+	a.keyboardPane(c, "conflict-editor", editor.View(c, a.conflictView).Grow(1))
 }
 
 // conflictReviewPane shows the two sides of the conflict as a diff, laid out
@@ -689,7 +696,7 @@ func (a *app) conflictReviewPane(c *ui.Context, theme *ui.Theme) {
 		})
 		return
 	}
-	diffViewer(c, a.conflictDiffState)
+	a.keyboardDiffViewer(c, a.conflictDiffState)
 }
 
 // conflictReviewButton switches the conflicted file between editing its
@@ -749,11 +756,11 @@ func (a *app) conflictSidesPane(c *ui.Context, theme *ui.Theme) {
 				ui.Text(c, tr("No textual diff")).TextColor(theme.TextMuted)
 				return
 			}
-			diffViewer(c, a.conflictDiffState)
+			a.keyboardDiffViewer(c, a.conflictDiffState)
 			return
 		}
 		if sides.content != "" {
-			editor.View(c, sides.viewState()).Grow(1).KeepFocus()
+			a.keyboardPane(c, "conflict-sides", editor.View(c, sides.viewState()).Grow(1))
 		}
 	})
 }

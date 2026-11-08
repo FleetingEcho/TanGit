@@ -52,6 +52,7 @@ func (a *app) graphView(c *ui.Context) {
 				ui.Text(c, tr(subtitle)).
 					TextColor(theme.TextMuted).
 					FontSize(theme.FontSize - 1)
+				a.commitSelectionBar(c)
 				if len(commits) == 0 {
 					a.commitEmptyView(c, theme, sectionGraph)
 					return
@@ -60,7 +61,7 @@ func (a *app) graphView(c *ui.Context) {
 					ui.Text(c, a.graphFilter.err).TextColor(theme.Danger).SingleLine().
 						Tooltip(a.graphFilter.err)
 				}
-				ui.List(c, &a.commitList, len(commits)).Grow(1).Rows(func(row ui.ListRow) {
+				a.keyboardList(c, &a.commitList, len(commits)).Grow(1).Rows(func(row ui.ListRow) {
 					commit := commits[row.Index]
 					rowGraph := rows[row.Index]
 					services := row.Context.Services()
@@ -76,6 +77,7 @@ func (a *app) graphView(c *ui.Context) {
 						// would leave a single-lane commit's text marooned far
 						// right of the line it belongs to.
 						ui.Box(row.Context).Width(graphRowInset(rowGraph.width, laneCount))
+						a.commitSelectionCheckbox(row.Context, commit)
 						authorAvatar(row.Context, commit.AuthorName, commit.AuthorEmail, 18)
 						ui.Column(row.Context).Gap(1).Grow(1).Children(func() {
 							ui.Text(row.Context, commit.Subject).SingleLine()

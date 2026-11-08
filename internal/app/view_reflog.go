@@ -99,7 +99,7 @@ func (a *app) reflogView(c *ui.Context) {
 					listSearchEmpty(c, "No reflog entries match this search")
 					return
 				}
-				list := ui.List(c, &a.reflogList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
+				list := a.keyboardList(c, &a.reflogList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
 					entry, _ := sourceRow(visible, a.snapshot.Reflog, row.Index)
 					services := row.Context.Services()
 					ui.Column(row.Context).Gap(2).Padding(7, 8).Children(func() {
@@ -112,7 +112,7 @@ func (a *app) reflogView(c *ui.Context) {
 						})
 					}).PopoverMenu(func(m *ui.Menu) { a.reflogRowMenu(m, entry, services) })
 				})
-				if list.Changed() {
+				if a.keyboardListChanged(&a.reflogList, list) {
 					a.selectReflogRow(a.selectedReflogRow)
 				}
 				normalizeFilteredRow(visible, &a.selectedReflogRow, &a.selectedReflog)

@@ -415,6 +415,7 @@ func TestConflictSidesPaneShowsTheKeptSide(t *testing.T) {
 	if err := h.tester.Click("Use current"); err != nil {
 		t.Fatalf("resolve with the current side: %v", err)
 	}
+	h.confirmAttentionForTest(t)
 	h.waitFor(t, "the resolution", func() bool { return calls.has("resolve:conflict.txt:current") })
 }
 

@@ -442,7 +442,7 @@ func (a *app) mergeSectionView(c *ui.Context, sections changeSections, fill bool
 	}
 	merge := a.changeSectionView(c, "Merge Changes", conflictIcon, len(a.mergeRows),
 		a.mergeRows, &a.mergeList, sections.mergeBase, a.mergeExpanded, changeSectionMerge, fill)
-	if merge.Changed() && a.mergeSelected >= 0 {
+	if a.keyboardListChanged(&a.mergeList, merge) && a.mergeSelected >= 0 {
 		a.selectedFile = sections.mergeBase + a.mergeSelected
 	}
 }
@@ -452,7 +452,7 @@ func (a *app) mergeSectionView(c *ui.Context, sections changeSections, fill bool
 func (a *app) stagedSectionView(c *ui.Context, sections changeSections, fill bool) {
 	staged := a.changeSectionView(c, "Staged Changes", stageIcon, len(a.stagedRows),
 		a.stagedRows, &a.stagedList, sections.stagedBase, a.stagedExpanded, changeSectionStaged, fill)
-	if staged.Changed() && a.stagedSelected >= 0 {
+	if a.keyboardListChanged(&a.stagedList, staged) && a.stagedSelected >= 0 {
 		a.selectedFile = sections.stagedBase + a.stagedSelected
 	}
 }
@@ -462,7 +462,7 @@ func (a *app) stagedSectionView(c *ui.Context, sections changeSections, fill boo
 func (a *app) changesSectionView(c *ui.Context, sections changeSections, fill bool) {
 	changes := a.changeSectionView(c, "Changes", folderIcon, len(a.changesRows),
 		a.changesRows, &a.fileList, sections.changesBase, a.changesExpanded, changeSectionChanges, fill)
-	if changes.Changed() && a.changesSelected >= 0 {
+	if a.keyboardListChanged(&a.fileList, changes) && a.changesSelected >= 0 {
 		a.selectedFile = sections.changesBase + a.changesSelected
 	}
 }
@@ -580,7 +580,7 @@ func (a *app) changeSectionView(c *ui.Context, title string, icon *ui.SVG, count
 				FontSize(c.Theme().FontSize-1).Padding(4, 8)
 			return
 		}
-		list = ui.List(c, state, len(rows))
+		list = a.keyboardList(c, state, len(rows))
 		if fill {
 			list.Grow(1)
 		} else {
@@ -933,9 +933,15 @@ func (a *app) resolveConflictFile(file repository.File, current bool) {
 	if a.actionBusy || a.session == nil {
 		return
 	}
-	a.beginRepositoryAction(file.Path, func(ctx context.Context, session repository.Session) error {
-		return session.ResolveConflict(ctx, file, current)
-	}, nil)
+	side := tr("Use incoming")
+	if current {
+		side = tr("Use current")
+	}
+	a.confirmAttention("Resolve conflict", file.Path+"\n"+side, "This replaces the entire conflicted file with the chosen side and stages it. Manual resolutions in the file may be lost.", func() {
+		a.beginRepositoryAction(file.Path, func(ctx context.Context, session repository.Session) error {
+			return session.ResolveConflict(ctx, file, current)
+		}, nil)
+	})
 }
 
 // beginStageFile stages or unstages one file, whichever row asked for it.
