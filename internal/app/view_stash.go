@@ -276,31 +276,33 @@ func (a *app) requestStashDetails(stash repository.Stash) {
 	go func() {
 		defer a.recoverBackground()
 		files, err := session.StashFiles(context.Background(), stash.Index)
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation {
 				// An action rewrote the repository: drop the request so the
 				// next frame reads the stash again.
-				if a.stashFilesHash == key {
-					a.stashFilesHash = ""
-					a.stashFilesLoading = false
+				if a.stashFilesHash != key {
+					return false
 				}
-				return
+				a.stashFilesHash = ""
+				a.stashFilesLoading = false
+				return a.workspaceTab == sectionStash
 			}
 			if a.stashFilesHash != key {
-				return
+				return false
 			}
 			a.stashFilesLoading = false
 			if err != nil {
 				a.stashFilesError = safeError(err)
-				return
+				return a.workspaceTab == sectionStash
 			}
 			a.stashFiles = files
 			if len(files) == 0 {
 				a.selectedStashFileRow = -1
 				a.selectedStashFile = -1
-				return
+				return a.workspaceTab == sectionStash
 			}
 			a.selectedStashFile = 0
+			return a.workspaceTab == sectionStash
 		})
 	}()
 }
@@ -339,29 +341,31 @@ func (a *app) requestStashFileDiff(stash repository.Stash, file repository.Commi
 				})
 			}
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation {
-				if a.stashDiffHash == key && a.stashDiffPath == file.Path &&
-					a.stashDiffOptions == options {
-					a.stashDiffHash = ""
-					a.stashDiffPath = ""
-					a.stashDiffPatch = ""
-					a.stashDiffLoading = false
+				if a.stashDiffHash != key || a.stashDiffPath != file.Path ||
+					a.stashDiffOptions != options {
+					return false
 				}
-				return
+				a.stashDiffHash = ""
+				a.stashDiffPath = ""
+				a.stashDiffPatch = ""
+				a.stashDiffLoading = false
+				return a.workspaceTab == sectionStash
 			}
 			if a.stashDiffHash != key || a.stashDiffPath != file.Path ||
 				a.stashDiffOptions != options {
-				return
+				return false
 			}
 			a.stashDiffLoading = false
 			if err != nil {
 				a.stashDiffError = safeError(err)
-				return
+				return a.workspaceTab == sectionStash
 			}
 			a.stashDiffPatch = diff.Patch
 			a.stashDiffState = state
 			a.stashDiffMedia = media
+			return a.workspaceTab == sectionStash
 		})
 	}()
 }

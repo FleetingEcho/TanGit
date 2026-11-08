@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -62,7 +63,18 @@ func workSnapshotRef(kind, id string) (string, error) {
 // publishes it under a hidden TanGit ref instead of refs/stash and never cleans
 // the working tree. A failed capture therefore cannot destroy user work.
 func (s *gitSession) captureWorkSnapshot(ctx context.Context, kind, name string) (WorkSnapshot, error) {
+	return s.captureWorkSnapshotWithIgnored(ctx, kind, name, nil)
+}
+
+// captureWorkSnapshotWithIgnored also saves selected ignored paths. Ordinary
+// snapshots omit dependency and build trees; destructive reset passes only the
+// ignored paths its target can overwrite.
+func (s *gitSession) captureWorkSnapshotWithIgnored(ctx context.Context, kind, name string, ignored []string) (WorkSnapshot, error) {
 	if err := ctx.Err(); err != nil {
+		return WorkSnapshot{}, err
+	}
+	listing, err := s.recoveryUntrackedListing(ignored)
+	if err != nil {
 		return WorkSnapshot{}, err
 	}
 	name = strings.Join(strings.Fields(name), " ")
@@ -75,12 +87,12 @@ func (s *gitSession) captureWorkSnapshot(ctx context.Context, kind, name string)
 	}
 	hash = strings.TrimSpace(hash)
 	if hash == "" {
-		hash, err = s.untrackedOnlySnapshotBase(name)
+		hash, err = s.untrackedOnlySnapshotBase(name, listing)
 		if err != nil {
 			return WorkSnapshot{}, err
 		}
 	}
-	hash, err = s.addUntrackedSnapshotParent(hash, name)
+	hash, err = s.addUntrackedSnapshotParent(hash, name, listing)
 	if err != nil {
 		return WorkSnapshot{}, fmt.Errorf("capture untracked recovery: %w", err)
 	}
@@ -95,14 +107,83 @@ func (s *gitSession) captureWorkSnapshot(ctx context.Context, kind, name string)
 	return WorkSnapshot{ID: hash, Hash: hash, Kind: kind, Name: name, CreatedAt: time.Now().Unix()}, nil
 }
 
-// untrackedOnlySnapshotBase builds the W/I/base part of a stash-shaped commit
-// when no tracked file changed (including an unborn HEAD). The object IDs are
-// internal recovery data; no ref is published until all parents exist.
-func (s *gitSession) untrackedOnlySnapshotBase(name string) (string, error) {
+func (s *gitSession) recoveryUntrackedListing(ignored []string) (string, error) {
 	listing, err := s.cmd.New([]string{"git", "ls-files", "--others", "--exclude-standard", "-z"}).RunWithOutput()
 	if err != nil {
 		return "", fmt.Errorf("list untracked files: %w: %s", err, strings.TrimSpace(listing))
 	}
+	for _, name := range ignored {
+		listing += name + "\x00"
+	}
+	return listing, nil
+}
+
+// resetIgnoredPaths finds ignored files that a hard reset between before and
+// after can replace. Only added target paths matter: a path tracked on both
+// sides cannot also be ignored, and unrelated ignored trees need no hashing.
+func (s *gitSession) resetIgnoredPaths(before, after string) ([]string, error) {
+	if before == after {
+		return nil, nil
+	}
+	resetTree := func(commit string) string {
+		if commit == "" {
+			return "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+		}
+		return commit
+	}
+	before, after = resetTree(before), resetTree(after)
+	targetSet := make(map[string]bool)
+	for _, pair := range [][2]string{{before, after}, {after, before}} {
+		output, err := s.cmd.New([]string{"git", "diff", "--no-renames", "--name-only", "--diff-filter=A", "-z", pair[0], pair[1], "--"}).RunWithOutput()
+		if err != nil {
+			return nil, fmt.Errorf("find reset paths: %w: %s", err, strings.TrimSpace(output))
+		}
+		for _, name := range strings.Split(strings.TrimSuffix(output, "\x00"), "\x00") {
+			if name != "" {
+				targetSet[name] = true
+			}
+		}
+	}
+	if len(targetSet) == 0 {
+		return nil, nil
+	}
+	targets := make([]string, 0, len(targetSet))
+	for name := range targetSet {
+		targets = append(targets, name)
+	}
+	sort.Strings(targets)
+	listing, err := s.cmd.New([]string{"git", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"}).RunWithOutput()
+	if err != nil {
+		return nil, fmt.Errorf("list ignored reset paths: %w: %s", err, strings.TrimSpace(listing))
+	}
+	var paths []string
+	for _, name := range strings.Split(strings.TrimSuffix(listing, "\x00"), "\x00") {
+		if name == "" {
+			continue
+		}
+		collision := false
+		for parent := name; parent != "."; parent = path.Dir(parent) {
+			if targetSet[parent] {
+				collision = true
+				break
+			}
+		}
+		if !collision {
+			prefix := name + "/"
+			i := sort.SearchStrings(targets, prefix)
+			collision = i < len(targets) && strings.HasPrefix(targets[i], prefix)
+		}
+		if collision {
+			paths = append(paths, name)
+		}
+	}
+	return paths, nil
+}
+
+// untrackedOnlySnapshotBase builds the W/I/base part of a stash-shaped commit
+// when no tracked file changed (including an unborn HEAD). The object IDs are
+// internal recovery data; no ref is published until all parents exist.
+func (s *gitSession) untrackedOnlySnapshotBase(name, listing string) (string, error) {
 	if listing == "" {
 		return "", fmt.Errorf("there are no changes to capture")
 	}
@@ -133,11 +214,7 @@ func (s *gitSession) untrackedOnlySnapshotBase(name string) (string, error) {
 // addUntrackedSnapshotParent adds the third-parent tree that git stash create
 // itself omits. It works entirely in object storage through a temporary index;
 // neither the real index nor any working file is changed.
-func (s *gitSession) addUntrackedSnapshotParent(hash, name string) (string, error) {
-	listing, err := s.cmd.New([]string{"git", "ls-files", "--others", "--exclude-standard", "-z"}).RunWithOutput()
-	if err != nil {
-		return "", fmt.Errorf("list untracked files: %w: %s", err, strings.TrimSpace(listing))
-	}
+func (s *gitSession) addUntrackedSnapshotParent(hash, name, listing string) (string, error) {
 	if listing == "" {
 		return hash, nil
 	}
@@ -163,7 +240,7 @@ func (s *gitSession) addUntrackedSnapshotParent(hash, name string) (string, erro
 		return "", err
 	}
 	env := []string{"GIT_INDEX_FILE=" + indexName, "GIT_AUTHOR_NAME=TanGit", "GIT_AUTHOR_EMAIL=recovery@localhost", "GIT_COMMITTER_NAME=TanGit", "GIT_COMMITTER_EMAIL=recovery@localhost"}
-	output, err := s.cmd.New([]string{"git", "add", "--all", "--pathspec-from-file=" + pathsName, "--pathspec-file-nul"}).AddEnvVars(env...).RunWithOutput()
+	output, err := s.cmd.New([]string{"git", "add", "--all", "--force", "--pathspec-from-file=" + pathsName, "--pathspec-file-nul"}).AddEnvVars(env...).RunWithOutput()
 	if err != nil {
 		return "", fmt.Errorf("index untracked files: %w: %s", err, strings.TrimSpace(output))
 	}

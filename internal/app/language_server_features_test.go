@@ -235,6 +235,78 @@ func TestGoLanguageServerRejectsAStaleHover(t *testing.T) {
 	}
 }
 
+func TestGoLanguageServerHiddenHoverDoesNotRetainPopup(t *testing.T) {
+	var answer func(json.RawMessage, error)
+	h, _, document := openGoDocumentWithLanguageServer(t, map[string]string{
+		"main.go": "package main\n",
+	}, func(method string, _ any, result func(json.RawMessage, error)) {
+		if method == "textDocument/hover" {
+			answer = result
+		}
+	})
+	document.state.Select(9, 9)
+	document.state.Run(editor.ShowHover)
+	if answer == nil {
+		t.Fatal("hover request was not sent")
+	}
+	h.app.workspaceTab = sectionChanges
+	repaint := true
+	h.app.updateChanged = func(fn func() bool) {
+		h.app.update(func() { repaint = fn() })
+	}
+
+	answer(json.RawMessage(`{"contents":"hidden Go hover"}`), nil)
+	h.updates.waitForUpdate(t)
+	if repaint {
+		t.Fatal("a hover response for a hidden workspace repainted the window")
+	}
+	if document.hoverState != nil {
+		t.Fatal("a hidden workspace retained language-server hover state")
+	}
+	h.app.workspaceTab = sectionCode
+	h.tester.Frame()
+	if h.tester.HasText("hidden Go hover") {
+		t.Fatal("the hidden hover appeared after revisiting the document")
+	}
+}
+
+func TestGoLanguageServerBackgroundDocumentCompletionDoesNotRetainPopup(t *testing.T) {
+	var answer func(json.RawMessage, error)
+	h, _, document := openGoDocumentWithLanguageServer(t, map[string]string{
+		"main.go":  "package main\nvar value = 1\n",
+		"other.go": "package other\n",
+	}, func(method string, _ any, result func(json.RawMessage, error)) {
+		if method == "textDocument/completion" {
+			answer = result
+		}
+	})
+	offset := strings.Index(document.state.Buffer.String(), "value") + len("value")
+	document.state.Select(offset, offset)
+	document.state.Run(editor.ShowCompletions)
+	if answer == nil {
+		t.Fatal("completion request was not sent")
+	}
+
+	// Keep both documents open while the response belongs to the background one.
+	h.app.code.preview = ""
+	h.app.openPinnedCodeFile("other.go", 0)
+	waitForCodeDocument(t, h, "other.go")
+	repaint := true
+	h.app.updateChanged = func(fn func() bool) {
+		h.app.update(func() { repaint = fn() })
+	}
+	answer(json.RawMessage(`{"items":[{"label":"valueDetails","detail":"background Go completion","kind":9,"insertText":"valueDetails"}]}`), nil)
+	h.updates.waitForUpdate(t)
+	if repaint {
+		t.Fatal("a completion response for a background document repainted the window")
+	}
+	h.app.openPinnedCodeFile("main.go", 0)
+	h.tester.Frame()
+	if h.tester.HasText("background Go completion") {
+		t.Fatal("the background completion appeared after revisiting its document")
+	}
+}
+
 func TestGoLanguageServerEmptyHoverDoesNotRepaint(t *testing.T) {
 	h, _, document := openGoDocumentWithLanguageServer(t, map[string]string{
 		"main.go": "package main\n",
@@ -252,6 +324,99 @@ func TestGoLanguageServerEmptyHoverDoesNotRepaint(t *testing.T) {
 	h.updates.waitForUpdate(t)
 	if repaint {
 		t.Fatal("an empty language-server response repainted the window")
+	}
+}
+
+func additionalLanguageServerPopupTestApp(t *testing.T) (*harness, *codeDocument, *codeDocument, *fakeLanguageServerConnection) {
+	t.Helper()
+	h := menuTestApp(t)
+	document := &codeDocument{path: "main.tsx", state: &editor.State{Buffer: editor.NewBuffer("const value = 1\n")}}
+	other := &codeDocument{path: "other.tsx", state: &editor.State{Buffer: editor.NewBuffer("const other = 2\n")}}
+	h.app.workspaceTab = sectionCode
+	h.app.code.documents = map[string]*codeDocument{
+		document.path: document,
+		other.path:    other,
+	}
+	h.app.code.tabs = []string{document.path, other.path}
+	h.app.code.active = document.path
+	h.app.code.files = []string{document.path, other.path}
+	h.app.code.filesLoaded = true
+
+	connection := newFakeLanguageServerConnection()
+	profile, _ := languageServerProfileByID("typescript")
+	h.app.settings.LanguageServers = map[string]languageServerSettings{profile.ID: {}}
+	server := &managedLanguageServer{
+		profile: profile, connection: connection, documents: make(map[string]uint64),
+	}
+	h.app.additionalLanguageServers = map[string]*managedLanguageServer{profile.ID: server}
+	h.tester.Frame()
+	return h, document, other, connection
+}
+
+func TestAdditionalLanguageServerHiddenHoverDoesNotRetainPopup(t *testing.T) {
+	h, document, _, connection := additionalLanguageServerPopupTestApp(t)
+	var answer func(json.RawMessage, error)
+	connection.request = func(method string, _ any, result func(json.RawMessage, error)) {
+		if method == "textDocument/hover" {
+			answer = result
+		}
+	}
+	h.app.requestAdditionalLanguageHover(document, editor.HoverRequest{Offset: 6})
+	if answer == nil {
+		t.Fatal("the additional language-server hover request was not sent")
+	}
+	h.app.workspaceTab = sectionChanges
+	repaint := true
+	h.app.updateChanged = func(fn func() bool) {
+		h.app.update(func() { repaint = fn() })
+	}
+
+	answer(json.RawMessage(`{"contents":"hidden managed hover"}`), nil)
+	h.updates.waitForUpdate(t)
+	if repaint {
+		t.Fatal("a managed hover response for a hidden workspace repainted the window")
+	}
+	if document.hoverState != nil {
+		t.Fatal("a hidden workspace retained managed language-server hover state")
+	}
+	h.app.workspaceTab = sectionCode
+	h.tester.Frame()
+	if h.tester.HasText("hidden managed hover") {
+		t.Fatal("the hidden managed hover appeared after revisiting the document")
+	}
+}
+
+func TestAdditionalLanguageServerBackgroundDocumentCompletionDoesNotRetainPopup(t *testing.T) {
+	h, document, other, connection := additionalLanguageServerPopupTestApp(t)
+	var answer func(json.RawMessage, error)
+	connection.request = func(method string, _ any, result func(json.RawMessage, error)) {
+		if method == "textDocument/completion" {
+			answer = result
+		}
+	}
+	offset := strings.Index(document.state.Buffer.String(), "value") + len("value")
+	document.state.Select(offset, offset)
+	h.app.requestAdditionalLanguageCompletions(document, editor.CompletionRequest{Offset: offset, Prefix: "value"})
+	if answer == nil {
+		t.Fatal("the additional language-server completion request was not sent")
+	}
+	h.app.code.active = other.path
+	h.app.code.activeTab = 1
+	repaint := true
+	h.app.updateChanged = func(fn func() bool) {
+		h.app.update(func() { repaint = fn() })
+	}
+
+	answer(json.RawMessage(`{"items":[{"label":"valueDetails","detail":"background managed completion","kind":9,"insertText":"valueDetails"}]}`), nil)
+	h.updates.waitForUpdate(t)
+	if repaint {
+		t.Fatal("a managed completion response for a background document repainted the window")
+	}
+	h.app.code.active = document.path
+	h.app.code.activeTab = 0
+	h.tester.Frame()
+	if h.tester.HasText("background managed completion") {
+		t.Fatal("the background managed completion appeared after revisiting its document")
 	}
 }
 
