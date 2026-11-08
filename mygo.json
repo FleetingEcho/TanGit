@@ -8,6 +8,9 @@
     "publicKey": "1rrogZ62wSzE01n1qmMjC5ZWdTf18oXbVz34aN/zShw=",
     "github": "FleetingEcho/TanGit"
   },
+  "windows": {
+    "installerInclude": "packaging/windows/installer.nsh"
+  },
   "linux": {
     "depends": ["libayatana-appindicator3-1"],
     "webview": false,

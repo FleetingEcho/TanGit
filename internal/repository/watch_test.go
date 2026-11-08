@@ -88,6 +88,43 @@ func TestWatchReportsWorkingTreeAndGitMetadataChanges(t *testing.T) {
 	waitRepositoryEvent(t, events)
 }
 
+func TestCoreSnapshotDoesNotNotifyItsOwnRepositoryWatcher(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	runGit(t, dir, "config", "user.name", "Desktop Test")
+	runGit(t, dir, "config", "user.email", "desktop@example.com")
+	path := filepath.Join(dir, "file.txt")
+	if err := os.WriteFile(path, []byte("first\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "file.txt")
+	runGit(t, dir, "commit", "-m", "first")
+
+	session, err := (Opener{}).Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	events, err := session.(WatchingSession).Watch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("changed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	waitRepositoryEvent(t, events)
+
+	if _, err := session.(ProgressiveSession).CoreSnapshot(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-events:
+		t.Fatal("a background snapshot changed Git metadata and notified its own watcher")
+	case <-time.After(3 * repositoryEventDelay):
+	}
+}
+
 func TestWatchReportsPermissionOnlyChanges(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows does not expose Git's executable-bit permission changes")

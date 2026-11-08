@@ -410,6 +410,7 @@ var ErrNotRepository = errors.New("not a Git repository")
 // the user pointed at can be adopted instead of rejected.
 func InitRepository(ctx context.Context, path string) error {
 	cmd := exec.CommandContext(ctx, "git", "-C", path, "init")
+	configureBackgroundCommand(cmd)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("initialize repository: %w: %s", err, strings.TrimSpace(string(out)))
 	}
@@ -425,6 +426,7 @@ func isRepository(ctx context.Context, path string) (bool, error) {
 		return false, fmt.Errorf("%s is not a folder", path)
 	}
 	cmd := exec.CommandContext(ctx, "git", "-C", path, "rev-parse", "--git-dir")
+	configureBackgroundCommand(cmd)
 	if err := cmd.Run(); err != nil {
 		var exit *exec.ExitError
 		// Git exits 128 for a folder outside any repository; anything
@@ -473,6 +475,11 @@ func (Opener) Open(ctx context.Context, path string) (Session, error) {
 		oscommands.GetPlatform(),
 		guiIO,
 	)
+	// TanGit is a GUI process. On Windows, every ordinary child command would
+	// otherwise allocate a console, steal focus, and return it when it exits.
+	// The focus callback schedules a refresh, so a snapshot's own Git commands
+	// can keep the app in an endless refresh/console-flash loop.
+	osCommand.Cmd = backgroundCmdBuilder(osCommand.Cmd)
 	version, err := git_commands.GetGitVersion(osCommand)
 	if err != nil {
 		return nil, fmt.Errorf("read Git version: %w", err)
@@ -562,7 +569,10 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 		operation = workingTreeState.CommandName()
 	}
 
-	modelFiles := s.git.Loaders.FileLoader.GetStatusFiles(git_commands.GetStatusFileOptions{})
+	// Snapshots run unattended and the filesystem watcher observes .git. Keep
+	// optional locks disabled so status does not refresh the index through an
+	// index.lock file and mistake its own housekeeping for an external change.
+	modelFiles := s.git.Loaders.FileLoader.GetStatusFiles(git_commands.GetStatusFileOptions{Background: true})
 	// Lazygit's status loader leaves line counts at zero. One batch numstat
 	// from HEAD to the working tree counts the final content accurately even
 	// when staged and unstaged edits overlap; adding the two diffs separately
@@ -804,7 +814,7 @@ func (s *gitSession) Diff(ctx context.Context, file File, options DiffOptions) (
 		args := append([]string{"git", "diff", "--no-index", "--no-color", "--no-ext-diff"}, optionArgs...)
 		args = append(args, "--", "/dev/null")
 		args = append(args, paths...)
-		outputBytes, commandErr := s.cmd.New(args).GetCmd().CombinedOutput()
+		outputBytes, commandErr := backgroundExec(s.cmd.New(args)).CombinedOutput()
 		if commandErr != nil {
 			var exitError *exec.ExitError
 			// Git uses status 1 to report that the two sides differ.
@@ -908,10 +918,10 @@ func (s *gitSession) diffLineStats(cached bool, base string) (map[string]commitL
 // the two sides differ; that is the expected result, not a failed statistics
 // read. An empty file produces no numstat record.
 func (s *gitSession) untrackedLineStats(path string) (commitLineStats, error) {
-	command := s.cmd.New([]string{
+	command := backgroundExec(s.cmd.New([]string{
 		"git", "diff", "--no-index", "--no-ext-diff", "--numstat", "-z",
 		"/dev/null", "--", path,
-	}).GetCmd()
+	}))
 	outputBytes, err := command.CombinedOutput()
 	if err != nil {
 		var exitError *exec.ExitError

@@ -74,6 +74,19 @@ func (a *app) requestQuietRefresh() {
 	}()
 }
 
+// requestAmbientRefresh starts a refresh only when the repository is idle.
+// Focus, show, tab and timer notifications describe the state at this moment;
+// a snapshot already in flight is already observing it, so queuing another
+// read would only amplify repeated OS focus notifications. Filesystem events
+// continue to use requestQuietRefresh directly because a save can land after
+// an in-flight snapshot has read the changed file.
+func (a *app) requestAmbientRefresh() {
+	if a.refreshBusy || a.actionBusy || a.repositoryDetailsLoading {
+		return
+	}
+	a.requestQuietRefresh()
+}
+
 // recoverQuietRefresh contains a failed repository read just like the generic
 // background boundary, but applies its cleanup only to the read that panicked.
 // In particular, a fault from a closed repository must not clear the busy flags
