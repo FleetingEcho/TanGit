@@ -38,16 +38,32 @@ const (
 )
 
 type codeDocument struct {
-	path          string
-	state         *editor.State
-	generation    uint64
-	loading       bool
-	binary        bool
-	loadError     string
-	saveError     string
-	triedVersion  uint64
-	pendingLine   int
-	pendingColumn int
+	path                string
+	diskPath            string
+	readOnly            bool
+	state               *editor.State
+	generation          uint64
+	loading             bool
+	binary              bool
+	imagePreview        *mediaPreview
+	loadError           string
+	saveError           string
+	triedVersion        uint64
+	pendingLine         int
+	pendingColumn       int
+	pendingUTF16        bool
+	hoverSeq            uint64
+	hoverState          *editor.State
+	hoverScroll         ui.ScrollState
+	definitionSeq       uint64
+	completionSeq       uint64
+	languageDiagnostics map[string][]editor.Diagnostic
+}
+
+type codeNavigationLocation struct {
+	path   string
+	line   int
+	column int
 }
 
 // codeSearchRow is either a collapsible file heading (match == -1) or one
@@ -101,6 +117,11 @@ type codeState struct {
 	tabs      []string
 	active    string
 	activeTab int
+	// preview is the one temporary tab replaced by the next ordinary open.
+	// Editing or explicitly pinning that document clears this marker.
+	preview string
+	back    []codeNavigationLocation
+	forward []codeNavigationLocation
 
 	sidebar             int
 	searchFocus         ui.Handle
@@ -119,6 +140,8 @@ type codeState struct {
 }
 
 func (a *app) resetCode() {
+	a.stopGoLanguageServer()
+	a.stopAdditionalLanguageServers()
 	if a.code.searchCancel != nil {
 		a.code.searchCancel()
 	}
@@ -149,6 +172,9 @@ func (a *app) resetCode() {
 	a.code.tabs = nil
 	a.code.active = ""
 	a.code.activeTab = 0
+	a.code.preview = ""
+	a.code.back = nil
+	a.code.forward = nil
 	a.code.sidebar = codeSidebarFiles
 	a.code.searchSelected, a.code.searchSelectedRow = -1, -1
 	a.code.searchQuery, a.code.searchSubmitted = "", ""
@@ -327,22 +353,60 @@ func (a *app) applyPendingCodeReveal() {
 }
 
 func (a *app) openCodeFile(path string, line int) {
-	a.openCodeLocation(path, line, 0)
+	a.openCodeLocationMode(path, line, 0, false)
 }
 
 func (a *app) openCodeLocation(path string, line, column int) {
+	a.openCodeLocationMode(path, line, column, false)
+}
+
+func (a *app) openPinnedCodeFile(path string, line int) {
+	a.openCodeLocationMode(path, line, 0, true)
+}
+
+func (a *app) openCodeLocationMode(path string, line, column int, pinned bool) {
 	if a.snapshot.Root == "" || !validCodeRelativePath(path) {
 		return
 	}
+	a.openCodeDocumentLocation(path, "", false, line, column, pinned)
+}
+
+func (a *app) openCodeDocumentLocation(path, diskPath string, readOnly bool, line, column int, pinned bool) {
 	a.saveCodeEdits()
 	if a.code.documents == nil {
 		a.code.documents = make(map[string]*codeDocument)
 	}
 	document := a.code.documents[path]
 	if document == nil {
-		document = &codeDocument{path: path}
+		document = &codeDocument{path: path, diskPath: diskPath, readOnly: readOnly}
 		a.code.documents[path] = document
-		a.code.tabs = append(a.code.tabs, path)
+		if a.code.preview != "" {
+			previewPath := a.code.preview
+			if previewDocument := a.code.documents[previewPath]; previewDocument != nil {
+				previewDocument.generation++
+			}
+			delete(a.code.documents, previewPath)
+			replaced := false
+			for index, tab := range a.code.tabs {
+				if tab == previewPath {
+					a.code.tabs[index] = path
+					replaced = true
+					break
+				}
+			}
+			if !replaced {
+				a.code.tabs = append(a.code.tabs, path)
+			}
+		} else {
+			a.code.tabs = append(a.code.tabs, path)
+		}
+		if pinned {
+			a.code.preview = ""
+		} else {
+			a.code.preview = path
+		}
+	} else if pinned && a.code.preview == path {
+		a.code.preview = ""
 	}
 	a.code.active = path
 	for index, tab := range a.code.tabs {
@@ -354,6 +418,7 @@ func (a *app) openCodeLocation(path string, line, column int) {
 	if line > 0 {
 		document.pendingLine = line
 		document.pendingColumn = max(0, column)
+		document.pendingUTF16 = false
 	}
 	if document.state != nil {
 		a.revealCodeLine(document)
@@ -370,26 +435,41 @@ func (a *app) requestCodeDocument(document *codeDocument) {
 	}
 	root := a.snapshot.Root
 	path := document.path
+	onDisk := document.diskPath
+	if onDisk == "" {
+		onDisk = filepath.Join(root, filepath.FromSlash(path))
+	}
 	document.generation++
 	token := document.generation
 	document.loading = true
 	document.binary = false
+	document.imagePreview = nil
 	document.loadError = ""
 	document.saveError = ""
 	document.triedVersion = 0
 	go func() {
 		defer a.recoverBackground()
-		content, err := readWorkingFile(filepath.Join(root, filepath.FromSlash(path)))
-		binary := bytes.IndexByte(content, 0) >= 0
+		content, err := readWorkingFile(onDisk)
+		binary := err == nil && bytes.IndexByte(content, 0) >= 0
+		var preview *mediaPreview
 		var state *editor.State
-		if err == nil && !binary {
-			buffer := editor.NewBuffer(string(content))
-			buffer.SetLanguage(editor.LanguageFor(path))
-			state = &editor.State{
-				Buffer:      buffer,
-				SoftWrap:    true,
-				LineNumbers: editor.LineNumbersOn,
-				Label:       path,
+		if err == nil {
+			if binary || isMediaPath(path) {
+				decoded := decodeMediaData(content)
+				if decoded.bitmap != nil {
+					preview = &decoded
+					binary = true
+				}
+			}
+			if !binary {
+				buffer := editor.NewBuffer(string(content))
+				buffer.SetLanguage(editor.LanguageFor(path))
+				state = &editor.State{
+					Buffer:      buffer,
+					SoftWrap:    true,
+					LineNumbers: editor.LineNumbersOn,
+					Label:       path,
+				}
 			}
 		}
 		a.update(func() {
@@ -404,9 +484,11 @@ func (a *app) requestCodeDocument(document *codeDocument) {
 			}
 			if binary {
 				document.binary = true
+				document.imagePreview = preview
 				return
 			}
 			document.state = state
+			a.configureGoLanguageDocument(document)
 			a.revealCodeLine(document)
 		})
 	}()
@@ -419,11 +501,22 @@ func (a *app) revealCodeLine(document *codeDocument) {
 	line := document.pendingLine - 1
 	column := document.pendingColumn
 	document.pendingLine, document.pendingColumn = 0, 0
+	if document.pendingUTF16 {
+		column = languageServerUTF16ColumnToByte(document.state.Buffer.Line(line), column)
+	}
+	document.pendingUTF16 = false
 	document.state.GoTo(editor.Pos{Line: line, Col: column})
 	document.state.ScrollTo(line)
 }
 
 func (a *app) saveCodeDocument(document *codeDocument) {
+	if document != nil && document.readOnly {
+		return
+	}
+	if document != nil && document.state != nil && document.state.Buffer != nil && document.state.Buffer.Modified() &&
+		a.code.preview == document.path {
+		a.code.preview = ""
+	}
 	// Structural file operations rename or remove paths off the UI thread.
 	// Saving during one could recreate the source after it has moved.
 	if a.code.fileOperationBusy || document == nil || document.state == nil || document.state.Buffer == nil || !document.state.Buffer.Modified() {
@@ -446,6 +539,14 @@ func (a *app) saveCodeDocument(document *codeDocument) {
 	}
 	document.state.Buffer.MarkSaved()
 	document.saveError = ""
+	if a.goLanguageServer != nil && strings.EqualFold(filepath.Ext(document.path), ".go") {
+		a.syncGoLanguageServerDocument(document.path, document)
+		a.goLanguageServer.DidSave(languageServerFileURI(a.workingFilePath(document.path)))
+	}
+	for _, server := range a.additionalLanguageServersForDocument(document) {
+		a.syncManagedLanguageServerDocument(server, document.path, document)
+		server.connection.DidSave(languageServerFileURI(a.workingFilePath(document.path)))
+	}
 }
 
 func (a *app) saveCodeEdits() {
@@ -486,6 +587,9 @@ func (a *app) removeCodeDocument(path string) {
 	}
 	document.generation++
 	delete(a.code.documents, path)
+	if a.code.preview == path {
+		a.code.preview = ""
+	}
 	for index, candidate := range a.code.tabs {
 		if candidate != path {
 			continue

@@ -26,6 +26,7 @@ const (
 
 func (a *app) openSettings() {
 	a.sectionsOpen = false
+	a.loadGoLanguageServerDraft()
 	a.settingsOpen = true
 }
 
@@ -436,6 +437,47 @@ func (a *app) editorSettings(c *ui.Context) {
 			explanation = "Editor buttons open the Code page; file actions also open and reveal the selected file."
 		}
 		ui.Text(c, tr(explanation)).TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).MaxWidth(480)
+		ui.Divider(c)
+		ui.Text(c, tr("Go language server")).Bold().FontSize(c.Theme().FontSize + 1)
+		ui.Text(c, tr("Hover, definitions, diagnostics, and other Go code intelligence")).
+			TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).MaxWidth(480)
+		settingRow(c, "Language server", "Start gopls for Go files", func() {
+			toggle := ui.Checkbox(c, &a.goLanguageServerEnabled, tr("Enable gopls")).Label(tr("Enable gopls"))
+			if toggle.Changed() {
+				a.storeGoLanguageServerDraft(c)
+			}
+		})
+		settingRow(c, "Executable", "Leave empty to find gopls on PATH", func() {
+			input := ui.TextInput(c, &a.goLanguageServerPath).Label(tr("gopls executable path")).
+				Placeholder(tr("Auto-detect gopls on PATH")).Grow(1)
+			if input.Changed() {
+				a.storeGoLanguageServerDraft(c)
+			}
+		})
+		settingRow(c, "Arguments", "One argument per line; no shell is used", func() {
+			input := ui.TextArea(c, &a.goLanguageServerArgs).Label(tr("gopls arguments")).
+				Placeholder("-remote=auto").Lines(2, 5).Grow(1)
+			if input.Changed() {
+				a.storeGoLanguageServerDraft(c)
+			}
+		})
+		settingRow(c, "Connection test", "Run gopls version with this configuration", func() {
+			iconTextButtonState(c, "Test server", "Check that gopls can start", terminalIcon, false,
+				a.languageServerTestBusy, a.testGoLanguageServer)
+			if a.languageServerTestBusy {
+				ui.Spinner(c).Label(tr("Testing language server"))
+			}
+		})
+		if a.languageServerTestResult != "" && a.languageServerTestID == goLanguageServerID {
+			color := c.Theme().Danger
+			if a.languageServerTestOK {
+				color = c.Theme().Success
+			}
+			ui.Text(c, a.languageServerTestResult).TextColor(color).
+				FontSize(c.Theme().FontSize - 1).MaxWidth(480)
+		}
+		ui.Divider(c)
+		a.languageServerCatalog(c)
 	})
 }
 
@@ -685,6 +727,7 @@ func (a *app) settingsFooter(c *ui.Context) {
 			Clicked() {
 			a.invalidateHomeBackgroundWork()
 			a.settings = defaultSettings()
+			a.loadGoLanguageServerDraft()
 			a.applySettingsChange()
 		}
 		ui.Text(c, tr("Changes apply immediately and are saved automatically")).

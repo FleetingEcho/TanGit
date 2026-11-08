@@ -50,6 +50,9 @@ type appSettings struct {
 	// {{filename}} where the file goes and {{line}} where the line does.
 	// An empty value keeps the default editor.
 	EditorCommand string `json:"editorCommand"`
+	// LanguageServers keeps per-language executable choices. An absent entry
+	// means the built-in default: enabled and discovered on PATH.
+	LanguageServers map[string]languageServerSettings `json:"languageServers,omitempty"`
 	// HomeBackgroundPath is the image behind the repository picker. Empty
 	// keeps the theme's plain gradient; the image itself stays where the
 	// user chose it rather than being copied into the settings file.
@@ -64,6 +67,13 @@ type appSettings struct {
 	// ids of workspaceSectionIDs. A file without the choice, or one naming no
 	// known section, starts from defaultVisibleSections.
 	VisibleSections []string `json:"visibleSections"`
+}
+
+type languageServerSettings struct {
+	Disabled       bool     `json:"disabled,omitempty"`
+	Path           string   `json:"path,omitempty"`
+	Arguments      []string `json:"arguments,omitempty"`
+	ProbeArguments []string `json:"probeArguments,omitempty"`
 }
 
 // settingsFile is the name of the settings inside MyGo's user data directory,
@@ -138,9 +148,54 @@ func normalizeSettings(s appSettings) appSettings {
 	}
 	s.Language = normalizeLanguage(s.Language)
 	s.EditorCommand = effectiveEditorCommand(s.EditorCommand)
+	s.LanguageServers = normalizeLanguageServerSettings(s.LanguageServers)
 	s.HomeBackgroundOpacity = normalizeHomeBackgroundOpacity(s.HomeBackgroundOpacity)
 	s.VisibleSections = normalizeVisibleSections(s.VisibleSections)
 	return s
+}
+
+func normalizeLanguageServerSettings(servers map[string]languageServerSettings) map[string]languageServerSettings {
+	if len(servers) == 0 {
+		return nil
+	}
+	normalized := make(map[string]languageServerSettings, len(servers))
+	for language, server := range servers {
+		language = strings.ToLower(strings.TrimSpace(language))
+		if language == "" {
+			continue
+		}
+		server.Path = strings.TrimSpace(server.Path)
+		arguments := make([]string, 0, len(server.Arguments))
+		for _, argument := range server.Arguments {
+			if argument = strings.TrimSpace(argument); argument != "" {
+				arguments = append(arguments, argument)
+			}
+		}
+		if len(arguments) == 0 {
+			arguments = nil
+		}
+		server.Arguments = arguments
+		probeArguments := make([]string, 0, len(server.ProbeArguments))
+		for _, argument := range server.ProbeArguments {
+			if argument = strings.TrimSpace(argument); argument != "" {
+				probeArguments = append(probeArguments, argument)
+			}
+		}
+		if len(probeArguments) == 0 {
+			probeArguments = nil
+		}
+		server.ProbeArguments = probeArguments
+		profile, knownProfile := languageServerProfileByID(language)
+		if !server.Disabled && server.Path == "" && len(server.Arguments) == 0 &&
+			(!knownProfile || profile.EnabledByDefault) {
+			continue
+		}
+		normalized[language] = server
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
 }
 
 // normalizeHomeBackgroundOpacity accepts only useful visible strengths. Zero

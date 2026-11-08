@@ -352,6 +352,9 @@ func (a *app) rekeyCodeDocument(source, destination string) {
 		return
 	}
 	delete(a.code.documents, source)
+	if a.code.preview == source {
+		a.code.preview = destination
+	}
 	document.path = destination
 	document.generation++
 	document.saveError = ""
@@ -363,6 +366,7 @@ func (a *app) rekeyCodeDocument(source, destination string) {
 		document.loading = false
 		document.loadError = ""
 		document.binary = false
+		document.imagePreview = nil
 	}
 	a.code.documents[destination] = document
 	if document.state == nil {

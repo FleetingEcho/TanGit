@@ -64,6 +64,7 @@ func (a *app) openFileEdit() {
 	a.fileEditState = nil
 	a.fileEditLoading = false
 	a.fileEditBinary = false
+	a.fileEditPreview = nil
 	a.fileEditError = ""
 	a.fileEditSaveError = ""
 	a.fileEditTriedVersion = 0
@@ -90,6 +91,7 @@ func (a *app) requestFileEdit() {
 	a.fileEditKey = path
 	a.fileEditLoading = true
 	a.fileEditBinary = false
+	a.fileEditPreview = nil
 	a.fileEditError = ""
 	a.fileEditSaveError = ""
 	a.fileEditTriedVersion = 0
@@ -98,12 +100,18 @@ func (a *app) requestFileEdit() {
 	go func() {
 		defer a.recoverBackground()
 		content, err := readWorkingFile(onDisk)
-		binary := false
+		binary := err == nil && bytes.IndexByte(content, 0) >= 0
+		var preview *mediaPreview
 		var state *editor.State
 		if err == nil {
-			if bytes.IndexByte(content, 0) >= 0 {
-				binary = true
-			} else {
+			if binary || isMediaPath(path) {
+				decoded := decodeMediaData(content)
+				if decoded.bitmap != nil {
+					preview = &decoded
+					binary = true
+				}
+			}
+			if !binary {
 				buffer := editor.NewBuffer(string(content))
 				buffer.SetLanguage(editor.LanguageFor(path))
 				state = &editor.State{
@@ -121,6 +129,7 @@ func (a *app) requestFileEdit() {
 			a.fileEditLoading = false
 			if binary {
 				a.fileEditBinary = true
+				a.fileEditPreview = preview
 				return
 			}
 			if err != nil {
@@ -179,6 +188,7 @@ func (a *app) resetFileEdit() {
 	a.fileEditState = nil
 	a.fileEditLoading = false
 	a.fileEditBinary = false
+	a.fileEditPreview = nil
 	a.fileEditError = ""
 	a.fileEditSaveError = ""
 	a.fileEditTriedVersion = 0
@@ -222,9 +232,7 @@ func (a *app) fileEditPane(c *ui.Context, theme *ui.Theme) {
 		return
 	}
 	if a.fileEditBinary {
-		ui.Column(c).Grow(1).Center().Gap(8).Children(func() {
-			ui.Text(c, tr("This file is binary and cannot be edited here.")).
-				TextColor(theme.TextMuted).TextAlign(ui.Center)
+		binaryFileView(c, a.fileEditKey, a.fileEditPreview, func() {
 			if ui.Button(c, tr("Close")).Clicked() {
 				a.closeFileEdit()
 			}

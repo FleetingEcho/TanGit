@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"image/color"
 	"os"
 	"path/filepath"
 	"sort"
@@ -82,12 +83,15 @@ func TestCodePageOpensFiltersAndClosesPersistentTabs(t *testing.T) {
 	h.tester.Type("edit.go")
 	h.tester.Key(0, ui.KeyEnter)
 	document := waitForCodeDocument(t, h, "internal/app/edit.go")
-	if h.app.code.active != document.path || len(h.app.code.tabs) != 1 {
+	if h.app.code.active != document.path || len(h.app.code.tabs) != 1 || h.app.code.preview != document.path {
 		t.Fatalf("quick open selected %q with tabs %q", h.app.code.active, h.app.code.tabs)
 	}
 	document.state.Insert("/* kept */\n")
 	h.tester.Frame()
 	h.tester.Frame()
+	if h.app.code.preview != "" {
+		t.Fatalf("editing left %q as a temporary preview tab", h.app.code.preview)
+	}
 	if got := written[document.path]; !strings.Contains(got, "/* kept */") {
 		t.Fatalf("the Code buffer was not saved automatically: %q", got)
 	}
@@ -110,6 +114,54 @@ func TestCodePageOpensFiltersAndClosesPersistentTabs(t *testing.T) {
 	h.tester.Frame()
 	if len(h.app.code.tabs) != 1 || h.app.activeCodeDocument() != mainDocument {
 		t.Fatalf("closing a tab chose the wrong remaining document: %+v", h.app.code)
+	}
+}
+
+func TestCodePreviewTabIsReusedUntilDoubleClicked(t *testing.T) {
+	stubCodeWorkspace(t, map[string]string{
+		"first.go":  "package first\n",
+		"second.go": "package second\n",
+		"third.go":  "package third\n",
+	})
+	h := menuTestApp(t)
+	openCodePageForTest(t, h, 3)
+
+	if err := h.tester.Click("Open first.go"); err != nil {
+		t.Fatal(err)
+	}
+	waitForCodeDocument(t, h, "first.go")
+	if err := h.tester.Click("Open second.go"); err != nil {
+		t.Fatal(err)
+	}
+	waitForCodeDocument(t, h, "second.go")
+	if len(h.app.code.tabs) != 1 || h.app.code.tabs[0] != "second.go" || h.app.code.documents["first.go"] != nil {
+		t.Fatalf("second preview did not replace the first: tabs=%q documents=%v", h.app.code.tabs, h.app.code.documents)
+	}
+
+	// A second quick click on the same row is its double-click and pins it.
+	if err := h.tester.Click("Open second.go"); err != nil {
+		t.Fatal(err)
+	}
+	if h.app.code.preview != "" {
+		t.Fatalf("double-click left %q as the preview tab", h.app.code.preview)
+	}
+	if err := h.tester.Click("Open third.go"); err != nil {
+		t.Fatal(err)
+	}
+	waitForCodeDocument(t, h, "third.go")
+	if len(h.app.code.tabs) != 2 || h.app.code.tabs[0] != "second.go" || h.app.code.tabs[1] != "third.go" {
+		t.Fatalf("opening after pinning produced tabs %q", h.app.code.tabs)
+	}
+
+	// The preview tab itself can also be double-clicked to keep it open.
+	if err := h.tester.Click("Editor tab third.go"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.tester.Click("Editor tab third.go"); err != nil {
+		t.Fatal(err)
+	}
+	if h.app.code.preview != "" {
+		t.Fatalf("double-clicking the tab left %q as the preview", h.app.code.preview)
 	}
 }
 
@@ -391,11 +443,22 @@ func BenchmarkBuildCodeTree1500Files(b *testing.B) {
 
 func TestCodePageReportsBinaryAndUnreadableFiles(t *testing.T) {
 	stubCodeWorkspace(t, map[string]string{
-		"blob.bin":  "before\x00after",
-		"broken.go": "package broken\n",
+		"picture.png": string(testPNG(t, 9, 6, color.RGBA{B: 255, A: 255})),
+		"blob.bin":    "before\x00after",
+		"broken.go":   "package broken\n",
 	})
 	h := menuTestApp(t)
-	openCodePageForTest(t, h, 2)
+	openCodePageForTest(t, h, 3)
+	h.app.openCodeFile("picture.png", 0)
+	h.waitFor(t, "the image preview", func() bool {
+		document := h.app.code.documents["picture.png"]
+		return document != nil && !document.loading && document.imagePreview != nil
+	})
+	h.tester.Frame()
+	if !h.tester.HasText("9 × 6") || !h.tester.HasText("This file is binary and cannot be edited here.") {
+		t.Fatalf("the image preview is missing its dimensions or read-only explanation: %q", h.texts())
+	}
+
 	h.app.openCodeFile("blob.bin", 0)
 	h.waitFor(t, "the binary check", func() bool {
 		document := h.app.code.documents["blob.bin"]

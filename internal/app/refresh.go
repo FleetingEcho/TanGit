@@ -154,6 +154,7 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 	old := a.snapshot
 	refsChanged := was.refs != now.refs
 	filesChanged := was.files != now.files
+	codeFilesChanged := was.codeFiles != now.codeFiles
 	selected := a.captureSelection("")
 
 	if !refsChanged {
@@ -166,7 +167,7 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 	}
 	a.snapshot = snapshot
 	a.snapshotSeq++
-	if filesChanged && a.code.filesLoaded {
+	if codeFilesChanged && a.code.filesLoaded {
 		a.code.filesLoaded = false
 		a.requestCodeFiles()
 	}
@@ -233,14 +234,33 @@ func fileSignature(snapshot repository.Snapshot, path string) string {
 // snapshotSigns names the two halves of a read: the working tree and the refs
 // the lists are built from.
 type snapshotSigns struct {
-	files string
-	refs  string
+	files     string
+	refs      string
+	codeFiles string
 }
 
 // signSnapshot names what a read found, so two reads with the same signs mean
 // nothing changed and the frame can be left alone.
 func signSnapshot(snapshot repository.Snapshot) snapshotSigns {
-	return snapshotSigns{files: filesSignature(snapshot), refs: refsSignature(snapshot)}
+	return snapshotSigns{
+		files: filesSignature(snapshot), refs: refsSignature(snapshot), codeFiles: codeFilesSignature(snapshot),
+	}
+}
+
+// codeFilesSignature names only changes that can alter the Code explorer's
+// paths. Saving an already tracked file changes its Git status, size and mtime,
+// but not the tree; rebuilding the index for every keystroke would make the
+// list flicker and lose its stable scroll state.
+func codeFilesSignature(snapshot repository.Snapshot) string {
+	var b strings.Builder
+	for _, file := range snapshot.Files {
+		if file.Tracked && !file.Added && !file.Deleted && file.PreviousPath == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "%s\x00%s\x00%t\x00%t\x00%t\x00",
+			file.Path, file.PreviousPath, file.Tracked, file.Added, file.Deleted)
+	}
+	return b.String()
 }
 
 // filesSignature names the working tree: its changes, the operation Git is in

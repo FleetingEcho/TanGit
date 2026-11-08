@@ -171,6 +171,61 @@ func changedFile(path string) repository.File {
 	return repository.File{Path: path, Status: "M", Tracked: true, Unstaged: true}
 }
 
+func TestCodeFileSignatureIgnoresEditsButTracksPathChanges(t *testing.T) {
+	clean := repository.Snapshot{Root: "/work/repo"}
+	edited := repository.Snapshot{Root: "/work/repo", Files: []repository.File{{
+		Path: "main.go", Status: " M", Tracked: true, Unstaged: true, LinesAdded: 3,
+	}}}
+	editedAgain := edited
+	editedAgain.Files = append([]repository.File(nil), edited.Files...)
+	editedAgain.Files[0].LinesAdded = 7
+	if got, want := signSnapshot(edited).codeFiles, signSnapshot(clean).codeFiles; got != want {
+		t.Fatalf("editing a tracked file changed the Code index signature: %q != %q", got, want)
+	}
+	if got, want := signSnapshot(editedAgain).codeFiles, signSnapshot(edited).codeFiles; got != want {
+		t.Fatalf("saving more content changed the Code index signature: %q != %q", got, want)
+	}
+
+	untracked := edited
+	untracked.Files = append(untracked.Files, repository.File{Path: "new.go", Status: "??", Added: true})
+	deleted := edited
+	deleted.Files = append(deleted.Files, repository.File{Path: "old.go", Status: " D", Tracked: true, Deleted: true})
+	renamed := edited
+	renamed.Files = append(renamed.Files, repository.File{
+		Path: "new-name.go", PreviousPath: "old-name.go", Status: "R ", Tracked: true,
+	})
+	for name, snapshot := range map[string]repository.Snapshot{
+		"untracked file": untracked,
+		"deleted file":   deleted,
+		"renamed file":   renamed,
+	} {
+		if signSnapshot(snapshot).codeFiles == signSnapshot(edited).codeFiles {
+			t.Errorf("%s did not change the Code index signature", name)
+		}
+	}
+}
+
+func TestQuietRefreshDoesNotReindexCodeTreeForContentEdits(t *testing.T) {
+	opener := &liveOpener{snapshot: repository.Snapshot{Root: "/work/repo", Branch: "main"}}
+	s, tt, updated := newLiveShell(t, opener)
+	openShellRepo(t, s, tt, updated, "/work/repo")
+	a := s.activeApp()
+	a.code.filesLoaded = true
+	a.code.filesLoading = false
+	a.code.files = []string{"main.go"}
+	token := a.code.filesToken
+
+	opener.set(repository.Snapshot{
+		Root: "/work/repo", Branch: "main", Files: []repository.File{changedFile("main.go")},
+	})
+	a.requestQuietRefresh()
+	drainRefresh(t, updated, 1)
+	if a.code.filesToken != token || !a.code.filesLoaded || a.code.filesLoading {
+		t.Fatalf("content edit reindexed Code tree: token %d->%d loaded=%v loading=%v",
+			token, a.code.filesToken, a.code.filesLoaded, a.code.filesLoading)
+	}
+}
+
 // drainRefresh runs the reads the window queued, as the UI loop would.
 func drainRefresh(t *testing.T, updated *updates, reads int) {
 	t.Helper()
