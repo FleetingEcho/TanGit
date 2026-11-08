@@ -88,9 +88,18 @@ func TestOneOffCommandRunsAndRecordsOutput(t *testing.T) {
 	h.app.commandPromptText = "printf completed > result.txt; cat result.txt"
 	h.app.submitCommandPrompt()
 	result := filepath.Join(dir, "result.txt")
-	h.waitFor(t, "custom command execution", func() bool {
-		_, err := os.Stat(result)
-		return err == nil
+	h.waitFor(t, "custom command execution and output recording", func() bool {
+		if _, err := os.Stat(result); err != nil {
+			return false
+		}
+		// The output file appears before the process-exit callback appends its
+		// command-log entry. Wait for both so this test does not race the callback.
+		for _, entry := range h.app.commandLog.Entries() {
+			if entry.Command == "printf completed > result.txt; cat result.txt" && entry.Output == "completed" {
+				return true
+			}
+		}
+		return false
 	})
 	if h.app.commandPromptOpen {
 		t.Fatal("prompt must close after execution")

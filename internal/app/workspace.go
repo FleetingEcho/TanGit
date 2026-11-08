@@ -2,6 +2,7 @@ package app
 
 import (
 	"io"
+	"strings"
 
 	"lazygitapp/internal/repository"
 	"lazygitapp/internal/workspace"
@@ -28,6 +29,31 @@ func openedLocation(session repository.Session, snapshot repository.Snapshot, re
 		}
 	}
 	return workspace.Location{Kind: workspace.Local, Root: snapshot.Root}
+}
+
+// openedMainWorktreePath identifies the repository that owns the opened
+// checkout. A local owner is its physical absolute path; an SSH owner retains
+// its profile-qualified workspace identity.
+func (a *app) openedMainWorktreePath() string {
+	root := ""
+	for _, worktree := range a.snapshot.Worktrees {
+		if worktree.Main {
+			root = strings.TrimSpace(worktree.Path)
+			break
+		}
+	}
+	if root == "" {
+		return ""
+	}
+	location := a.location
+	location.Root = root
+	if !location.Valid() {
+		return ""
+	}
+	if location.IsRemote() {
+		return location.String()
+	}
+	return cleanRepoPath(location.String())
 }
 
 // readBeforeInstall retains ownership until a snapshot read returns normally.

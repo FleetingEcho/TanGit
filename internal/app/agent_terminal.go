@@ -27,9 +27,13 @@ func shellCommandForTerminal(command string) []string {
 // Agent and test terminals have different operation identities while sharing
 // the task's stable ID in their environment. This lets both processes run in
 // the same explicit worktree without reopening or replacing each other.
-const agentTestOperationSuffix = ":tests"
+const (
+	agentTestOperationSuffix = ":tests"
+	agentRunOperationSuffix  = ":run"
+)
 
 func agentTestOperationID(taskID string) string { return taskID + agentTestOperationSuffix }
+func agentRunOperationID(taskID string) string  { return taskID + agentRunOperationSuffix }
 
 func agentOperationTaskID(operationID string) (string, bool) {
 	taskID, tests := strings.CutSuffix(operationID, agentTestOperationSuffix)
@@ -59,9 +63,21 @@ func (a *app) openAgentTestTerminal(task agentwork.Task, command []string, reque
 	return a.openAgentOperationTerminal(task, command, requestPath, true)
 }
 
+func (a *app) openAgentRunTerminal(task agentwork.Task, command []string, requestPath string) bool {
+	return a.openAgentOperationTerminalKind(task, command, requestPath, "run")
+}
+
 // openAgentOperationTerminal returns false without changing task state when
 // the terminal limit or remote execution prevents startup.
 func (a *app) openAgentOperationTerminal(task agentwork.Task, command []string, requestPath string, tests bool) bool {
+	kind := "agent"
+	if tests {
+		kind = "tests"
+	}
+	return a.openAgentOperationTerminalKind(task, command, requestPath, kind)
+}
+
+func (a *app) openAgentOperationTerminalKind(task agentwork.Task, command []string, requestPath, kind string) bool {
 	if len(command) == 0 || task.ID == "" || strings.TrimSpace(task.WorktreePath) == "" {
 		return false
 	}
@@ -70,8 +86,11 @@ func (a *app) openAgentOperationTerminal(task agentwork.Task, command []string, 
 		return false
 	}
 	operationID := task.ID
-	if tests {
+	switch kind {
+	case "tests":
 		operationID = agentTestOperationID(task.ID)
+	case "run":
+		operationID = agentRunOperationID(task.ID)
 	}
 	if a.selectAgentOperationTerminal(operationID) {
 		return true
@@ -90,18 +109,17 @@ func (a *app) openAgentOperationTerminal(task agentwork.Task, command []string, 
 	a.term.nextGroupID++
 	index := len(a.term.sessions)
 	name, shell := "Agent: "+task.Title, "Agent"
-	if tests {
+	switch kind {
+	case "tests":
 		name, shell = "Tests: "+task.Title, "Tests"
+	case "run":
+		name, shell = "Run: "+task.Title, "Run"
 	}
 	a.term.sessions = append(a.term.sessions, terminalSessionState{
 		id: a.term.nextID, groupID: a.term.nextGroupID,
 		agentTaskID: operationID, worktree: task.WorktreePath,
 		name: name, shell: shell, command: command,
-		environment: []string{
-			"TANGIT_AGENT_TASK_ID=" + task.ID,
-			"TANGIT_AGENT_WORKTREE=" + task.WorktreePath,
-			"TANGIT_AGENT_REQUEST_FILE=" + requestPath,
-		},
+		environment: agentTaskEnvironment(task, requestPath, operationID),
 	})
 	a.term.active = index
 	a.startTerminalAt(index)
@@ -110,22 +128,94 @@ func (a *app) openAgentOperationTerminal(task agentwork.Task, command []string, 
 	return true
 }
 
+// agentProcessCompletion distinguishes a real process exit from terminal
+// startup failure or manual termination. It is queued while a task mutation is
+// active so even an immediately exiting agent cannot leave its state Running.
+type agentProcessCompletion struct {
+	generation uint64
+	exitCode   *int
+}
+
+func (a *app) recordAgentProcessCompletion(taskID string, completion agentProcessCompletion) {
+	a.recordAgentProcessCompletionAtGeneration(taskID, a.generation, completion)
+}
+
+func (a *app) recordAgentProcessCompletionAtGeneration(taskID string, generation uint64, completion agentProcessCompletion) {
+	completion.generation = generation
+	if a.agents.mutating[taskID] {
+		if a.agents.processCompletions == nil {
+			a.agents.processCompletions = map[string]agentProcessCompletion{}
+		}
+		if _, pending := a.agents.processCompletions[taskID]; !pending {
+			a.agents.processCompletions[taskID] = completion
+		}
+		return
+	}
+	a.persistAgentProcessCompletion(taskID, completion)
+}
+
+func (a *app) persistAgentProcessCompletion(taskID string, completion agentProcessCompletion) {
+	a.mutateAgentTaskAtGeneration(taskID, completion.generation, func(task *agentwork.Task) error {
+		task.ExitCode = nil
+		task.Status = agentwork.StatusFailed
+		if completion.exitCode != nil {
+			code := *completion.exitCode
+			task.ExitCode = &code
+			if code == 0 {
+				task.Status = agentwork.StatusExited
+			}
+		}
+		return nil
+	})
+}
+
+func (a *app) flushAgentProcessCompletion(taskID string) {
+	if a.agents.mutating[taskID] {
+		return
+	}
+	completion, pending := a.agents.processCompletions[taskID]
+	if !pending {
+		return
+	}
+	delete(a.agents.processCompletions, taskID)
+	a.persistAgentProcessCompletion(taskID, completion)
+}
+
 // agentTerminalExited records process completion only. A zero agent exit is
 // not treated as task completion or review approval. Test exits update only
 // LastTest and leave both the agent outcome and task lifecycle untouched.
 func (a *app) agentTerminalExited(operationID string, code int) {
-	taskID, tests := agentOperationTaskID(operationID)
-	if tests {
-		a.agentTestTerminalExited(taskID, code)
+	a.agentTerminalExitedAtGeneration(operationID, a.generation, code)
+}
+
+func (a *app) agentTerminalExitedAtGeneration(operationID string, generation uint64, code int) {
+	// Development servers and other Run commands are observations only. Their
+	// exit codes never alter the coding agent's lifecycle or test result.
+	if strings.HasSuffix(operationID, agentRunOperationSuffix) {
 		return
 	}
-	a.mutateAgentTask(taskID, func(task *agentwork.Task) error {
-		task.ExitCode = &code
-		if code == 0 {
-			task.Status = agentwork.StatusExited
-		} else {
-			task.Status = agentwork.StatusFailed
-		}
-		return nil
-	})
+	taskID, tests := agentOperationTaskID(operationID)
+	if tests {
+		a.recordAgentTestCompletionAtGeneration(taskID, generation, agentTestExitCompletion(code))
+		return
+	}
+	a.recordAgentProcessCompletionAtGeneration(taskID, generation, agentProcessCompletion{exitCode: &code})
+}
+
+// agentTerminalFailed finishes an operation whose terminal closed or failed to
+// start before producing a trustworthy process exit code.
+func (a *app) agentTerminalFailed(operationID, detail string) {
+	a.agentTerminalFailedAtGeneration(operationID, a.generation, detail)
+}
+
+func (a *app) agentTerminalFailedAtGeneration(operationID string, generation uint64, detail string) {
+	if strings.HasSuffix(operationID, agentRunOperationSuffix) {
+		return
+	}
+	taskID, tests := agentOperationTaskID(operationID)
+	if tests {
+		a.recordAgentTestCompletionAtGeneration(taskID, generation, agentTestFailureCompletion(detail))
+		return
+	}
+	a.recordAgentProcessCompletionAtGeneration(taskID, generation, agentProcessCompletion{})
 }
