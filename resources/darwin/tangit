@@ -1,0 +1,46 @@
+#!/bin/sh
+# LaunchServices does not preserve the caller's working directory, so resolve
+# the repository before opening a new application instance.
+set -eu
+
+usage() {
+    printf 'Usage: tangit [<repository-path>]\n'
+}
+
+case "${1-}" in
+    -h|--help) usage; exit 0 ;;
+    --) shift ;;
+esac
+if [ "$#" -gt 1 ]; then
+    usage >&2
+    exit 2
+fi
+
+app=${TANGIT_APP-}
+if [ -z "$app" ]; then
+    if [ -d /Applications/TanGit.app ]; then
+        app=/Applications/TanGit.app
+    else
+        app="$HOME/Applications/TanGit.app"
+    fi
+fi
+if [ ! -d "$app" ]; then
+    printf 'TanGit.app was not found. Install it in Applications, or set TANGIT_APP to its location.\n' >&2
+    exit 1
+fi
+
+if [ "$#" -eq 0 ]; then
+    exec open -a "$app"
+fi
+case "$1" in
+    /*) target=$1 ;;
+    *) target="$PWD/$1" ;;
+esac
+if [ ! -d "$target" ]; then
+    printf 'Repository folder does not exist: %s\n' "$1" >&2
+    exit 1
+fi
+repository=$(CDPATH= cd "$target" && pwd -P)
+# --args alone is ignored for an already running application. A fresh
+# instance receives this path and opens its repository page on startup.
+exec open -n -a "$app" --args "$repository"

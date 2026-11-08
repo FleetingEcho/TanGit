@@ -507,9 +507,6 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 							FontSize(theme.FontSize - 1).SingleLine()
 					}
 				})
-				if a.workspaceTab == sectionChanges && a.lineSelectionAvailable() {
-					a.lineSelectionControls(c, false)
-				}
 				a.diffWhitespaceButton(c)
 				a.diffContextButton(c)
 				a.diffLayoutButton(c)
@@ -517,6 +514,11 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 				a.exportDiffButton(c)
 				iconButton(c, "Close full-window diff", "Escape", closeIcon, false, a.closeDiffFullscreen)
 			})
+			if a.workspaceTab == sectionChanges && a.lineSelectionAvailable() {
+				ui.Column(c).Padding(10, 14).Children(func() {
+					a.lineSelectionControls(c, false)
+				})
+			}
 			ui.Divider(c)
 			if !ok {
 				ui.Column(c).Grow(1).Center().Children(func() {
