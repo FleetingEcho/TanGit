@@ -212,6 +212,10 @@ func TestTerminalClosingLastActiveSplitStaysInItsTopLevelTab(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
+	if err := h.tester.Click("Close shell"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
 
 	active := h.app.activeTerminal()
 	if active == nil || active.groupID != 2 || active.pane != secondPane {
@@ -307,6 +311,9 @@ func TestTerminalTopLevelTabsShareHeaderAndCloseWithConfirmation(t *testing.T) {
 	if h.app.confirm == nil || h.app.confirm.title != tr("Close terminal tab") || !h.app.confirm.destructive {
 		t.Fatalf("closing a multi-shell tab did not ask for confirmation: %+v", h.app.confirm)
 	}
+	if want := trf("%d terminals are still running.", 2); h.app.confirm.message != want {
+		t.Fatalf("tab confirmation counted shells in other tabs: got %q, want %q", h.app.confirm.message, want)
+	}
 	for _, peer := range []monitoredTerminalPeer{first, second, third} {
 		requireTerminalRunning(t, peer)
 	}
@@ -328,6 +335,32 @@ func TestTerminalTopLevelTabsShareHeaderAndCloseWithConfirmation(t *testing.T) {
 	requireTerminalRunning(t, first)
 	requireTerminalClosed(t, second)
 	requireTerminalClosed(t, third)
+}
+
+func TestTerminalSingleShellTabClosesWithoutConfirmation(t *testing.T) {
+	h, peers, first := monitoredTerminalTestApp(t)
+	if err := h.tester.Click("New terminal tab"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.waitFor(t, "the second single-shell tab", func() bool {
+		return h.app.terminalSessionCount() == 2 && h.app.activeTerminal().pane != nil
+	})
+	second := <-peers
+	t.Cleanup(func() { _ = second.Close() })
+
+	if err := h.tester.Click("Close terminal tab 2"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.confirm != nil {
+		t.Fatalf("closing a single-shell tab unexpectedly asked for confirmation: %+v", h.app.confirm)
+	}
+	if h.app.terminalSessionCount() != 1 || h.app.activeTerminalGroup() != 1 {
+		t.Fatalf("single-shell tab close disturbed the other tab: %+v", h.app.term)
+	}
+	requireTerminalRunning(t, first)
+	requireTerminalClosed(t, second)
 }
 
 func TestTerminalTopLevelTabRenameAndContextMenu(t *testing.T) {
@@ -375,11 +408,8 @@ func TestTerminalTopLevelTabRenameAndContextMenu(t *testing.T) {
 
 	h.rightClick(t, "Terminal tab 2")
 	h.chooseMenuItem(t, "Close terminal tab")
-	if h.app.confirm == nil || h.app.confirm.title != tr("Close terminal tab") {
-		t.Fatalf("context-menu close did not confirm the running shells: %+v", h.app.confirm)
-	}
-	if err := h.tester.Click("Close tab"); err != nil {
-		t.Fatal(err)
+	if h.app.confirm != nil {
+		t.Fatalf("context-menu close confirmed a single-shell tab: %+v", h.app.confirm)
 	}
 	h.tester.Frame()
 	if h.app.terminalSessionCount() != 1 || h.app.activeTerminal().id != firstID || h.app.term.sessions[0].name != "" {
@@ -458,7 +488,51 @@ func TestTerminalMaximizeRestoresPanelHeightAndSessions(t *testing.T) {
 	}
 }
 
-func TestTerminalCloseAllRequiresConfirmationButTabCloseDoesNot(t *testing.T) {
+func TestTerminalIndividualCloseConfirmsUntilOnlyOneShellRemains(t *testing.T) {
+	h, peers, first := monitoredTerminalTestApp(t)
+	if err := h.tester.Click("New terminal tab"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.waitFor(t, "the second individual terminal", func() bool {
+		return h.app.terminalSessionCount() == 2 && h.app.activeTerminal().pane != nil
+	})
+	second := <-peers
+	t.Cleanup(func() { _ = second.Close() })
+
+	if err := h.tester.Click("Close terminal 2"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.confirm == nil || h.app.confirm.title != tr("Close terminal") || !h.app.confirm.destructive {
+		t.Fatalf("closing one of two terminals did not ask for confirmation: %+v", h.app.confirm)
+	}
+	if want := trf("%d terminals are still running.", 2); h.app.confirm.message != want {
+		t.Fatalf("individual close confirmation has the wrong count: got %q, want %q", h.app.confirm.message, want)
+	}
+	requireTerminalRunning(t, first)
+	requireTerminalRunning(t, second)
+	if err := h.tester.Click("Close shell"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.terminalSessionCount() != 1 || h.app.activeTerminalGroup() != 1 {
+		t.Fatalf("confirmed individual close disturbed the other tab: %+v", h.app.term)
+	}
+	requireTerminalRunning(t, first)
+	requireTerminalClosed(t, second)
+
+	if err := h.tester.Click("Close terminal 1"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.confirm != nil || h.app.term.panelOpen || h.app.terminalSessionCount() != 0 {
+		t.Fatalf("closing the last terminal was not immediate: confirm=%+v terminal=%+v", h.app.confirm, h.app.term)
+	}
+	requireTerminalClosed(t, first)
+}
+
+func TestTerminalCloseAllAndIndividualSplitCloseRequireConfirmation(t *testing.T) {
 	h, peers, first := monitoredTerminalTestApp(t)
 	second := splitMonitoredTerminal(t, h, peers, false)
 
@@ -482,9 +556,15 @@ func TestTerminalCloseAllRequiresConfirmationButTabCloseDoesNot(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if h.app.confirm != nil {
-		t.Fatal("a per-tab close unexpectedly asked to close every terminal")
+	if h.app.confirm == nil || h.app.confirm.title != tr("Close terminal") {
+		t.Fatalf("closing one of two splits did not ask for confirmation: %+v", h.app.confirm)
 	}
+	requireTerminalRunning(t, first)
+	requireTerminalRunning(t, second)
+	if err := h.tester.Click("Close shell"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
 	requireTerminalClosed(t, second)
 	requireTerminalRunning(t, first)
 	if !h.app.term.panelOpen || h.app.term.active != 0 || h.app.terminalSessionCount() != 1 {
@@ -570,6 +650,10 @@ func TestTerminalSplitsSubdivideOnlyActiveCardInMixedDirections(t *testing.T) {
 		t.Fatalf("drag replaced the mixed split structure: %+v", h.app.term.layout)
 	}
 	if err := h.tester.Click("Close terminal 3"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Close shell"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
@@ -816,6 +900,10 @@ func TestTerminalSplitHideAndCloseHaveIndependentLifetimes(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
+	if err := h.tester.Click("Close shell"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
 	requireTerminalClosed(t, second)
 	requireTerminalRunning(t, first)
 	if !h.app.term.panelOpen || h.app.term.active != 0 || h.app.terminalSessionCount() != 1 || h.app.term.sessions[0].pane != firstPane {
@@ -940,6 +1028,10 @@ func TestClosingAStartingSplitDiscardsItsLateShell(t *testing.T) {
 	<-started
 	h.tester.Frame()
 	if err := h.tester.Click("Close terminal 2"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Close shell"); err != nil {
 		t.Fatal(err)
 	}
 	close(release)

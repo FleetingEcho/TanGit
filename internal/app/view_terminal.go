@@ -468,19 +468,46 @@ func (a *app) closeTerminalAt(index int) {
 	a.term.layout = a.term.layouts[a.activeTerminalGroup()]
 }
 
-// requestCloseTerminalGroup closes one top-level tab and all of its splits.
-// With multiple shells running, the destructive action is confirmed first.
-func (a *app) requestCloseTerminalGroup(group uint64) {
-	if a.terminalGroupSize(group) == 0 {
+// requestCloseTerminalAt closes one shell directly when it is the last one.
+// While any other terminal exists, destroying a shell is confirmed first.
+func (a *app) requestCloseTerminalAt(index int) {
+	if index < 0 || index >= len(a.term.sessions) {
 		return
 	}
 	if a.terminalSessionCount() == 1 {
+		a.closeTerminalAt(index)
+		return
+	}
+	id := a.term.sessions[index].id
+	a.askConfirm(confirmRequest{
+		title:        "Close terminal",
+		message:      trf("%d terminals are still running.", a.terminalSessionCount()),
+		detail:       "This exits the selected terminal shell. Unsaved work in that shell will be lost.",
+		confirmLabel: "Close shell",
+		destructive:  true,
+		run: func() {
+			if current, _ := a.terminalSessionByID(id); current >= 0 {
+				a.closeTerminalAt(current)
+			}
+		},
+	})
+}
+
+// requestCloseTerminalGroup closes one top-level tab and all of its splits.
+// Only multiple shells in that tab require confirmation; shells in other tabs
+// neither trigger the question nor inflate its count.
+func (a *app) requestCloseTerminalGroup(group uint64) {
+	count := a.terminalGroupSize(group)
+	if count == 0 {
+		return
+	}
+	if count == 1 {
 		a.closeTerminalGroup(group)
 		return
 	}
 	a.askConfirm(confirmRequest{
 		title:        "Close terminal tab",
-		message:      trf("%d terminals are still running.", a.terminalSessionCount()),
+		message:      trf("%d terminals are still running.", count),
 		detail:       "This closes the selected terminal tab and exits its shells. Unsaved work in those shells will be lost.",
 		confirmLabel: "Close tab",
 		destructive:  true,
@@ -496,8 +523,8 @@ func (a *app) closeTerminalGroup(group uint64) {
 	}
 }
 
-// requestCloseAllTerminals makes a multi-shell exit explicit. Closing one
-// split remains immediate; closing every shell has its own confirmation.
+// requestCloseAllTerminals makes a multi-shell exit explicit. The individual
+// close controls have their own confirmation; closing every shell has its own.
 func (a *app) requestCloseAllTerminals() {
 	count := a.terminalSessionCount()
 	if count == 0 {
@@ -733,7 +760,7 @@ func (a *app) terminalSessionView(c *ui.Context, index int) {
 					})
 					closeLabel := fmt.Sprintf("%s %d", tr("Close terminal"), number)
 					flatIconButton(c, closeLabel, closeLabel, closeIcon, 13, 4, false, func() {
-						a.closeTerminalAt(index)
+						a.requestCloseTerminalAt(index)
 					})
 				})
 			})
@@ -762,7 +789,7 @@ func (a *app) terminalSessionMenu(m *ui.Menu, id uint64) {
 	}
 	m.Separator()
 	if m.Item(tr("Close terminal")).Chosen() {
-		a.closeTerminalAt(index)
+		a.requestCloseTerminalAt(index)
 	}
 }
 
