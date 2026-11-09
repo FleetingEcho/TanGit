@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"image/color"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -136,8 +137,28 @@ func TestShellUpdateButtonAdvertisesAndOpensAnAvailableUpdate(t *testing.T) {
 	if checks != 1 {
 		t.Fatalf("clicking the update icon checked %d times, want 1", checks)
 	}
-	if !rectHasColor(tt, "Update available", themeForSettings(s.settings, false).Danger) {
+	danger := themeForSettings(s.settings, false).Danger
+	if !rectHasColor(tt, "Update available", danger) {
 		t.Error("the available-update button has no red reminder badge")
+	}
+	// The badge belongs over the icon's top-right corner, not in a separate
+	// centered slot beside it where it is easy to mistake for ordinary chrome.
+	danger = danger.SRGB()
+	image := tt.Image()
+	badgeVisible := false
+	for y := max(int(updater.Y), 0); y < min(int(updater.Y+updater.H/3), image.Bounds().Dy()) && !badgeVisible; y++ {
+		for x := max(int(updater.X+updater.W/2), 0); x < min(int(updater.X+updater.W), image.Bounds().Dx()); x++ {
+			pixel := color.RGBAModel.Convert(image.At(x, y)).(color.RGBA)
+			if colorChannelDelta(pixel.R, danger.R) <= 48 &&
+				colorChannelDelta(pixel.G, danger.G) <= 48 &&
+				colorChannelDelta(pixel.B, danger.B) <= 48 {
+				badgeVisible = true
+				break
+			}
+		}
+	}
+	if !badgeVisible {
+		t.Error("the red reminder badge is not over the update icon's top-right corner")
 	}
 	s.availableUpdate = ""
 	tt.Frame()
