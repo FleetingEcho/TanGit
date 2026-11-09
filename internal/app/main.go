@@ -220,28 +220,31 @@ type app struct {
 	customCommandFormError    string
 	// The Go language-server draft backs stable Settings controls while the
 	// persisted profile keeps arguments as a safe array rather than a shell command.
-	goLanguageServerEnabled       bool
-	goLanguageServerPath          string
-	goLanguageServerArgs          string
-	searchExcludedDirectoryDraft  string
-	languageServerDrafts          map[string]*languageServerDraft
-	languageServerTestID          string
-	languageServerTestSeq         uint64
-	languageServerTestBusy        bool
-	languageServerTestOK          bool
-	languageServerTestResult      string
-	languageServerInstallPrompted map[string]bool
-	languageServerInstalling      map[string]bool
-	languageServerCatalogQuery    string
-	languageServerCatalogSelected string
-	customLanguageServerForm      customLanguageServerForm
-	goLanguageServer              languageServerConnection
-	goLanguageServerStarting      bool
-	goLanguageServerMissing       bool
-	goLanguageServerSeq           uint64
-	goLanguageServerError         string
-	goLanguageServerDocs          map[string]uint64
-	additionalLanguageServers     map[string]*managedLanguageServer
+	goLanguageServerEnabled        bool
+	goLanguageServerPath           string
+	goLanguageServerArgs           string
+	searchExcludedDirectoryDraft   string
+	languageServerDrafts           map[string]*languageServerDraft
+	languageServerTestID           string
+	languageServerTestSeq          uint64
+	languageServerTestBusy         bool
+	languageServerTestOK           bool
+	languageServerTestResult       string
+	languageServerInstallPrompted  map[string]bool
+	languageServerInstalling       map[string]bool
+	languageServerUninstalling     map[string]bool
+	languageServerCatalogQuery     string
+	languageServerCatalogSelected  string
+	customLanguageServerForm       customLanguageServerForm
+	goLanguageServer               languageServerConnection
+	goLanguageServerStarting       bool
+	goLanguageServerMissing        bool
+	goLanguageServerSeq            uint64
+	goLanguageServerError          string
+	goLanguageServerRestartPending bool
+	goLanguageServerRestartUsed    bool
+	goLanguageServerDocs           map[string]uint64
+	additionalLanguageServers      map[string]*managedLanguageServer
 	// customAccent backs ColorWell while Accent keeps its serializable hex.
 	customAccent ui.Color
 	// homeBackground is decoded once for the path in settings, then reused
