@@ -7,13 +7,13 @@ import (
 )
 
 // confirmReflogReplay asks before moving HEAD because both undo and redo can
-// rewrite the checked-out branch. The repository determines the exact target
-// from a fresh reflog after this confirmation, so it cannot go stale while the
-// dialog is open.
+// rewrite the checked-out branch. Acceptance re-reads the complete reflog and
+// proceeds only if it still selects the exact action approved here.
 func (a *app) confirmReflogReplay(redo bool) {
 	if a.actionBusy || a.session == nil {
 		return
 	}
+	identity, _ := repository.ReflogReplayIdentity(a.snapshot.Reflog, redo)
 	title := "Undo Git Operation"
 	message := tr("Undo the latest eligible Git operation?")
 	if description, ok := repository.ReflogReplayDescription(a.snapshot.Reflog, a.snapshot.Operations, false); ok {
@@ -42,9 +42,9 @@ func (a *app) confirmReflogReplay(redo bool) {
 			a.beginRepositoryActionMessage(success, "",
 				func(ctx context.Context, session repository.Session) error {
 					if redo {
-						return session.Redo(ctx)
+						return session.RedoExpected(ctx, identity)
 					}
-					return session.Undo(ctx)
+					return session.UndoExpected(ctx, identity)
 				}, nil)
 		},
 	})

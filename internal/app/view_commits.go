@@ -201,7 +201,8 @@ func (a *app) commitRowMenuWithHistory(m *ui.Menu, commit repository.Commit, ser
 // canUndoLatestCommit limits single-commit undo to the current branch tip.
 // General reset actions remain available for intentionally rewinding further.
 func (a *app) canUndoLatestCommit(commit repository.Commit) bool {
-	if a.snapshot.Head == "" || a.snapshot.Head != commit.Hash || len(commit.Parents) == 0 {
+	if a.snapshot.Operation != "" || a.snapshot.HeadHash == "" ||
+		a.snapshot.HeadHash != commit.Hash || len(commit.Parents) == 0 {
 		return false
 	}
 	for _, branch := range a.snapshot.Branches {
@@ -225,13 +226,13 @@ func (a *app) confirmUndoLatestCommit(commit repository.Commit, mode repository.
 			return
 		}
 	}
-	parent := repository.Commit{Hash: commit.Parents[0], ShortHash: commit.Parents[0][:min(7, len(commit.Parents[0]))]}
 	detail := "Only this commit is removed; its changes stay staged."
 	success := trf("Undid %s; changes are staged", commit.ShortHash)
 	if mode == repository.ResetMixed {
 		detail = "Only this commit is removed; its changes stay unstaged in Changes."
 		success = trf("Undid %s; changes are unstaged", commit.ShortHash)
 	}
+	branch := a.snapshot.Branch
 	a.askConfirm(confirmRequest{
 		title:        "Undo Latest Commit",
 		message:      trf("Undo only %s and keep its changes?", commit.ShortHash),
@@ -239,7 +240,7 @@ func (a *app) confirmUndoLatestCommit(commit repository.Commit, mode repository.
 		confirmLabel: "Undo commit",
 		run: func() {
 			a.beginRepositoryActionMessage(success, "", func(ctx context.Context, session repository.Session) error {
-				return session.ResetToCommit(ctx, parent, mode)
+				return session.UndoLatestCommit(ctx, branch, commit, mode)
 			}, nil)
 		},
 	})

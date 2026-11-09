@@ -82,7 +82,6 @@ func TestUndoLatestCommitMenuActions(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			h, calls := historyHarness(t)
-			h.app.snapshot.Head = "c2c2c2c2"
 			h.rightClick(t, "Second commit")
 			h.chooseMenuItem(t, test.menu)
 			if h.app.confirm == nil || !strings.Contains(h.app.confirm.detail, "Only this commit is removed") ||
@@ -101,9 +100,38 @@ func TestUndoLatestCommitMenuActions(t *testing.T) {
 	}
 }
 
+func TestUndoLatestCommitConfirmationRetainsApprovedBranch(t *testing.T) {
+	h, calls := historyHarness(t)
+	h.rightClick(t, "Second commit")
+	h.chooseMenuItem(t, "Undo latest commit and keep changes staged…")
+	if h.app.confirm == nil {
+		t.Fatal("missing latest-commit confirmation")
+	}
+	h.app.acceptConfirm()
+	// The action is asynchronous; a quiet refresh can change the displayed
+	// branch after acceptance but before its goroutine invokes the session.
+	h.app.snapshot.Branch = "feature"
+	h.waitFor(t, "the approved-branch reset", func() bool { return calls.has("reset-soft:c1c1c1c1") })
+	if !calls.has("undo-latest-branch:main") || calls.has("undo-latest-branch:feature") {
+		t.Fatalf("confirmation did not retain approved branch: %v", calls.all())
+	}
+}
+
+func TestUndoLatestCommitUsesResolvedHeadAcrossAllRefs(t *testing.T) {
+	h, _ := historyHarness(t)
+	h.app.snapshot.Commits = append([]repository.Commit{{
+		Hash: "f3f3f3f3", ShortHash: "f3f3f3f", Subject: "Newer commit on another branch", Parents: []string{"c2c2c2c2"},
+	}}, h.app.snapshot.Commits...)
+	h.rightClick(t, "Second commit")
+	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
+		if !slices.Contains(h.texts(), label) {
+			t.Fatalf("resolved HEAD does not offer %q when another ref is newer", label)
+		}
+	}
+}
+
 func TestUndoLatestCommitMenuIsLimitedToAttachedHeadWithAParent(t *testing.T) {
 	h, _ := historyHarness(t)
-	h.app.snapshot.Head = "c2c2c2c2"
 	h.rightClick(t, "Initial commit")
 	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
 		if slices.Contains(h.texts(), label) {
@@ -111,7 +139,8 @@ func TestUndoLatestCommitMenuIsLimitedToAttachedHeadWithAParent(t *testing.T) {
 		}
 	}
 	h.press(t, ui.KeyEscape)
-	h.app.snapshot.Head = "c1c1c1c1"
+	h.app.snapshot.Commits = h.app.snapshot.Commits[1:]
+	h.app.snapshot.HeadHash = "c1c1c1c1"
 	h.rightClick(t, "Initial commit")
 	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
 		if slices.Contains(h.texts(), label) {
@@ -119,7 +148,8 @@ func TestUndoLatestCommitMenuIsLimitedToAttachedHeadWithAParent(t *testing.T) {
 		}
 	}
 	h.press(t, ui.KeyEscape)
-	h.app.snapshot.Commits[1].Parents = []string{"c0c0c0c0"}
+	h.app.snapshot.Commits[0].Parents = []string{"c0c0c0c0"}
+	h.app.snapshot.Head = "c1c1c1c1"
 	h.app.snapshot.Branches[0].DetachedHead = true
 	h.rightClick(t, "Initial commit")
 	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
@@ -129,9 +159,19 @@ func TestUndoLatestCommitMenuIsLimitedToAttachedHeadWithAParent(t *testing.T) {
 	}
 }
 
+func TestUndoLatestCommitIsNotOfferedDuringAnOperation(t *testing.T) {
+	h, _ := historyHarness(t)
+	h.app.snapshot.Operation = "merge"
+	h.rightClick(t, "Second commit")
+	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
+		if slices.Contains(h.texts(), label) {
+			t.Fatalf("in-progress operation offers %q", label)
+		}
+	}
+}
+
 func TestUndoLatestCommitWarnsAboutUnresolvedConflicts(t *testing.T) {
 	h, calls := historyHarness(t)
-	h.app.snapshot.Head = "c2c2c2c2"
 	h.app.snapshot.Files = append(h.app.snapshot.Files, repository.File{Path: "conflict.txt", HasMergeConflicts: true})
 	h.rightClick(t, "Second commit")
 	h.chooseMenuItem(t, "Undo latest commit and keep changes staged…")
