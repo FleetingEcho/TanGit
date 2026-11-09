@@ -259,6 +259,11 @@ func (a *app) languageServerCatalogConfiguration(c *ui.Context, profile language
 		if arguments.Changed() {
 			a.storeGoLanguageServerDraft(c)
 		}
+		formatter := ui.TextInput(c, &a.goFormatterCommand).Label(trf("%s formatter command", profile.Name)).
+			Placeholder(tr("gofmt")).Tooltip(tr("Formatter reads source from stdin and writes formatted source to stdout; {{file}} is the current path."))
+		if formatter.Changed() {
+			a.storeGoLanguageServerDraft(c)
+		}
 		testLabel := trf("Test %s", profile.Name)
 		iconTextButtonState(c, testLabel, testLabel, terminalIcon, false,
 			a.languageServerTestBusy && a.languageServerTestID == profile.ID, a.testGoLanguageServer)
@@ -291,6 +296,11 @@ func (a *app) languageServerCatalogConfiguration(c *ui.Context, profile language
 	arguments := ui.TextArea(c, &draft.Arguments).Label(trf("%s arguments", profile.Name)).
 		Placeholder(strings.Join(profile.Arguments, "\n")).Lines(2, 5).Grow(1)
 	if arguments.Changed() {
+		a.storeAdditionalLanguageServerDraft(c, profile.ID)
+	}
+	formatter := ui.TextInput(c, &draft.Formatter).Label(trf("%s formatter command", profile.Name)).
+		Placeholder(tr("prettier --stdin-filepath {{file}}")).Tooltip(tr("Formatter reads source from stdin and writes formatted source to stdout; {{file}} is the current path."))
+	if formatter.Changed() {
 		a.storeAdditionalLanguageServerDraft(c, profile.ID)
 	}
 	testLabel := trf("Test %s", profile.Name)

@@ -146,6 +146,7 @@ type languageServerDraft struct {
 	Enabled   bool
 	Path      string
 	Arguments string
+	Formatter string
 }
 
 func (a *app) loadGoLanguageServerDraft() {
@@ -154,6 +155,7 @@ func (a *app) loadGoLanguageServerDraft() {
 	a.goLanguageServerEnabled = !server.Disabled
 	a.goLanguageServerPath = server.Path
 	a.goLanguageServerArgs = strings.Join(server.Arguments, "\n")
+	a.goFormatterCommand = server.Formatter
 	a.loadAdditionalLanguageServerDrafts()
 }
 
@@ -166,6 +168,7 @@ func (a *app) loadAdditionalLanguageServerDrafts() {
 		server, configured := a.settings.LanguageServers[profile.ID]
 		a.languageServerDrafts[profile.ID] = &languageServerDraft{
 			Enabled: configured && !server.Disabled, Path: server.Path, Arguments: strings.Join(server.Arguments, "\n"),
+			Formatter: server.Formatter,
 		}
 	}
 }
@@ -185,7 +188,8 @@ func (a *app) storeAdditionalLanguageServerDraft(c *ui.Context, id string) {
 	}
 	server := editLanguageServerLaunch(a.settings.LanguageServers[id], strings.TrimSpace(draft.Path), languageServerArguments(draft.Arguments))
 	server.Disabled = !draft.Enabled
-	if !draft.Enabled && server.Custom == nil && server.Managed == nil {
+	server.Formatter = strings.TrimSpace(draft.Formatter)
+	if !draft.Enabled && server.Custom == nil && server.Managed == nil && server.Formatter == "" {
 		delete(a.settings.LanguageServers, id)
 	} else {
 		a.settings.LanguageServers[id] = server
@@ -233,10 +237,11 @@ func (a *app) storeGoLanguageServerDraft(c *ui.Context) {
 	arguments := languageServerArguments(a.goLanguageServerArgs)
 	server := editLanguageServerLaunch(a.settings.LanguageServers[goLanguageServerID], path, arguments)
 	server.Disabled = !a.goLanguageServerEnabled
+	server.Formatter = strings.TrimSpace(a.goFormatterCommand)
 	if a.settings.LanguageServers == nil {
 		a.settings.LanguageServers = make(map[string]languageServerSettings)
 	}
-	if !server.Disabled && server.Path == "" && len(server.Arguments) == 0 {
+	if !server.Disabled && server.Path == "" && len(server.Arguments) == 0 && server.Formatter == "" {
 		delete(a.settings.LanguageServers, goLanguageServerID)
 	} else {
 		a.settings.LanguageServers[goLanguageServerID] = server

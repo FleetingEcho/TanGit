@@ -110,6 +110,9 @@ type languageServerSettings struct {
 	Path           string   `json:"path,omitempty"`
 	Arguments      []string `json:"arguments,omitempty"`
 	ProbeArguments []string `json:"probeArguments,omitempty"`
+	// Formatter is an optional user-installed command for Format Document and
+	// Format Selection. It reads source from stdin and prints the replacement.
+	Formatter string `json:"formatter,omitempty"`
 	// Managed identifies an isolated copy installed and owned by TanGit. It is
 	// deliberately explicit: a path under the tools directory alone never
 	// grants permission to remove user files.
@@ -240,6 +243,7 @@ func normalizeLanguageServerSettings(servers map[string]languageServerSettings) 
 			continue
 		}
 		server.Path = strings.TrimSpace(server.Path)
+		server.Formatter = strings.TrimSpace(server.Formatter)
 		arguments := make([]string, 0, len(server.Arguments))
 		for _, argument := range server.Arguments {
 			if argument = strings.TrimSpace(argument); argument != "" {
@@ -279,7 +283,7 @@ func normalizeLanguageServerSettings(servers map[string]languageServerSettings) 
 		profile, knownProfile := languageServerProfileByID(language)
 		server.Managed = normalizeManagedLanguageServerSettings(language, profile, knownProfile, server)
 		if server.Custom == nil && !server.Disabled && server.Path == "" && len(server.Arguments) == 0 &&
-			(!knownProfile || profile.EnabledByDefault) {
+			server.Formatter == "" && (!knownProfile || profile.EnabledByDefault) {
 			continue
 		}
 		normalized[language] = server
