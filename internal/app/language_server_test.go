@@ -118,6 +118,11 @@ func TestGoLanguageServerSynchronizesOpenChangeAndClose(t *testing.T) {
 	h.tester.Frame()
 	h.tester.Frame()
 	events = connection.snapshot()
+	if len(events) != 2 {
+		t.Fatalf("editing emitted a save before the user saved: %#v", events)
+	}
+	h.app.saveCodeDocument(document)
+	events = connection.snapshot()
 	if len(events) < 3 || events[1].kind != "change" || !strings.Contains(events[1].text, "// changed") ||
 		events[1].version <= events[0].version {
 		t.Fatalf("didChange events = %#v", events)
@@ -191,10 +196,11 @@ func TestStdioLanguageServerInitializesAndShutsDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	connection, err := connectStdioLanguageServer(languageServerLaunch{
-		Program:   executable,
-		Arguments: []string{"-test.run=^TestLanguageServerHelperProcess$"},
-		Root:      t.TempDir(),
-		Env:       []string{"TANGIT_LANGUAGE_SERVER_HELPER=1"},
+		Program:               executable,
+		Arguments:             []string{"-test.run=^TestLanguageServerHelperProcess$"},
+		Root:                  t.TempDir(),
+		Env:                   []string{"TANGIT_LANGUAGE_SERVER_HELPER=1"},
+		InitializationOptions: map[string]any{"tsserver": map[string]any{"fallbackPath": "/managed tools/typescript/lib/tsserver.js"}},
 	})
 	if err != nil {
 		t.Fatalf("connect helper language server: %v", err)
@@ -239,6 +245,16 @@ func TestLanguageServerHelperProcess(t *testing.T) {
 		}
 		switch envelope.Method {
 		case "initialize":
+			var params struct {
+				InitializationOptions struct {
+					Tsserver struct {
+						FallbackPath string `json:"fallbackPath"`
+					} `json:"tsserver"`
+				} `json:"initializationOptions"`
+			}
+			if json.Unmarshal(envelope.Params, &params) != nil || params.InitializationOptions.Tsserver.FallbackPath != "/managed tools/typescript/lib/tsserver.js" {
+				os.Exit(4)
+			}
 			writeLanguageServerTestResponse(writer, envelope.ID, map[string]any{"capabilities": map[string]any{}})
 		case "shutdown":
 			writeLanguageServerTestResponse(writer, envelope.ID, nil)

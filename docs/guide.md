@@ -75,7 +75,7 @@ their package installer.
 | Task | Steps |
 | --- | --- |
 | Stage selected lines | Click diff line numbers, then **Stage**. Shift-click selects a range; Escape clears the selection. |
-| Edit files in TanGit | Open **Editor**, select or quick-open a file, and edit its persistent tab. Changes save automatically. |
+| Edit files in TanGit | Open **Editor**, select or quick-open a file, and edit its persistent tab. Use Ctrl/Cmd+S to save; a dot marks unsaved tabs. Closing asks whether to save or discard changes. |
 | Manage editor tabs | Right-click a file tab to close it, other tabs, tabs to the right, or all tabs, or to copy its absolute or repository-relative path. |
 | Manage files and folders | Use **Editor → New File / New Folder**, or right-click an explorer row to create, rename, delete, view Git file history, or copy paths. Creation starts in the selected folder; deleting asks for confirmation. |
 | Move files and folders | Drag an explorer file or folder onto another folder. Open editor tabs and unsaved buffers follow renamed or moved files. |

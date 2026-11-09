@@ -107,6 +107,14 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		c.OnShortcut(0, ui.KeyEscape, a.stopLineSelection)
 		return
 	}
+	// Saving belongs to editing, including while the file explorer has focus.
+	if a.workspaceTab == sectionCode && a.state == stateReady {
+		c.OnShortcut(ui.Cmd, ui.KeyS, func() { a.saveCodeDocument(a.activeCodeDocument()) })
+		if ui.Cmd != ui.Ctrl {
+			c.OnShortcut(ui.Ctrl, ui.KeyS, func() { a.saveCodeDocument(a.activeCodeDocument()) })
+		}
+		c.OnShortcut(ui.Cmd|ui.Shift, ui.KeyS, a.saveCodeEdits)
+	}
 	// The hotkeys switch turns every action shortcut off. The
 	// header icons still reach each action, and the dialogs keep Escape.
 	if a.settings.DisableShortcuts {

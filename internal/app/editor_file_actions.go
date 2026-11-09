@@ -17,32 +17,30 @@ type codeExplorerDrag struct {
 func (a *app) applyPendingCodeActions() {
 	kind, selected := a.code.pendingTabClose, a.code.pendingTabClosePath
 	a.code.pendingTabClose, a.code.pendingTabClosePath = codeTabCloseNone, ""
+	var closing []string
 	switch kind {
 	case codeTabCloseOne:
-		a.closeCodeFile(selected)
+		closing = append(closing, selected)
 	case codeTabCloseOthers:
-		if a.code.documents[selected] == nil {
-			break
-		}
-		for _, candidate := range append([]string(nil), a.code.tabs...) {
-			if candidate != selected {
-				a.closeCodeFile(candidate)
+		if a.code.documents[selected] != nil {
+			for _, candidate := range a.code.tabs {
+				if candidate != selected {
+					closing = append(closing, candidate)
+				}
 			}
 		}
-		a.openCodeFile(selected, 0)
 	case codeTabCloseRight:
 		for index, candidate := range a.code.tabs {
 			if candidate == selected {
-				for _, right := range append([]string(nil), a.code.tabs[index+1:]...) {
-					a.closeCodeFile(right)
-				}
+				closing = append(closing, a.code.tabs[index+1:]...)
 				break
 			}
 		}
 	case codeTabCloseAll:
-		for _, candidate := range append([]string(nil), a.code.tabs...) {
-			a.closeCodeFile(candidate)
-		}
+		closing = append(closing, a.code.tabs...)
+	}
+	if len(closing) > 0 {
+		a.closeCodeFiles(closing)
 	}
 
 	source, directory := a.code.pendingMoveSource, a.code.pendingMoveTarget
@@ -224,14 +222,7 @@ func (a *app) beginCodeFileOperation(kind codeFileOperationKind, source, destina
 		(kind != codeFileCreateFile && kind != codeFileCreateFolder && !validCodeManagedPath(source)) {
 		return
 	}
-	a.saveCodeEdits()
 	if source != "" {
-		for documentPath, document := range a.code.documents {
-			if codePathWithin(documentPath, source) && document.saveError != "" {
-				a.notify("error", "Could not save", tr("Save the open file before changing its path."))
-				return
-			}
-		}
 		if a.fileEditing && codePathWithin(a.fileEditKey, source) {
 			a.saveFileEdits()
 			if a.fileEditSaveError != "" {
@@ -295,7 +286,7 @@ func (a *app) beginCodeFileOperation(kind codeFileOperationKind, source, destina
 }
 
 // completeCodeFileOperation keeps open buffers and view state attached to a
-// renamed path. It runs before the next frame can autosave under an old name.
+// renamed path without saving or losing any unsaved edits.
 func (a *app) completeCodeFileOperation(kind codeFileOperationKind, source, destination string, directory bool) {
 	switch kind {
 	case codeFileCreateFile:
@@ -358,7 +349,6 @@ func (a *app) rekeyCodeDocument(source, destination string) {
 	document.path = destination
 	document.generation++
 	document.saveError = ""
-	document.triedVersion = 0
 	if document.state != nil {
 		document.state.Label = destination
 		document.state.Buffer.SetLanguage(editor.LanguageFor(destination))

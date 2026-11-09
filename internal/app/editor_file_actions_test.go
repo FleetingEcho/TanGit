@@ -147,6 +147,9 @@ func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 		"source/old.txt":       "old\n",
 		"destination/keep.txt": "keep\n",
 	})
+	h.app.setAllFileTreeDirectories(codeFileTreeScope, h.app.code.files, false)
+	h.app.syncCodeTree()
+	h.tester.Frame()
 
 	h.rightClick(t, "Open source/old.txt")
 	h.requireMenuLabels(t, "New File…", "New Folder…", "View File History…", "Rename…", "Delete…", "Copy path", "Copy relative path")
@@ -218,7 +221,7 @@ func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 	}
 	h.rightClick(t, "Open source/old.txt")
 	h.chooseMenuItem(t, "Rename…")
-	h.tester.Key(ui.Ctrl, ui.KeyA)
+	h.tester.Key(ui.Cmd, ui.KeyA)
 	h.tester.Type("renamed.txt")
 	h.tester.Key(0, ui.KeyEnter)
 	waitForCodeFileOperation(t, h)
@@ -243,6 +246,10 @@ func TestCodeExplorerDragMovesFileAndPreservesOpenDocument(t *testing.T) {
 		"source/note.txt":      "original\n",
 		"destination/keep.txt": "keep\n",
 	})
+	h.app.setAllFileTreeDirectories(codeFileTreeScope, h.app.code.files, false)
+	h.app.syncCodeTree()
+	h.tester.Frame()
+
 	document := openRealCodeDocument(t, h, "source/note.txt")
 	document.state.Insert("// edited before drag\n")
 	h.tester.Frame()
@@ -265,7 +272,10 @@ func TestCodeExplorerDragMovesFileAndPreservesOpenDocument(t *testing.T) {
 		return err == nil && !h.app.code.fileOperationBusy && h.app.code.filesLoaded
 	})
 	assertCodeFileMissing(t, root, "source/note.txt")
-	assertCodeFileContent(t, root, "destination/note.txt", "// edited before drag\noriginal\n")
+	assertCodeFileContent(t, root, "destination/note.txt", "original\n")
+	if !document.state.Buffer.Modified() {
+		t.Fatal("moving implicitly saved the dirty buffer")
+	}
 	moved := h.app.code.documents["destination/note.txt"]
 	if moved != document || document.path != "destination/note.txt" {
 		t.Fatalf("drag replaced or orphaned the open document: moved=%p original=%p path=%q", moved, document, document.path)
@@ -303,7 +313,10 @@ func TestCodeFolderMoveRekeysNestedDocumentsAndDirectories(t *testing.T) {
 	waitForCodeFileOperation(t, h)
 	h.waitFor(t, "the moved folder index", func() bool { return h.app.code.filesLoaded })
 	assertCodeFileMissing(t, root, "tree/nested/open.txt")
-	assertCodeFileContent(t, root, "archive/tree/nested/open.txt", "edited\nopen\n")
+	assertCodeFileContent(t, root, "archive/tree/nested/open.txt", "open\n")
+	if !document.state.Buffer.Modified() || document.state.Buffer.String() != "edited\nopen\n" {
+		t.Fatal("moving lost or implicitly saved unsaved changes")
+	}
 	if moved := h.app.code.documents["archive/tree/nested/open.txt"]; moved != document {
 		t.Fatalf("nested open document was not rekeyed: %p != %p", moved, document)
 	}
@@ -318,6 +331,10 @@ func TestCodeFolderMoveRekeysNestedDocumentsAndDirectories(t *testing.T) {
 func TestCodeExplorerRowsDoNotShowPathTooltips(t *testing.T) {
 	h := menuTestApp(t)
 	useRealCodeWorkspace(t, h, map[string]string{"nested/tooltip.txt": "content\n"})
+	h.app.setAllFileTreeDirectories(codeFileTreeScope, h.app.code.files, false)
+	h.app.syncCodeTree()
+	h.tester.Frame()
+
 	row, found := h.tester.Find("Open nested/tooltip.txt")
 	if !found {
 		t.Fatal("the explorer file row is missing")
@@ -340,6 +357,7 @@ func TestCodeCloseKeepsUnsavedBuffersAndWaitsForFileOperations(t *testing.T) {
 	realWrite := writeWorkingFile
 	writeWorkingFile = func(string, []byte) error { return errors.New("disk full") }
 	h.app.closeCodeFile("note.txt")
+	h.app.acceptConfirm()
 	if h.app.code.documents["note.txt"] != document || document.saveError == "" || !document.state.Buffer.Modified() {
 		t.Fatalf("a failed close discarded its buffer: document=%p error=%q", h.app.code.documents["note.txt"], document.saveError)
 	}
@@ -351,6 +369,7 @@ func TestCodeCloseKeepsUnsavedBuffersAndWaitsForFileOperations(t *testing.T) {
 	}
 	h.app.code.fileOperationBusy = false
 	h.app.closeCodeFile("note.txt")
+	h.app.acceptConfirm()
 	if len(h.app.code.tabs) != 0 || len(h.app.code.documents) != 0 {
 		t.Fatal("the tab did not close after its save succeeded")
 	}
@@ -489,6 +508,10 @@ func TestCodeMovePreservesChangesEditorAfterSaveFailure(t *testing.T) {
 func TestCodeRepositoryRootCreatesAndAcceptsDrops(t *testing.T) {
 	h := menuTestApp(t)
 	root := useRealCodeWorkspace(t, h, map[string]string{"source/note.txt": "note\n"})
+	h.app.setAllFileTreeDirectories(codeFileTreeScope, h.app.code.files, false)
+	h.app.syncCodeTree()
+	h.tester.Frame()
+
 	openRealCodeDocument(t, h, "source/note.txt")
 	h.rightClick(t, "Repository root")
 	h.chooseMenuItem(t, "New File…")
