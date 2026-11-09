@@ -47,6 +47,14 @@ func (f *FindBar) CanReplace() bool     { return !f.ed.o.readOnly }
 // Matches returns how many matches there are, and the index of the one
 // selected, -1 without matches.
 func (f *FindBar) Matches() (count, current int) {
+	if ds, ok := f.ed.o.decor.(*diffSide); ok {
+		if m, shared := ds.d.splitFindMatches(f.ed); shared {
+			if m.count == 0 {
+				return 0, -1
+			}
+			return m.count, m.current()
+		}
+	}
 	fd := &f.ed.find
 	fd.search(f.ed)
 	if len(fd.matches) == 0 {
@@ -58,7 +66,15 @@ func (f *FindBar) Matches() (count, current int) {
 // Status says what was found, as "3 of 12", "No results", or "Invalid"
 // for a regular expression that is not one (Err); nothing without a
 // query.
-func (f *FindBar) Status() string { return f.ed.find.status(l10n.In(f.c.Locale())) }
+func (f *FindBar) Status() string {
+	tx := l10n.In(f.c.Locale())
+	if ds, ok := f.ed.o.decor.(*diffSide); ok {
+		if m, shared := ds.d.splitFindMatches(f.ed); shared {
+			return findStatus(tx, f.ed.find.query, f.ed.find.err, m.count, m.current())
+		}
+	}
+	return f.ed.find.status(tx)
+}
 
 // Err is the error of a query that is not a valid regular expression.
 func (f *FindBar) Err() error { return f.ed.find.err }
@@ -66,8 +82,8 @@ func (f *FindBar) Err() error { return f.ed.find.err }
 // Next and Previous select the next and previous match after the caret,
 // round the ends; SelectAll selects every match, with a caret each, and
 // closes the bar.
-func (f *FindBar) Next()      { f.ed.find.step(f.ed, 1) }
-func (f *FindBar) Previous()  { f.ed.find.step(f.ed, -1) }
+func (f *FindBar) Next()      { f.ed.stepFind(1) }
+func (f *FindBar) Previous()  { f.ed.stepFind(-1) }
 func (f *FindBar) SelectAll() { f.ed.find.selectAll(f.ed) }
 
 // Replace replaces the match selected and selects the next; ReplaceAll
@@ -181,33 +197,54 @@ func DefaultFindBar(c *ui.Context, bar ui.Element, f *FindBar) {
 }
 
 // buildFindBar places the find bar over the editor's top right corner,
-// and builds it.
-func (ed *editor) buildFindBar(c *ui.Context) {
+// and builds it. A diff's separators are siblings of its editors, above
+// them, so its bar attaches to the editor in the window's overlay layer.
+func (ed *editor) buildFindBar(c *ui.Context, anchor ui.Element) {
 	f := &ed.find
 	f.update(ed)
+	ed.finishDiffFind()
 	t := c.Theme()
-	bar := ui.Box(c).Key("code find").Absolute().Top(t.Space(1)).Right(t.Space(4)).
-		Role(ui.RoleToolbar).Label(l10n.In(c.Locale()).Find()).Cursor(ui.CursorDefault).HandleInput(shield)
 	render := ed.o.renderFindBar
 	if render == nil {
 		render = DefaultFindBar
 	}
-	render(c, bar, &FindBar{c: c, ed: ed})
+	build := func() {
+		key := "code find"
+		if ed.o.diffSide == diffOldSide {
+			key = "code find old"
+		} else if ed.o.diffSide == diffNewSide {
+			key = "code find new"
+		}
+		bar := ui.Box(c).Key(key).Top(t.Space(1)).Right(t.Space(4)).
+			Role(ui.RoleToolbar).Label(l10n.In(c.Locale()).Find()).Cursor(ui.CursorDefault).HandleInput(shield)
+		if ed.o.diffSide != 0 {
+			bar.AttachTo(anchor, ui.AnchorTopRight, ui.AnchorTopRight)
+		} else {
+			bar.Absolute()
+		}
+		render(c, bar, &FindBar{c: c, ed: ed})
+	}
+	if ed.o.diffSide != 0 {
+		ui.Overlay(c, build)
+	} else {
+		build()
+	}
 	// What the bar typed or toggled shows at once.
 	f.update(ed)
+	ed.finishDiffFind()
 	if isMac() {
 		switch {
 		case c.Shortcut(ui.Cmd, ui.KeyG):
-			f.step(ed, 1)
+			ed.stepFind(1)
 		case c.Shortcut(ui.Shift|ui.Cmd, ui.KeyG):
-			f.step(ed, -1)
+			ed.stepFind(-1)
 		}
 	} else {
 		switch {
 		case c.Shortcut(0, ui.KeyF3):
-			f.step(ed, 1)
+			ed.stepFind(1)
 		case c.Shortcut(ui.Shift, ui.KeyF3):
-			f.step(ed, -1)
+			ed.stepFind(-1)
 		}
 	}
 }
@@ -283,18 +320,34 @@ func DefaultGoToLine(c *ui.Context, bar ui.Element, g *GoToLineBar) {
 }
 
 // buildGoToLine places the go to line bar in the middle of the editor's
-// top, builds it, and shows the line typed.
-func (ed *editor) buildGoToLine(c *ui.Context) {
+// top, builds it, and shows the line typed. A diff's bar uses the window's
+// overlay layer, above the separators over its editor, as its find bar does.
+func (ed *editor) buildGoToLine(c *ui.Context, anchor ui.Element) {
 	t := c.Theme()
 	g := &ed.goTo
-	ui.Row(c).Key("code go to line").Absolute().Top(t.Space(1)).Left(0).Right(0).Justify(ui.Center).PassThrough().Children(func() {
-		bar := ui.Box(c).Role(ui.RoleDialog).Label(l10n.In(c.Locale()).GoToLine()).Cursor(ui.CursorDefault).HandleInput(shield)
-		render := ed.o.renderGoToLine
-		if render == nil {
-			render = DefaultGoToLine
-		}
+	render := ed.o.renderGoToLine
+	if render == nil {
+		render = DefaultGoToLine
+	}
+	content := func(bar ui.Element) {
+		bar.Role(ui.RoleDialog).Label(l10n.In(c.Locale()).GoToLine()).Cursor(ui.CursorDefault).HandleInput(shield)
 		render(c, bar, &GoToLineBar{c: c, ed: ed})
-	})
+	}
+	if ed.o.diffSide != 0 {
+		ui.Overlay(c, func() {
+			key := "code go to line"
+			if ed.o.diffSide == diffOldSide {
+				key = "code go to line old"
+			} else if ed.o.diffSide == diffNewSide {
+				key = "code go to line new"
+			}
+			content(ui.Box(c).Key(key).AttachTo(anchor, ui.AnchorTop, ui.AnchorTop).Top(t.Space(1)))
+		})
+	} else {
+		ui.Row(c).Key("code go to line").Absolute().Top(t.Space(1)).Left(0).Right(0).Justify(ui.Center).PassThrough().Children(func() {
+			content(ui.Box(c))
+		})
+	}
 	if !g.open {
 		return
 	}

@@ -123,6 +123,7 @@ type DiffState struct {
 	// oldActive is set while the old side of a split view has the
 	// keyboard, and stays after it goes, until the new side has it.
 	oldActive bool
+	findNav   diffFindNav
 	prepared  diffPrepared
 	// blocksV counts the blocks prepare made, and built is the geometry
 	// the separators and buttons were built for, which a frame changing
@@ -475,12 +476,16 @@ func (d *DiffState) Run(cmd Command) bool {
 }
 
 // Find opens the find bar of the active side's editor (ActiveSide) with
-// query, and selects its first match after the caret.
+// query, and selects its first match after the caret. A split view highlights,
+// counts and navigates the query in both sides, without opening another bar.
 func (d *DiffState) Find(query string) {
 	ed := d.editorOf(d.ActiveSide())
 	f := &ed.find
 	f.open, f.query, f.stale = true, query, true
-	f.step(ed, 1)
+	if d.stepFind(ed, 1) {
+		// stepFind already chose the match that update would select.
+		f.typed, f.scrollTo = query, false
+	}
 }
 
 // ActiveSide returns the side that has the keyboard, or had it last: the

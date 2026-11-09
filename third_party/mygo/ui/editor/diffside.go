@@ -96,6 +96,20 @@ func (s *diffSide) lineStyle(line int) lineLook {
 	return st
 }
 
+// peerFind returns ed's cache of matches for the other side's open find
+// bar. A search limited to a selection stays on the side with that selection.
+func (s *diffSide) peerFind(ed *editor) *finder {
+	other := &s.d.eds[0]
+	if s.old {
+		other = &s.d.eds[1]
+	}
+	source := &other.find
+	if !source.open || source.inSelection {
+		return nil
+	}
+	return syncDiffPeerFind(other, ed)
+}
+
 func (s *diffSide) words(line int) []diffRange {
 	d := s.d
 	if d.Inline == DiffInlineNone {
