@@ -554,14 +554,9 @@ func TestOpeningMissingRecentWorktreeOnlyNotifies(t *testing.T) {
 	a.recentRepositories = []recentRepository{{
 		Path: missing, Worktree: true, WorktreeName: "deleted-worktree", LastOpened: timeNow(),
 	}}
-	updated := newUpdates()
-	a.update = updated.update
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
-	if err := tt.Click(missing); err != nil {
-		t.Fatal(err)
-	}
-	updated.waitForUpdate(t)
+	a.openRecent(missing)
 	if a.state != stateEmpty || a.errMessage != "" || a.crash != "" {
 		t.Fatalf("missing worktree left Home in a failed state: state=%v err=%q crash=%q", a.state, a.errMessage, a.crash)
 	}
@@ -577,6 +572,48 @@ func TestOpeningMissingRecentWorktreeOnlyNotifies(t *testing.T) {
 	tt.Frame()
 	if !tt.HasText("Repository folder no longer exists") || tt.HasText("Could not open repository") {
 		t.Fatalf("missing-worktree result is not just a notification: %v", tt.Texts())
+	}
+}
+
+func TestOpeningMissingRecentWorktreeWithExistingTabOnlyNotifies(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "deleted-worktree")
+	if err := os.Mkdir(missing, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s, tt, _ := newShellTester(t, repository.Snapshot{})
+	home := s.activeTab()
+	opened := readyShellTab(s, missing)
+	s.activate(s.indexOf(opened))
+	tt.Frame()
+	if err := os.Remove(missing); err != nil {
+		t.Fatal(err)
+	}
+	s.activate(s.indexOf(home))
+	home.app.recentRepositories = []recentRepository{{
+		Path: missing, Worktree: true, WorktreeName: "deleted-worktree", LastOpened: timeNow(),
+	}}
+	tt.Frame()
+	home.app.openRecent(missing)
+	if s.activeTab() != home {
+		t.Fatalf("missing worktree activated its stale page instead of Home: %v", s.tabTitles())
+	}
+	if title := home.title(); title != "Home" {
+		t.Fatalf("missing worktree renamed Home to %q", title)
+	}
+	if home.app.state != stateEmpty || home.app.errMessage != "" || home.app.crash != "" {
+		t.Fatalf("missing worktree left Home in a failed state: state=%v err=%q crash=%q", home.app.state, home.app.errMessage, home.app.crash)
+	}
+	if len(home.app.pendingToasts) != 1 {
+		t.Fatalf("missing-worktree notifications = %+v", home.app.pendingToasts)
+	}
+	toast := home.app.pendingToasts[0]
+	if toast.kind != "warning" || toast.title != "Open worktree" ||
+		!strings.Contains(toast.description, "Repository folder no longer exists") {
+		t.Fatalf("missing-worktree notification = %+v", toast)
+	}
+	tt.Frame()
+	if tt.HasText("Could not open repository") {
+		t.Fatalf("missing worktree showed an error screen: %v", tt.Texts())
 	}
 }
 
