@@ -83,7 +83,19 @@ func terminalSessionDetail(session *terminalSessionState) string {
 	return session.directory
 }
 
-// terminalGroupSession returns the shell whose identity represents a
+// terminalGroupLabel keeps a top-level tab's custom name separate from its
+// splits. The default identity follows the selected shell but deliberately
+// ignores that shell's custom name.
+func (a *app) terminalGroupLabel(group uint64, session *terminalSessionState) string {
+	if name := a.term.groupNames[group]; name != "" {
+		return name
+	}
+	fallback := *session
+	fallback.name = ""
+	return terminalSessionLabel(&fallback)
+}
+
+// terminalGroupSession returns the shell whose default identity represents a
 // top-level tab: its selected split, or the last split selected in that tab.
 func (a *app) terminalGroupSession(group uint64) *terminalSessionState {
 	if active := a.activeTerminal(); active != nil && active.groupID == group {
