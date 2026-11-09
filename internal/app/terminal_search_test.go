@@ -26,6 +26,36 @@ func settleTerminalSearch(t *testing.T, h *harness, index int, want int) {
 		h.app.term.sessions[index].searchOpen, h.texts())
 }
 
+func TestTerminalSearchButtonsLiveInEachCardHeader(t *testing.T) {
+	h, peers, _ := monitoredTerminalTestApp(t)
+	splitMonitoredTerminal(t, h, peers, false)
+	h.tester.Frame()
+
+	actions, actionsFound := h.tester.Find("Terminal actions")
+	for _, number := range []int{1, 2} {
+		header, headerFound := h.tester.Find(fmt.Sprintf("Select terminal %d", number))
+		search, searchFound := h.tester.Find(fmt.Sprintf("Search terminal %d", number))
+		if !actionsFound || !headerFound || !searchFound {
+			t.Fatalf("terminal %d header or search button is missing: actions=%v header=%v search=%v", number, actionsFound, headerFound, searchFound)
+		}
+		if search.Y < actions.Y+actions.H || search.Y+search.H/2 != header.Y+header.H/2 {
+			t.Fatalf("terminal %d search is not in its own card header: actions=%+v header=%+v search=%+v", number, actions, header, search)
+		}
+	}
+
+	if err := h.tester.Click("Focus terminal 1"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Search terminal 2"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.term.active != 1 || h.app.term.sessions[0].searchOpen || !h.app.term.sessions[1].searchOpen {
+		t.Fatalf("the second card's search button targeted the wrong shell: %+v", h.app.term.sessions)
+	}
+}
+
 func TestTerminalSearchIsIndependentAndKeyboardDriven(t *testing.T) {
 	h, peers, first := monitoredTerminalTestApp(t)
 	second := splitMonitoredTerminal(t, h, peers, false)

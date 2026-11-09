@@ -90,6 +90,9 @@ type appSettings struct {
 	VisibleSections []string `json:"visibleSections"`
 	// SectionOrder includes hidden pages so toggling a page retains its position.
 	SectionOrder []string `json:"sectionOrder"`
+	// TerminalDock is the default edge for a new terminal dock. Toolbar moves
+	// remain local to their repository tab and do not rewrite this preference.
+	TerminalDock string `json:"terminalDock"`
 	// RemoteWebURLs stores browser-page overrides by repository root and then
 	// remote name, allowing origin, upstream, and arbitrary hosts to differ.
 	RemoteWebURLs map[string]map[string]string `json:"remoteWebUrls,omitempty"`
@@ -145,6 +148,7 @@ func defaultSettings() appSettings {
 		HomeBackgroundOpacity:     defaultHomeBackgroundOpacity,
 		VisibleSections:           slices.Clone(defaultVisibleSections),
 		SectionOrder:              slices.Clone(workspaceSectionIDs),
+		TerminalDock:              terminalDockBottom,
 	}
 }
 
@@ -204,6 +208,7 @@ func normalizeSettings(s appSettings) appSettings {
 	s.HomeBackgroundOpacity = normalizeHomeBackgroundOpacity(s.HomeBackgroundOpacity)
 	s.VisibleSections = normalizeVisibleSections(s.VisibleSections)
 	s.SectionOrder = normalizeSectionOrder(s.SectionOrder)
+	s.TerminalDock = normalizeTerminalDock(s.TerminalDock)
 	s.RemoteWebURLs = normalizeRemoteWebURLs(s.RemoteWebURLs)
 	s.SSHProfiles = normalizeSSHProfiles(s.SSHProfiles)
 	return s

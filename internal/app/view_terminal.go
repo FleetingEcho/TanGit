@@ -13,6 +13,12 @@ import (
 // newTerminal is a seam so tests can drive the pane without a real shell.
 var newTerminal = terminal.New
 
+// terminalHasRunningProcess is separate from shell construction so close
+// behavior can be tested without sending signals to a test runner's children.
+var terminalHasRunningProcess = func(pane *terminal.Terminal) bool {
+	return pane != nil && pane.HasForegroundProcess()
+}
+
 type remoteTerminalConnection interface {
 	io.ReadWriteCloser
 	Resize(columns, rows int) error
@@ -22,8 +28,27 @@ var connectRemoteTerminal = func(ctx context.Context, client remoteWorkspaceClie
 	return openRemoteTerminal(ctx, client, root)
 }
 
-// terminalPanelPercent is the bottom panel's initial share of the workspace.
+// terminalPanelPercent is the dock's initial share of the workspace on either
+// axis. The same restored share applies when the dock moves to another edge.
 const terminalPanelPercent = 100.0 / 3.0
+
+const (
+	terminalDockBottom = "bottom"
+	terminalDockLeft   = "left"
+	terminalDockRight  = "right"
+	terminalDockTop    = "top"
+)
+
+var terminalDockChoices = []string{terminalDockBottom, terminalDockLeft, terminalDockRight, terminalDockTop}
+
+func normalizeTerminalDock(dock string) string {
+	switch dock {
+	case terminalDockBottom, terminalDockLeft, terminalDockRight, terminalDockTop:
+		return dock
+	default:
+		return terminalDockBottom
+	}
+}
 
 const terminalSessionLimit = 6
 
@@ -62,8 +87,8 @@ type terminalSessionState struct {
 // may reorder the views without redirecting that shell's asynchronous events.
 type terminalTabDrag struct{ id uint64 }
 
-// terminalState owns the bottom panel. Hiding or maximizing it keeps every
-// shell running; only an explicit close or a shell's own exit ends one.
+// terminalState owns the shared dock. Hiding, moving or maximizing it keeps
+// every shell running; only an explicit close or a shell's own exit ends one.
 type terminalState struct {
 	sessions       []terminalSessionState
 	nextID         uint64
@@ -71,8 +96,12 @@ type terminalState struct {
 	active         int
 	panelOpen      bool
 	panelMaximized bool
-	// percent is the bottom panel's restored height; shown is the workspace
-	// share in the current split. Maximizing does not overwrite either one.
+	// dock is this repository tab's live edge. Empty follows the persisted
+	// default for new docks; moving one tab does not rearrange other tabs.
+	dock string
+	// percent is the dock's restored width or height share. shown is the first
+	// pane's share in the current split and follows the direction's ordering.
+	// Maximizing does not overwrite either one.
 	percent float32
 	shown   float32
 	// Each top-level terminal tab owns an independent local split tree. layout
@@ -248,11 +277,29 @@ func (a *app) ensureTerminalSession() {
 	}
 }
 
-// toggleTerminal opens or hides the bottom panel without changing the active
-// workspace page. Every shell and its scrollback stays alive while hidden.
+// terminalDock returns this tab's live position, or the persisted default for
+// a dock whose position has not been changed in the tab yet.
+func (a *app) terminalDock() string {
+	if a.term.dock != "" {
+		return normalizeTerminalDock(a.term.dock)
+	}
+	return normalizeTerminalDock(a.settings.TerminalDock)
+}
+
+// setTerminalDock moves only the composition around the existing terminal
+// views. Sessions, split trees, searches and shell processes are not touched.
+func (a *app) setTerminalDock(dock string) {
+	a.term.dock = normalizeTerminalDock(dock)
+	if a.term.percent <= 0 || a.term.percent >= 100 {
+		a.term.percent = terminalPanelPercent
+	}
+}
+
+// toggleTerminal opens or hides the dock without changing the active workspace
+// page. Every shell and its scrollback stays alive while hidden.
 func (a *app) toggleTerminal() { a.toggleTerminalPanel() }
 
-// openTerminal restores the bottom panel and starts its first shell on demand.
+// openTerminal restores the dock and starts its first shell on demand.
 func (a *app) openTerminal() {
 	a.term.panelOpen = true
 	if a.term.percent <= 0 || a.term.percent >= 100 {
@@ -586,23 +633,48 @@ func (a *app) closeTerminalAt(index int) {
 	a.term.layout = a.term.layouts[a.activeTerminalGroup()]
 }
 
-// requestCloseTerminalAt closes only the selected shell. Confirmation belongs
-// to whole-tab and close-all actions, which can exit multiple shells at once.
+// requestCloseTerminalAt closes an idle shell immediately. A live foreground
+// command or agent operation requires an explicit choice, captured by stable
+// session ID so a later layout change cannot redirect the destructive action.
 func (a *app) requestCloseTerminalAt(index int) {
-	a.closeTerminalAt(index)
+	if index < 0 || index >= len(a.term.sessions) {
+		return
+	}
+	session := &a.term.sessions[index]
+	if session.agentTaskID == "" && !terminalHasRunningProcess(session.pane) {
+		a.closeTerminalAt(index)
+		return
+	}
+	sessionID := session.id
+	a.askConfirm(confirmRequest{
+		title:        "Close terminal",
+		message:      "A process is still running in this terminal.",
+		detail:       "Closing it will stop that process. Any unsaved work may be lost.",
+		confirmLabel: "Close terminal",
+		destructive:  true,
+		run: func() {
+			if current, _ := a.terminalSessionByID(sessionID); current >= 0 {
+				a.closeTerminalAt(current)
+			}
+		},
+	})
 }
 
 // requestCloseTerminalGroup closes one top-level tab and all of its splits.
-// Only multiple shells in that tab require confirmation; shells in other tabs
-// neither trigger the question nor inflate its count.
+// Multiple shells require confirmation; a single shell uses its own running
+// process check. Other tabs never inflate the confirmation count.
 func (a *app) requestCloseTerminalGroup(group uint64) {
 	count := a.terminalGroupSize(group)
 	if count == 0 {
 		return
 	}
 	if count == 1 {
-		a.closeTerminalGroup(group)
-		return
+		for index := range a.term.sessions {
+			if a.term.sessions[index].groupID == group {
+				a.requestCloseTerminalAt(index)
+				return
+			}
+		}
 	}
 	a.askConfirm(confirmRequest{
 		title:        "Close terminal tab",
@@ -631,7 +703,7 @@ func (a *app) requestCloseAllTerminals() {
 		return
 	}
 	if count == 1 {
-		a.closeTerminal()
+		a.requestCloseTerminalAt(a.term.active)
 		return
 	}
 	a.askConfirm(confirmRequest{
@@ -704,8 +776,43 @@ func (a *app) terminalButton(c *ui.Context) {
 	}
 }
 
+func terminalDockName(dock string) string {
+	switch normalizeTerminalDock(dock) {
+	case terminalDockLeft:
+		return tr("Left")
+	case terminalDockRight:
+		return tr("Right")
+	case terminalDockTop:
+		return tr("Top")
+	default:
+		return tr("Bottom")
+	}
+}
+
+// terminalDockButton moves the existing dock rather than opening another
+// terminal. Its icon always depicts the current workspace edge.
+func (a *app) terminalDockButton(c *ui.Context) {
+	theme := c.Theme()
+	button := ui.ButtonBase(c).Padding(5).Radius(theme.Radius).
+		Label(tr("Terminal position")).Tooltip(tr("Choose terminal dock position"))
+	button.PopoverMenuButton(func(m *ui.Menu) {
+		for _, dock := range terminalDockChoices {
+			dock := dock
+			if m.Item(terminalDockName(dock)).Radio(a.terminalDock() == dock).Chosen() {
+				a.setTerminalDock(dock)
+			}
+		}
+	})
+	button.Children(func() {
+		ui.Icon(c, terminalDockIcon(a.terminalDock())).FontSize(15).TextColor(theme.TextMuted)
+	})
+	if button.Hovered() {
+		button.Background(theme.SurfaceHover)
+	}
+}
+
 // terminalPaneView keeps page-wide actions separate from each shell's island.
-// Every card owns its title, drag handle, rename and immediate-close buttons.
+// Every card owns its title, drag handle, search, rename and immediate-close buttons.
 func (a *app) terminalPaneView(c *ui.Context) {
 	if a.term.pendingGroup != 0 {
 		a.selectTerminalGroup(a.term.pendingGroup)
@@ -722,9 +829,9 @@ func (a *app) terminalPaneView(c *ui.Context) {
 			active := a.activeTerminal()
 			splitDisabled := active == nil || active.pane == nil
 			flatIconButton(c, "New terminal tab", "Open an independent terminal in a new tab", plusIcon, 15, 5, false, a.newTerminalTab)
-			flatIconButton(c, "Search terminal", "Search the active terminal (Ctrl+F)", searchIcon, 15, 5, splitDisabled, a.openTerminalSearch)
 			flatIconButton(c, "Split terminal right", "Open another independent terminal to the right", splitIcon, 15, 5, splitDisabled, a.splitTerminalRight)
 			flatIconButton(c, "Split terminal below", "Open another independent terminal below", splitBelowIcon, 15, 5, splitDisabled, a.splitTerminalBelow)
+			a.terminalDockButton(c)
 			maximizeLabel, maximizeButtonIcon := "Maximize terminal", expandIcon
 			if a.term.panelMaximized {
 				maximizeLabel, maximizeButtonIcon = "Restore terminal size", shrinkIcon
@@ -853,6 +960,10 @@ func (a *app) terminalSessionView(c *ui.Context, index int) {
 					if button.Clicked() {
 						a.term.active = index
 					}
+					searchLabel := fmt.Sprintf("%s %d", tr("Search terminal"), number)
+					flatIconButton(c, searchLabel, "Search terminal scrollback", searchIcon, 13, 4, session.pane == nil, func() {
+						a.openTerminalSearchByID(session.id)
+					})
 					renameLabel := fmt.Sprintf("%s %d", tr("Rename terminal"), number)
 					flatIconButton(c, renameLabel, renameLabel, editIcon, 13, 4, false, func() {
 						a.openTerminalRename(session.id)
