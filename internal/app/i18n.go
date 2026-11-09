@@ -53,7 +53,9 @@ func languageName(code string) string {
 
 // tr translates an English UI string into the current language. English is
 // the identity, and a string with no translation stays as written, so a
-// missing entry never blanks a label.
+// missing entry never blanks a label. Add each new literal to every catalog
+// in the same change; the source-coverage test rejects omissions. Use trf
+// for dynamic values instead of constructing translation keys at runtime.
 func tr(text string) string {
 	if currentLanguage == defaultLanguage {
 		return text
@@ -84,6 +86,7 @@ var zhHans = map[string]string{
 	// Keyboard navigation and commands.
 	"Check out the chosen remote branch":          "检出所选远程分支",
 	"Checkout this commit":                        "检出此提交",
+	"Checkout to this commit (detached)…":         "检出到此提交（游离 HEAD）…",
 	"Cherry-pick %d commits onto %s?":             "将 %d 个提交拣选到 %s？",
 	"Cherry-pick copied commits":                  "拣选已复制的提交",
 	"Copied commits for cherry-pick":              "已复制提交以供拣选",

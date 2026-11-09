@@ -58,7 +58,7 @@ func TestCommitRowMenuOffersTheActions(t *testing.T) {
 		"Move commit toward HEAD",
 		"Move commit toward older history",
 		"Drop commit…",
-		"Checkout this commit (detached)…",
+		"Checkout to this commit (detached)…",
 		"Soft reset to this commit…",
 		"Mixed reset to this commit…",
 		"Hard reset to this commit…",
@@ -189,7 +189,7 @@ func TestUndoLatestCommitWarnsAboutUnresolvedConflicts(t *testing.T) {
 
 var safeCommitMenuItems = []string{
 	"Copy commit hash",
-	"Checkout this commit (detached)…",
+	"Checkout to this commit (detached)…",
 	"Create a tag here…",
 	"Create a branch here…",
 	"Cherry-pick onto current branch…",
@@ -271,7 +271,7 @@ func TestBranchCommitRowMenuActionsAskAndUseTheClickedCommit(t *testing.T) {
 		{menu: "Soft reset to this commit…", confirm: "Soft reset", wantCall: "reset-soft:c2c2c2c2"},
 		{menu: "Mixed reset to this commit…", confirm: "Mixed reset", wantCall: "reset-mixed:c2c2c2c2"},
 		{menu: "Hard reset to this commit…", confirm: "Hard reset", wantCall: "reset-hard:c2c2c2c2"},
-		{other: true, menu: "Checkout this commit (detached)…", confirm: "Checkout commit", wantCall: "checkout-commit:c1c1c1c1"},
+		{other: true, menu: "Checkout to this commit (detached)…", confirm: "Checkout commit", wantCall: "checkout-commit:c1c1c1c1"},
 		{other: true, menu: "Cherry-pick onto current branch…", confirm: "Cherry-pick", wantCall: "cherry-pick:c1c1c1c1"},
 		{other: true, menu: "Revert commit…", confirm: "Revert", wantCall: "revert:c1c1c1c1"},
 	}

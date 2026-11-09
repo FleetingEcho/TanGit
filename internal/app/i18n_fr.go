@@ -4,6 +4,7 @@ var french = map[string]string{
 	// Keyboard navigation and commands.
 	"Check out the chosen remote branch":          "Extraire la branche distante choisie",
 	"Checkout this commit":                        "Extraire ce commit",
+	"Checkout to this commit (detached)…":         "Basculer sur ce commit (HEAD détaché)…",
 	"Cherry-pick %d commits onto %s?":             "Appliquer %d commits sur %s ?",
 	"Cherry-pick copied commits":                  "Appliquer les commits copiés",
 	"Copied commits for cherry-pick":              "Commits copiés pour application",

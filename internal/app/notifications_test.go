@@ -37,6 +37,41 @@ func TestCopyAnnouncesWhatWasCopied(t *testing.T) {
 	}
 }
 
+func stubScopedTranslationCatalog(t *testing.T, entries map[string]string) {
+	t.Helper()
+	const language = "scoped-test"
+	previousLanguage := currentLanguage
+	previousCatalog, previouslyRegistered := translations[language]
+	translations[language] = entries
+	currentLanguage = language
+	t.Cleanup(func() {
+		currentLanguage = previousLanguage
+		if previouslyRegistered {
+			translations[language] = previousCatalog
+		} else {
+			delete(translations, language)
+		}
+	})
+}
+
+func TestNotificationDescriptionTranslationIsExplicit(t *testing.T) {
+	const staticDescription = "A static app-authored description"
+	const serverDescription = "server payload that resembles a catalog key"
+	stubScopedTranslationCatalog(t, map[string]string{
+		staticDescription: "translated static description",
+		serverDescription: "must not be used",
+	})
+	a := &app{}
+	a.notifyTranslated("info", "Notice", staticDescription)
+	a.notify("error", "Notice", serverDescription)
+	if got := a.pendingToasts[0].description; got != "translated static description" {
+		t.Fatalf("static description = %q", got)
+	}
+	if got := a.pendingToasts[1].description; got != serverDescription {
+		t.Fatalf("dynamic description passed through translation: %q", got)
+	}
+}
+
 func TestErrorsAndToastsRedactCredentials(t *testing.T) {
 	a := &app{}
 	err := errors.New("fetch https://alice:super-secret@example.com/private.git failed: Authorization: Bearer toast-secret")

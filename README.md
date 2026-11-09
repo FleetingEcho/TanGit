@@ -19,18 +19,17 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/workspace.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/workspace_dark.png">
-    <img src="docs/screenshots/workspace.png" alt="TanGit workspace with repository navigation, changes, and a file diff">
+    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/workspace_light.png">
+    <img src="docs/screenshots/workspace_light.png" alt="TanGit workspace with repository navigation, changes, and a file diff">
   </picture>
 </p>
 
-<details>
-<summary><strong>Screenshot gallery · 6 views</strong></summary>
+<p><strong>Screenshot gallery · 8 views</strong></p>
 
 <table>
   <tr>
     <td width="50%"><a href="docs/screenshots/workspace.png"><img src="docs/screenshots/workspace.png" alt="Workspace · Dark"></a><br><sub>Workspace · Dark</sub></td>
-    <td width="50%"><a href="docs/screenshots/workspace_dark.png"><img src="docs/screenshots/workspace_dark.png" alt="Workspace · Light"></a><br><sub>Workspace · Light</sub></td>
+    <td width="50%"><a href="docs/screenshots/workspace_light.png"><img src="docs/screenshots/workspace_light.png" alt="Workspace · Light"></a><br><sub>Workspace · Light</sub></td>
   </tr>
   <tr>
     <td width="50%"><a href="docs/screenshots/graph_dark.png"><img src="docs/screenshots/graph_dark.png" alt="Commit graph · Dark"></a><br><sub>Commit graph · Dark</sub></td>
@@ -40,8 +39,11 @@
     <td width="50%"><a href="docs/screenshots/picker.png"><img src="docs/screenshots/picker.png" alt="Repository picker"></a><br><sub>Repository picker</sub></td>
     <td width="50%"><a href="docs/screenshots/file-history.png"><img src="docs/screenshots/file-history.png" alt="File history"></a><br><sub>File history</sub></td>
   </tr>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/editor.png"><img src="docs/screenshots/editor.png" alt="Code editor"></a><br><sub>Code editor</sub></td>
+    <td width="50%"><a href="docs/screenshots/i18n.png"><img src="docs/screenshots/i18n.png" alt="Multiple Languages"></a><br><sub>Multiple Languages</sub></td>
+  </tr>
 </table>
-</details>
 
 ## What is TanGit?
 

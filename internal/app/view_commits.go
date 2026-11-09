@@ -150,7 +150,7 @@ func (a *app) commitRowMenuWithHistory(m *ui.Menu, commit repository.Commit, ser
 		}
 		m.Separator()
 	}
-	if m.Item(tr("Checkout this commit (detached)…")).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Checkout to this commit (detached)…")).Disabled(a.actionBusy).Chosen() {
 		a.confirmCheckoutCommit(commit)
 	}
 	if historyEditable {
