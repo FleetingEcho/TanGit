@@ -401,6 +401,11 @@ func (a *app) fileRowMenu(m *ui.Menu, index int, services ui.Services) {
 	}
 	change := a.changeRows[index]
 	file := change.file
+	root := a.snapshot.Root
+	if m.Item(tr("Open in built-in editor")).Chosen() {
+		a.openGitFileInBuiltInEditor(root, file.Path)
+	}
+	m.Separator()
 	// A right-click selects the row it acts on, as VS Code's Source Control
 	// view does, so the details pane follows what the menu changes.
 	a.selectedFile = index

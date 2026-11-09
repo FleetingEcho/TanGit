@@ -670,7 +670,22 @@ func TestScreenshot(t *testing.T) {
 			return document != nil && document.state != nil
 		})
 		a.openCodeFile("internal/app/code.go", 8)
+		settleShot(t, tt, updated, func() bool {
+			document := a.code.documents["internal/app/code.go"]
+			return document != nil && document.state != nil
+		})
+		a.setAllFileTreeDirectories(codeFileTreeScope, a.code.files, false)
+		a.syncCodeTree()
+		tt.Frame()
 		saveScreenshot(t, dir, "67-code-workspace-dark", tt)
+
+		a.settings.ExternalEditors = []editorPreset{{Name: "Fleet", Command: "fleet --project {{filename}}"}}
+		if err := tt.Click("Open repository in external editor"); err != nil {
+			t.Fatal(err)
+		}
+		saveScreenshot(t, dir, "68b-code-external-editor-dark", tt)
+		tt.Key(0, ui.KeyEscape)
+		tt.Frame()
 
 		if err := tt.RightClick("Editor tab internal/app/code.go"); err != nil {
 			t.Fatal(err)
@@ -706,17 +721,56 @@ func TestScreenshot(t *testing.T) {
 		tt.Release(target.X+target.W/2, target.Y+target.H/2)
 		tt.Frame()
 
+		a.openCodeWorkspaceFolder("internal/app")
+		tt.Frame()
+		saveScreenshot(t, dir, "83-code-nested-workspace-dark", tt)
+
 		a.code.sidebar = codeSidebarSearch
 		a.code.searchQuery, a.code.searchSubmitted = "code", "code"
+		a.code.searchFolder = "internal/app"
+		a.code.searchFolderDraft = "internal/app"
+		a.code.searchSubmittedOptions = workspaceSearchOptions{Query: "code", Folder: "internal/app"}
+		a.code.searchInclude = "**/*.go"
+		a.code.searchExclude = "**/*_test.go"
+		a.code.searchBackend = workspaceSearchBackendRipgrep
 		a.code.searchResults = []workspaceSearchMatch{
 			{Path: "internal/app/code.go", Line: 5, Column: 4, Text: "// codeDocument owns one persistent editor buffer."},
 			{Path: "internal/app/code.go", Line: 6, Column: 6, Text: "type codeDocument struct {"},
 			{Path: "internal/app/view_code.go", Line: 3, Column: 14, Text: "func (a *app) codeView() {"},
 			{Path: "internal/app/view_code.go", Line: 4, Column: 15, Text: "// Render the code explorer and editor tabs."},
 		}
+		a.code.searchResults = rankWorkspaceSearchMatches(a.code.searchResults, a.code.searchSubmittedOptions)
 		a.code.searchSelected = 0
 		a.rebuildCodeSearchRows()
 		saveScreenshot(t, dir, "68-code-search-dark", tt)
+
+		a.stopGoLanguageServer()
+		a.goLanguageServer = newFakeLanguageServerConnection()
+		a.goLanguageServerDocs = make(map[string]uint64)
+		tt.Frame()
+		status, ok := tt.Find("Language servers")
+		if !ok {
+			t.Fatal("the running language server has no status icon")
+		}
+		tt.Move(status.X+status.W/2, status.Y+status.H/2)
+		tt.Frame()
+		saveScreenshot(t, dir, "74-code-language-servers-dark", tt)
+		tt.Key(0, ui.KeyEscape)
+		tt.Frame()
+
+		a.code.sidebar = codeSidebarFiles
+		a.code.filter = "vcgo"
+		a.syncCodeTree()
+		tt.Frame()
+		saveScreenshot(t, dir, "76-code-quick-open-fzf-dark", tt)
+
+		a.code.filter = "README.md"
+		a.syncCodeTree()
+		a.code.filter = ""
+		a.syncCodeTree()
+		a.sectionSearch[sectionCode].Focus()
+		tt.Frame()
+		saveScreenshot(t, dir, "75-code-clear-filter-dark", tt)
 	})
 
 	t.Run("terminal-dock-light", func(t *testing.T) {
@@ -1208,6 +1262,91 @@ func TestScreenshot(t *testing.T) {
 		a.openSettings()
 		tt.Frame()
 		saveScreenshot(t, dir, "18-settings-dark", tt)
+	})
+
+	t.Run("settings-search-exclusions-dark", func(t *testing.T) {
+		a, tt := newScreenshotApp(t, true)
+		a.settings.SearchExcludedDirectories = []string{"cooked", "dist", "node_modules"}
+		a.openSettings()
+		tt.Frame()
+		if err := tt.Click("Editor settings"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		saveScreenshot(t, dir, "77-settings-search-exclusions-dark", tt)
+	})
+
+	t.Run("settings-custom-editor-dark", func(t *testing.T) {
+		a, tt := newScreenshotApp(t, true)
+		a.settingsPage = settingsPageEditor
+		a.openSettings()
+		tt.Frame()
+		if err := tt.Click("Add editor…"); err != nil {
+			t.Fatal(err)
+		}
+		a.customEditorFormName = "Fleet"
+		a.customEditorFormCommand = "fleet --project {{filename}}"
+		tt.Frame()
+		saveScreenshot(t, dir, "78-settings-custom-editor-dark", tt)
+	})
+
+	t.Run("settings-language-server-catalog-dark", func(t *testing.T) {
+		a, tt := newScreenshotApp(t, true)
+		a.settingsPage = settingsPageEditor
+		a.openSettings()
+		tt.Frame()
+		tt.Scroll(700, 480, 0, 1800)
+		tt.Frame()
+		saveScreenshot(t, dir, "79-settings-language-server-catalog-dark", tt)
+	})
+
+	t.Run("settings-go-language-server-catalog-dark", func(t *testing.T) {
+		a, tt := newScreenshotApp(t, true)
+		a.settingsPage = settingsPageEditor
+		a.openSettings()
+		a.languageServerCatalogQuery = "gopls"
+		a.languageServerCatalogSelected = goLanguageServerID
+		tt.Frame()
+		tt.Scroll(700, 480, 0, 1800)
+		tt.Frame()
+		tt.Scroll(700, 480, 0, 300)
+		tt.Frame()
+		saveScreenshot(t, dir, "80-settings-go-language-server-catalog-dark", tt)
+	})
+
+	t.Run("settings-custom-language-server-dark", func(t *testing.T) {
+		a, tt := newScreenshotApp(t, true)
+		a.settingsPage = settingsPageEditor
+		a.languageServerCatalogQuery = "ty"
+		a.openSettings()
+		a.customLanguageServerForm = customLanguageServerForm{
+			Open: true, Name: "ty", Description: "Astral Python language server",
+			Path: "ty, /opt/python/ty", Arguments: "server", Probe: "--version",
+			Extensions: ".py=python, .pyi=python", DownloadURL: "https://pypi.org/project/ty/", Enabled: true,
+		}
+		tt.Frame()
+		tt.Scroll(700, 480, 0, 1800)
+		tt.Frame()
+		tt.Scroll(700, 480, 0, -300)
+		tt.Frame()
+		saveScreenshot(t, dir, "81-settings-custom-language-server-form-dark", tt)
+
+		a.customLanguageServerForm.Open = false
+		a.settings.LanguageServers = map[string]languageServerSettings{
+			"custom-ty": {
+				Path: "ty, /opt/python/ty", Arguments: []string{"server"}, ProbeArguments: []string{"--version"},
+				Custom: &customLanguageServerDefinition{
+					Name: "ty", Description: "Astral Python language server", DownloadURL: "https://pypi.org/project/ty/",
+					Extensions: map[string]string{".py": "python", ".pyi": "python"},
+				},
+			},
+		}
+		a.loadGoLanguageServerDraft()
+		a.languageServerCatalogQuery = "ty"
+		tt.Frame()
+		tt.Scroll(700, 480, 0, 1800)
+		tt.Frame()
+		saveScreenshot(t, dir, "82-settings-custom-language-server-card-dark", tt)
 	})
 
 	t.Run("settings-font-menu-dark", func(t *testing.T) {

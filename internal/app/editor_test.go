@@ -87,6 +87,161 @@ func TestEditorButtonOpensBuiltInCodeByDefault(t *testing.T) {
 	}
 }
 
+// The Editor header launches a specific IDE even while Built-in is configured.
+// These one-off launches never turn into a new default editor preference.
+func TestCodeExternalEditorMenuOpensRepositoryWithoutChangingDefault(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		command string
+	}{
+		{name: "VS Code", command: vsCodeEditorCommand},
+		{name: "Zed", command: editorPresets[2].Command},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := menuTestApp(t)
+			stubCodeWorkspace(t, nil)
+			opened := stubEditor(t, nil)
+			h.app.settings.EditorCommand = builtInEditorCommand
+			h.app.setWorkspaceTab(sectionCode)
+			h.tester.Frame()
+
+			if err := h.tester.Click("Open repository in external editor"); err != nil {
+				t.Fatalf("the Editor header has no external-editor menu: %v", err)
+			}
+			h.tester.Frame()
+			h.requireMenuLabels(t, "VS Code", "Zed", "Customize editor…")
+			h.chooseMenuItem(t, test.name)
+
+			want := []launchedEditor{{command: test.command, path: "/work/project"}}
+			if !slices.Equal(*opened, want) {
+				t.Fatalf("external editor opened %+v, want %+v", *opened, want)
+			}
+			if got := h.app.settings.EditorCommand; got != builtInEditorCommand {
+				t.Fatalf("one-off launch changed the saved editor to %q", got)
+			}
+		})
+	}
+}
+
+func TestCodeExternalEditorMenuOpensWorkspaceFolder(t *testing.T) {
+	h := menuTestApp(t)
+	stubCodeWorkspace(t, nil)
+	opened := stubEditor(t, nil)
+	h.app.settings.EditorCommand = builtInEditorCommand
+	h.app.setWorkspaceTab(sectionCode)
+	if !h.app.openCodeWorkspaceFolder("example/server/src/web_new") {
+		t.Fatal("the workspace folder was rejected")
+	}
+	h.tester.Frame()
+
+	if err := h.tester.Click("Open repository in external editor"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.chooseMenuItem(t, "VS Code")
+
+	wantPath := filepath.Join("/work/project", "example", "server", "src", "web_new")
+	want := []launchedEditor{{command: vsCodeEditorCommand, path: wantPath}}
+	if !slices.Equal(*opened, want) {
+		t.Fatalf("external editor opened %+v, want the workspace %+v", *opened, want)
+	}
+	if got := h.app.settings.EditorCommand; got != builtInEditorCommand {
+		t.Fatalf("workspace launch changed the saved editor to %q", got)
+	}
+}
+
+func TestCodeExternalEditorMenuCustomizesEditorSettings(t *testing.T) {
+	h := menuTestApp(t)
+	stubCodeWorkspace(t, nil)
+	opened := stubEditor(t, nil)
+	h.app.setWorkspaceTab(sectionCode)
+	h.tester.Frame()
+
+	if err := h.tester.Click("Open repository in external editor"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.chooseMenuItem(t, "Customize editor…")
+
+	if !h.app.settingsOpen || h.app.settingsPage != settingsPageEditor || !h.tester.HasText("Built-in Code or an external program") {
+		t.Fatalf("customization did not open Editor settings: open=%v page=%d texts=%q",
+			h.app.settingsOpen, h.app.settingsPage, h.texts())
+	}
+	if len(*opened) != 0 {
+		t.Fatalf("customization launched an editor: %+v", *opened)
+	}
+}
+
+func TestSettingsAddCustomEditorToExternalMenu(t *testing.T) {
+	h := menuTestApp(t)
+	stubCodeWorkspace(t, nil)
+	opened := stubEditor(t, nil)
+	h.app.settingsPage = settingsPageEditor
+	h.app.openSettings()
+	h.tester.Frame()
+
+	if err := h.tester.Click("Add editor…"); err != nil {
+		t.Fatalf("the presets have no add-editor action: %v", err)
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Custom editor name"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Type("Fleet")
+	h.tester.Frame()
+	if err := h.tester.Click("Custom editor command line"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Type("fleet --project {{filename}}")
+	h.tester.Frame()
+	if err := h.tester.Click("Add editor"); err != nil {
+		t.Fatalf("the custom editor cannot be saved: %v", err)
+	}
+	h.tester.Frame()
+
+	editor := editorPreset{Name: "Fleet", Command: "fleet --project {{filename}}"}
+	if got := h.app.settings.ExternalEditors; !slices.Equal(got, []editorPreset{editor}) {
+		t.Fatalf("saved external editors = %+v, want %+v; draft=%q %q %q texts=%q", got, editor,
+			h.app.customEditorFormName, h.app.customEditorFormCommand, h.app.customEditorFormError, h.texts())
+	}
+	if h.app.customEditorFormOpen {
+		t.Fatal("adding an editor left its draft form open")
+	}
+
+	h.app.closeSettings()
+	h.app.setWorkspaceTab(sectionCode)
+	h.tester.Frame()
+	if err := h.tester.Click("Open repository in external editor"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.requireMenuLabels(t, "VS Code", "Zed", "Fleet", "Customize editor…")
+	h.chooseMenuItem(t, "Fleet")
+
+	want := []launchedEditor{{command: editor.Command, path: "/work/project"}}
+	if !slices.Equal(*opened, want) {
+		t.Fatalf("custom editor opened %+v, want %+v", *opened, want)
+	}
+	if got := h.app.settings.EditorCommand; got != builtInEditorCommand {
+		t.Fatalf("custom launch changed the saved default to %q", got)
+	}
+}
+
+func TestNormalizeExternalEditorsRejectsInvalidAndDuplicateEntries(t *testing.T) {
+	editors := normalizeExternalEditors([]editorPreset{
+		{Name: " Fleet ", Command: " fleet {{filename}} "},
+		{Name: "fleet", Command: "other"},
+		{Name: "VS Code", Command: "other"},
+		{Name: "No command", Command: " "},
+		{Name: "Bad quote", Command: `editor "`},
+		{Name: "Built in", Command: "Built-in"},
+	})
+	want := []editorPreset{{Name: "Fleet", Command: "fleet {{filename}}"}}
+	if !slices.Equal(editors, want) {
+		t.Fatalf("normalizeExternalEditors() = %+v, want %+v", editors, want)
+	}
+}
+
 // A Home card can open its repository in the configured editor without
 // opening that repository in TanGit; its context menu offers the same action.
 func TestRecentCardOpensTheRepositoryWithTheConfiguredEditor(t *testing.T) {
@@ -186,6 +341,90 @@ func TestFilePaneEditorButtonOpensAndRevealsTheFileInBuiltInCode(t *testing.T) {
 	}
 	if h.app.fileTreeCollapsed[fileTreeCollapseKey(codeFileTreeScope, "internal/app")] {
 		t.Fatal("the opened file's parent directory stayed collapsed")
+	}
+}
+
+func TestGitFileMenuOpensTheCurrentFileInBuiltInCode(t *testing.T) {
+	h := menuTestApp(t)
+	useRealCodeWorkspace(t, h, map[string]string{"one.txt": "current contents\n"})
+	h.app.settings.EditorCommand = vsCodeEditorCommand
+	opened := stubEditor(t, nil)
+	h.app.setWorkspaceTab(sectionChanges)
+	h.tester.Frame()
+
+	h.rightClick(t, "one.txt")
+	h.requireMenuLabels(t, "Open in built-in editor")
+	h.chooseMenuItem(t, "Open in built-in editor")
+	document := waitForCodeDocument(t, h, "one.txt")
+	if len(*opened) != 0 || h.app.workspaceTab != sectionCode || document != h.app.activeCodeDocument() {
+		t.Fatalf("Git file action used an external editor or opened the wrong document: launches=%+v tab=%d active=%q",
+			*opened, h.app.workspaceTab, h.app.code.active)
+	}
+}
+
+func TestGitFileMenuRejectsDeletedFilesWithoutChangingTheWorkspace(t *testing.T) {
+	h := menuTestApp(t)
+	root := useRealCodeWorkspace(t, h, map[string]string{"one.txt": "temporary\n"})
+	h.app.setWorkspaceTab(sectionChanges)
+	h.tester.Frame()
+	h.rightClick(t, "one.txt")
+	if err := os.Remove(filepath.Join(root, "one.txt")); err != nil {
+		t.Fatal(err)
+	}
+	h.chooseMenuItem(t, "Open in built-in editor")
+
+	if h.app.workspaceTab != sectionChanges || h.app.code.active != "" {
+		t.Fatalf("a deleted file changed the workspace: tab=%d active=%q", h.app.workspaceTab, h.app.code.active)
+	}
+	if !slices.Contains(h.texts(), "Could not open the file") || !slices.Contains(h.texts(), "The file has been deleted or no longer exists.") {
+		t.Fatalf("deleted-file warning is missing: %q", h.texts())
+	}
+}
+
+func TestGitFileBuiltInOpenRejectsAnotherRepository(t *testing.T) {
+	h := menuTestApp(t)
+	root := useRealCodeWorkspace(t, h, map[string]string{"one.txt": "still present\n"})
+	h.app.setWorkspaceTab(sectionChanges)
+	h.app.snapshot.Root = filepath.Join(root, "another-repository")
+	h.app.openGitFileInBuiltInEditor(root, "one.txt")
+	h.tester.Frame()
+
+	if h.app.workspaceTab != sectionChanges || h.app.code.active != "" {
+		t.Fatalf("another repository changed the workspace: tab=%d active=%q", h.app.workspaceTab, h.app.code.active)
+	}
+	if !slices.Contains(h.texts(), "The editor is showing another repository. Reopen the file's repository and try again.") {
+		t.Fatalf("repository-mismatch warning is missing: %q", h.texts())
+	}
+}
+
+func TestGitFileBuiltInOpenRejectsNonRegularAndOutsidePaths(t *testing.T) {
+	h := menuTestApp(t)
+	root := t.TempDir()
+	h.app.snapshot.Root = root
+	if err := os.Mkdir(filepath.Join(root, "folder"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "linked.txt")); err != nil {
+		t.Logf("symlinks unavailable; regular-file validation still covers them: %v", err)
+	}
+
+	for _, relative := range []string{"folder", "../outside.txt", "linked.txt"} {
+		if relative == "linked.txt" {
+			if _, err := os.Lstat(filepath.Join(root, relative)); err != nil {
+				continue
+			}
+		}
+		h.app.pendingToasts = nil
+		h.app.openGitFileInBuiltInEditor(root, relative)
+		if len(h.app.pendingToasts) != 1 || h.app.pendingToasts[0].title != "Could not open the file" ||
+			h.app.workspaceTab == sectionCode || h.app.code.active != "" {
+			t.Fatalf("unsafe path %q was not rejected without opening Code: toasts=%+v tab=%d active=%q",
+				relative, h.app.pendingToasts, h.app.workspaceTab, h.app.code.active)
+		}
 	}
 }
 

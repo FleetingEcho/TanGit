@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -214,17 +215,18 @@ func TestSettingsBufferTypographyControlsAreIndependent(t *testing.T) {
 		t.Helper()
 		bounds, found := h.tester.Find(label)
 		if !found {
-			t.Fatalf("no stepper named %q", label)
+			t.Fatalf("no number input named %q", label)
 		}
 		if bounds.W <= 0 || bounds.H <= 0 {
 			h.tester.Scroll(700, 400, 0, 240)
 			h.tester.Frame()
 			bounds, found = h.tester.Find(label)
 			if !found || bounds.W <= 0 || bounds.H <= 0 {
-				t.Fatalf("stepper %q is not visible after scrolling", label)
+				t.Fatalf("number input %q is not visible after scrolling", label)
 			}
 		}
-		h.tester.ClickAt(bounds.X+bounds.W/2, bounds.Y+bounds.H/4)
+		h.tester.ClickAt(bounds.X+20, bounds.Y+bounds.H/2)
+		h.tester.Key(0, ui.KeyUp)
 		h.tester.Frame()
 	}
 	stepUp("Buffer font size settings")
@@ -235,6 +237,18 @@ func TestSettingsBufferTypographyControlsAreIndependent(t *testing.T) {
 	stepUp("Buffer line spacing settings")
 	if h.app.settings.BufferLineHeight != defaultBufferLineHeight+0.1 {
 		t.Fatalf("buffer line spacing = %v, want %v", h.app.settings.BufferLineHeight, defaultBufferLineHeight+0.1)
+	}
+
+	bounds, found := h.tester.Find("Buffer font size settings")
+	if !found {
+		t.Fatal("buffer font size input disappeared")
+	}
+	h.tester.ClickAt(bounds.X+20, bounds.Y+bounds.H/2)
+	h.tester.Key(ui.Cmd, ui.KeyA)
+	h.tester.Type("16")
+	h.tester.Frame()
+	if h.app.settings.BufferFontSize != 16 || h.app.settings.FontSize != uiFontSize {
+		t.Fatalf("typed buffer size = %v, interface size = %v", h.app.settings.BufferFontSize, h.app.settings.FontSize)
 	}
 }
 
@@ -286,21 +300,23 @@ func TestBufferFontUpdatesCodeViewsWithoutChangingTheInterface(t *testing.T) {
 func TestSettingsStoreRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	want := appSettings{
-		Theme:            "Dracula",
-		Accent:           "Teal",
-		FontSize:         16,
-		Font:             "Menlo",
-		BufferFont:       "JetBrains Mono",
-		BufferFontSize:   15,
-		BufferLineHeight: 1.8,
-		Spacing:          5,
-		Radius:           3,
-		DiffSplit:        true,
-		DiffWrap:         true,
-		IgnoreUntracked:  true,
-		DisableShortcuts: true,
-		Language:         "zh-Hans",
-		EditorCommand:    "zed {{filename}}",
+		Theme:                     "Dracula",
+		Accent:                    "Teal",
+		FontSize:                  16,
+		Font:                      "Menlo",
+		BufferFont:                "JetBrains Mono",
+		BufferFontSize:            15,
+		BufferLineHeight:          1.8,
+		Spacing:                   5,
+		Radius:                    3,
+		DiffSplit:                 true,
+		DiffWrap:                  true,
+		IgnoreUntracked:           true,
+		DisableShortcuts:          true,
+		Language:                  "zh-Hans",
+		EditorCommand:             "zed {{filename}}",
+		ExternalEditors:           []editorPreset{{Name: "Fleet", Command: "fleet {{filename}}"}},
+		SearchExcludedDirectories: []string{"generated", "node_modules"},
 		LanguageServers: map[string]languageServerSettings{
 			"go": {Path: "/tools/gopls", Arguments: []string{"-remote=auto"}},
 		},
@@ -317,6 +333,41 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 	}
 	if !filepath.IsAbs(settingsStorePath(dir)) {
 		t.Fatalf("settings path is not absolute: %q", settingsStorePath(dir))
+	}
+}
+
+func TestSettingsSearchExclusionsDefaultNormalizeAndPersistEmpty(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(settingsStorePath(dir), []byte(`{"theme":"Tokyo Night"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	legacy := loadAppSettings(dir)
+	if !slices.Contains(legacy.SearchExcludedDirectories, "node_modules") ||
+		slices.Contains(legacy.SearchExcludedDirectories, "vendor") {
+		t.Fatalf("legacy exclusions = %v, want common generated folders but not vendor", legacy.SearchExcludedDirectories)
+	}
+
+	custom := defaultSettings()
+	custom.SearchExcludedDirectories = []string{" generated ", "", ".", "..", "nested/path", "node_modules", "generated", ".nx"}
+	custom = normalizeSettings(custom)
+	if got, want := custom.SearchExcludedDirectories, []string{".nx", "generated", "node_modules"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("normalized exclusions = %v, want %v", got, want)
+	}
+
+	custom.SearchExcludedDirectories = []string{}
+	if err := saveAppSettings(dir, custom); err != nil {
+		t.Fatal(err)
+	}
+	loaded := loadAppSettings(dir)
+	if loaded.SearchExcludedDirectories == nil || len(loaded.SearchExcludedDirectories) != 0 {
+		t.Fatalf("saved empty exclusions became %v, want a persistent empty list", loaded.SearchExcludedDirectories)
+	}
+	data, err := os.ReadFile(settingsStorePath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(strings.Split(string(data), "\n"), `  "searchExcludedDirectories": [],`) {
+		t.Fatalf("settings did not serialize an explicit empty list:\n%s", data)
 	}
 }
 
@@ -532,6 +583,48 @@ func TestSettingsModalOpensAndCloses(t *testing.T) {
 	h.tester.Frame()
 	if h.app.settingsOpen {
 		t.Fatal("Escape did not close the settings modal")
+	}
+}
+
+func TestSettingsEditsSearchExcludedFolderList(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.openSettings()
+	h.tester.Frame()
+	if err := h.tester.Click("Editor settings"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if !h.tester.HasText("Search exclusions") || !h.tester.HasText("Remove excluded folder node_modules") {
+		t.Fatalf("Editor settings do not expose the exclusion editor: %q", h.texts())
+	}
+	if err := h.tester.Click("New excluded folder"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Type("cooked")
+	h.tester.Frame()
+	if err := h.tester.Click("Add"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if !slices.Contains(h.app.settings.SearchExcludedDirectories, "cooked") || h.app.searchExcludedDirectoryDraft != "" {
+		t.Fatalf("adding cooked produced %q with draft %q", h.app.settings.SearchExcludedDirectories, h.app.searchExcludedDirectoryDraft)
+	}
+
+	if err := h.tester.Click("Remove excluded folder node_modules"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if slices.Contains(h.app.settings.SearchExcludedDirectories, "node_modules") {
+		t.Fatal("a default exclusion could not be removed")
+	}
+	h.tester.Scroll(700, 400, 0, 500)
+	h.tester.Frame()
+	if err := h.tester.Click("Clear list"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.settings.SearchExcludedDirectories == nil || len(h.app.settings.SearchExcludedDirectories) != 0 || !h.tester.HasText("No excluded folders") {
+		t.Fatalf("Clear list left exclusions %v", h.app.settings.SearchExcludedDirectories)
 	}
 }
 

@@ -46,6 +46,9 @@ func TestAdditionalLanguageServerDraftsLoadAsOptIn(t *testing.T) {
 func TestGoLanguageServerSettingsPersistAndTestWithoutAShell(t *testing.T) {
 	original := runLanguageServerVersion
 	t.Cleanup(func() { runLanguageServerVersion = original })
+	originalLookPath := languageServerLookPath
+	t.Cleanup(func() { languageServerLookPath = originalLookPath })
+	languageServerLookPath = func(program string) (string, error) { return "/tools/" + program, nil }
 	type invocation struct {
 		program   string
 		arguments []string
@@ -63,8 +66,8 @@ func TestGoLanguageServerSettingsPersistAndTestWithoutAShell(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if !h.tester.HasText("Go language server") || !h.tester.HasText("Enable gopls") {
-		t.Fatalf("Editor settings have no language-server profile: %q", h.texts())
+	if h.tester.HasText("gopls executable path") || h.tester.HasText("Test server") || !h.tester.HasText("Go (gopls)") {
+		t.Fatalf("Editor settings should have only the catalog's Go profile: %q", h.texts())
 	}
 	for _, label := range []string{
 		"TypeScript Language Server", "VS Code HTML Language Server", "VS Code CSS Language Server",
@@ -78,23 +81,36 @@ func TestGoLanguageServerSettingsPersistAndTestWithoutAShell(t *testing.T) {
 		}
 	}
 
-	if err := h.tester.Click("Enable gopls"); err != nil {
+	h.tester.Scroll(700, 480, 0, 1800)
+	h.tester.Frame()
+	if err := h.tester.Click("Search language servers"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Type("gopls")
+	h.tester.Frame()
+	if err := h.tester.Click("Configure Go (gopls)"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Enable Go (gopls)"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
 	if server := h.app.goLanguageServerSettings(); !server.Disabled {
 		t.Fatalf("the enable switch did not persist disabled state: %#v", server)
 	}
-	if err := h.tester.Click("Enable gopls"); err != nil {
+	if err := h.tester.Click("Enable Go (gopls)"); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := h.tester.Click("gopls executable path"); err != nil {
+	h.tester.Scroll(700, 480, 0, 300)
+	h.tester.Frame()
+	if err := h.tester.Click("Go (gopls) executable path"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Key(ui.Cmd, ui.KeyA)
 	h.tester.Type("C:/tools/gopls.exe")
-	if err := h.tester.Click("gopls arguments"); err != nil {
+	if err := h.tester.Click("Go (gopls) arguments"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Type("-remote=auto\n-debug")
@@ -107,7 +123,7 @@ func TestGoLanguageServerSettingsPersistAndTestWithoutAShell(t *testing.T) {
 	}
 	h.tester.Scroll(700, 480, 0, 360)
 	h.tester.Frame()
-	if err := h.tester.Click("Test server"); err != nil {
+	if err := h.tester.Click("Test Go (gopls)"); err != nil {
 		t.Fatal(err)
 	}
 	h.waitFor(t, "the language-server test", func() bool {
@@ -120,6 +136,69 @@ func TestGoLanguageServerSettingsPersistAndTestWithoutAShell(t *testing.T) {
 	}
 	if !h.app.languageServerTestOK || !h.tester.HasText("golang.org/x/tools/gopls v9.9.9") {
 		t.Fatalf("successful test was not shown: ok=%v texts=%q", h.app.languageServerTestOK, h.texts())
+	}
+}
+
+func TestLanguageServerCatalogConfiguresGoInline(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.settingsPage = settingsPageEditor
+	h.app.openSettings()
+	h.tester.Frame()
+	h.tester.Scroll(700, 480, 0, 1800)
+	h.tester.Frame()
+	if err := h.tester.Click("Search language servers"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Type("gopls")
+	h.tester.Frame()
+	if err := h.tester.Click("Configure Go (gopls)"); err != nil {
+		t.Fatalf("Go cannot be configured from its catalog row: %v", err)
+	}
+	h.tester.Frame()
+	if !h.tester.HasText("Enable Go (gopls)") || h.tester.HasText("Use the Go language server controls above to configure gopls.") {
+		t.Fatalf("Go catalog configuration is missing: %q", h.texts())
+	}
+	h.tester.Scroll(700, 480, 0, 300)
+	h.tester.Frame()
+	if err := h.tester.Click("Go (gopls) executable path"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Type("/zed/gopls")
+	h.tester.Frame()
+	if got := h.app.goLanguageServerSettings().Path; got != "/zed/gopls" {
+		t.Fatalf("catalog gopls path = %q, want /zed/gopls", got)
+	}
+	if err := h.tester.Click("Enable Go (gopls)"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if !h.app.goLanguageServerSettings().Disabled {
+		t.Fatal("the catalog Enable control did not update the gopls profile")
+	}
+}
+
+func TestGoLanguageServerTestTriesConfiguredProgramsInOrder(t *testing.T) {
+	original := runLanguageServerVersion
+	t.Cleanup(func() { runLanguageServerVersion = original })
+	var programs []string
+	runLanguageServerVersion = func(program string, _ []string) (string, error) {
+		programs = append(programs, program)
+		if program == "/missing/gopls" {
+			return "", errors.New("not installed")
+		}
+		return "gopls from Zed", nil
+	}
+	h := menuTestApp(t)
+	h.app.settings.LanguageServers = map[string]languageServerSettings{
+		"go": {Path: "/missing/gopls, /zed/gopls"},
+	}
+	h.app.testGoLanguageServer()
+	h.waitFor(t, "the fallback language-server test", func() bool {
+		return !h.app.languageServerTestBusy && h.app.languageServerTestResult != ""
+	})
+	if !reflect.DeepEqual(programs, []string{"/missing/gopls", "/zed/gopls"}) ||
+		!h.app.languageServerTestOK || h.app.languageServerTestResult != "gopls from Zed" {
+		t.Fatalf("fallback test programs=%v ok=%v result=%q", programs, h.app.languageServerTestOK, h.app.languageServerTestResult)
 	}
 }
 

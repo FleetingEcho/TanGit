@@ -516,8 +516,10 @@ func (a *app) beginRepositoryActionMessage(
 				if a.snapshot.Branch != snapshot.Branch {
 					a.commitSelection = nil
 				}
+				oldSnapshot := a.snapshot
 				a.snapshot = snapshot
 				a.snapshotSeq++
+				a.refreshCodeAfterCheckout(oldSnapshot, snapshot)
 				a.resetCommitPaging(snapshot)
 				a.restoreSelection(selected)
 				// An action changed the commits, so the branch browse must read

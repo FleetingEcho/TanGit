@@ -26,8 +26,8 @@ const (
 // installer puts on the PATH; choosing it stores the command, so the setting
 // stays one plain string the user can edit as they like.
 type editorPreset struct {
-	Name    string
-	Command string
+	Name    string `json:"name"`
+	Command string `json:"command"`
 }
 
 // editorPresets are the editors Settings offers, in the order they
@@ -201,6 +201,52 @@ func editorProgram(command string) string {
 	return args[0]
 }
 
+// allEditorPresets combines the built-in choices with the user's saved external
+// editors. Custom names never alter the editor command's documented placeholders.
+func (a *app) allEditorPresets() []editorPreset {
+	presets := make([]editorPreset, 0, len(editorPresets)+len(a.settings.ExternalEditors))
+	presets = append(presets, editorPresets...)
+	presets = append(presets, a.settings.ExternalEditors...)
+	return presets
+}
+
+// normalizeExternalEditors discards unusable or ambiguous persisted entries.
+// Names are unique across all presets so every menu action remains unambiguous.
+func normalizeExternalEditors(editors []editorPreset) []editorPreset {
+	if len(editors) == 0 {
+		return nil
+	}
+	names := make(map[string]bool, len(editorPresets)+len(editors))
+	for _, preset := range editorPresets {
+		names[strings.ToLower(preset.Name)] = true
+	}
+	normalized := make([]editorPreset, 0, len(editors))
+	for _, editor := range editors {
+		editor.Name = strings.TrimSpace(editor.Name)
+		editor.Command = strings.TrimSpace(editor.Command)
+		key := strings.ToLower(editor.Name)
+		if !validExternalEditor(editor) || names[key] {
+			continue
+		}
+		names[key] = true
+		normalized = append(normalized, editor)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func validExternalEditor(editor editorPreset) bool {
+	if editor.Name == "" || editor.Command == "" ||
+		strings.ContainsAny(editor.Name, "\r\n\x00") || strings.ContainsAny(editor.Command, "\r\n\x00") ||
+		strings.EqualFold(editor.Command, builtInEditorCommand) {
+		return false
+	}
+	_, err := splitEditorCommand(editor.Command)
+	return err == nil
+}
+
 // effectiveEditorCommand is the command the app launches: the setting, or the
 // default when it is empty.
 func effectiveEditorCommand(command string) string {
@@ -210,10 +256,14 @@ func effectiveEditorCommand(command string) string {
 	return defaultEditorCommand
 }
 
-// launchEditor runs the configured editor command for path, at line, and says
-// what to do when the machine cannot.
+// launchEditor runs the configured editor command for path, at line.
 func (a *app) launchEditor(path string, line int) {
-	command := effectiveEditorCommand(a.settings.EditorCommand)
+	a.launchEditorCommand(effectiveEditorCommand(a.settings.EditorCommand), path, line)
+}
+
+// launchEditorCommand opens one explicit command without changing the saved
+// editor preference, and says what to do when the machine cannot launch it.
+func (a *app) launchEditorCommand(command, path string, line int) {
 	if command == builtInEditorCommand {
 		a.openBuiltInEditor(path, line)
 		return
@@ -261,6 +311,40 @@ func (a *app) openBuiltInEditor(path string, line int) {
 	a.revealCodeFile(relative)
 }
 
+// openGitFileInBuiltInEditor validates a working-tree path at action time.
+// Git row state may be stale, and a historical file is not necessarily still
+// present, so every failure is reported without switching the Code workspace.
+func (a *app) openGitFileInBuiltInEditor(root, relative string) {
+	fail := func(description string) {
+		a.notify("error", tr("Could not open the file"), description)
+	}
+	if root == "" || a.snapshot.Root != root {
+		fail(tr("The editor is showing another repository. Reopen the file's repository and try again."))
+		return
+	}
+	if !validCodeRelativePath(relative) {
+		fail(tr("The built-in editor can only open files in this repository."))
+		return
+	}
+	filename := filepath.Join(root, filepath.FromSlash(relative))
+	info, err := os.Lstat(filename)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			fail(tr("The file has been deleted or no longer exists."))
+		} else {
+			fail(safeError(err))
+		}
+		return
+	}
+	// Match the Explorer's file contract. In particular this rejects folders,
+	// submodule gitlinks, device files, and links that could leave the repo.
+	if !info.Mode().IsRegular() {
+		fail(tr("Only regular files in this repository can be opened in the built-in editor."))
+		return
+	}
+	a.openBuiltInEditor(filename, 0)
+}
+
 func codeEditorRelativePath(root, name string) (string, bool) {
 	root, rootErr := filepath.Abs(root)
 	name, nameErr := filepath.Abs(name)
@@ -301,6 +385,58 @@ func (a *app) editorButton(c *ui.Context) {
 		return
 	}
 	a.editorLaunchButton(c, "Open in editor", "Open this repository in your editor", a.snapshot.Root, 0)
+}
+
+// repositoryExternalEditorButton offers direct workspace launches independently
+// of the configured editor. Picking an IDE here is an action, not a preference.
+func (a *app) repositoryExternalEditorButton(c *ui.Context) {
+	a.repositoryExternalEditorButtonWithText(c, "")
+}
+
+func (a *app) repositoryExternalEditorButtonWithText(c *ui.Context, text string) {
+	if a.snapshot.Root == "" {
+		return
+	}
+	workspacePath := a.snapshot.Root
+	if folder, ok := normalizedCodeSearchFolder(a.code.searchFolder); ok && folder != "" {
+		workspacePath = filepath.Join(workspacePath, filepath.FromSlash(folder))
+	}
+	theme := c.Theme()
+	button := ui.ButtonBase(c).Padding(4).Radius(theme.Radius)
+	button.Label(tr("Open repository in external editor")).
+		Tooltip(tr("Open this repository in VS Code, Zed, or another editor"))
+	if text != "" {
+		button.Label(tr(text))
+	}
+	button.Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
+			ui.Icon(c, externalLinkIcon).FontSize(14).TextColor(theme.TextMuted)
+			if text != "" {
+				ui.Text(c, tr(text))
+			}
+		})
+	})
+	if button.Hovered() {
+		button.Background(theme.SurfaceHover)
+	}
+	button.PopoverMenuButton(func(m *ui.Menu) {
+		if m.Item("VS Code").Chosen() {
+			a.launchEditorCommand(vsCodeEditorCommand, workspacePath, 0)
+		}
+		if m.Item("Zed").Chosen() {
+			a.launchEditorCommand(editorPresets[2].Command, workspacePath, 0)
+		}
+		for _, editor := range a.settings.ExternalEditors {
+			if m.Item(editor.Name).Chosen() {
+				a.launchEditorCommand(editor.Command, workspacePath, 0)
+			}
+		}
+		m.Separator()
+		if m.Item(tr("Customize editor…")).Chosen() {
+			a.settingsPage = settingsPageEditor
+			a.openSettings()
+		}
+	})
 }
 
 // fileEditorButton opens the selected file in the chosen editor, from the

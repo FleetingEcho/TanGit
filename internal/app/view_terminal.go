@@ -480,29 +480,10 @@ func (a *app) closeTerminalAt(index int) {
 	a.term.layout = a.term.layouts[a.activeTerminalGroup()]
 }
 
-// requestCloseTerminalAt closes one shell directly when it is the last one.
-// While any other terminal exists, destroying a shell is confirmed first.
+// requestCloseTerminalAt closes only the selected shell. Confirmation belongs
+// to whole-tab and close-all actions, which can exit multiple shells at once.
 func (a *app) requestCloseTerminalAt(index int) {
-	if index < 0 || index >= len(a.term.sessions) {
-		return
-	}
-	if a.terminalSessionCount() == 1 {
-		a.closeTerminalAt(index)
-		return
-	}
-	id := a.term.sessions[index].id
-	a.askConfirm(confirmRequest{
-		title:        "Close terminal",
-		message:      trf("%d terminals are still running.", a.terminalSessionCount()),
-		detail:       "This exits the selected terminal shell. Unsaved work in that shell will be lost.",
-		confirmLabel: "Close shell",
-		destructive:  true,
-		run: func() {
-			if current, _ := a.terminalSessionByID(id); current >= 0 {
-				a.closeTerminalAt(current)
-			}
-		},
-	})
+	a.closeTerminalAt(index)
 }
 
 // requestCloseTerminalGroup closes one top-level tab and all of its splits.

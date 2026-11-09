@@ -7,16 +7,30 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
+	"github.com/egoist/mygo/ui/markdown"
+
+	"lazygitapp/internal/repository"
 )
 
 const (
 	codeFileTreeScope = "code"
 	codeSidebarFiles  = 0
 	codeSidebarSearch = 1
+
+	codeSearchDebounceDelay = 300 * time.Millisecond
 )
+
+// scheduleCodeSearch is a seam for proving that rapid edits collapse into one
+// search without making interaction tests wait for a real timer.
+var scheduleCodeSearch = func(delay time.Duration, run func()) {
+	time.AfterFunc(delay, run)
+}
+
+var runCodeSearch = searchWorkspaceFilesWithOptions
 
 type codeFileFormKind uint8
 
@@ -48,6 +62,7 @@ type codeDocument struct {
 	imagePreview        *mediaPreview
 	loadError           string
 	saveError           string
+	branchNotice        string
 	pendingLine         int
 	pendingColumn       int
 	pendingUTF16        bool
@@ -57,6 +72,7 @@ type codeDocument struct {
 	definitionSeq       uint64
 	completionSeq       uint64
 	languageDiagnostics map[string][]editor.Diagnostic
+	markdownPreviewOpen bool
 }
 
 type codeNavigationLocation struct {
@@ -92,7 +108,10 @@ type codeState struct {
 	filesLoaded   bool
 	filesError    string
 	filesToken    uint64
-	pendingReveal string
+	// filesOperationRefresh marks the quiet snapshot that belongs to an Editor
+	// structural operation whose explicit file-index reload already ran.
+	filesOperationRefresh bool
+	pendingReveal         string
 	// Empty directories are not returned by git ls-files, so newly created
 	// ones stay in the explorer until they get a file of their own.
 	extraDirectories       map[string]bool
@@ -122,20 +141,41 @@ type codeState struct {
 	back    []codeNavigationLocation
 	forward []codeNavigationLocation
 
-	sidebar             int
-	searchFocus         ui.Handle
-	searchList          ui.ListState
-	searchSelected      int
-	searchSelectedRow   int
-	searchRows          []codeSearchRow
-	searchCollapsed     map[string]bool
-	searchQuery         string
-	searchSubmitted     string
-	searchCaseSensitive bool
-	searchRunning       bool
-	searchResults       []workspaceSearchMatch
-	searchToken         uint64
-	searchCancel        context.CancelFunc
+	sidebar                int
+	searchFocus            ui.Handle
+	searchList             ui.ListState
+	searchSelected         int
+	searchSelectedRow      int
+	searchRows             []codeSearchRow
+	searchCollapsed        map[string]bool
+	searchQuery            string
+	searchSubmitted        string
+	searchSubmittedOptions workspaceSearchOptions
+	searchCaseSensitive    bool
+	searchWholeWord        bool
+	searchRegularExpr      bool
+	searchInclude          string
+	searchExclude          string
+	// searchFolder is the opened workspace folder. searchFolderDraft is only
+	// the editable field until the user submits or picks a different folder.
+	searchFolder                string
+	searchFolderDraft           string
+	searchFiltersOpen           bool
+	searchFolderSelectionSeq    uint64
+	searchError                 string
+	searchRunning               bool
+	searchAfterFiles            bool
+	searchResults               []workspaceSearchMatch
+	searchBackend               workspaceSearchBackend
+	searchToken                 uint64
+	searchDebounceSeq           uint64
+	searchCancel                context.CancelFunc
+	languageServersOpen         bool
+	languageServersHoverBlocked bool
+	markdownPreviewPercent      float32
+	// markdownOptions preserves the renderer's caches across editor frames.
+	// It is a pointer because renderer options contain their image-cache lock.
+	markdownOptions *markdown.Options
 }
 
 func (a *app) resetCode() {
@@ -146,6 +186,7 @@ func (a *app) resetCode() {
 	}
 	a.code.filesToken++
 	a.code.searchToken++
+	a.code.searchDebounceSeq++
 	for _, document := range a.code.documents {
 		document.generation++
 	}
@@ -157,6 +198,7 @@ func (a *app) resetCode() {
 	a.code.filter, a.code.appliedFilter = "", ""
 	a.code.filesLoading, a.code.filesLoaded = false, false
 	a.code.filesError = ""
+	a.code.filesOperationRefresh = false
 	a.code.pendingReveal = ""
 	a.code.extraDirectories = nil
 	a.code.pendingRevealDirectory = ""
@@ -177,11 +219,89 @@ func (a *app) resetCode() {
 	a.code.sidebar = codeSidebarFiles
 	a.code.searchSelected, a.code.searchSelectedRow = -1, -1
 	a.code.searchQuery, a.code.searchSubmitted = "", ""
+	a.code.searchSubmittedOptions = workspaceSearchOptions{}
 	a.code.searchCaseSensitive = false
+	a.code.searchWholeWord = false
+	a.code.searchRegularExpr = false
+	a.code.searchInclude, a.code.searchExclude = "", ""
+	a.code.searchFolder = ""
+	a.code.searchFolderDraft = ""
+	a.code.searchFiltersOpen = false
+	a.code.searchFolderSelectionSeq++
+	a.code.searchError = ""
 	a.code.searchRunning = false
+	a.code.searchAfterFiles = false
 	a.code.searchResults, a.code.searchRows = nil, nil
+	a.code.searchBackend = workspaceSearchBackendNone
 	a.code.searchCollapsed = nil
 	a.code.searchCancel = nil
+	a.code.languageServersOpen = false
+	a.code.languageServersHoverBlocked = false
+}
+
+// refreshCodeAfterCheckout adopts a different branch without resetting the
+// workspace. Clean buffers and the index must be read again, while dirty
+// buffers remain the user's unsaved work and are never replaced by Git's new
+// file contents. The bool reports whether the snapshots represent a checkout.
+func (a *app) refreshCodeAfterCheckout(old, current repository.Snapshot) bool {
+	if old.Root == "" || old.Root != current.Root {
+		return false
+	}
+	branchChanged := old.Branch != current.Branch
+	detachedCheckout := old.Branch == "" && current.Branch == "" && old.Head != current.Head
+	if !branchChanged && !detachedCheckout {
+		return false
+	}
+
+	reloadFiles := a.code.filesLoaded || a.code.filesLoading || a.workspaceTab == sectionCode || len(a.code.documents) > 0
+	a.code.filesToken++
+	a.code.filesLoading, a.code.filesLoaded = false, false
+	a.code.filesError = ""
+	a.code.back, a.code.forward = nil, nil
+
+	resubmitSearch := a.code.searchRunning || a.code.searchSubmitted != ""
+	if a.code.searchCancel != nil {
+		a.code.searchCancel()
+	}
+	a.code.searchToken++
+	a.code.searchCancel = nil
+	a.code.searchRunning = false
+	a.code.searchAfterFiles = resubmitSearch && strings.TrimSpace(a.code.searchQuery) != ""
+	a.code.searchSubmitted = ""
+	a.code.searchSubmittedOptions = workspaceSearchOptions{}
+	a.code.searchResults, a.code.searchRows = nil, nil
+	a.code.searchBackend = workspaceSearchBackendNone
+	a.code.searchCollapsed = nil
+	a.code.searchSelected, a.code.searchSelectedRow = -1, -1
+	for _, document := range a.code.documents {
+		if document == nil || document.readOnly {
+			continue
+		}
+		if codeDocumentModified(document) {
+			document.branchNotice = tr("Unsaved changes kept from previous branch")
+			document.generation++
+			document.loading = false
+			continue
+		}
+		document.generation++
+		document.loading = false
+		document.state = nil
+		document.binary = false
+		document.imagePreview = nil
+		document.loadError = ""
+		document.saveError = ""
+		document.branchNotice = ""
+		document.hoverState = nil
+		document.languageDiagnostics = nil
+		a.requestCodeDocument(document)
+	}
+	if reloadFiles {
+		a.requestCodeFiles()
+	} else if a.code.searchAfterFiles {
+		a.code.searchAfterFiles = false
+		a.beginCodeSearch()
+	}
+	return true
 }
 
 func (a *app) requestCodeFiles() {
@@ -196,6 +316,10 @@ func (a *app) requestCodeFiles() {
 	go func() {
 		defer a.recoverBackground()
 		paths, err := listCodeFiles(root)
+		var emptyDirectories []string
+		if err == nil {
+			emptyDirectories = listCodeEmptyDirectories(root)
+		}
 		a.update(func() {
 			if token != a.code.filesToken {
 				return
@@ -207,9 +331,19 @@ func (a *app) requestCodeFiles() {
 				return
 			}
 			a.code.files = paths
+			for _, directory := range emptyDirectories {
+				if a.code.extraDirectories == nil {
+					a.code.extraDirectories = make(map[string]bool)
+				}
+				a.code.extraDirectories[directory] = true
+			}
 			a.pruneCodeDirectories(root)
 			a.syncCodeTree()
 			a.applyPendingCodeReveal()
+			if a.code.searchAfterFiles {
+				a.code.searchAfterFiles = false
+				a.beginCodeSearch()
+			}
 		})
 	}()
 }
@@ -229,19 +363,40 @@ func (a *app) syncCodeTree() {
 		selectedPath = item.path
 		selectedDirectory = item.isDirectory()
 	}
-	a.code.visiblePaths = filterCodePaths(a.code.files, a.code.filter)
-	a.code.appliedFilter = a.code.filter
-	directories := make([]string, 0, len(a.code.extraDirectories))
-	filter := strings.ToLower(strings.TrimSpace(a.code.filter))
-	for directory := range a.code.extraDirectories {
-		if filter == "" || strings.Contains(strings.ToLower(directory), filter) {
-			directories = append(directories, directory)
+	// Clearing Quick open returns to the document the user is actually viewing,
+	// rather than leaving whatever unrelated row the filter last selected.
+	clearingFilter := strings.TrimSpace(a.code.appliedFilter) != "" && strings.TrimSpace(a.code.filter) == ""
+	revealActive := clearingFilter && a.code.active != ""
+	if revealActive {
+		selectedPath, selectedDirectory = a.code.active, false
+		for directory := path.Dir(a.code.active); directory != "." && directory != "/"; directory = path.Dir(directory) {
+			if a.fileTreeCollapsed == nil {
+				a.fileTreeCollapsed = make(map[string]bool)
+			}
+			a.fileTreeCollapsed[fileTreeCollapseKey(codeFileTreeScope, directory)] = false
 		}
 	}
+	filter := strings.TrimSpace(a.code.filter)
+	scope := a.code.searchFolder
+	scopedFiles := make([]string, 0, len(a.code.files))
+	for _, filename := range a.code.files {
+		if codePathWithin(filename, scope) {
+			scopedFiles = append(scopedFiles, filename)
+		}
+	}
+	a.code.visiblePaths = filterCodePaths(scopedFiles, a.code.filter)
+	a.code.appliedFilter = a.code.filter
+	extraDirectories := make([]string, 0, len(a.code.extraDirectories))
+	for directory := range a.code.extraDirectories {
+		if codePathWithin(directory, scope) {
+			extraDirectories = append(extraDirectories, directory)
+		}
+	}
+	directories := filterCodePathsFzf(extraDirectories, a.code.filter)
 	if a.fileTreeCollapsed == nil {
 		a.fileTreeCollapsed = make(map[string]bool)
 	}
-	for _, directory := range append(fileTreeDirectories(a.code.files), directories...) {
+	for _, directory := range append(fileTreeDirectories(scopedFiles), directories...) {
 		key := fileTreeCollapseKey(codeFileTreeScope, directory)
 		if _, known := a.fileTreeCollapsed[key]; !known {
 			a.fileTreeCollapsed[key] = true
@@ -252,7 +407,37 @@ func (a *app) syncCodeTree() {
 	if filter != "" {
 		collapsed = nil
 	}
-	a.code.rows = buildFileTreeRowsWithDirectories(a.code.visiblePaths, directories, true, collapsed, codeFileTreeScope)
+	// Ancestors outside the opened workspace must not hide its contents while
+	// the tree is built. Keep their repository-wide collapse choices intact;
+	// only this scoped, temporary view treats the path to the root as expanded.
+	if scope != "" && filter == "" {
+		workspaceCollapsed := make(map[string]bool, len(collapsed))
+		for key, value := range collapsed {
+			workspaceCollapsed[key] = value
+		}
+		for directory := scope; directory != "." && directory != "/"; directory = path.Dir(directory) {
+			workspaceCollapsed[fileTreeCollapseKey(codeFileTreeScope, directory)] = false
+		}
+		collapsed = workspaceCollapsed
+	}
+	// An active Quick open query presents fzf's ranked paths directly. Restore
+	// the repository tree and its folder choices as soon as the query clears.
+	a.code.rows = buildFileTreeRowsWithDirectories(a.code.visiblePaths, directories, filter == "", collapsed, codeFileTreeScope)
+	if scope != "" && filter == "" {
+		// Paths stay repository-relative for Git and filesystem operations, but
+		// the opened folder itself and its ancestors are not Explorer rows.
+		// Rebasing only their visual depth makes its children the new top level.
+		depth := strings.Count(scope, "/") + 1
+		rows := a.code.rows[:0]
+		for _, item := range a.code.rows {
+			if item.isDirectory() && codePathWithin(scope, item.path) {
+				continue
+			}
+			item.depth = max(0, item.depth-depth)
+			rows = append(rows, item)
+		}
+		a.code.rows = rows
+	}
 	a.code.selectedRow, a.code.selectedSource = -1, -1
 	if selectedPath != "" {
 		for row, item := range a.code.rows {
@@ -275,6 +460,9 @@ func (a *app) syncCodeTree() {
 		if a.code.selectedRow >= 0 {
 			a.code.selectedSource = a.code.rows[a.code.selectedRow].source
 		}
+	}
+	if revealActive && a.code.selectedRow >= 0 && a.code.rows[a.code.selectedRow].path == a.code.active {
+		a.code.list.ScrollIntoView(a.code.selectedRow)
 	}
 }
 
@@ -542,6 +730,7 @@ func (a *app) saveCodeDocument(document *codeDocument) {
 	}
 	document.state.Buffer.MarkSaved()
 	document.saveError = ""
+	document.branchNotice = ""
 	if a.goLanguageServer != nil && strings.EqualFold(filepath.Ext(document.path), ".go") {
 		a.syncGoLanguageServerDocument(document.path, document)
 		a.goLanguageServer.DidSave(languageServerFileURI(a.workingFilePath(document.path)))
@@ -761,11 +950,42 @@ func (a *app) revealCodeSearchMatch(match int) {
 	}
 }
 
-func (a *app) beginCodeSearch() {
-	if a.code.filesLoading {
+// codeSearchQueryChanged debounces reactive searches. Clearing the field is
+// immediate: it cancels stale work, old results, and option highlights at once.
+func (a *app) codeSearchQueryChanged() {
+	if strings.TrimSpace(a.code.searchQuery) == "" {
+		a.beginCodeSearch()
 		return
 	}
+	// Every edit retires the previous search immediately. Only the replacement
+	// search is debounced; an old spinner or result callback must not survive
+	// while the user is typing a different query.
+	if a.code.searchCancel != nil {
+		a.code.searchCancel()
+		a.code.searchCancel = nil
+	}
+	a.code.searchToken++
+	a.code.searchRunning = false
+	a.code.searchAfterFiles = false
+	a.code.searchDebounceSeq++
+	sequence := a.code.searchDebounceSeq
+	scheduleCodeSearch(codeSearchDebounceDelay, func() {
+		a.update(func() {
+			if sequence == a.code.searchDebounceSeq {
+				a.beginCodeSearch()
+			}
+		})
+	})
+}
+
+func (a *app) beginCodeSearch() {
+	a.code.searchDebounceSeq++
 	query := strings.TrimSpace(a.code.searchQuery)
+	if a.code.filesLoading && query != "" {
+		a.code.searchAfterFiles = true
+		return
+	}
+	a.code.searchAfterFiles = false
 	if a.code.searchCancel != nil {
 		a.code.searchCancel()
 		a.code.searchCancel = nil
@@ -773,29 +993,67 @@ func (a *app) beginCodeSearch() {
 	a.code.searchToken++
 	token := a.code.searchToken
 	a.code.searchSubmitted = query
+	folder, validFolder := normalizedCodeSearchFolder(a.code.searchFolder)
+	if !validFolder {
+		a.code.searchError = tr("Search folder must stay inside the repository")
+		a.code.searchSubmittedOptions = workspaceSearchOptions{}
+		a.code.searchResults, a.code.searchRows = nil, nil
+		a.code.searchBackend = workspaceSearchBackendNone
+		a.code.searchRunning = false
+		return
+	}
+	a.code.searchFolder = folder
+	a.code.searchFolderDraft = folder
+	a.code.searchSubmittedOptions = workspaceSearchOptions{
+		Query:               query,
+		CaseSensitive:       a.code.searchCaseSensitive,
+		WholeWord:           a.code.searchWholeWord,
+		RegularExpr:         a.code.searchRegularExpr,
+		Include:             a.code.searchInclude,
+		Exclude:             a.code.searchExclude,
+		Folder:              a.code.searchFolder,
+		ExcludedDirectories: append([]string{}, a.settings.SearchExcludedDirectories...),
+	}
+	a.code.searchError = ""
 	a.code.searchResults, a.code.searchRows = nil, nil
+	a.code.searchBackend = workspaceSearchBackendNone
 	a.code.searchCollapsed = nil
 	a.code.searchSelected, a.code.searchSelectedRow = -1, -1
 	if query == "" || a.snapshot.Root == "" {
+		if query == "" {
+			a.code.searchCaseSensitive = false
+			a.code.searchWholeWord = false
+			a.code.searchRegularExpr = false
+			a.code.searchInclude, a.code.searchExclude = "", ""
+			a.code.searchFiltersOpen = false
+			// The already captured empty options remain the single source of
+			// truth for highlighting; no cleared option can leak into a later run.
+			a.code.searchSubmittedOptions = workspaceSearchOptions{}
+		}
 		a.code.searchRunning = false
 		return
 	}
 	root := a.snapshot.Root
 	paths := append([]string(nil), a.code.files...)
-	caseSensitive := a.code.searchCaseSensitive
+	options := a.code.searchSubmittedOptions
 	ctx, cancel := context.WithCancel(context.Background())
 	a.code.searchCancel = cancel
 	a.code.searchRunning = true
 	go func() {
 		defer a.recoverBackground()
-		matches := searchWorkspaceFiles(ctx, root, paths, query, caseSensitive, 500)
+		matches, backend, err := runCodeSearch(ctx, root, paths, options, 500)
+		if ctx.Err() == nil {
+			matches = rankWorkspaceSearchMatches(matches, options)
+		}
 		a.update(func() {
 			if token != a.code.searchToken {
 				return
 			}
 			a.code.searchRunning = false
 			a.code.searchCancel = nil
+			a.code.searchError = safeError(err)
 			a.code.searchResults = matches
+			a.code.searchBackend = backend
 			a.code.searchSelected = 0
 			a.code.searchSelectedRow = -1
 			a.rebuildCodeSearchRows()

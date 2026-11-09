@@ -34,6 +34,42 @@ var listCodeFiles = func(root string) ([]string, error) {
 	return paths, nil
 }
 
+// listCodeEmptyDirectories supplements the file index with empty, non-ignored
+// working-tree directories. Git otherwise has no path entry from which the
+// Explorer could synthesize them. Failure only omits this supplementary view;
+// listCodeFiles remains authoritative for the index itself.
+func listCodeEmptyDirectories(root string) []string {
+	command := exec.Command("git", "-C", root, "ls-files", "-z", "--others", "--exclude-standard", "--directory")
+	output, err := command.Output()
+	if err != nil {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var directories []string
+	for _, name := range strings.Split(string(output), "\x00") {
+		if !strings.HasSuffix(name, "/") {
+			continue
+		}
+		name = strings.TrimSuffix(name, "/")
+		if !validCodeRelativePath(name) || seen[name] {
+			continue
+		}
+		filename := filepath.Join(root, filepath.FromSlash(name))
+		info, statErr := os.Lstat(filename)
+		if statErr != nil || !info.IsDir() {
+			continue
+		}
+		entries, readErr := os.ReadDir(filename)
+		if readErr != nil || len(entries) != 0 {
+			continue
+		}
+		seen[name] = true
+		directories = append(directories, name)
+	}
+	sort.Strings(directories)
+	return directories
+}
+
 func bytesCount(data []byte, value byte) int {
 	count := 0
 	for _, item := range data {
@@ -53,15 +89,5 @@ func validCodeRelativePath(path string) bool {
 }
 
 func filterCodePaths(paths []string, query string) []string {
-	query = strings.ToLower(strings.TrimSpace(query))
-	if query == "" {
-		return append([]string(nil), paths...)
-	}
-	filtered := make([]string, 0, len(paths))
-	for _, path := range paths {
-		if strings.Contains(strings.ToLower(path), query) {
-			filtered = append(filtered, path)
-		}
-	}
-	return filtered
+	return filterCodePathsFzf(paths, query)
 }

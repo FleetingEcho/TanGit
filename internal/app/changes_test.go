@@ -131,6 +131,32 @@ func TestMergeChangesSectionListsConflictsOnly(t *testing.T) {
 	}
 }
 
+func TestTreeModeSectionBadgesCountFilesNotDirectories(t *testing.T) {
+	h, _ := changesTestApp(t, []repository.File{
+		{Path: "incidentAnalysis/first.ts", Status: "UU", Unstaged: true, HasMergeConflicts: true},
+		{Path: "incidentAnalysis/nested/second.ts", Status: "UU", Unstaged: true, HasMergeConflicts: true},
+		{Path: "other/third.ts", Status: "UU", Unstaged: true, HasMergeConflicts: true},
+	})
+	h.app.fileTreeMode = true
+	h.tester.Frame()
+
+	if got := changeSectionFileCount(h.app.mergeRows); got != 3 {
+		t.Fatalf("merge section has %d files, want 3", got)
+	}
+	if len(h.app.mergeRows) <= 3 {
+		t.Fatalf("fixture has no directory rows to distinguish from files: %+v", h.app.mergeRows)
+	}
+	texts := h.tester.Texts()
+	header := slices.Index(texts, "Merge Changes")
+	if header < 0 {
+		t.Fatalf("merge header is missing: %q", texts)
+	}
+	headerArea := texts[header:min(header+5, len(texts))]
+	if !slices.Contains(headerArea, "3") {
+		t.Fatalf("merge header does not show its three-file badge: %q", headerArea)
+	}
+}
+
 // The merge section folds on its own, leaving the other sections as they were.
 func TestMergeChangesHeaderFoldsItsSection(t *testing.T) {
 	h, _ := changesTestApp(t, []repository.File{

@@ -7,6 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
+	"github.com/egoist/mygo/ui/markdown"
 )
 
 func (a *app) codeView(c *ui.Context) {
@@ -28,10 +29,11 @@ func (a *app) codeView(c *ui.Context) {
 
 func (a *app) codeSidebar(c *ui.Context) {
 	theme := c.Theme()
-	islandCard(c, ui.Column(c).Grow(1).Gap(10).Padding(12)).Children(func() {
+	islandCard(c, ui.Column(c).Grow(1).Gap(8).Padding(10)).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
 			ui.Icon(c, fileCodeIcon).FontSize(15).TextColor(theme.Accent)
 			ui.Text(c, tr("Editor")).Bold().Grow(1)
+			a.repositoryExternalEditorButton(c)
 			flatIconButton(c, "New File…", "Create a file in the selected folder", newFileIcon, 14, 4, a.code.fileOperationBusy, func() {
 				a.openCodeFileForm(codeFileFormNewFile, a.selectedCodeDirectory(), "")
 			})
@@ -44,6 +46,7 @@ func (a *app) codeSidebar(c *ui.Context) {
 			})
 			paneCollapseButton(c, &a.workspacePaneCollapsed[sectionCode], "Collapse file explorer")
 		})
+		a.codeSearchFolderSelector(c)
 		ui.Segmented(c, &a.code.sidebar, tr("Files"), tr("Search")).Label(tr("Code sidebar"))
 		if a.code.sidebar == codeSidebarSearch {
 			a.codeSearchSidebar(c)
@@ -63,7 +66,9 @@ func (a *app) codeFileExplorer(c *ui.Context) {
 	if field.Submitted() {
 		a.openSelectedCodeFile()
 	}
-	a.codeRepositoryRootRow(c, theme)
+	if strings.TrimSpace(a.code.filter) == "" {
+		a.codeRepositoryRootRow(c, theme)
+	}
 	if a.code.filesLoading {
 		ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
 			ui.Spinner(c).Label(tr("Loading files"))
@@ -138,21 +143,27 @@ func (a *app) codeFileExplorer(c *ui.Context) {
 	normalizeFileTreeRow(a.code.rows, &a.code.selectedRow, &a.code.selectedSource)
 }
 
-// codeRepositoryRootRow makes the otherwise implicit repository root a real
-// creation and drop target, including when every file lives in a subfolder.
+// codeRepositoryRootRow makes the opened workspace root a real creation and
+// drop target. A nested workspace has no ancestor rows outside that root.
 func (a *app) codeRepositoryRootRow(c *ui.Context, theme *ui.Theme) {
-	root := ui.ButtonBase(c).FillWidth().Gap(7).Padding(6, 8).
-		Label(tr("Repository root")).Tooltip(a.snapshot.Root)
+	folder := a.code.searchFolder
+	label := tr("Repository root")
+	tooltip := a.snapshot.Root
+	if folder != "" {
+		label = tr("Workspace root") + " " + folder
+		tooltip = a.repositoryPath(folder)
+	}
+	root := ui.ButtonBase(c).FillWidth().Gap(7).Padding(6, 8).Label(label).Tooltip(tooltip)
 	root.Children(func() {
 		ui.Icon(c, folderOpenIcon).FontSize(13).TextColor(theme.Accent)
-		ui.Text(c, tr("Repository root")).Grow(1).SingleLine()
+		ui.Text(c, label).Grow(1).SingleLine()
 	})
 	root.PopoverMenu(func(m *ui.Menu) {
 		if m.Item(tr("New File…")).Disabled(a.code.fileOperationBusy).Chosen() {
-			a.openCodeFileForm(codeFileFormNewFile, "", "")
+			a.openCodeFileForm(codeFileFormNewFile, folder, "")
 		}
 		if m.Item(tr("New Folder…")).Disabled(a.code.fileOperationBusy).Chosen() {
-			a.openCodeFileForm(codeFileFormNewFolder, "", "")
+			a.openCodeFileForm(codeFileFormNewFolder, folder, "")
 		}
 	})
 	if _, over := ui.DragOver[codeExplorerDrag](root); over {
@@ -160,24 +171,77 @@ func (a *app) codeRepositoryRootRow(c *ui.Context, theme *ui.Theme) {
 	}
 	if dropped, ok := ui.Drop[codeExplorerDrag](root); ok && !a.code.fileOperationBusy {
 		a.code.pendingMoveSource = dropped.path
-		a.code.pendingMoveTarget = ""
+		a.code.pendingMoveTarget = folder
 	}
+}
+
+// codeSearchFolderSelector keeps the workspace root visible above either
+// sidebar tab. The field is a draft until Enter, while the folder and clear
+// buttons commit their new root immediately and rerun any active search.
+func (a *app) codeSearchFolderSelector(c *ui.Context) {
+	ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
+		folder := ui.TextInput(c, &a.code.searchFolderDraft).Label(tr("Workspace folder")).
+			Placeholder(a.snapshot.Root).Grow(1)
+		if folder.Submitted() && a.openCodeWorkspaceFolder(a.code.searchFolderDraft) {
+			if strings.TrimSpace(a.code.searchQuery) != "" {
+				a.beginCodeSearch()
+			}
+		}
+		flatIconButton(c, "Choose workspace folder", "Open a folder as the Editor workspace root", folderOpenIcon, 14, 4,
+			false, a.browseCodeSearchFolder)
+		if a.code.searchFolder != "" {
+			flatIconButton(c, "Open entire repository", "Clear the workspace folder scope", closeIcon, 13, 4,
+				false, func() {
+					if a.openCodeWorkspaceFolder("") && strings.TrimSpace(a.code.searchQuery) != "" {
+						a.beginCodeSearch()
+					}
+				})
+		}
+	})
 }
 
 func (a *app) codeSearchSidebar(c *ui.Context) {
 	theme := c.Theme()
-	input := ui.SearchField(c, &a.code.searchQuery).Bind(&a.code.searchFocus).
-		Label(tr("Search in files")).Placeholder(tr("Search repository content"))
-	if input.Submitted() {
-		a.beginCodeSearch()
-	}
-	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-		ui.Toggle(c, &a.code.searchCaseSensitive, tr("Match case"))
-		ui.Spacer(c)
-		if ui.Button(c, tr("Search")).Clicked() {
+	ui.Row(c).AlignItems(ui.Center).Gap(3).Children(func() {
+		input := ui.SearchField(c, &a.code.searchQuery).Bind(&a.code.searchFocus).
+			Label(tr("Search in files")).Placeholder(tr("Search repository content")).Grow(1)
+		if input.Changed() {
+			a.codeSearchQueryChanged()
+		}
+		if input.Submitted() {
+			a.beginCodeSearch()
+		}
+		a.codeSearchOptionButton(c, "Aa", "Match case", &a.code.searchCaseSensitive)
+		a.codeSearchOptionButton(c, "ab", "Match whole word", &a.code.searchWholeWord)
+		a.codeSearchOptionButton(c, ".*", "Use regular expression", &a.code.searchRegularExpr)
+		hasFilters := strings.TrimSpace(a.code.searchInclude) != "" || strings.TrimSpace(a.code.searchExclude) != ""
+		flatToggleIconButton(c, "File filters", "Show or hide include and exclude globs", filterIcon, 12, 3,
+			a.code.searchFiltersOpen || hasFilters, func() {
+				a.code.searchFiltersOpen = !a.code.searchFiltersOpen
+			})
+		run := compactIconButton(ui.PrimaryButton(c, "")).Width(26)
+		run.Label(tr("Run search")).Tooltip(tr("Search repository content")).
+			Disabled(a.code.filesLoading || strings.TrimSpace(a.code.searchQuery) == "")
+		run.Children(func() {
+			ui.Icon(c, searchIcon).FontSize(12)
+		})
+		if run.Clicked() {
 			a.beginCodeSearch()
 		}
 	})
+	if a.code.searchFiltersOpen {
+		include := ui.TextInput(c, &a.code.searchInclude).Label(tr("Files to include")).Placeholder(tr("files to include"))
+		if include.Submitted() {
+			a.beginCodeSearch()
+		}
+		exclude := ui.TextInput(c, &a.code.searchExclude).Label(tr("Files to exclude")).Placeholder(tr("files to exclude"))
+		if exclude.Submitted() {
+			a.beginCodeSearch()
+		}
+	}
+	if a.code.searchError != "" {
+		ui.Text(c, a.code.searchError).TextColor(theme.Danger).FontSize(theme.FontSize - 1).SingleLine().Ellipsis("…").Tooltip(a.code.searchError)
+	}
 	if a.code.filesLoading || a.code.searchRunning {
 		label := tr("Searching files")
 		if a.code.filesLoading {
@@ -192,15 +256,27 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 	if a.code.searchSubmitted == "" {
 		ui.Column(c).Grow(1).Center().Gap(8).Padding(12).Children(func() {
 			ui.Icon(c, searchIcon).FontSize(22).TextColor(theme.TextMuted)
-			ui.Text(c, tr("Search across tracked and non-ignored files")).TextColor(theme.TextMuted).TextAlign(ui.Center)
+			ui.Text(c, tr("Search project files")).TextColor(theme.TextMuted).TextAlign(ui.Center)
+			ui.Text(c, tr("Large repository? Search may be slow. Use an external editor instead.")).
+				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).TextAlign(ui.Center)
+			a.repositoryExternalEditorButtonWithText(c, "External")
 		})
 		return
 	}
 	if len(a.code.searchResults) == 0 {
+		if a.code.searchBackend == workspaceSearchBackendRipgrep {
+			ui.Row(c).Children(func() {
+				ui.Spacer(c)
+				a.codeSearchBackendBadge(c)
+			})
+		}
 		listSearchEmpty(c, "No matches found")
 		return
 	}
-	ui.Text(c, trf("%d matches", len(a.code.searchResults))).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+		ui.Text(c, trf("%d matches", len(a.code.searchResults))).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1)
+		a.codeSearchBackendBadge(c)
+	})
 	list := a.keyboardList(c, &a.code.searchList, len(a.code.searchRows)).Grow(1).Rows(func(row ui.ListRow) {
 		if row.Index < 0 || row.Index >= len(a.code.searchRows) {
 			return
@@ -219,6 +295,37 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 	// chosen match through keyboardEnter; a pointer click opens it directly.
 	if a.keyboardListChanged(&a.code.searchList, list) {
 		a.selectCodeSearchRow(a.code.searchSelectedRow)
+	}
+}
+
+func (a *app) codeSearchBackendBadge(c *ui.Context) {
+	if a.code.searchBackend != workspaceSearchBackendRipgrep {
+		return
+	}
+	label := tr("Search powered by ripgrep")
+	ui.Badge(c, "ripgrep").Label(label).Tooltip(label)
+}
+
+func (a *app) codeSearchOptionButton(c *ui.Context, text, label string, active *bool) {
+	theme := c.Theme()
+	button := compactIconButton(ui.ButtonBase(c)).Size(24, 24).Label(tr(label)).Tooltip(tr(label)).Checked(*active)
+	if *active {
+		button.Background(theme.Accent.Alpha(0.16))
+	} else if button.Hovered() {
+		button.Background(theme.SurfaceHover)
+	}
+	button.Children(func() {
+		color := theme.TextMuted
+		if *active {
+			color = theme.Accent
+		}
+		ui.Text(c, text).FontSize(theme.FontSize - 1).Bold().TextColor(color)
+	})
+	if button.Clicked() {
+		*active = !*active
+		if a.code.searchSubmitted != "" {
+			a.beginCodeSearch()
+		}
 	}
 }
 
@@ -253,7 +360,7 @@ func (a *app) codeSearchMatchRow(row ui.ListRow, match workspaceSearchMatch) {
 	button.Children(func() {
 		ui.Textf(row.Context, "%d", match.Line).Width(30).TextAlign(ui.End).
 			TextColor(secondaryRowColor(theme, row)).FontSize(theme.FontSize - 1)
-		ui.RichText(row.Context, codeSearchHighlightSpans(text, a.code.searchSubmitted, a.code.searchCaseSensitive, theme)...).
+		ui.RichText(row.Context, codeSearchMatchHighlightSpans(text, a.code.searchSubmittedOptions, theme)...).
 			Grow(1).SingleLine().Ellipsis("…")
 	})
 	if button.DoubleClicked() {
@@ -266,7 +373,11 @@ func (a *app) codeSearchMatchRow(row ui.ListRow, match workspaceSearchMatch) {
 }
 
 func codeSearchHighlightSpans(text, query string, caseSensitive bool, theme *ui.Theme) []ui.Span {
-	start, end := workspaceSearchRange(text, query, caseSensitive)
+	return codeSearchMatchHighlightSpans(text, workspaceSearchOptions{Query: query, CaseSensitive: caseSensitive}, theme)
+}
+
+func codeSearchMatchHighlightSpans(text string, options workspaceSearchOptions, theme *ui.Theme) []ui.Span {
+	start, end := workspaceSearchRangeWithOptions(text, options)
 	if start < 0 {
 		return []ui.Span{{Text: text}}
 	}
@@ -288,6 +399,107 @@ func (a *app) codeFileStatus(path string) string {
 		}
 	}
 	return ""
+}
+
+type codeLanguageServerStatus struct {
+	name     string
+	running  bool
+	starting bool
+	failed   bool
+	detail   string
+}
+
+// codeLanguageServerStatuses includes every live workspace server, not just
+// the one associated with the active extension. Profile order keeps the hover
+// panel stable as documents open and close.
+func (a *app) codeLanguageServerStatuses() []codeLanguageServerStatus {
+	statuses := make([]codeLanguageServerStatus, 0, len(a.additionalLanguageServers)+1)
+	for _, profile := range languageServerProfilesWithSettings(a.settings.LanguageServers) {
+		status := codeLanguageServerStatus{name: profile.Name}
+		if profile.ID == goLanguageServerID {
+			status.running = a.goLanguageServer != nil
+			status.starting = a.goLanguageServerStarting
+			status.failed = a.goLanguageServerError != ""
+			status.detail = a.goLanguageServerError
+		} else if server := a.additionalLanguageServers[profile.ID]; server != nil {
+			status.running = server.connection != nil
+			status.starting = server.starting
+			status.failed = server.error != ""
+			status.detail = server.error
+		} else {
+			continue
+		}
+		if status.running || status.starting || status.failed {
+			statuses = append(statuses, status)
+		}
+	}
+	return statuses
+}
+
+// codeLanguageServersButton keeps the document path readable. The persistent
+// control is just an online-style status icon; names and errors belong to its
+// hover panel rather than consuming the editor toolbar on every frame.
+func (a *app) codeLanguageServersButton(c *ui.Context) {
+	statuses := a.codeLanguageServerStatuses()
+	if len(statuses) == 0 {
+		a.code.languageServersOpen = false
+		return
+	}
+	theme := c.Theme()
+	color := theme.Success
+	running := false
+	starting := false
+	for _, status := range statuses {
+		running = running || status.running
+		starting = starting || status.starting
+		if status.failed {
+			color = theme.Danger
+		}
+	}
+	if color != theme.Danger && !running && starting {
+		color = theme.Warning
+	}
+	button := compactIconButton(ui.ButtonBase(c)).Label(tr("Language servers")).
+		Tooltip(tr("Show language servers"))
+	button.Children(func() {
+		ui.Icon(c, languageServerOnlineIcon).FontSize(16).TextColor(color)
+	})
+	hovered := button.Hovered()
+	if !hovered {
+		a.code.languageServersHoverBlocked = false
+	} else if !a.code.languageServersHoverBlocked {
+		a.code.languageServersOpen = true
+	}
+	if button.Clicked() {
+		a.code.languageServersHoverBlocked = false
+		a.code.languageServersOpen = !a.code.languageServersOpen
+	}
+	popover := ui.Popover(c, button, &a.code.languageServersOpen, func() {
+		ui.Column(c).Gap(5).Padding(4).Children(func() {
+			ui.Text(c, tr("Language servers")).Bold().Padding(3, 5)
+			for _, status := range statuses {
+				label, stateColor := tr("Running"), theme.Success
+				switch {
+				case status.failed:
+					label, stateColor = tr("Error"), theme.Danger
+				case status.starting:
+					label, stateColor = tr("Starting"), theme.Warning
+				}
+				row := ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(4, 5).
+					Label(tr("Language servers") + ": " + status.name).Tooltip(status.detail)
+				row.Children(func() {
+					ui.Text(c, "●").TextColor(stateColor).FontSize(theme.FontSize - 2)
+					ui.Text(c, status.name).Grow(1).SingleLine()
+					ui.Text(c, label).TextColor(stateColor).FontSize(theme.FontSize - 1)
+				})
+			}
+		})
+	})
+	// Escape takes precedence over a pointer that is still over the icon. The
+	// next genuine hover can open the panel again.
+	if popover.Dismissed() {
+		a.code.languageServersHoverBlocked = true
+	}
 }
 
 func (a *app) codeEditorPane(c *ui.Context) {
@@ -331,25 +543,22 @@ func (a *app) codeEditorPane(c *ui.Context) {
 				a.navigateCodeHistory(false)
 			}
 			ui.Text(c, document.path).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1).SingleLine().Tooltip(document.path)
-			if strings.EqualFold(filepath.Ext(document.path), ".go") {
-				switch {
-				case a.goLanguageServerError != "":
-					ui.Text(c, tr("gopls issue")).TextColor(theme.Danger).
-						FontSize(theme.FontSize - 1).Tooltip(a.goLanguageServerError)
-				case a.goLanguageServerStarting:
-					ui.Text(c, tr("Starting gopls…")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-				case a.goLanguageServer != nil:
-					ui.Text(c, "gopls").TextColor(theme.Success).FontSize(theme.FontSize - 1)
+			a.codeLanguageServersButton(c)
+			if isMarkdownDocument(document.path) {
+				tooltip := "Show Markdown preview"
+				if document.markdownPreviewOpen {
+					tooltip = "Hide Markdown preview"
 				}
-			} else if status, tooltip, failed := a.additionalLanguageServerStatus(document.path); status != "" {
-				color := theme.Success
-				if failed {
-					color = theme.Danger
-				}
-				ui.Text(c, status).TextColor(color).FontSize(theme.FontSize - 1).Tooltip(tooltip)
+				flatToggleIconButton(c, "Toggle Markdown preview", tooltip, splitIcon, 15, 4,
+					document.markdownPreviewOpen, func() {
+						document.markdownPreviewOpen = !document.markdownPreviewOpen
+					})
 			}
 			if document.saveError != "" {
 				ui.Text(c, tr("Could not save")+": "+document.saveError).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
+			} else if document.branchNotice != "" {
+				ui.Text(c, document.branchNotice).TextColor(theme.Warning).FontSize(theme.FontSize - 1).
+					SingleLine().Ellipsis("…").Tooltip(document.branchNotice)
 			} else if document.readOnly {
 				ui.Text(c, tr("Read only")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 			}
@@ -447,8 +656,37 @@ func (a *app) codeDocumentView(c *ui.Context, document *codeDocument) {
 	if document.state == nil {
 		return
 	}
-	editorView := editor.View(c, document.state).Grow(1).FillWidth().ReadOnly(document.readOnly)
-	a.keyboardPane(c, "code-editor", editorView).Label(tr("Code editor"))
+	source := func() {
+		editorView := editor.View(c, document.state).Grow(1).FillWidth().ReadOnly(document.readOnly)
+		a.keyboardPane(c, "code-editor", editorView).Label(tr("Code editor")).MinWidth(0)
+	}
+	if !document.markdownPreviewOpen {
+		source()
+		return
+	}
+	paneSplitPercent(c, &a.code.markdownPreviewPercent, source, func() {
+		a.codeMarkdownPreview(c, document)
+	})
+}
+
+func isMarkdownDocument(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".md", ".markdown":
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *app) codeMarkdownPreview(c *ui.Context, document *codeDocument) {
+	if a.code.markdownOptions == nil {
+		a.code.markdownOptions = &markdown.Options{WrapCode: true}
+	}
+	ui.Scroll(c).Fill().MinWidth(0).Label(tr("Markdown preview")).Children(func() {
+		ui.Column(c).Padding(16).Children(func() {
+			markdown.View(c, document.state.Buffer.String(), a.code.markdownOptions)
+		})
+	})
 }
 
 func (a *app) focusCodeQuickOpen() {

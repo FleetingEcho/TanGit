@@ -52,7 +52,7 @@ func (a *app) syncAdditionalLanguageServers() {
 	for id, documents := range wanted {
 		server := a.additionalLanguageServers[id]
 		if server == nil {
-			profile, _ := languageServerProfileByID(id)
+			profile, _ := a.customLanguageServerProfileByID(id)
 			server = &managedLanguageServer{profile: profile}
 			a.additionalLanguageServers[id] = server
 		}
@@ -95,6 +95,7 @@ func (a *app) syncAdditionalLanguageServers() {
 
 func (a *app) startManagedLanguageServer(server *managedLanguageServer) {
 	program, arguments := languageServerProgram(a.settings.LanguageServers, server.profile)
+	programs := languageServerExecutableCandidates(a.settings.LanguageServers[server.profile.ID].Path, server.profile.Program)
 	id, dataDir := server.profile.ID, a.dataDir()
 	workspaceFiles := append([]string(nil), a.code.files...)
 	var openFiles []string
@@ -119,7 +120,7 @@ func (a *app) startManagedLanguageServer(server *managedLanguageServer) {
 		if id == "rust" {
 			launch.InitializationOptions = rustLanguageServerInitializationOptions(launch.Root, workspaceFiles, openFiles)
 		}
-		connection, err := connectLanguageServer(launch)
+		connection, err := connectLanguageServerCandidates(launch, programs)
 		a.update(func() {
 			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence || a.snapshot.Root != launch.Root {
 				if connection != nil {
@@ -397,30 +398,8 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 	})
 }
 
-func (a *app) additionalLanguageServerStatus(path string) (string, string, bool) {
-	var names []string
-	for _, profile := range configuredLanguageServerProfiles(a.settings.LanguageServers, path) {
-		if profile.ID == goLanguageServerID {
-			continue
-		}
-		server := a.additionalLanguageServers[profile.ID]
-		if server == nil {
-			continue
-		}
-		if server.error != "" {
-			return profile.Name + " issue", server.error, true
-		}
-		if server.starting {
-			names = append(names, "Starting "+profile.Name+"…")
-		} else if server.connection != nil {
-			names = append(names, profile.Name)
-		}
-	}
-	return strings.Join(names, " + "), "", false
-}
-
-func isAdditionalLanguageServerPath(path string) bool {
-	for _, profile := range languageServerProfiles {
+func (a *app) isAdditionalLanguageServerPath(path string) bool {
+	for _, profile := range languageServerProfilesWithSettings(a.settings.LanguageServers) {
 		if profile.ID == goLanguageServerID {
 			continue
 		}

@@ -37,6 +37,28 @@ type languageServerLaunch struct {
 
 var connectLanguageServer = connectStdioLanguageServer
 
+// connectLanguageServerCandidates tries each configured executable until one
+// completes initialization. A failed candidate never prevents a later local
+// installation (for example one managed by Zed) from serving the workspace.
+func connectLanguageServerCandidates(launch languageServerLaunch, programs []string) (languageServerConnection, error) {
+	var failures []error
+	for _, program := range programs {
+		launch.Program = program
+		connection, err := connectLanguageServer(launch)
+		if err == nil {
+			return connection, nil
+		}
+		if connection != nil {
+			connection.Close()
+		}
+		failures = append(failures, fmt.Errorf("%s: %w", program, err))
+	}
+	if len(failures) == 0 {
+		return nil, errors.New("no language server executable configured")
+	}
+	return nil, errors.Join(failures...)
+}
+
 type languageServerRPCError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`

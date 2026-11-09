@@ -226,6 +226,28 @@ func TestQuietRefreshDoesNotReindexCodeTreeForContentEdits(t *testing.T) {
 	}
 }
 
+func TestQuietRefreshReindexesCodeAfterExternalCheckout(t *testing.T) {
+	originalList := listCodeFiles
+	t.Cleanup(func() { listCodeFiles = originalList })
+	listCodeFiles = func(string) ([]string, error) { return []string{"new-branch.go"}, nil }
+	opener := &liveOpener{snapshot: repository.Snapshot{Root: "/work/repo", Branch: "main", Head: "old-head"}}
+	s, _, updated := newLiveShell(t, opener)
+	a := openLiveRepo(t, s, updated, "/work/repo")
+	a.code.filesLoaded = true
+	a.code.files = []string{"old-branch.go"}
+	token := a.code.filesToken
+
+	opener.set(repository.Snapshot{Root: "/work/repo", Branch: "feature", Head: "new-head"})
+	a.requestQuietRefresh()
+	drainRefresh(t, updated, 1)
+	updated.waitForUpdate(t)
+	if a.code.filesToken == token || !a.code.filesLoaded || a.code.filesLoading ||
+		len(a.code.files) != 1 || a.code.files[0] != "new-branch.go" {
+		t.Fatalf("external checkout left a stale Code index: token %d->%d loaded=%v loading=%v files=%q",
+			token, a.code.filesToken, a.code.filesLoaded, a.code.filesLoading, a.code.files)
+	}
+}
+
 // drainRefresh runs the reads the window queued, as the UI loop would.
 func drainRefresh(t *testing.T, updated *updates, reads int) {
 	t.Helper()

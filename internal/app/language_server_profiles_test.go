@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,29 @@ import (
 
 	"github.com/egoist/mygo/ui/editor"
 )
+
+func TestEveryManagedLanguageServerHasAVerifiableDownloadSource(t *testing.T) {
+	if len(languageServerDownloadURLs) != len(languageServerProfiles) {
+		t.Fatalf("download sources = %d, profiles = %d", len(languageServerDownloadURLs), len(languageServerProfiles))
+	}
+	for _, profile := range languageServerProfiles {
+		source := languageServerDownloadURLs[profile.ID]
+		if !strings.HasPrefix(source, "https://") || strings.ContainsAny(source, " \t\r\n") {
+			t.Errorf("%s download source = %q, want a valid HTTPS URL", profile.ID, source)
+		}
+	}
+}
+
+func TestLanguageServerExecutableCandidatesSplitTrimAndFallBack(t *testing.T) {
+	got := languageServerExecutableCandidates(" /missing/gopls, , /zed/gopls ", "gopls")
+	want := []string{"/missing/gopls", "/zed/gopls"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("candidates = %v, want %v", got, want)
+	}
+	if got := languageServerExecutableCandidates(" , ", "gopls"); !reflect.DeepEqual(got, []string{"gopls"}) {
+		t.Fatalf("blank candidates = %v, want the PATH default", got)
+	}
+}
 
 func TestLanguageServerProfilesMatchLanguagesAndDefaults(t *testing.T) {
 	settings := map[string]languageServerSettings{
@@ -137,6 +161,95 @@ func TestMultipleLanguageServersShareATypeScriptDocument(t *testing.T) {
 		t.Fatal("TypeScript definition was not dispatched")
 	}
 	h.waitFor(t, "TypeScript definition", func() bool { return h.app.code.active == "target.ts" })
+}
+
+func TestCustomTyLanguageServerLaunchesAndPowersPythonFeatures(t *testing.T) {
+	connection := newFakeLanguageServerConnection()
+	connection.request = func(method string, _ any, result func(json.RawMessage, error)) {
+		switch method {
+		case "textDocument/hover":
+			result(json.RawMessage(`{"contents":{"kind":"markdown","value":"ty hover"}}`), nil)
+		case "textDocument/definition":
+			result(json.RawMessage(`{"uri":"file:///work/project/target.py","range":{"start":{"line":0,"character":0},"end":{"line":0,"character":8}}}`), nil)
+		case "textDocument/completion":
+			result(json.RawMessage(`{"items":[{"label":"ty_completion","kind":6}]}`), nil)
+		}
+	}
+	launches := make(chan languageServerLaunch, 1)
+	stubLanguageServerConnection(t, func(launch languageServerLaunch) (languageServerConnection, error) {
+		launches <- launch
+		return connection, nil
+	})
+	stubCodeWorkspace(t, map[string]string{
+		"main.py":   "operator = 1\nprint(operator)\n",
+		"target.py": "operator = 42\n",
+	})
+	h := menuTestApp(t)
+	h.app.settings.LanguageServers = map[string]languageServerSettings{
+		"go": {Disabled: true},
+		"custom-ty": {
+			Path: "ty", Arguments: []string{"server"}, ProbeArguments: []string{"--version"},
+			Custom: &customLanguageServerDefinition{
+				Name: "ty", Extensions: map[string]string{".py": "python", ".pyi": "python"},
+			},
+		},
+	}
+	openCodePageForTest(t, h, 2)
+	h.app.openPinnedCodeFile("main.py", 0)
+	document := waitForCodeDocument(t, h, "main.py")
+	h.waitFor(t, "the custom ty connection and Python didOpen", func() bool {
+		return len(connection.snapshot()) > 0
+	})
+	launch := <-launches
+	if launch.Program != "ty" || !reflect.DeepEqual(launch.Arguments, []string{"server"}) {
+		t.Fatalf("custom ty launch = %#v", launch)
+	}
+	opened := connection.snapshot()[0]
+	if opened.kind != "open" || opened.language != "python" || opened.uri != "file:///work/project/main.py" {
+		t.Fatalf("custom ty didOpen = %#v", opened)
+	}
+	statuses := h.app.codeLanguageServerStatuses()
+	if len(statuses) != 1 || statuses[0].name != "ty" || !statuses[0].running {
+		t.Fatalf("custom ty editor status = %#v", statuses)
+	}
+
+	offset := strings.Index(document.state.Buffer.String(), "operator")
+	document.state.Select(offset, offset)
+	if !document.state.Run(editor.ShowHover) {
+		t.Fatal("custom ty hover was not dispatched")
+	}
+	h.waitFor(t, "the custom ty hover", func() bool {
+		return document.hoverState != nil && document.hoverState.Buffer.String() == "ty hover"
+	})
+
+	if !document.state.Run(editor.ShowCompletions) {
+		t.Fatal("custom ty completion was not dispatched")
+	}
+	h.waitFor(t, "the custom ty completion", func() bool {
+		return h.tester.HasText("ty_completion")
+	})
+
+	offset = strings.LastIndex(document.state.Buffer.String(), "operator")
+	document.state.Select(offset, offset)
+	if !document.state.Run(editor.GoToDefinition) {
+		t.Fatal("custom ty definition was not dispatched")
+	}
+	h.waitFor(t, "the custom ty definition", func() bool { return h.app.code.active == "target.py" })
+
+	params, _ := json.Marshal(map[string]any{
+		"uri": "file:///work/project/main.py",
+		"diagnostics": []any{map[string]any{
+			"range": map[string]any{
+				"start": map[string]int{"line": 0, "character": 0},
+				"end":   map[string]int{"line": 0, "character": 8},
+			},
+			"severity": 1, "message": "ty diagnostic", "source": "ty",
+		}},
+	})
+	launch.Notify("textDocument/publishDiagnostics", params)
+	h.waitFor(t, "the custom ty diagnostic", func() bool {
+		return strings.Contains(fmt.Sprint(document.state.Diagnostics()), "ty diagnostic")
+	})
 }
 
 func TestDiagnosticsFromMultipleServersAreCombined(t *testing.T) {

@@ -16,6 +16,31 @@ type languageServerProfile struct {
 	Extensions       map[string]string
 	Filenames        map[string]string
 	EnabledByDefault bool
+	DownloadURL      string
+	Custom           bool
+}
+
+// languageServerDownloadURLs identifies the upstream package or release used
+// by each managed installer, so users can inspect it before downloading.
+var languageServerDownloadURLs = map[string]string{
+	"typescript":   "https://www.npmjs.com/package/typescript-language-server",
+	"html":         "https://www.npmjs.com/package/@t1ckbase/vscode-langservers-extracted",
+	"css":          "https://www.npmjs.com/package/@t1ckbase/vscode-langservers-extracted",
+	"json":         "https://www.npmjs.com/package/@t1ckbase/vscode-langservers-extracted",
+	"tailwind":     "https://www.npmjs.com/package/@tailwindcss/language-server",
+	"eslint":       "https://www.npmjs.com/package/@t1ckbase/vscode-langservers-extracted",
+	"rust":         "https://rust-analyzer.github.io/",
+	"go":           "https://pkg.go.dev/golang.org/x/tools/gopls",
+	"basedpyright": "https://www.npmjs.com/package/basedpyright",
+	"ruff":         "https://pypi.org/project/ruff/",
+	"yaml":         "https://www.npmjs.com/package/yaml-language-server",
+	"oxlint":       "https://www.npmjs.com/package/oxlint",
+	"vue":          "https://www.npmjs.com/package/@vue/language-server",
+	"svelte":       "https://www.npmjs.com/package/svelte-language-server",
+	"astro":        "https://www.npmjs.com/package/@astrojs/language-server",
+	"bash":         "https://www.npmjs.com/package/bash-language-server",
+	"docker":       "https://www.npmjs.com/package/dockerfile-language-server-nodejs",
+	"marksman":     "https://github.com/artempyanykh/marksman/releases/latest",
 }
 
 var languageServerProfiles = []languageServerProfile{
@@ -80,7 +105,7 @@ func languageServerProfileForPath(profile languageServerProfile, path string) (s
 
 func configuredLanguageServerProfiles(settings map[string]languageServerSettings, path string) []languageServerProfile {
 	profiles := make([]languageServerProfile, 0, 3)
-	for _, profile := range languageServerProfiles {
+	for _, profile := range languageServerProfilesWithSettings(settings) {
 		if _, matches := languageServerProfileForPath(profile, path); matches && languageServerProfileEnabled(settings, profile) {
 			profiles = append(profiles, profile)
 		}
@@ -88,12 +113,24 @@ func configuredLanguageServerProfiles(settings map[string]languageServerSettings
 	return profiles
 }
 
+// languageServerExecutableCandidates returns configured executables in the
+// order the user wrote them. A blank list retains the profile's PATH default.
+func languageServerExecutableCandidates(configured, fallback string) []string {
+	var programs []string
+	for _, program := range strings.Split(configured, ",") {
+		if program = strings.TrimSpace(program); program != "" {
+			programs = append(programs, program)
+		}
+	}
+	if len(programs) == 0 {
+		return []string{fallback}
+	}
+	return programs
+}
+
 func languageServerProgram(settings map[string]languageServerSettings, profile languageServerProfile) (string, []string) {
 	server := settings[profile.ID]
-	program := strings.TrimSpace(server.Path)
-	if program == "" {
-		program = profile.Program
-	}
+	program := languageServerExecutableCandidates(server.Path, profile.Program)[0]
 	arguments := server.Arguments
 	if len(arguments) == 0 {
 		arguments = profile.Arguments

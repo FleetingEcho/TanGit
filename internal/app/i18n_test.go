@@ -85,7 +85,7 @@ func TestTranslationCatalogsAreComplete(t *testing.T) {
 				t.Errorf("%s is missing %q", choice.Code, english)
 			}
 		}
-		for _, english := range []string{"Settings", "Workspace", "Changes", "History"} {
+		for _, english := range []string{"Settings", "Workspace", "Changes", "History", "Search"} {
 			if catalog[english] == "" || catalog[english] == english {
 				t.Errorf("%s does not translate %q: %q", choice.Code, english, catalog[english])
 			}

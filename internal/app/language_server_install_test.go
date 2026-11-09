@@ -121,6 +121,260 @@ func TestManagedLanguageServerInstallFailureDoesNotConfigureIt(t *testing.T) {
 	}
 }
 
+func TestLanguageServerCatalogUsesCompactActionsSearchAndScroll(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.settingsPage = settingsPageEditor
+	h.app.openSettings()
+	h.tester.Frame()
+	h.tester.Scroll(700, 480, 0, 1800)
+	h.tester.Frame()
+	h.app.languageServerCatalogQuery = "TypeScript"
+	h.tester.Frame()
+
+	download, downloadOK := h.tester.Find("Download TypeScript Language Server")
+	configure, configureOK := h.tester.Find("Configure TypeScript Language Server")
+	results, resultsOK := h.tester.Find("Language server results")
+	source, sourceOK := h.tester.Find("Open download source: TypeScript Language Server")
+	if !downloadOK || !configureOK || !resultsOK || !sourceOK {
+		t.Fatalf("catalog controls missing: download=%v configure=%v scroll=%v source=%v", downloadOK, configureOK, resultsOK, sourceOK)
+	}
+	const typeScriptSource = "https://www.npmjs.com/package/typescript-language-server"
+	if source.W <= 0 || languageServerDownloadURLs["typescript"] != typeScriptSource {
+		t.Fatalf("TypeScript download source is not visible or incorrect: bounds=%+v url=%q", source, languageServerDownloadURLs["typescript"])
+	}
+	if download.W > 40 || configure.W > 40 {
+		t.Fatalf("catalog actions are not compact icons: download=%+v configure=%+v", download, configure)
+	}
+	if results.H <= 0 || results.H > 420 {
+		t.Fatalf("catalog results have unbounded height %.0f", results.H)
+	}
+
+	h.app.languageServerCatalogQuery = ""
+	h.tester.Frame()
+	if err := h.tester.Click("Search language servers"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Type("python")
+	h.tester.Frame()
+	if !h.tester.HasText("BasedPyright") || !h.tester.HasText("Ruff") || h.tester.HasText("TypeScript Language Server") {
+		t.Fatalf("catalog search did not filter its scrollable results: %q", h.texts())
+	}
+}
+
+func TestLanguageServerCatalogSortsEnabledThenName(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.settings.LanguageServers = map[string]languageServerSettings{
+		"go":           {Disabled: true},
+		"typescript":   {},
+		"basedpyright": {},
+		"custom-zeta": {
+			Path: "zeta", Custom: &customLanguageServerDefinition{Name: "Zeta", Extensions: map[string]string{".zeta": "zeta"}},
+		},
+		"custom-alpha": {
+			Path: "alpha", Custom: &customLanguageServerDefinition{Name: "Alpha", Extensions: map[string]string{".alpha": "alpha"}},
+		},
+		"custom-disabled": {
+			Disabled: true, Path: "disabled", Custom: &customLanguageServerDefinition{Name: "Disabled custom", Extensions: map[string]string{".disabled": "disabled"}},
+		},
+	}
+	h.app.loadGoLanguageServerDraft()
+	profiles := []languageServerProfile{
+		{ID: "html", Name: "VS Code HTML Language Server"},
+		{ID: "go", Name: "Go (gopls)"},
+		{ID: "typescript", Name: "TypeScript Language Server"},
+		{ID: "css", Name: "VS Code CSS Language Server"},
+		{ID: "basedpyright", Name: "BasedPyright"},
+	}
+	h.app.sortLanguageServerCatalogProfiles(profiles)
+	got := make([]string, len(profiles))
+	for index, profile := range profiles {
+		got[index] = profile.ID
+	}
+	want := []string{"basedpyright", "typescript", "go", "css", "html"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("catalog order = %v, want enabled first then names %v", got, want)
+	}
+
+	custom := []languageServerProfile{
+		{ID: "custom-zeta", Name: "Zeta", Custom: true},
+		{ID: "custom-disabled", Name: "Disabled custom", Custom: true},
+		{ID: "custom-alpha", Name: "Alpha", Custom: true},
+	}
+	h.app.sortLanguageServerCatalogProfiles(custom)
+	if got := []string{custom[0].ID, custom[1].ID, custom[2].ID}; !reflect.DeepEqual(got, []string{"custom-alpha", "custom-zeta", "custom-disabled"}) {
+		t.Fatalf("custom catalog order = %v", got)
+	}
+}
+
+func TestLanguageServerEnableRequiresAnExecutable(t *testing.T) {
+	originalLookPath := languageServerLookPath
+	t.Cleanup(func() { languageServerLookPath = originalLookPath })
+	languageServerLookPath = func(program string) (string, error) {
+		return "", exec.ErrNotFound
+	}
+	h := menuTestApp(t)
+	h.app.settingsPage = settingsPageEditor
+	h.app.openSettings()
+	h.tester.Frame()
+	h.tester.Scroll(700, 480, 0, 1800)
+	h.tester.Frame()
+	h.app.languageServerCatalogQuery = "Oxlint"
+	h.tester.Frame()
+
+	if err := h.tester.Click("Enable Oxc / Oxlint"); err != nil {
+		t.Fatalf("the Oxlint enable switch is missing: %v", err)
+	}
+	h.tester.Frame()
+	if _, configured := h.app.settings.LanguageServers["oxlint"]; configured {
+		t.Fatal("Oxlint was enabled without an installed executable")
+	}
+	if draft := h.app.languageServerDrafts["oxlint"]; draft == nil || draft.Enabled {
+		t.Fatalf("Oxlint switch did not remain disabled: %#v", draft)
+	}
+	if !h.tester.HasText("Download required") {
+		t.Fatalf("the download reminder is missing: %q", h.texts())
+	}
+}
+
+func TestLanguageServerCatalogAddsAndTogglesCustomTy(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.pathUserData = t.TempDir()
+	h.app.settingsPage = settingsPageEditor
+	h.app.openSettings()
+	h.tester.Frame()
+	h.tester.Scroll(700, 480, 0, 1800)
+	h.tester.Frame()
+	h.tester.Scroll(700, 480, 0, -300)
+	h.tester.Frame()
+	if err := h.tester.Click("Add custom language server"); err != nil {
+		t.Fatalf("add custom server: %v; texts=%q", err, h.texts())
+	}
+	fields := []struct{ label, value string }{
+		{"Custom server name", "ty"},
+		{"Custom server description", "Astral Python language server"},
+		{"Custom server executables", "ty, /opt/python/ty"},
+		{"Custom server arguments", "server"},
+		{"Custom server file extensions", ".py=python, .pyi=python"},
+		{"Custom server download URL", "https://pypi.org/project/ty/"},
+	}
+	for _, field := range fields {
+		h.tester.Frame()
+		if bounds, found := h.tester.Find(field.label); !found || bounds.W <= 0 || bounds.H <= 0 {
+			h.tester.Scroll(700, 480, 0, 180)
+			h.tester.Frame()
+		}
+		if err := h.tester.Click(field.label); err != nil {
+			t.Fatalf("focus %s: %v; texts=%q", field.label, err, h.texts())
+		}
+		h.tester.Type(field.value)
+	}
+	h.tester.Frame()
+	h.tester.Scroll(700, 480, 0, 600)
+	h.tester.Frame()
+	if err := h.tester.Click("Save custom language server"); err != nil {
+		t.Fatalf("save custom ty: %v; texts=%q", err, h.texts())
+	}
+	server, ok := h.app.settings.LanguageServers["custom-ty"]
+	if !ok || server.Custom == nil || server.Disabled || server.Path != "ty, /opt/python/ty" ||
+		!reflect.DeepEqual(server.Arguments, []string{"server"}) ||
+		server.Custom.Extensions[".py"] != "python" || server.Custom.Extensions[".pyi"] != "python" {
+		t.Fatalf("custom ty settings = %#v", server)
+	}
+	if reloaded := loadAppSettings(h.app.pathUserData).LanguageServers["custom-ty"]; reloaded.Custom == nil ||
+		reloaded.Custom.DownloadURL != "https://pypi.org/project/ty/" || !reflect.DeepEqual(reloaded, server) {
+		t.Fatalf("persisted custom ty = %#v, want %#v", reloaded, server)
+	}
+
+	profiles := configuredLanguageServerProfiles(h.app.settings.LanguageServers, "src/main.py")
+	if len(profiles) != 1 || profiles[0].ID != "custom-ty" || !profiles[0].Custom {
+		t.Fatalf("Python profiles = %#v", profiles)
+	}
+	program, arguments := languageServerProgram(h.app.settings.LanguageServers, profiles[0])
+	if program != "ty" || !reflect.DeepEqual(arguments, []string{"server"}) {
+		t.Fatalf("custom ty launch = %q %q", program, arguments)
+	}
+
+	h.app.languageServerCatalogSelected = ""
+	h.tester.Frame()
+	results, found := h.tester.Find("Language server results")
+	if !found {
+		t.Fatal("language server results are missing")
+	}
+	h.tester.Scroll(results.X+results.W/2, results.Y+results.H/2, 0, 1800)
+	h.tester.Frame()
+	if !h.tester.HasText("ty") || !h.tester.HasText("CUSTOM — User defined") || !h.tester.HasText("Open download source: ty") {
+		t.Fatalf("custom ty card or source is missing: %q", h.texts())
+	}
+	if err := h.tester.Click("Disable ty"); err != nil {
+		t.Fatalf("disable custom ty from its card: %v; texts=%q", err, h.texts())
+	}
+	server = h.app.settings.LanguageServers["custom-ty"]
+	if !server.Disabled || server.Custom == nil {
+		t.Fatalf("disabling discarded the custom profile: %#v", server)
+	}
+	if got := configuredLanguageServerProfiles(h.app.settings.LanguageServers, "src/main.py"); len(got) != 0 {
+		t.Fatalf("disabled custom ty still matches Python: %#v", got)
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Enable ty"); err != nil {
+		t.Fatal(err)
+	}
+	if h.app.settings.LanguageServers["custom-ty"].Disabled {
+		t.Fatal("card switch did not re-enable custom ty")
+	}
+}
+
+func TestCustomLanguageServerAppearsInEditorStatus(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.settings.LanguageServers = map[string]languageServerSettings{
+		"custom-ty": {
+			Path: "ty", Arguments: []string{"server"},
+			Custom: &customLanguageServerDefinition{
+				Name: "ty", Extensions: map[string]string{".py": "python"},
+			},
+		},
+	}
+	h.app.additionalLanguageServers = map[string]*managedLanguageServer{
+		"custom-ty": {connection: newFakeLanguageServerConnection()},
+	}
+	statuses := h.app.codeLanguageServerStatuses()
+	if len(statuses) != 1 || statuses[0].name != "ty" || !statuses[0].running || statuses[0].failed {
+		t.Fatalf("custom language-server status = %#v", statuses)
+	}
+}
+
+func TestLanguageServerCardSwitchPrecedesDownload(t *testing.T) {
+	originalLookPath := languageServerLookPath
+	t.Cleanup(func() { languageServerLookPath = originalLookPath })
+	languageServerLookPath = func(program string) (string, error) { return "/tools/" + program, nil }
+	h := menuTestApp(t)
+	h.app.settingsPage = settingsPageEditor
+	h.app.openSettings()
+	h.tester.Frame()
+	h.tester.Scroll(700, 480, 0, 1800)
+	h.tester.Frame()
+	h.app.languageServerCatalogQuery = "TypeScript"
+	h.tester.Frame()
+	toggle, toggleOK := h.tester.Find("Enable TypeScript Language Server")
+	download, downloadOK := h.tester.Find("Download TypeScript Language Server")
+	if !toggleOK || !downloadOK || toggle.X+toggle.W > download.X {
+		t.Fatalf("switch/download order: toggle=%+v found=%v download=%+v found=%v", toggle, toggleOK, download, downloadOK)
+	}
+	if err := h.tester.Click("Enable TypeScript Language Server"); err != nil {
+		t.Fatal(err)
+	}
+	if h.app.settings.LanguageServers["typescript"].Disabled {
+		t.Fatal("card switch did not enable TypeScript")
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Disable TypeScript Language Server"); err != nil {
+		t.Fatal(err)
+	}
+	if _, configured := h.app.settings.LanguageServers["typescript"]; configured {
+		t.Fatal("disabling a built-in left an enabled configuration")
+	}
+}
+
 func TestLanguageServerCatalogSearchesNamesLanguagesAndCommands(t *testing.T) {
 	tests := []struct {
 		query string

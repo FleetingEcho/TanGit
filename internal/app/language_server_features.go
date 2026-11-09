@@ -43,7 +43,7 @@ type languageServerTextPosition struct {
 
 func (a *app) configureGoLanguageDocument(document *codeDocument) {
 	if document == nil || document.state == nil ||
-		(!strings.EqualFold(filepath.Ext(document.path), ".go") && !isAdditionalLanguageServerPath(document.path)) {
+		(!strings.EqualFold(filepath.Ext(document.path), ".go") && !a.isAdditionalLanguageServerPath(document.path)) {
 		return
 	}
 	document.state.OnHover = func(request editor.HoverRequest) {
@@ -191,9 +191,55 @@ func (a *app) requestGoLanguageHover(document *codeDocument, request editor.Hove
 	})
 }
 
+func languageServerHoverCodeBlock(content string) (string, *editor.Language, bool) {
+	lines := strings.Split(strings.TrimSpace(content), "\n")
+	if len(lines) < 2 {
+		return "", nil, false
+	}
+	opening := strings.TrimSpace(lines[0])
+	if !strings.HasPrefix(opening, "```") || strings.TrimSpace(lines[len(lines)-1]) != "```" {
+		return "", nil, false
+	}
+	for _, line := range lines[1 : len(lines)-1] {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			return "", nil, false
+		}
+	}
+	info := strings.Fields(strings.TrimSpace(strings.TrimPrefix(opening, "```")))
+	if len(info) == 0 {
+		return "", nil, false
+	}
+	language := editor.LanguageNamed(info[0])
+	if language == nil {
+		return "", nil, false
+	}
+	return strings.Join(lines[1:len(lines)-1], "\n"), language, true
+}
+
+func languageServerHoverWithoutFences(content string) string {
+	lines := strings.Split(content, "\n")
+	kept := lines[:0]
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
+}
+
 func showLanguageServerHover(document *codeDocument, start, end int, content string) {
+	language := editor.LanguageNamed("markdown")
+	if code, codeLanguage, ok := languageServerHoverCodeBlock(content); ok {
+		content, language = code, codeLanguage
+	} else {
+		// Mixed Markdown hovers are rendered as one buffer. Remove their fence
+		// delimiters instead of exposing Markdown source such as ```xml while
+		// retaining the code and prose inside the blocks.
+		content = languageServerHoverWithoutFences(content)
+	}
 	buffer := editor.NewBuffer(content)
-	buffer.SetLanguage(editor.LanguageNamed("markdown"))
+	buffer.SetLanguage(language)
 	document.hoverState = &editor.State{
 		Buffer: buffer, ReadOnly: true, FitContent: true, SoftWrap: true,
 		LineNumbers: editor.LineNumbersOff, NoFolding: true, NoActiveLine: true, NoScrollbars: true,

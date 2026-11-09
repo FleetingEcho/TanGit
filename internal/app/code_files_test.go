@@ -21,6 +21,21 @@ func TestFilterCodePathsMatchesRepositoryPathsCaseInsensitively(t *testing.T) {
 	}
 }
 
+func TestFilterCodePathsUsesFzfMatchingAndRelevance(t *testing.T) {
+	paths := []string{
+		"internal/app/view_code.go",
+		"code.go",
+		"tests/vc/ode.txt",
+		"docs/unrelated.txt",
+	}
+	if got, want := filterCodePaths(paths, "vcode"), []string{"tests/vc/ode.txt", "internal/app/view_code.go"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("fuzzy path matches = %v, want %v", got, want)
+	}
+	if got := filterCodePaths(paths, "code"); len(got) == 0 || got[0] != "code.go" {
+		t.Fatalf("fzf did not rank the shortest exact basename first: %v", got)
+	}
+}
+
 func TestValidCodeRelativePath(t *testing.T) {
 	for _, path := range []string{"main.go", "internal/app/main.go", "with space/file.txt"} {
 		if !validCodeRelativePath(path) {
@@ -31,6 +46,34 @@ func TestValidCodeRelativePath(t *testing.T) {
 		if validCodeRelativePath(path) {
 			t.Errorf("invalid path %q accepted", path)
 		}
+	}
+}
+
+func TestListCodeEmptyDirectoriesIncludesExternalFoldersButNotIgnoredOrNonempty(t *testing.T) {
+	root := t.TempDir()
+	for _, directory := range []string{"empty", "tracked-parent/empty", "ignored/empty", "untracked-nonempty"} {
+		if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(directory)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, content := range map[string]string{
+		".gitignore":                  "ignored/\n",
+		"tracked-parent/file.txt":     "tracked\n",
+		"untracked-nonempty/file.txt": "untracked\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(name)), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{{"init", "--quiet"}, {"add", ".gitignore", "tracked-parent/file.txt"}} {
+		command := exec.Command("git", args...)
+		command.Dir = root
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, output)
+		}
+	}
+	if got, want := listCodeEmptyDirectories(root), []string{"empty", "tracked-parent/empty"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("listCodeEmptyDirectories() = %v, want %v", got, want)
 	}
 }
 

@@ -15,7 +15,7 @@ func TestBuildFileTreeRowsKeepsSourceIdentityAndCollapsesParents(t *testing.T) {
 	for _, row := range rows {
 		got = append(got, row.path)
 	}
-	want := []string{"README.md", "src", "src/main.go", "src/ui", "src/ui/app.go", "src/ui/tree", "src/ui/tree/tree.go", "z.txt"}
+	want := []string{"src", "src/ui", "src/ui/tree", "src/ui/tree/tree.go", "src/ui/app.go", "src/main.go", "README.md", "z.txt"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("tree paths = %v, want %v", got, want)
 	}
@@ -31,7 +31,7 @@ func TestBuildFileTreeRowsKeepsSourceIdentityAndCollapsesParents(t *testing.T) {
 	for _, row := range rows {
 		got = append(got, row.path)
 	}
-	want = []string{"README.md", "src", "z.txt"}
+	want = []string{"src", "README.md", "z.txt"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("collapsed tree paths = %v, want %v", got, want)
 	}
@@ -43,7 +43,7 @@ func TestBuildFileTreeRowsKeepsSourceIdentityAndCollapsesParents(t *testing.T) {
 	for _, row := range rows {
 		got = append(got, row.path)
 	}
-	want = []string{"README.md", "src", "src/main.go", "src/ui", "z.txt"}
+	want = []string{"src", "src/ui", "src/main.go", "README.md", "z.txt"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("nested collapsed paths = %v, want %v", got, want)
 	}
@@ -119,7 +119,7 @@ func TestCommitFileTreeKeepsTheChosenDiffOnItsSourceFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if got := visibleCommitTreePaths(h.app.commitFileRows); !reflect.DeepEqual(got, []string{"README.md", "src", "z.txt"}) {
+	if got := visibleCommitTreePaths(h.app.commitFileRows); !reflect.DeepEqual(got, []string{"src", "README.md", "z.txt"}) {
 		t.Fatalf("collapsed commit rows = %v", got)
 	}
 	if h.app.selectedCommitFile != -1 || selectedFileTreeDirectory(h.app.commitFileRows, h.app.selectedCommitFileRow) != "src" {
@@ -160,7 +160,7 @@ func TestBranchAndStashFileTreesFoldDirectories(t *testing.T) {
 			t.Fatal(err)
 		}
 		h.tester.Frame()
-		if got := visibleCommitTreePaths(h.app.branchCommitFileRows); !reflect.DeepEqual(got, []string{"README.md", "src", "z.txt"}) {
+		if got := visibleCommitTreePaths(h.app.branchCommitFileRows); !reflect.DeepEqual(got, []string{"src", "README.md", "z.txt"}) {
 			t.Fatalf("collapsed branch commit rows = %v", got)
 		}
 	})
@@ -179,7 +179,7 @@ func TestBranchAndStashFileTreesFoldDirectories(t *testing.T) {
 			t.Fatal(err)
 		}
 		h.tester.Frame()
-		if got := visibleCommitTreePaths(h.app.stashFileRows); !reflect.DeepEqual(got, []string{"README.md", "src", "z.txt"}) {
+		if got := visibleCommitTreePaths(h.app.stashFileRows); !reflect.DeepEqual(got, []string{"src", "README.md", "z.txt"}) {
 			t.Fatalf("collapsed stash rows = %v", got)
 		}
 		if h.app.selectedStashFile != -1 || h.app.stashDiffPath != "" || h.app.stashDiffState != nil {
@@ -187,6 +187,13 @@ func TestBranchAndStashFileTreesFoldDirectories(t *testing.T) {
 				h.app.selectedStashFile, h.app.stashDiffPath)
 		}
 	})
+}
+
+func TestFileTreeFlatRowsKeepRealDirectoriesButNotTheSyntheticRoot(t *testing.T) {
+	rows := buildFileTreeRowsWithDirectories([]string{"dir/file.txt"}, []string{"", "empty"}, false, nil, codeFileTreeScope)
+	if len(rows) != 2 || rows[0].path != "empty" || !rows[0].isDirectory() || rows[1].path != "dir/file.txt" {
+		t.Fatalf("flat Quick open rows = %+v", rows)
+	}
 }
 
 func TestFileTreeSelectionDistinguishesDirectoriesFromFiles(t *testing.T) {

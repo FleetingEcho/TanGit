@@ -251,10 +251,8 @@ func (a *app) compareModal(c *ui.Context) {
 				})
 
 				ui.Row(c).AlignItems(ui.End).Gap(8).Children(func() {
-					from := ui.TextInput(c, &a.compare.from).Label(tr("From ref")).
-						Placeholder(tr("main or HEAD~1")).Grow(1)
-					to := ui.TextInput(c, &a.compare.to).Label(tr("To ref")).
-						Placeholder(tr("feature or HEAD")).Grow(1)
+					from := a.compareRefInput(c, "From ref", "main or HEAD~1", &a.compare.from).Grow(1)
+					to := a.compareRefInput(c, "To ref", "feature or HEAD", &a.compare.to).Grow(1)
 					iconButton(c, "Swap refs", "Swap the comparison direction", swapIcon,
 						strings.TrimSpace(a.compare.from) == "" || strings.TrimSpace(a.compare.to) == "", a.swapCompare)
 					compare := ui.PrimaryButton(c, tr("Compare")).
@@ -294,6 +292,86 @@ func (a *app) compareModal(c *ui.Context) {
 			}
 		})
 	})
+}
+
+// compareRefInput keeps revisions editable while offering known branches and
+// tags. Unlike a closed combobox, an unmatched value is a valid Git revision.
+func (a *app) compareRefInput(c *ui.Context, label, placeholder string, value *string) ui.Element {
+	theme := c.Theme()
+	combo := ui.ComboboxBase(c, value)
+	input := combo.Input.Grow(1).Padding(7, 10).
+		Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius).
+		Label(tr(label)).Placeholder(tr(placeholder)).AutoComplete(ui.AutoCompleteList)
+	combo.Popup(func(panel ui.Element) {
+		panel.Padding(4).Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius)
+		choices := a.compareRefChoices(*value, combo.Filtering())
+		filterPopupList(c, theme, func() {
+			if len(choices) == 0 {
+				ui.Row(c).Padding(7, 10).Children(func() {
+					ui.Text(c, tr("No matches")).TextColor(theme.TextMuted)
+				})
+				return
+			}
+			for _, ref := range choices {
+				item := combo.Item(ref).Padding(7, 10)
+				if item.Highlighted() {
+					item.Background(theme.SurfaceHover)
+				}
+				item.Children(func() { ui.Text(c, ref).SingleLine().Tooltip(ref) })
+			}
+		})
+	})
+	if ref, ok := combo.Chosen(); ok {
+		*value = ref
+	}
+	return input
+}
+
+// compareRefChoices lists familiar revisions on click and narrows them while
+// the user types. Keep the list bounded for repositories with many refs.
+func (a *app) compareRefChoices(typed string, filtering bool) []string {
+	choices := make([]string, 0, 1+len(a.snapshot.Branches)+len(a.snapshot.Tags))
+	seen := make(map[string]bool)
+	add := func(ref string) {
+		if ref != "" && !seen[ref] {
+			seen[ref] = true
+			choices = append(choices, ref)
+		}
+	}
+	add("HEAD")
+	for _, branch := range a.snapshot.Branches {
+		add(branch.Name)
+	}
+	for _, remote := range a.snapshot.Remotes {
+		for _, branch := range remote.Branches {
+			name := branch.RemoteName
+			if name == "" {
+				name = remote.Name
+			}
+			if name != "" && branch.Name != "" {
+				add(name + "/" + branch.Name)
+			}
+		}
+	}
+	for _, tag := range a.snapshot.Tags {
+		add(tag.Name)
+	}
+	if filtering {
+		needle := strings.ToLower(strings.TrimSpace(typed))
+		if needle != "" {
+			matched := choices[:0]
+			for _, ref := range choices {
+				if strings.Contains(strings.ToLower(ref), needle) {
+					matched = append(matched, ref)
+				}
+			}
+			choices = matched
+		}
+	}
+	if len(choices) > 200 {
+		choices = choices[:200]
+	}
+	return choices
 }
 
 func (a *app) compareResults(c *ui.Context, theme *ui.Theme) {
