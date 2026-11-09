@@ -2,6 +2,7 @@ package app
 
 import (
 	"testing"
+	"time"
 )
 
 // Double-clicking the repository path in the status bar copies it, in place,
@@ -24,7 +25,10 @@ func TestDoubleClickingTheRepositoryPathCopiesIt(t *testing.T) {
 		t.Fatalf("the bar does not say the path was copied: %q", h.texts())
 	}
 
-	// The copy is a moment, not a mode: after two seconds the path is back.
+	// The copy is a moment, not a mode: after half a second the path is back.
+	if pathCopiedFor != 500*time.Millisecond {
+		t.Fatalf("copied confirmation duration = %v, want 500ms", pathCopiedFor)
+	}
 	h.tester.Advance(pathCopiedFor)
 	h.tester.Frame()
 	if _, ok := h.tester.Find("Copied"); ok {

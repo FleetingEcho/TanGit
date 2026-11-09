@@ -90,6 +90,9 @@ func (a *app) codeFileExplorer(c *ui.Context) {
 		}
 		if len(a.code.rows) == 0 {
 			message := "This repository has no files"
+			if a.editorOnlyWorkspace() {
+				message = "This folder has no files"
+			}
 			if strings.TrimSpace(a.code.filter) != "" {
 				message = "No files match this filter"
 			}
@@ -168,6 +171,9 @@ func (a *app) codeFileExplorer(c *ui.Context) {
 func (a *app) codeRepositoryRootRow(c *ui.Context, theme *ui.Theme) {
 	folder := a.code.searchFolder
 	label := tr("Repository root")
+	if a.editorOnlyWorkspace() {
+		label = tr("Workspace folder")
+	}
 	tooltip := a.snapshot.Root
 	if folder != "" {
 		label = tr("Workspace root") + " " + folder

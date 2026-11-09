@@ -9,11 +9,14 @@ import (
 	"github.com/egoist/mygo"
 )
 
-// recentRepository is one repository the app opened, kept so the picker can
-// offer it again on the next start.
+// recentRepository is one repository or plain Editor folder the app opened,
+// kept so the appropriate Home tab can offer it again on the next start.
 type recentRepository struct {
 	Path       string `json:"path"`
 	LastOpened int64  `json:"lastOpened"`
+	// EditorOnly keeps plain folders on Home's Editor tab, independently of
+	// Git repositories. Existing history without this field remains Git history.
+	EditorOnly bool `json:"editorOnly,omitempty"`
 	// Name is the label the picker shows for this card instead of the
 	// folder's name, "" while it has none. It is the user's name for the
 	// card alone: the folder, and the repository in it, keep their own.
@@ -38,9 +41,18 @@ const recentNameLimit = 40
 // name, or path contains the query. Keeping indices rather than copies is what
 // lets a filtered card retain all of the ordinary card actions.
 func filterRecent(repositories []recentRepository, query string) []int {
+	return filterRecentMode(repositories, query, nil)
+}
+
+// filterRecentMode is filterRecent restricted to one Home tab when editorOnly
+// is non-nil. Its results remain indices into the shared, persistent history.
+func filterRecentMode(repositories []recentRepository, query string, editorOnly *bool) []int {
 	query = strings.ToLower(strings.TrimSpace(query))
 	visible := make([]int, 0, len(repositories))
 	for i, repo := range repositories {
+		if editorOnly != nil && repo.EditorOnly != *editorOnly {
+			continue
+		}
 		if query == "" || strings.Contains(strings.ToLower(repo.displayName()), query) ||
 			strings.Contains(strings.ToLower(repo.Path), query) {
 			visible = append(visible, i)
@@ -128,6 +140,13 @@ func saveRecentRepositories(dir string, repositories []recentRepository) error {
 // rather than to one opening of it. It copies, so the caller's slice is never
 // shared with the app's.
 func rememberRecent(repositories []recentRepository, path string, now int64) []recentRepository {
+	return rememberRecentMode(repositories, path, now, false)
+}
+
+// rememberRecentMode keeps independent per-tab caps and identities in the
+// shared history. The same folder may therefore be a Git and an Editor card,
+// while opening one never evicts or reclassifies the other.
+func rememberRecentMode(repositories []recentRepository, path string, now int64, editorOnly bool) []recentRepository {
 	// Local cards name the checkout itself: make the path absolute and resolve
 	// aliases, so a linked worktree never appears under an application's alias.
 	path = cleanRepoPath(path)
@@ -135,16 +154,21 @@ func rememberRecent(repositories []recentRepository, path string, now int64) []r
 		return repositories
 	}
 	out := make([]recentRepository, 0, len(repositories)+1)
-	out = append(out, recentRepository{Path: path, LastOpened: now})
+	out = append(out, recentRepository{Path: path, LastOpened: now, EditorOnly: editorOnly})
+	kept := 1
 	for _, r := range repositories {
+		if r.EditorOnly != editorOnly {
+			out = append(out, r)
+			continue
+		}
 		if cleanRepoPath(r.Path) == path {
 			out[0].Name = r.Name
 			continue
 		}
-		out = append(out, r)
-	}
-	if len(out) > maxRecentRepositories {
-		out = out[:maxRecentRepositories]
+		if kept < maxRecentRepositories {
+			out = append(out, r)
+			kept++
+		}
 	}
 	return out
 }
@@ -183,16 +207,19 @@ func (a *app) setRecentName(path, name string) bool {
 		a.recentNameOverrides = make(map[string]string)
 	}
 	a.recentNameOverrides[want] = name
+	changed := false
 	for i := range a.recentRepositories {
 		if cleanRecentPath(a.recentRepositories[i].Path) != want ||
 			a.recentRepositories[i].Name == name {
 			continue
 		}
 		a.recentRepositories[i].Name = name
-		a.historyRevision++
-		return true
+		changed = true
 	}
-	return false
+	if changed {
+		a.historyRevision++
+	}
+	return changed
 }
 
 // recentNameFor is the name the user gave the repository at path, "" while it
@@ -215,6 +242,15 @@ func cleanRecentPath(path string) string {
 		return remote
 	}
 	return filepath.Clean(strings.TrimSpace(path))
+}
+
+type recentHistoryKey struct {
+	path       string
+	editorOnly bool
+}
+
+func recentKey(path string, editorOnly bool) recentHistoryKey {
+	return recentHistoryKey{path: cleanRecentPath(path), editorOnly: editorOnly}
 }
 
 // openRecentRename opens the modal that names the entry for path. The field
@@ -361,6 +397,9 @@ func readRecentHistory(dir string) ([]recentRepository, bool) {
 			repo.Path = path
 			changed = true
 		}
+		if repo.EditorOnly {
+			continue
+		}
 		identity, ok := recentIdentityForPath(path)
 		if !ok {
 			continue
@@ -382,14 +421,16 @@ func readRecentHistory(dir string) ([]recentRepository, bool) {
 // cards are appended without replacing it.
 func mergeRecentHistory(current, loaded []recentRepository) []recentRepository {
 	out := append([]recentRepository(nil), current...)
-	seen := make(map[string]struct{}, len(current)+len(loaded))
+	seen := make(map[recentHistoryKey]struct{}, len(current)+len(loaded))
 	for _, repo := range current {
-		seen[cleanRecentPath(repo.Path)] = struct{}{}
+		seen[recentKey(repo.Path, repo.EditorOnly)] = struct{}{}
 	}
 	for _, repo := range loaded {
-		if _, exists := seen[cleanRecentPath(repo.Path)]; exists {
+		key := recentKey(repo.Path, repo.EditorOnly)
+		if _, exists := seen[key]; exists {
 			continue
 		}
+		seen[key] = struct{}{}
 		out = append(out, repo)
 	}
 	return out
@@ -457,7 +498,7 @@ func (a *app) rememberOpened(path string) {
 		repositoryPath = ""
 	}
 	for i := range a.recentRepositories {
-		if cleanRecentPath(a.recentRepositories[i].Path) == want {
+		if !a.recentRepositories[i].EditorOnly && cleanRecentPath(a.recentRepositories[i].Path) == want {
 			a.recentRepositories[i].Worktree = linked
 			a.recentRepositories[i].Branch = a.snapshot.Branch
 			a.recentRepositories[i].WorktreeName = worktreeName
@@ -469,11 +510,20 @@ func (a *app) rememberOpened(path string) {
 	_ = saveRecentRepositories(a.dataDir(), a.recentRepositories)
 }
 
-// forgetRecent removes the repository path from the history.
-func (a *app) forgetRecent(path string) {
+// rememberOpenedFolder records a plain Editor workspace without inventing Git
+// metadata or adding it to Recent repositories.
+func (a *app) rememberOpenedFolder(path string) {
+	a.recentRepositories = rememberRecentMode(a.recentRepositories, path, timeNow(), true)
+	a.historyRevision++
+	_ = saveRecentRepositories(a.dataDir(), a.recentRepositories)
+}
+
+// forgetRecent removes one card from the history, leaving the same path on the
+// other Home tab alone.
+func (a *app) forgetRecent(path string, editorOnly bool) {
 	kept := make([]recentRepository, 0, len(a.recentRepositories))
 	for _, r := range a.recentRepositories {
-		if r.Path != path {
+		if r.Path != path || r.EditorOnly != editorOnly {
 			kept = append(kept, r)
 		}
 	}
@@ -487,7 +537,7 @@ func (a *app) forgetRecent(path string) {
 func (a *app) recentWorktree(path string) bool {
 	want := cleanRecentPath(path)
 	for _, repo := range a.recentRepositories {
-		if cleanRecentPath(repo.Path) == want {
+		if !repo.EditorOnly && cleanRecentPath(repo.Path) == want {
 			return repo.Worktree
 		}
 	}
@@ -498,7 +548,7 @@ func (a *app) recentWorktree(path string) bool {
 // the same path beginOpen takes.
 func (a *app) openRecent(path string) {
 	a.path = path
-	a.beginOpen()
+	a.beginOpenWithPolicy(openPolicy(a.pickerOpenMode))
 }
 
 // openFromPicker opens what the path field holds, or, while the field is
@@ -507,18 +557,22 @@ func (a *app) openRecent(path string) {
 func (a *app) openFromPicker() {
 	if strings.TrimSpace(a.path) == "" &&
 		a.selectedRecent >= 0 && a.selectedRecent < len(a.recentRepositories) {
-		a.openRecent(a.recentRepositories[a.selectedRecent].Path)
-		return
+		selected := a.recentRepositories[a.selectedRecent]
+		if selected.EditorOnly == (a.pickerOpenMode == int(openAllowPlainEditor)) {
+			a.openRecent(selected.Path)
+			return
+		}
 	}
-	a.beginOpen()
+	a.beginOpenWithPolicy(openPolicy(a.pickerOpenMode))
 }
 
 // applyPendingRecent applies a context menu's deferred removal at the top of
 // a build pass, before anything reads the list again.
 func (a *app) applyPendingRecent() {
 	if a.pendingForget != "" {
-		a.forgetRecent(a.pendingForget)
+		a.forgetRecent(a.pendingForget, a.pendingForgetEditorOnly)
 		a.pendingForget = ""
+		a.pendingForgetEditorOnly = false
 		if a.selectedRecent >= len(a.recentRepositories) {
 			a.selectedRecent = len(a.recentRepositories) - 1
 		}

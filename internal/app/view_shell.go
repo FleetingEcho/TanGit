@@ -247,7 +247,12 @@ func (a *app) welcomeView(c *ui.Context) {
 			ui.Scroll(c).Fill().Children(func() {
 				ui.Column(c).FillWidth().MinHeight(page).
 					AlignItems(ui.Center).Justify(ui.Start).
-					Padding(pickerPadTop, pickerPadSide, pickerPadBottom).Gap(34).Children(func() {
+					Padding(pickerPadTop, pickerPadSide, pickerPadBottom).Gap(20).Children(func() {
+					mode := pickerOpenModeControl(c, &a.pickerOpenMode)
+					if mode.Changed() {
+						a.recentFilter = ""
+						a.selectedRecent = -1
+					}
 					a.pickerHeroView(c)
 					switch a.state {
 					case stateEmpty:
@@ -309,47 +314,55 @@ func (a *app) pickerHeaderView(c *ui.Context) {
 	})
 }
 
-// pickerHeroView keeps one clear way into a repository: enter its path or
-// browse for it. Opening an existing repository and initializing a plain
-// folder both go through this field, without a duplicate quick-action panel.
+// pickerHeroView keeps one clear way into a workspace: enter its path or
+// browse for it. The launcher itself is flat; only its interactive path field
+// has a border, so Home does not become a stack of nested cards.
 func (a *app) pickerHeroView(c *ui.Context) {
 	theme := c.Theme()
-	ui.Column(c).MaxWidth(pickerContentWidth).FillWidth().AlignSelf(ui.Center).Gap(11).
-		Padding(22).Background(theme.Surface).Border(1, theme.Border).
-		Radius(theme.Radius+10).
-		Shadow(0, 12, 30, 0, ui.RGBA(0, 0, 0, 0.13)).Children(func() {
+	editorMode := a.pickerOpenMode == int(openAllowPlainEditor)
+	title, description := "Open a repository", "Your changes, history, branches, and remotes — all in one focused place."
+	folderLabel, placeholder := "Repository folder", "/path/to/repository"
+	if editorMode {
+		title = "Open a folder"
+		description = "Browse, search, edit files, and use a terminal — no Git repository required."
+		folderLabel, placeholder = "Folder", "/path/to/folder"
+	}
+	ui.Column(c).MaxWidth(pickerContentWidth).FillWidth().AlignSelf(ui.Center).Gap(12).
+		Padding(2, 0, 8).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Start).Gap(16).Wrap().Children(func() {
-			ui.Column(c).Grow(1).MinWidth(280).Gap(5).Children(func() {
-				ui.Text(c, tr("Open a repository")).FontSize(25).Bold()
-				ui.Text(c, tr("Your changes, history, branches, and remotes — all in one focused place.")).
-					TextColor(theme.TextMuted).MaxWidth(560)
+			ui.Column(c).Grow(1).MinWidth(280).Gap(4).Children(func() {
+				ui.Text(c, tr(title)).FontSize(22).Bold()
+				ui.Text(c, tr(description)).TextColor(theme.TextMuted).MaxWidth(560)
 			})
-			ui.Row(c).Justify(ui.End).AlignItems(ui.Center).Gap(10).Wrap().Children(func() {
-				pickerRemoteAction(c, "Open SSH",
-					"Open a Git folder through a saved SSH profile", remotesIcon, a.openSSHWorkspacePicker)
-				pickerRemoteAction(c, "Clone",
-					"Clone an HTTPS or SSH repository and open it (C)", downloadIcon, a.openCloneForm)
-			})
+			if !editorMode {
+				ui.Row(c).Justify(ui.End).AlignItems(ui.Center).Gap(4).Wrap().Children(func() {
+					pickerRemoteAction(c, "Open SSH",
+						"Open a Git folder through a saved SSH profile", remotesIcon, a.openSSHWorkspacePicker)
+					pickerRemoteAction(c, "Clone",
+						"Clone an HTTPS or SSH repository and open it (C)", downloadIcon, a.openCloneForm)
+				})
+			}
 		})
-		bar := ui.Row(c).FillWidth().Height(48).AlignItems(ui.Center).Gap(9).
-			Padding(5, 6, 5, 13).Background(theme.Background).Border(1, theme.Border).
-			Radius(theme.Radius + 6)
+		bar := ui.Row(c).FillWidth().Height(46).AlignItems(ui.Center).Gap(9).
+			Padding(5, 6, 5, 13).Background(theme.Surface).Border(1, theme.Border).
+			Radius(theme.Radius + 4)
 		if bar.Hovered() {
 			bar.Border(1, theme.Accent.Alpha(0.55))
 		}
 		bar.Children(func() {
 			ui.Icon(c, folderOpenIcon).FontSize(18).TextColor(theme.TextMuted)
 			path := ui.TextInputBase(c, &a.path).
-				Label(tr("Repository folder")).AutoFocus().
-				Placeholder(tr("/path/to/repository")).
-				FontSize(15).Height(36).Grow(1)
+				Label(tr(folderLabel)).AutoFocus().
+				Placeholder(tr(placeholder)).
+				Tooltip(tr("Terminal: open a Git repository or folder path directly in TanGit")).
+				FontSize(15).Height(34).Grow(1)
 			if path.Submitted() {
 				a.openFromPicker()
 			}
 			browse := ui.PrimaryButton(c, "").
 				Label(tr("Browse…")).
 				Tooltip(tr("Choose a folder — it opens once you pick it")).
-				Gap(6).Height(36).Radius(theme.Radius + 4)
+				Gap(6).Height(34).Radius(theme.Radius + 2)
 			clicked := browse.Clicked()
 			browse.Children(func() {
 				ui.Icon(c, folderOpenIcon).FontSize(14)
@@ -359,24 +372,65 @@ func (a *app) pickerHeroView(c *ui.Context) {
 				a.browse()
 			}
 		})
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(16).Wrap().Children(func() {
-			pickerHint(c, "↵", "Enter opens the path")
-			pickerHint(c, "C", "Clone a remote repository")
-			pickerHint(c, "Ctrl+,", "Settings")
-			pickerHint(c, "tangit <path>", "Terminal: open a repository path directly in TanGit")
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
+			hint := "↵  " + tr("Enter opens the path")
+			if !editorMode {
+				hint += "   ·   C  " + tr("Clone a remote repository")
+			}
+			ui.Text(c, hint).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted)
+			ui.Box(c).Grow(1).MinWidth(8)
+			ui.Text(c, "F1  "+tr("Keyboard shortcuts")).
+				FontSize(theme.FontSize - 2).TextColor(theme.TextMuted)
+			ui.Text(c, "·").FontSize(theme.FontSize - 2).TextColor(theme.TextMuted)
+			ui.Text(c, "tangit <path>").FontSize(theme.FontSize - 2).TextColor(theme.TextMuted).
+				Tooltip(tr("Terminal: open a Git repository or folder path directly in TanGit"))
 		})
 	})
 }
 
-// pickerRemoteAction gives the two secondary ways into a repository a generous
-// target without letting their full descriptions crowd out the launch card.
+// pickerOpenModeControl is Home's top-level Git/Editor switch. The selected
+// segment wears an accent face, rather than light theme's nearly invisible
+// white-on-gray default, and controls both the launcher and its recent list.
+func pickerOpenModeControl(c *ui.Context, selected *int) ui.Element {
+	theme := c.Theme()
+	labels := []string{tr("Git repository"), tr("Editor")}
+	parts := ui.SegmentedBase(c, selected, len(labels))
+	track := parts.Track.AlignItems(ui.Stretch).Padding(theme.Space(0.5)).Gap(theme.Space(0.5)).
+		Radius(theme.Radius).Background(theme.Surface).Border(1, theme.Border).Label(tr("Open mode"))
+	track.Children(func() {
+		for i, label := range labels {
+			chosen := i == *selected
+			segment := parts.Segment(i).Padding(theme.Space(1), theme.Space(3)).
+				Radius(max(theme.Radius-theme.Space(0.5), 0))
+			switch {
+			case chosen:
+				segment.Background(theme.Accent.Alpha(0.14)).TextColor(theme.Accent)
+			case segment.Hovered():
+				segment.Background(theme.SurfaceHover)
+			}
+			segment.Children(func() {
+				text := ui.Text(c, label).SingleLine()
+				if chosen {
+					text.Bold()
+				}
+			})
+		}
+	})
+	return track
+}
+
+// pickerRemoteAction keeps SSH and Clone visible as quiet text actions; the
+// path field's Browse button remains the launcher's only filled action.
 func pickerRemoteAction(c *ui.Context, label, tooltip string, icon *ui.SVG, run func()) {
 	theme := c.Theme()
-	button := ui.Button(c, "").Label(tr(label)).Tooltip(tr(tooltip)).
-		Height(38).Padding(6, 14).Center().Gap(8).Radius(theme.Radius + 4)
+	button := ui.ButtonBase(c).Label(tr(label)).Tooltip(tr(tooltip)).
+		Height(38).Padding(6, 10).Center().Gap(7).Radius(theme.Radius)
+	if button.Hovered() {
+		button.Background(theme.SurfaceHover)
+	}
 	button.Children(func() {
-		ui.Icon(c, icon).FontSize(17)
-		ui.Text(c, tr(label)).FontSize(15)
+		ui.Icon(c, icon).FontSize(16).TextColor(theme.TextMuted)
+		ui.Text(c, tr(label)).FontSize(14)
 	})
 	if button.Clicked() {
 		run()
@@ -451,72 +505,65 @@ func (a *app) initPromptView(c *ui.Context) {
 	})
 }
 
-// pickerHint is one quiet keyboard hint under the path field.
-func pickerHint(c *ui.Context, key, label string) {
-	theme := c.Theme()
-	ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
-		ui.Box(c).Padding(2, 6).Radius(theme.Radius).Border(1, theme.Border).
-			Background(theme.Background).Children(func() {
-			ui.Text(c, key).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted)
-		})
-		ui.Text(c, tr(label)).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
-	})
-}
-
-// recentSectionView is a searchable history of the repositories opened
-// before. Its filtered grid carries original indices through to every card.
+// recentSectionView is the active Home tab's searchable Git or plain-folder
+// history. Its filtered grid carries original indices through to every card.
 func (a *app) recentSectionView(c *ui.Context) {
-	if len(a.recentRepositories) == 0 {
+	editorMode := a.pickerOpenMode == int(openAllowPlainEditor)
+	all := filterRecentMode(a.recentRepositories, "", &editorMode)
+	a.visibleRecent = nil
+	if len(all) == 0 {
 		a.emptyRecentView(c)
 		return
 	}
 	theme := c.Theme()
 	services := c.Services()
-	a.visibleRecent = filterRecent(a.recentRepositories, a.recentFilter)
-	ui.Column(c).MaxWidth(pickerContentWidth).FillWidth().AlignSelf(ui.Center).Gap(14).
+	a.visibleRecent = filterRecentMode(a.recentRepositories, a.recentFilter, &editorMode)
+	title, searchLabel, noMatches := "Recent repositories", "Search recent repositories", "No repositories match your search"
+	if editorMode {
+		title, searchLabel, noMatches = "Recent folders", "Search recent folders", "No folders match your search"
+	}
+	ui.Column(c).MaxWidth(pickerContentWidth).FillWidth().AlignSelf(ui.Center).Gap(12).
 		Children(func() {
-			// Give the history its own visual section instead of letting its
-			// heading float in the space below the launch card.
-			ui.Divider(c).FillWidth()
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(12).Wrap().Children(func() {
-				ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-					ui.Text(c, tr("Recent repositories")).FontSize(18).Bold()
-					ui.Badge(c, fmt.Sprintf("%d", len(a.recentRepositories)))
+				ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
+					ui.Text(c, tr(title)).FontSize(17).Bold()
+					ui.Text(c, fmt.Sprintf("(%d)", len(all))).
+						FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
 				})
 				ui.Box(c).Grow(1).MinWidth(12)
 				ui.SearchField(c, &a.recentFilter).
-					Label(tr("Search recent repositories")).
+					Label(tr(searchLabel)).
 					Placeholder(tr("Filter by name or path…")).
-					Width(280).Height(36)
+					Width(240).Height(34)
 			})
 			if len(a.visibleRecent) == 0 {
 				ui.Column(c).FillWidth().AlignItems(ui.Center).Gap(7).Padding(24).
 					Background(theme.Surface.Alpha(0.6)).Border(1, theme.Border).
 					BorderStyle(ui.BorderDashed).Radius(theme.Radius + 6).Children(func() {
 					ui.Icon(c, searchIcon).FontSize(22).TextColor(theme.TextMuted)
-					ui.Text(c, tr("No repositories match your search")).Bold()
+					ui.Text(c, tr(noMatches)).Bold()
 					ui.Text(c, tr("Try a different name or path.")).TextColor(theme.TextMuted)
 				})
 				return
 			}
-			ui.GridView(c, &a.recentGrid, len(a.visibleRecent), 300, 152, func(i int) {
+			ui.GridView(c, &a.recentGrid, len(a.visibleRecent), 400, 118, func(i int) {
 				a.recentCardView(c, a.visibleRecent[i], services)
 			}).FillWidth()
 		})
 }
 
-// recentCardView is one repository of the history: where it is, what it is
-// called, when it was last opened, and the two quiet actions that name it or
-// let it go. A plain click opens it.
+// recentCardView keeps the folder identity and the common destinations one
+// click away. Lower-frequency card management lives under one More menu, also
+// available by right-click, instead of filling every card with icon buttons.
 func (a *app) recentCardView(c *ui.Context, i int, services ui.Services) {
 	theme := c.Theme()
 	repo := a.recentRepositories[i]
 	selected := a.selectedRecent == i
-	c.Key("recent:" + repo.Path)
-	card := ui.Column(c).Fill().Gap(8).Padding(14).
+	c.Key(fmt.Sprintf("recent:%t:%s", repo.EditorOnly, repo.Path))
+	card := ui.Column(c).Fill().Gap(6).Padding(12, 14).
 		Focusable().Role(ui.RoleButton).Label(trf("Open %s", repo.Path)).FocusRing(true).
-		Background(theme.Surface).Border(1, theme.Border).
-		Radius(theme.Radius + 5)
+		Background(theme.Surface).Border(1, theme.Border.Alpha(0.8)).
+		Radius(theme.Radius + 4)
 	if card.Hovered() && !selected {
 		card.Background(theme.SurfaceHover).
 			Border(1, theme.Accent.Alpha(0.4))
@@ -528,11 +575,11 @@ func (a *app) recentCardView(c *ui.Context, i int, services ui.Services) {
 		OnShortcut(0, ui.KeySpace, func() { a.openRecent(repo.Path) })
 	card.Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
-			ui.Box(c).Size(34, 34).Radius(10).Center().
-				Background(theme.Accent.Alpha(0.14)).Children(func() {
-				ui.Icon(c, folderIcon).FontSize(17).TextColor(theme.Accent)
+			ui.Box(c).Size(30, 30).Radius(9).Center().
+				Background(theme.Accent.Alpha(0.12)).Children(func() {
+				ui.Icon(c, folderIcon).FontSize(16).TextColor(theme.Accent)
 			})
-			ui.Column(c).Gap(2).Grow(1).Children(func() {
+			ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
 				title := ui.Text(c, repo.displayName()).FontSize(15).Bold().SingleLine()
 				if repo.renamed() {
 					title.Tooltip(repo.Path)
@@ -542,46 +589,61 @@ func (a *app) recentCardView(c *ui.Context, i int, services ui.Services) {
 				if repo.Worktree && strings.TrimSpace(repo.RepositoryPath) != "" {
 					ownerPath := repo.RepositoryPath
 					owner := tr("Main worktree") + " · " + repoName(ownerPath)
-					ui.Text(c, owner).TextColor(theme.Text).
+					ui.Text(c, owner).TextColor(theme.TextMuted).
 						FontSize(theme.FontSize - 2).SingleLine().
 						Tooltip(tr("Main worktree") + ": " + ownerPath)
 				}
 			})
-			// Existing checkouts are one click away from the card, without
-			// opening the source repository first or replacing the whole card.
-			worktrees := ui.ButtonBase(c).Size(28, 28).Radius(theme.Radius).Center().
-				Label(tr("Open worktree") + " " + repo.Path).
-				Tooltip(tr("Choose a main or linked worktree to open"))
-			if worktrees.Hovered() {
-				worktrees.Background(theme.SurfacePressed)
+			if !repo.EditorOnly {
+				// Existing checkouts are one click away from the card, without
+				// opening the source repository first or replacing the whole card.
+				worktrees := ui.ButtonBase(c).Size(28, 28).Radius(theme.Radius).Center().
+					Label(tr("Open worktree") + " " + repo.Path).
+					Tooltip(tr("Choose a main or linked worktree to open"))
+				if worktrees.Hovered() {
+					worktrees.Background(theme.SurfacePressed)
+				}
+				worktrees.Children(func() {
+					ui.Icon(c, worktreesIcon).FontSize(16).TextColor(theme.TextMuted)
+				})
+				// Only the card whose menu is active owns the shared open state.
+				// Binding every card to it makes the next card steal and close the
+				// menu during the same frame, especially when the cards are compact.
+				menuOptions := ui.PopoverMenuButtonOptions{At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd}
+				if a.homeWorktrees.source == repo.Path {
+					menuOptions.Open = &a.homeWorktrees.menuOpen
+				}
+				worktrees.PopoverMenuButton(func(m *ui.Menu) {
+					a.homeWorktreeMenu(m, repo.Path)
+				}, menuOptions)
 			}
-			worktrees.Children(func() {
-				ui.Icon(c, worktreesIcon).FontSize(17).TextColor(theme.TextMuted)
-			})
-			// Only the card whose menu is active owns the shared open state.
-			// Binding every card to it makes the next card steal and close the
-			// menu during the same frame, especially when the cards are compact.
-			menuOptions := ui.PopoverMenuButtonOptions{At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd}
-			if a.homeWorktrees.source == repo.Path {
-				menuOptions.Open = &a.homeWorktrees.menuOpen
+			editorTooltip := "Open this repository in your editor"
+			if repo.EditorOnly {
+				editorTooltip = "Open this folder in your editor"
 			}
-			worktrees.PopoverMenuButton(func(m *ui.Menu) {
-				a.homeWorktreeMenu(m, repo.Path)
-			}, menuOptions)
-			// The configured-editor action sits in the card's quiet top-right
-			// corner, apart from the click that opens the repository in TanGit.
 			editor := ui.ButtonBase(c).Size(28, 28).Radius(theme.Radius).Center().
 				Label(trf("Open %s in editor", repo.Path)).
-				Tooltip(tr("Open this repository in your editor"))
+				Tooltip(tr(editorTooltip))
 			if editor.Hovered() {
 				editor.Background(theme.SurfacePressed)
 			}
 			editor.Children(func() {
-				ui.Icon(c, fileCodeIcon).FontSize(17).TextColor(theme.TextMuted)
+				ui.Icon(c, fileCodeIcon).FontSize(16).TextColor(theme.TextMuted)
 			})
 			if editor.Clicked() {
 				a.launchEditor(repo.Path, 0)
 			}
+			more := ui.ButtonBase(c).Size(28, 28).Radius(theme.Radius).Center().
+				Label(tr("More actions") + " " + repo.Path).Tooltip(tr("More actions"))
+			if more.Hovered() {
+				more.Background(theme.SurfacePressed)
+			}
+			more.Children(func() {
+				ui.Icon(c, moreIcon).FontSize(16).TextColor(theme.TextMuted)
+			})
+			more.PopoverMenuButton(func(m *ui.Menu) {
+				a.recentCardMenu(m, repo, services)
+			}, ui.PopoverMenuButtonOptions{At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd})
 		})
 		identity := strings.TrimSpace(repo.Branch)
 		if identity == "(no branch)" {
@@ -597,106 +659,72 @@ func (a *app) recentCardView(c *ui.Context, i int, services ui.Services) {
 				identity = tr("Worktree") + " · " + identity
 			}
 		}
-		if identity != "" {
-			// Align the badge's visible label with the title and owner text. The
-			// 44px icon/gap offset less the badge's 6px inset leaves the labels
-			// together instead of putting the badge against the card's edge.
-			ui.Row(c).FillWidth().MinWidth(0).Padding(0, 0, 0, 38).Children(func() {
-				ui.Badge(c, identity).SingleLine().MaxWidth(240).MinWidth(0).Tooltip(identity)
-			})
-		}
 		ui.Box(c).Grow(1)
-		ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
-			ui.Icon(c, historyIcon).FontSize(11).TextColor(theme.TextMuted)
-			if rel := relTime(repo.LastOpened); rel != "" {
-				ui.Text(c, rel).TextColor(theme.TextMuted).
-					FontSize(theme.FontSize - 2)
+		ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(8).Padding(0, 0, 0, 34).Children(func() {
+			if identity != "" {
+				ui.Badge(c, identity).SingleLine().MaxWidth(240).MinWidth(0).Tooltip(identity)
 			}
 			ui.Box(c).Grow(1)
-			ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
-				ui.Icon(c, openRepoIcon).FontSize(12).TextColor(theme.Accent)
-				ui.Text(c, tr("Open")).FontSize(theme.FontSize - 2).
-					Bold().TextColor(theme.Accent)
-			})
-			// The card's name, which is only ever the card's: a small
-			// pencil, apart from the click that opens it.
-			pickerCardAction(c, trf("Rename %s", repo.Path), "Rename this card", editIcon, func() {
-				a.openRecentRename(repo.Path)
-			})
-			// The card's way out of the history: a small trash button,
-			// apart from the click that opens it.
-			pickerCardAction(c, trf("Remove %s from the recent list", repo.Path),
-				"Remove from the recent list", trashIcon, func() {
-					// The build must not rewrite the list it is reading;
-					// view() applies it next pass.
-					a.pendingForget = repo.Path
-				})
+			if rel := relTime(repo.LastOpened); rel != "" {
+				ui.Text(c, rel).TextColor(theme.TextMuted).
+					FontSize(theme.FontSize - 2).SingleLine()
+			}
 		})
 	}).OnClick(func() {
-		// A plain click opens the repository: on the picker a card is a
-		// choice of where to go, not a step towards a second gesture. The
-		// card is chosen too, so a failed open comes back to it.
 		a.selectedRecent = i
 		a.openRecent(repo.Path)
 	}).PopoverMenu(func(m *ui.Menu) {
-		if m.Item(tr("Open")).Chosen() {
-			a.openRecent(repo.Path)
-		}
-		if m.Item(tr("Open in editor")).Chosen() {
-			a.launchEditor(repo.Path, 0)
-		}
-		if a.openTab != nil && m.Item(tr("Open in new tab")).Chosen() {
-			a.openTab(repo.Path)
-		}
-		if m.Item(tr("Open worktree")).Chosen() {
-			a.openHomeWorktrees(repo.Path)
-		}
-		if m.Item(tr("Copy path")).Chosen() {
-			a.notifyCopied(services, "repository path", repo.Path)
-		}
-		if m.Item(tr("Rename…")).Chosen() {
-			a.openRecentRename(repo.Path)
-		}
-		if m.Item(tr("Remove from list")).Chosen() {
-			// The menu must not rewrite the list this build is reading;
-			// view() applies it next pass.
-			a.pendingForget = repo.Path
-		}
+		a.recentCardMenu(m, repo, services)
 	})
 }
 
-// pickerCardAction is the flat icon button in a card's corner: it stays quiet
-// until the pointer is on it, so a card reads as a repository first.
-func pickerCardAction(c *ui.Context, label, tooltip string, icon *ui.SVG, run func()) {
-	theme := c.Theme()
-	button := ui.ButtonBase(c).Size(24, 24).Radius(theme.Radius).Center()
-	button.Label(label).Tooltip(tr(tooltip))
-	if button.Hovered() {
-		button.Background(theme.SurfacePressed)
+// recentCardMenu is shared by the visible More button and the card's
+// right-click menu, so simplifying the canvas never removes an action.
+func (a *app) recentCardMenu(m *ui.Menu, repo recentRepository, services ui.Services) {
+	if m.Item(tr("Open")).Chosen() {
+		a.openRecent(repo.Path)
 	}
-	button.Children(func() {
-		ui.Icon(c, icon).FontSize(13).TextColor(theme.TextMuted)
-	})
-	if button.Clicked() {
-		run()
+	if m.Item(tr("Open in editor")).Chosen() {
+		a.launchEditor(repo.Path, 0)
+	}
+	if !repo.EditorOnly && a.openTab != nil && m.Item(tr("Open in new tab")).Chosen() {
+		a.openTab(repo.Path)
+	}
+	if !repo.EditorOnly && m.Item(tr("Open worktree")).Chosen() {
+		a.openHomeWorktrees(repo.Path)
+	}
+	if m.Item(tr("Copy path")).Chosen() {
+		a.notifyCopied(services, "repository path", repo.Path)
+	}
+	if m.Item(tr("Rename…")).Chosen() {
+		a.openRecentRename(repo.Path)
+	}
+	if m.Item(tr("Remove from list")).Chosen() {
+		// The menu must not rewrite the list this build is reading;
+		// view() applies it next pass.
+		a.pendingForget = repo.Path
+		a.pendingForgetEditorOnly = repo.EditorOnly
 	}
 }
 
-// emptyRecentView is the picker before it has anything to remember: one
-// dashed invitation instead of an empty stretch of page.
+// emptyRecentView is the picker before it has anything to remember: a quiet
+// invitation without introducing another decorative card.
 func (a *app) emptyRecentView(c *ui.Context) {
 	theme := c.Theme()
+	title := "Open a Git repository to begin"
+	description := "Changes, history, branches, remotes, stash, tags, worktrees, and submodules in one window."
+	if a.pickerOpenMode == int(openAllowPlainEditor) {
+		title = "Open a folder to begin"
+		description = "Browse, search, and edit files or use a terminal without initializing Git."
+	}
 	ui.Column(c).MaxWidth(720).FillWidth().AlignSelf(ui.Center).
-		AlignItems(ui.Center).Gap(12).Padding(30).
-		Background(theme.Surface.Alpha(0.55)).Border(1, theme.Border).
-		BorderStyle(ui.BorderDashed).Radius(theme.Radius + 8).Children(func() {
+		AlignItems(ui.Center).Gap(10).Padding(22).Children(func() {
 		ui.Box(c).Size(54, 54).Radius(16).Center().
 			Background(theme.Accent.Alpha(0.14)).Children(func() {
 			ui.Icon(c, folderOpenIcon).FontSize(26).TextColor(theme.Accent)
 		})
-		ui.Text(c, tr("Open a Git repository to begin")).FontSize(18).Bold()
-		ui.Text(c, tr("Changes, history, branches, remotes, stash, tags, worktrees, and submodules in one window.")).
-			TextColor(theme.TextMuted).TextAlign(ui.Center).MaxWidth(520)
+		ui.Text(c, tr(title)).FontSize(18).Bold()
+		ui.Text(c, tr(description)).TextColor(theme.TextMuted).TextAlign(ui.Center).MaxWidth(520)
 		// No second Browse button: the bar above already holds the one way
 		// in, and two of them on one page read as two different actions.
 	})
@@ -736,7 +764,9 @@ func (a *app) mainArea(c *ui.Context) {
 		// Hiding must not shrink the live shell along with the animation. Once
 		// its view is gone MyGo retains the last grid until it is shown again.
 		a.workspaceView(c)
-	case a.term.panelMaximized && box.Settled("terminal-size"):
+	case a.term.panelMaximized:
+		// Maximization is a layout switch, not a resize animation. Waiting for
+		// the spring leaves the workspace visible while its terminal is gone.
 		a.terminalPaneView(c)
 	case box.Settled("terminal-size"):
 		if terminalFirst {
@@ -832,60 +862,62 @@ func (a *app) headerView(c *ui.Context) {
 			base = a.snapshot.Root
 		}
 		ui.Text(c, base).FontSize(16).Bold().Tooltip(a.snapshot.Root)
-		if a.openedLinkedWorktree() {
-			ui.Badge(c, tr("Linked worktree")).Tooltip(a.snapshot.Root)
-			if ownerPath := a.openedMainWorktreePath(); ownerPath != "" {
-				owner := tr("Main worktree") + " · " + repoName(ownerPath)
-				ui.Badge(c, owner).SingleLine().MaxWidth(240).MinWidth(0).
-					Label(tr("Main worktree") + ": " + ownerPath).Tooltip(owner + "\n" + ownerPath)
-			}
-		}
-
-		branch := a.snapshot.Branch
-		branchTooltip := ""
-		// Git calls a detached HEAD "(no branch)". Name the checkout's actual
-		// kind instead, and keep its commit visible rather than losing detachment.
-		if a.snapshot.Head != "" && (branch == "" || branch == "(no branch)") {
-			shortHead := a.snapshot.Head
-			if len(shortHead) > 7 {
-				shortHead = shortHead[:7]
-			}
-			branch = trf("detached %s", shortHead)
-			branchTooltip = trf("detached %s", a.snapshot.Head)
+		if !a.editorOnlyWorkspace() {
 			if a.openedLinkedWorktree() {
-				branch = tr("Worktree") + " · " + branch
+				ui.Badge(c, tr("Linked worktree")).Tooltip(a.snapshot.Root)
+				if ownerPath := a.openedMainWorktreePath(); ownerPath != "" {
+					owner := tr("Main worktree") + " · " + repoName(ownerPath)
+					ui.Badge(c, owner).SingleLine().MaxWidth(240).MinWidth(0).
+						Label(tr("Main worktree") + ": " + ownerPath).Tooltip(owner + "\n" + ownerPath)
+				}
 			}
-		} else if branch == "" && a.openedLinkedWorktree() {
-			branch = tr("Worktree")
-		}
-		ui.Text(c, tr("●")).TextColor(theme.Success)
-		ui.Text(c, branch).Bold().Tooltip(branchTooltip)
-		if a.snapshot.ChangeCount() == 0 {
-			ui.Badge(c, tr("Clean"))
-		} else {
-			ui.Badge(c, trf("%d changed", a.snapshot.ChangeCount()))
-		}
-		if a.snapshot.Operation != "" {
-			ui.Badge(c, strings.ToUpper(a.snapshot.Operation))
-		}
-		for _, b := range a.snapshot.Branches {
-			if !b.Head {
-				continue
+
+			branch := a.snapshot.Branch
+			branchTooltip := ""
+			// Git calls a detached HEAD "(no branch)". Name the checkout's actual
+			// kind instead, and keep its commit visible rather than losing detachment.
+			if a.snapshot.Head != "" && (branch == "" || branch == "(no branch)") {
+				shortHead := a.snapshot.Head
+				if len(shortHead) > 7 {
+					shortHead = shortHead[:7]
+				}
+				branch = trf("detached %s", shortHead)
+				branchTooltip = trf("detached %s", a.snapshot.Head)
+				if a.openedLinkedWorktree() {
+					branch = tr("Worktree") + " · " + branch
+				}
+			} else if branch == "" && a.openedLinkedWorktree() {
+				branch = tr("Worktree")
 			}
-			ahead, behind, known := aheadBehind(b)
-			if !known {
-				continue
+			ui.Text(c, tr("●")).TextColor(theme.Success)
+			ui.Text(c, branch).Bold().Tooltip(branchTooltip)
+			if a.snapshot.ChangeCount() == 0 {
+				ui.Badge(c, tr("Clean"))
+			} else {
+				ui.Badge(c, trf("%d changed", a.snapshot.ChangeCount()))
 			}
-			if n, show := count(ahead); show {
-				aheadCountView(c, n, b, theme.Success, theme.FontSize-1)
+			if a.snapshot.Operation != "" {
+				ui.Badge(c, strings.ToUpper(a.snapshot.Operation))
 			}
-			if n, show := count(behind); show {
-				behindCountView(c, n, b, theme.Warning, theme.FontSize-1)
+			for _, b := range a.snapshot.Branches {
+				if !b.Head {
+					continue
+				}
+				ahead, behind, known := aheadBehind(b)
+				if !known {
+					continue
+				}
+				if n, show := count(ahead); show {
+					aheadCountView(c, n, b, theme.Success, theme.FontSize-1)
+				}
+				if n, show := count(behind); show {
+					behindCountView(c, n, b, theme.Warning, theme.FontSize-1)
+				}
 			}
 		}
 
 		ui.Row(c).Grow(1).Justify(ui.End).Gap(6).Children(func() {
-			if a.snapshot.Operation != "" {
+			if !a.editorOnlyWorkspace() && a.snapshot.Operation != "" {
 				conflicts := conflictedFileCount(a.snapshot.Files)
 				continueTooltip := tr("Continue the interrupted operation")
 				if conflicts > 0 {
@@ -906,28 +938,61 @@ func (a *app) headerView(c *ui.Context) {
 						a.confirmAbortOperation()
 					})
 			}
-			// Labeled actions lead the toolbar; icon-only actions follow them.
-			iconButton(c, "Fetch", "Fetch from the remotes", fetchIcon,
-				a.actionBusy || len(a.snapshot.Remotes) == 0, func() {
-					a.beginRepositoryActionMessage(tr(a.fetchSuccessMessage()), "",
-						func(ctx context.Context, session repository.Session) error {
-							return a.fetchWithSetting(ctx, session)
-						}, nil)
-				})
-			iconButton(c, "Pull", "Pull from the upstream branch", pullIcon,
-				a.actionBusy, func() {
-					a.confirmPull()
-				})
-			primaryIconButton(c, "Push", "Push to the remote", pushIcon,
-				a.actionBusy, func() {
-					a.confirmPush()
-				})
-			iconButton(c, "Refresh", "Refresh (F5)", refreshIcon, a.actionBusy, a.beginRefresh)
-			a.editorButton(c)
-			a.themeButton(c)
-			iconButton(c, "Settings", "Settings (Ctrl+,)", settingsIcon, false, a.openSettings)
+			// Labeled actions lead the toolbar; optional icon-only actions follow.
+			editorOnly := a.editorOnlyWorkspace()
+			repositoryActions := !editorOnly && a.anyHeaderActionVisible("fetch", "pull", "push")
+			editorVisible := a.headerActionVisible("editor") && a.snapshot.Root != "" &&
+				(!a.location.IsRemote() || effectiveEditorCommand(a.settings.EditorCommand) == builtInEditorCommand)
+			refreshVisible := !editorOnly && a.headerActionVisible("refresh")
+			workspaceActions := refreshVisible || editorVisible
+			applicationActions := a.anyHeaderActionVisible("theme", "settings")
+			if !editorOnly && a.headerActionVisible("fetch") {
+				iconButton(c, "Fetch", "Fetch from the remotes", fetchIcon,
+					a.actionBusy || len(a.snapshot.Remotes) == 0, func() {
+						a.beginRepositoryActionMessage(tr(a.fetchSuccessMessage()), "",
+							func(ctx context.Context, session repository.Session) error {
+								return a.fetchWithSetting(ctx, session)
+							}, nil)
+					})
+			}
+			if !editorOnly && a.headerActionVisible("pull") {
+				iconButton(c, "Pull", "Pull from the upstream branch", pullIcon,
+					a.actionBusy, func() {
+						a.confirmPull()
+					})
+			}
+			if !editorOnly && a.headerActionVisible("push") {
+				iconButton(c, "Push", "Push to the remote", pushIcon,
+					a.actionBusy, func() {
+						a.confirmPush()
+					})
+			}
+			if repositoryActions && (workspaceActions || applicationActions) {
+				toolbarSeparator(c)
+			}
+			if refreshVisible {
+				iconButton(c, "Refresh", "Refresh (F5)", refreshIcon, a.actionBusy, a.beginRefresh)
+			}
+			if editorVisible {
+				a.editorButton(c)
+			}
+			if workspaceActions && applicationActions {
+				toolbarSeparator(c)
+			}
+			if a.headerActionVisible("theme") {
+				a.themeButton(c)
+			}
+			if a.headerActionVisible("settings") {
+				iconButton(c, "Settings", "Settings (Ctrl+,)", settingsIcon, false, a.openSettings)
+			}
 		})
 	})
+}
+
+// editorOnlyWorkspace identifies a plain local folder. It deliberately does
+// not alter the saved Git section visibility or order preferences.
+func (a *app) editorOnlyWorkspace() bool {
+	return a.state == stateReady && a.session == nil
 }
 
 // sectionVisible reports whether the sidebar shows a section. A stored id
@@ -936,6 +1001,9 @@ func (a *app) headerView(c *ui.Context) {
 func (a *app) sectionVisible(section int) bool {
 	if section < 0 || section >= len(workspaceSectionIDs) {
 		return false
+	}
+	if a.editorOnlyWorkspace() {
+		return section == sectionCode
 	}
 	return slices.Contains(a.settings.VisibleSections, workspaceSectionIDs[section])
 }
@@ -1169,11 +1237,11 @@ func (a *app) workspaceContentView(c *ui.Context) {
 
 // pathCopiedFor is how long the status bar shows "Copied" in place of the
 // repository path after a double click copies it.
-const pathCopiedFor = 2 * time.Second
+const pathCopiedFor = 500 * time.Millisecond
 
 // repositoryPathView shows the path of the open repository at the bar's left,
 // with a copy icon after it. A click on either the icon or the path copies
-// the path and puts "Copied" in its place for two seconds, then the path
+// the path and puts "Copied" in its place for half a second, then the path
 // again, so it can go to a terminal or another app without a menu.
 func (a *app) repositoryPathView(c *ui.Context) {
 	theme := c.Theme()
@@ -1194,7 +1262,7 @@ func (a *app) repositoryPathView(c *ui.Context) {
 		c.WriteClipboard(path)
 		a.pathCopiedAt = c.Now()
 		// This frame was drawn with the path; the next one shows the copy,
-		// and the one after two seconds puts the path back.
+		// and the one after half a second puts the path back.
 		c.Invalidate()
 		c.After(pathCopiedFor)
 	}
@@ -1238,23 +1306,33 @@ func (a *app) statusBar(c *ui.Context) {
 				ui.Spinner(c).Label(tr("Working"))
 				ui.Text(c, tr("Working…")).TextColor(theme.TextMuted)
 			}
-			a.commandsMenuButton(c)
-			a.pullRequestMenuButton(c)
-			a.terminalButton(c)
-			iconButton(c, "Keyboard shortcuts", "Keyboard shortcuts (F1)", keyboardIcon,
-				false, a.openKeybindings)
-			button := ui.ButtonBase(c).AlignItems(ui.Center).Gap(5).Padding(2, 7).
-				Radius(theme.Radius).Label(tr("Command log")).
-				Tooltip(tr("Every Git command and its output (Ctrl+L)"))
-			button.Children(func() {
-				ui.Icon(c, logIcon).FontSize(12).TextColor(theme.TextMuted)
-				ui.Text(c, tr("Command log")).FontSize(theme.FontSize - 1)
-			})
-			if button.Hovered() {
-				button.Background(theme.SurfaceHover)
+			if !a.editorOnlyWorkspace() && a.statusActionVisible("commands") {
+				a.commandsMenuButton(c)
 			}
-			if button.Clicked() {
-				a.openCommandLog()
+			if !a.editorOnlyWorkspace() && a.statusActionVisible("pull-requests") {
+				a.pullRequestMenuButton(c)
+			}
+			if a.statusActionVisible("terminal") {
+				a.terminalButton(c)
+			}
+			if a.statusActionVisible("keyboard-shortcuts") {
+				iconButton(c, "Keyboard shortcuts", "Keyboard shortcuts (F1)", keyboardIcon,
+					false, a.openKeybindings)
+			}
+			if !a.editorOnlyWorkspace() && a.statusActionVisible("command-log") {
+				button := ui.ButtonBase(c).AlignItems(ui.Center).Gap(5).Padding(2, 7).
+					Radius(theme.Radius).Label(tr("Command log")).
+					Tooltip(tr("Every Git command and its output (Ctrl+L)"))
+				button.Children(func() {
+					ui.Icon(c, logIcon).FontSize(12).TextColor(theme.TextMuted)
+					ui.Text(c, tr("Command log")).FontSize(theme.FontSize - 1)
+				})
+				if button.Hovered() {
+					button.Background(theme.SurfaceHover)
+				}
+				if button.Clicked() {
+					a.openCommandLog()
+				}
 			}
 		})
 	})

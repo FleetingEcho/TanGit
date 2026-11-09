@@ -161,7 +161,9 @@ func (a *app) registerShortcuts(c *ui.Context) {
 	if !c.FocusTakesText() {
 		c.OnShortcut(ui.Shift, ui.KeySlash, a.openCurrentKeybindings)
 	}
-	c.OnShortcut(ui.Ctrl, ui.KeyL, a.openCommandLog)
+	if !a.editorOnlyWorkspace() {
+		c.OnShortcut(ui.Ctrl, ui.KeyL, a.openCommandLog)
+	}
 	c.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
 	c.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })
 	c.OnShortcut(0, ui.KeyEscape, func() { a.keyboardBack(c) })
@@ -203,13 +205,17 @@ func (a *app) registerShortcuts(c *ui.Context) {
 			c.OnShortcut(ui.Alt, ui.Key4, func() { a.resolveConflictSide(conflictBoth) })
 			c.OnShortcut(ui.Alt, ui.KeyZ, a.undoConflictResolution)
 		}
-		c.OnShortcut(0, ui.KeyF5, a.beginRefresh)
+		if !a.editorOnlyWorkspace() {
+			c.OnShortcut(0, ui.KeyF5, a.beginRefresh)
+		}
 		return
 	}
 
 	// Custom bindings take precedence not just over Git commands but also F5,
 	// Ctrl+L, section digits and navigation globals registered below.
-	c.OnShortcut(0, ui.KeyF5, a.beginRefresh)
+	if !a.editorOnlyWorkspace() {
+		c.OnShortcut(0, ui.KeyF5, a.beginRefresh)
+	}
 	if a.workspaceTab == sectionCode {
 		c.OnShortcut(ui.Cmd, ui.KeyP, a.focusCodeQuickOpen)
 		c.OnShortcut(ui.Cmd|ui.Shift, ui.KeyF, a.focusCodeSearch)
@@ -221,18 +227,22 @@ func (a *app) registerShortcuts(c *ui.Context) {
 	if c.FocusTakesText() {
 		return
 	}
-	c.OnShortcut(ui.Shift, ui.KeyW, a.openCompare)
-	c.OnShortcut(0, ui.KeyW, a.openCompare)
-	c.OnShortcut(ui.Alt, ui.KeyW, a.toggleDiffWhitespace)
-	c.OnShortcut(ui.Alt, ui.KeyU, a.cycleDiffContext)
+	if !a.editorOnlyWorkspace() {
+		c.OnShortcut(ui.Shift, ui.KeyW, a.openCompare)
+		c.OnShortcut(0, ui.KeyW, a.openCompare)
+		c.OnShortcut(ui.Alt, ui.KeyW, a.toggleDiffWhitespace)
+		c.OnShortcut(ui.Alt, ui.KeyU, a.cycleDiffContext)
+	}
 	if a.workspaceTab == sectionChanges {
 		c.OnShortcut(ui.Alt, ui.KeyJ, func() { a.changedFileNavigation(1) })
 		c.OnShortcut(ui.Alt, ui.KeyK, func() { a.changedFileNavigation(-1) })
 	}
 	c.OnShortcut(0, ui.KeySlash, a.focusActiveSearch)
-	c.OnShortcut(ui.Shift, ui.KeySemicolon, a.openCommandPrompt)
-	c.OnShortcut(ui.Ctrl, ui.KeyZ, a.confirmUndo)
-	c.OnShortcut(ui.Ctrl|ui.Shift, ui.KeyZ, a.confirmRedo)
+	if !a.editorOnlyWorkspace() {
+		c.OnShortcut(ui.Shift, ui.KeySemicolon, a.openCommandPrompt)
+		c.OnShortcut(ui.Ctrl, ui.KeyZ, a.confirmUndo)
+		c.OnShortcut(ui.Ctrl|ui.Shift, ui.KeyZ, a.confirmRedo)
+	}
 	// The digits number the sections that show, so 1 is always the first
 	// sidebar row even after some are hidden.
 	visible := a.visibleSections()

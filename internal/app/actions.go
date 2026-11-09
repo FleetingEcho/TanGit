@@ -16,7 +16,21 @@ import (
 	"time"
 )
 
+// openPolicy decides whether a folder without Git may become an Editor-only
+// workspace. Ordinary repository and worktree opens keep the initialization
+// offer; Home's Editor mode and terminal launches opt in explicitly.
+type openPolicy uint8
+
+const (
+	openGitOnly openPolicy = iota
+	openAllowPlainEditor
+)
+
 func (a *app) beginOpen() {
+	a.beginOpenWithPolicy(openGitOnly)
+}
+
+func (a *app) beginOpenWithPolicy(policy openPolicy) {
 	path := strings.TrimSpace(a.path)
 	if path == "" {
 		a.state = stateError
@@ -64,7 +78,7 @@ func (a *app) beginOpen() {
 
 	go func() {
 		defer a.recoverBackground()
-		a.openRepository(ctx, path, generation)
+		a.openRepository(ctx, path, generation, policy)
 	}()
 }
 
@@ -72,10 +86,19 @@ func (a *app) beginOpen() {
 // its core read completes, then fills history and ancillary data in a second
 // read. Sessions that do not offer the progressive path keep their original
 // one-snapshot behavior, including the fakes used by actions and UI tests.
-func (a *app) openRepository(ctx context.Context, path string, generation uint64) {
+func (a *app) openRepository(ctx context.Context, path string, generation uint64, policy openPolicy) {
 	session, err := a.opener.Open(ctx, path)
 	if err != nil {
-		a.update(func() { a.setOpenError(path, generation, err) })
+		a.update(func() {
+			if policy == openAllowPlainEditor && errors.Is(err, repository.ErrNotRepository) && generation == a.generation {
+				if location, parseErr := workspace.Parse(path); parseErr == nil && !location.IsRemote() {
+					a.cancelOpen = nil
+					a.installOpenedRepository(nil, repository.Snapshot{Root: cleanRepoPath(path)})
+					return
+				}
+			}
+			a.setOpenError(path, generation, err)
+		})
 		return
 	}
 	progressive, ok := session.(repository.ProgressiveSession)
@@ -215,7 +238,11 @@ func (a *app) setOpenError(path string, generation uint64, err error) {
 func (a *app) installOpenedRepository(session repository.Session, snapshot repository.Snapshot) {
 	a.state = stateReady
 	a.session = session
-	a.attachRepositoryCommandLog(session.CommandLog())
+	var commandLog *repository.CommandLog
+	if session != nil {
+		commandLog = session.CommandLog()
+	}
+	a.attachRepositoryCommandLog(commandLog)
 	a.commandLogVisible.Store(false)
 	a.commandLogOpen = false
 	a.lastAutoFetch = time.Time{}
@@ -230,9 +257,21 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 	a.repositoryDetailsLoading = false
 	a.location = openedLocation(session, snapshot, a.path)
 	a.path = a.location.String()
-	a.rememberOpened(a.path)
+	if a.editorOnlyWorkspace() {
+		a.rememberOpenedFolder(a.path)
+	} else {
+		a.rememberOpened(a.path)
+	}
 	a.resetRepositoryState(snapshot)
-	a.startRepositoryWatch(session)
+	if a.editorOnlyWorkspace() {
+		// Plain folders borrow the local Editor without creating or guessing a
+		// Git session. Their one visible section is independent of preferences.
+		a.workspaceTab = sectionCode
+		a.syncNavSelection()
+		a.stopRepositoryWatch()
+	} else {
+		a.startRepositoryWatch(session)
+	}
 	a.refreshWindowTitle()
 }
 
@@ -917,6 +956,7 @@ var chooseRepositoryFolder = func(options mygo.OpenDialogOptions) ([]string, err
 
 func (a *app) browse() {
 	generation := a.generation
+	policy := openPolicy(a.pickerOpenMode)
 	defaultPath := a.path
 	if a.location.IsRemote() {
 		defaultPath = ""
@@ -946,7 +986,7 @@ func (a *app) browse() {
 				return false
 			}
 			a.path = paths[0]
-			a.beginOpen()
+			a.beginOpenWithPolicy(policy)
 			return true
 		})
 	}()

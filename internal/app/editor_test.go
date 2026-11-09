@@ -301,13 +301,13 @@ func TestRecentCardEditorSitsAtTheTopRight(t *testing.T) {
 	if !ok {
 		t.Fatal("the recent card has no repository name")
 	}
-	rename, ok := tt.Find("Rename /work/project")
+	more, ok := tt.Find("More actions /work/project")
 	if !ok {
-		t.Fatal("the recent card has no rename action")
+		t.Fatal("the recent card has no More actions menu")
 	}
-	if editor.X <= name.X+name.W || editor.Y > name.Y+name.H || editor.Y >= rename.Y {
-		t.Fatalf("editor bounds %+v are not at the top-right of name %+v and footer action %+v",
-			editor, name, rename)
+	if editor.X <= name.X+name.W || editor.Y > name.Y+name.H || editor.Y != more.Y || more.X <= editor.X+editor.W {
+		t.Fatalf("editor bounds %+v are not in the top-right action group of name %+v and More menu %+v",
+			editor, name, more)
 	}
 	if editor.W < 28 || editor.H < 28 {
 		t.Fatalf("the editor target is only %.0f×%.0f DIP", editor.W, editor.H)
