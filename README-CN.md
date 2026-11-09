@@ -19,7 +19,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/workspace.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/workspace_light.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/workspace_dark.png">
     <img src="docs/screenshots/workspace.png" alt="TanGit 工作区：仓库导航、文件更改与差异预览">
   </picture>
 </p>
@@ -30,7 +30,7 @@
 <table>
   <tr>
     <td width="50%"><a href="docs/screenshots/workspace.png"><img src="docs/screenshots/workspace.png" alt="工作区 · 深色"></a><br><sub>工作区 · 深色</sub></td>
-    <td width="50%"><a href="docs/screenshots/workspace_light.png"><img src="docs/screenshots/workspace_light.png" alt="工作区 · 浅色"></a><br><sub>工作区 · 浅色</sub></td>
+    <td width="50%"><a href="docs/screenshots/workspace_dark.png"><img src="docs/screenshots/workspace_dark.png" alt="工作区 · 浅色"></a><br><sub>工作区 · 浅色</sub></td>
   </tr>
   <tr>
     <td width="50%"><a href="docs/screenshots/graph_dark.png"><img src="docs/screenshots/graph_dark.png" alt="提交图 · 深色"></a><br><sub>提交图 · 深色</sub></td>
@@ -101,8 +101,8 @@ tangit .
 tangit "./包含空格的仓库"
 ```
 
-macOS 的命令启动器和 Windows 的 PATH 需要配置一次。
-详细指南也包含现有安装版本和自定义安装位置的配置方法。
+命令会立即返回，并复用正在运行的 TanGit 窗口：如果仓库已经打开，就切换到对应标签页；否则新建标签页。
+macOS 的命令启动器和 Windows 的 PATH 需要配置一次。详细指南也包含现有安装版本和自定义安装位置的配置方法。
 
 **使用外部编辑器：**在 **设置 → 编辑器** 中选择预设或填写命令。
 点击编辑器按钮即可直接打开。Neovim 会在终端中运行；在 macOS 上退出 Neovim 后，
