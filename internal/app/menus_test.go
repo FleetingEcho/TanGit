@@ -57,6 +57,8 @@ func menuTestAppWithCalls(t *testing.T) (*harness, *callRecorder) {
 			{Name: "v1.0.0", Message: "Previous release"},
 		},
 	}}})
+	// Most navigation fixtures exercise Changes; app startup itself defaults to Code.
+	a.workspaceTab = sectionChanges
 	h := &harness{app: a, updates: newUpdates()}
 	h.tester = ui.NewTester(a.view, 1280, 800)
 	a.update = h.updates.update
@@ -233,11 +235,15 @@ func TestBranchRowContextMenu(t *testing.T) {
 
 func TestSectionShortcuts(t *testing.T) {
 	h := menuTestApp(t)
-	if len(sectionKeys) != len(workspaceSections) {
-		t.Fatalf("%d shortcuts for %d sections", len(sectionKeys), len(workspaceSections))
+	if len(sectionKeys) != 10 {
+		t.Fatalf("got %d digit shortcuts, want ten", len(sectionKeys))
 	}
-	// This test walks every section, including the specialist tabs the
-	// default set hides; the visible-only numbering has its own test.
+	if len(workspaceSections) <= len(sectionKeys) {
+		t.Fatal("this test must cover sections beyond the available digits")
+	}
+	// This test walks every section with a digit, including specialist tabs
+	// the default set hides. Additional sections remain available in the
+	// sidebar rather than reassigning any existing shortcut.
 	h.app.settings.VisibleSections = append([]string(nil), workspaceSectionIDs...)
 	h.app.applySettingsChange()
 	h.tester.Frame()
@@ -359,7 +365,7 @@ func TestShortcutsAreSilentWhileAFormIsOpen(t *testing.T) {
 
 	// A section switch would close the form under the user.
 	h.press(t, ui.Key2)
-	if h.app.workspaceTab != 0 || !h.app.showCommitForm {
+	if h.app.workspaceTab != sectionChanges || !h.app.showCommitForm {
 		t.Fatalf("section switch leaked into the form: tab %d, form %v", h.app.workspaceTab, h.app.showCommitForm)
 	}
 

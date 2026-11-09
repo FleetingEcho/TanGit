@@ -75,14 +75,20 @@ their package installer.
 | Task | Steps |
 | --- | --- |
 | Stage selected lines | Click diff line numbers, then **Stage**. Shift-click selects a range; Escape clears the selection. |
-| Edit a file or repository | Set **Settings → Editor**, then click its editor button. Neovim opens in a terminal. |
+| Edit files in TanGit | Open **Editor**, select or quick-open a file, and edit its persistent tab. Changes save automatically. |
+| Manage editor tabs | Right-click a file tab to close it, other tabs, tabs to the right, or all tabs, or to copy its absolute or repository-relative path. |
+| Manage files and folders | Use **Editor → New File / New Folder**, or right-click an explorer row to create, rename, delete, view Git file history, or copy paths. Creation starts in the selected folder; deleting asks for confirmation. |
+| Move files and folders | Drag an explorer file or folder onto another folder. Open editor tabs and unsaved buffers follow renamed or moved files. |
+| Use terminal tabs and maximize the dock | Open the status-bar terminal icon, then use **+** for an independent tab or the split buttons for panes within a tab. Tabs show their shell and working directory instead of generic numbers. Use the pencil or right-click menu to rename; the menu also closes the selected tab. Maximize fills the content area and hides redundant per-shell title bars; restore returns to the previous dock height. |
+| Use an external editor | Set **Settings → Editor**, then click its editor button. Neovim opens in a terminal. |
 | Edit several commits | Select rows with checkboxes or `Ctrl+Space`, then use **Batch actions** or the right-click menu. Rewrites require consecutive commits on the current branch. |
 | Resolve conflicts | Choose or edit hunks, stage each resolved file, then continue the interrupted operation. |
 | Recover work | Use Reflog to inspect earlier states and create a branch, check out, or reset after confirmation. |
 | Adjust the workspace | Drag dividers; use expand/shrink icons for full-window views. The folder button toggles directory grouping. |
 
-Enable additional sections in **Settings → Workspace sections**. Use
+All workspace sections are visible by default; choose which ones to show in **Settings → Workspace sections**. Use
 **Settings → Updates** to check the installed version and available updates.
+The Editor virtualizes large file trees, rebuilds them only when their contents or folding changes, and renders only the active editor tab.
 
 ## Keyboard
 
@@ -97,6 +103,7 @@ Commands follow the focused panel. Uppercase letters mean **Shift + letter**.
 | Global Git actions | `p` pull, `P` push, `z` / `Z` undo / redo, `F5` refresh |
 | Changes | `Space` stage/unstage, `a` stage all, `c` compose, `A` amend, `s` stash, `d` discard, `b` blame |
 | Commit form | `Enter` submits the summary; `Ctrl+Enter` commits; `Escape` closes |
+| Editor | `Ctrl+P` quick open; `Ctrl+Shift+F` searches workspace content; `Ctrl+W` closes the editor tab |
 | History / Graph | `r` reword, `s` squash, `f` fixup, `d` drop, `t` revert; `Ctrl+J` / `Ctrl+K` reorder |
 | Cherry-pick | `C` copies selected commits; `V` confirms applying them |
 | Branches | `Space` checkout, `n` create, `M` merge, `r` rebase, `u` unset upstream, `d` delete |
@@ -104,7 +111,8 @@ Commands follow the focused panel. Uppercase letters mean **Shift + letter**.
 | Diff review | `[` / `]` changes hunk; `v` starts line selection; `Shift+Up/Down` extends it; `Space` stages/unstages |
 | Diff display | `W` compares refs; `Alt+W` toggles whitespace; `Alt+U` cycles context |
 | Conflicts | `F7` / `Shift+F7` moves; `Alt+1`–`Alt+4` selects current/ancestor/incoming/both; `Alt+Z` undoes a choice |
-| Tools | ``Ctrl+` `` terminal, `Ctrl+L` command log, `Ctrl+,` Settings |
+| Terminal | ``Ctrl+` `` or `Ctrl+~` shows or hides the bottom panel from any workspace or form without changing sections; its tabs, splits, search and scrollback stay alive while hidden |
+| Tools | `Ctrl+L` command log, `Ctrl+,` Settings |
 
 ## Development
 

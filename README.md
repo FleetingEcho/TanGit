@@ -51,7 +51,7 @@ keyboard navigation and visual tools for the work that needs a closer look.
 - **Turn mixed edits into clean commits.** Stage, unstage, or stash selected lines across separate hunks, keeping the rest of your changes untouched.
 - **Shape history visually.** Follow the commit graph and file history, then batch cherry-pick, squash, fix up, drop, or reorder commits.
 - **Resolve conflicts in place.** Compare base, current, and incoming versions; choose individual hunks, edit the result, and undo a choice before staging.
-- **Keep your development tools together.** Switch repository tabs, run a shell in the built-in terminal, and open your configured editor with one click.
+- **Keep your development tools together.** Switch repository tabs, edit files in the Editor workspace, run a shell in the built-in terminal, and open your configured editor with one click.
 - **Make the workspace yours.** Resize and expand panels, browse directory trees, and choose from 20 palettes, custom fonts, and six interface languages.
 
 Confirmations explain consequential actions. Force push with lease, eligible
@@ -65,6 +65,7 @@ undo/redo operations, and reflog recovery help you manage changes deliberately.
 | **History & graph** | Filter commits, inspect file history, cherry-pick batches, reword, squash, and reorder commits. |
 | **Branches & recovery** | Manage remotes, tags, stashes, worktrees, and submodules; inspect the reflog and undo eligible operations. |
 | **Conflict resolution** | Review base, current, and incoming versions; choose hunks, edit the result, and stage the resolution. |
+| **Editor workspace** | Browse the repository tree, keep multiple editor tabs, quick-open files, and search tracked and non-ignored content. |
 | **Your workspace** | Repository tabs, directory trees, resizable panels, expanded branch/diff views, a terminal, and external editors. |
 | **Your preferences** | Themes, fonts, six interface languages, configurable visible sections, and signed in-app updates. |
 
@@ -106,6 +107,7 @@ quitting Neovim returns to the shell in the project or file's directory.
 | `r` | Reword a commit in History or Graph |
 | `z` / `Z` | Undo / redo eligible operations |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Switch repository tabs |
+| `Ctrl+P` / `Ctrl+Shift+F` | Quick open / workspace content search in Editor |
 | ``Ctrl+` `` / `Ctrl+,` | Terminal / Settings |
 
 Uppercase letters mean **Shift + letter**. Git shortcuts follow the focused

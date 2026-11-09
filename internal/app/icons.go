@@ -40,9 +40,6 @@ var (
 	folderIcon     = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.75 4.25c0-.55.45-1 1-1h3l1.5 1.6h6c.55 0 1 .45 1 1v6.9c0 .55-.45 1-1 1h-10.5c-.55 0-1-.45-1-1z"/></svg>`))
 	folderOpenIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.75 12.5V4.25c0-.55.45-1 1-1h3l1.5 1.6h5c.55 0 1 .45 1 1v1.4"/><path d="m1.75 12.5 1.6-5.1c.12-.4.49-.65.9-.65h9.4c.62 0 1.05.6.88 1.2l-1.3 4.6c-.13.44-.53.73-.98.73H2.55c-.44 0-.8-.36-.8-.78z"/></svg>`))
 	openRepoIcon   = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2.5h6.5L13 6v7.5H3z"/><path d="M9.5 2.5V6H13"/><path d="M6 8.5h4"/><path d="m8.5 6.5 2 2-2 2"/></svg>`))
-	// vscodeIcon is Visual Studio Code's own mark, so the button that opens
-	// the repository there names the editor rather than a generic "open".
-	vscodeIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M23.15 2.587 18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352zm-5.146 14.861L10.826 12l7.178-5.448v10.896z"/></svg>`))
 	// backIcon leads the workspace header: the way out of a repository,
 	// at the edge the eye looks to for going back.
 	backIcon       = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8H3"/><path d="m7.5 3.5-4.5 4.5 4.5 4.5"/></svg>`))
@@ -135,6 +132,8 @@ var (
 	// light and the dark theme.
 	fileIcon        = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 1.8h6L13 5.3v8.9H3.5z"/><path d="M9.5 1.8v3.5H13"/></svg>`))
 	fileCodeIcon    = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3.5-3 4.5 3 4.5"/><path d="m10 3.5 3 4.5-3 4.5"/></svg>`))
+	newFileIcon     = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2h5.5L12 5v6.5H3.5z"/><path d="M9 2v3h3"/><path d="M12.5 10v4M10.5 12h4"/></svg>`))
+	newFolderIcon   = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.75 4.25c0-.55.45-1 1-1h3l1.5 1.6h5.5c.55 0 1 .45 1 1v6.9c0 .55-.45 1-1 1h-10c-.55 0-1-.45-1-1z"/><path d="M7.75 7v4M5.75 9h4"/></svg>`))
 	fileBracesIcon  = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.4 2.4c-1.6 0-2.1 1-2.1 2.2v1c0 .9-.5 1.4-1.3 1.6.8.2 1.3.7 1.3 1.6v1c0 1.2.5 2.2 2.1 2.2"/><path d="M9.6 2.4c1.6 0 2.1 1 2.1 2.2v1c0 .9.5 1.4 1.3 1.6-.8.2-1.3.7-1.3 1.6v1c0 1.2-.5 2.2-2.1 2.2"/></svg>`))
 	fileDocIcon     = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 1.8h6L13 5.3v8.9H3.5z"/><path d="M9.5 1.8v3.5H13"/><path d="M5.6 8.2h5.8"/><path d="M5.6 10.7h4.2"/></svg>`))
 	fileImageIcon   = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.75" y="2.5" width="12.5" height="11" rx="1.5"/><circle cx="5.8" cy="6.3" r="1.1"/><path d="m2.4 11.4 3.4-3.1 2.4 2 2.6-3.3 3 4"/></svg>`))
@@ -148,6 +147,7 @@ var (
 // sectionIcons are the icons of the workspace sidebar, in the order of
 // workspaceSections.
 var sectionIcons = []*ui.SVG{
+	fileCodeIcon,
 	folderIcon,
 	historyIcon,
 	graphIcon,

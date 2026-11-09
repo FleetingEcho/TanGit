@@ -33,6 +33,7 @@ func changesTestAppIn(t *testing.T, files []repository.File, width, height int) 
 			{Hash: "c1c1c1c1", ShortHash: "c1c1c1c", Subject: "Initial commit", AuthorName: "Ada", AuthorEmail: "ada@example.com"},
 		},
 	}}, calls: calls})
+	a.workspaceTab = sectionChanges
 	h := &harness{app: a, updates: newUpdates()}
 	h.tester = ui.NewTester(a.view, width, height)
 	a.update = h.updates.update

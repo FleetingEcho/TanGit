@@ -114,7 +114,7 @@ func (a *app) worktreeRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) 
 }
 
 func (a *app) worktreeFormModal(c *ui.Context) {
-	repositoryFormModal(c, &a.showWorktreeForm, 600, "Create Worktree",
+	a.repositoryFormModal(c, &a.showWorktreeForm, 600, "Create Worktree",
 		"Check out another branch beside this repository.", worktreesIcon, func() {
 			ui.TextInput(c, &a.worktreePath).Label(tr("Worktree path")).
 				Placeholder(tr("/path/to/worktree")).AutoFocus()

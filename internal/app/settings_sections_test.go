@@ -24,18 +24,16 @@ func TestNormalizeVisibleSections(t *testing.T) {
 	}
 }
 
-// A fresh workspace lists the everyday sections and leaves the specialist
-// tabs in the picker.
-func TestDefaultSectionsLeaveSpecialistTabsOut(t *testing.T) {
+// A fresh workspace lists every section, using the editor's new display name
+// while retaining its stable "code" settings id.
+func TestDefaultSectionsShowEveryWorkspaceTab(t *testing.T) {
 	h := menuTestApp(t)
-	for _, shown := range []string{"Changes", "History", "Graph", "Branches", "Stash"} {
+	if !slices.Equal(h.app.settings.VisibleSections, workspaceSectionIDs) {
+		t.Fatalf("default sections = %q, want %q", h.app.settings.VisibleSections, workspaceSectionIDs)
+	}
+	for _, shown := range workspaceSections {
 		if !slices.Contains(h.texts(), shown) {
 			t.Errorf("the default sidebar is missing %q: %q", shown, h.texts())
-		}
-	}
-	for _, gone := range []string{"Remotes", "Tags", "Worktrees", "Submodules", "Reflog"} {
-		if slices.Contains(h.texts(), gone) {
-			t.Errorf("the default sidebar shows %q: %q", gone, h.texts())
 		}
 	}
 }
@@ -163,36 +161,36 @@ func TestSettingsSectionPickerTogglesTabs(t *testing.T) {
 		t.Fatalf("the picker does not offer every section: %q", h.texts())
 	}
 
-	// Tags starts hidden in the default set; show it, then hide it again
-	// without reopening the picker.
+	// Every section starts visible: hide Tags, then show it again without
+	// reopening the picker.
 	if err := h.tester.Click("Show Tags"); err != nil {
-		t.Fatalf("show Tags: %v", err)
+		t.Fatalf("hide Tags: %v", err)
 	}
 	h.tester.Frame()
-	if !h.app.sectionVisible(sectionTags) {
-		t.Fatal("the picker did not show Tags")
+	if h.app.sectionVisible(sectionTags) {
+		t.Fatal("the picker did not hide Tags")
 	}
-	if !slices.Contains(h.app.settings.VisibleSections, "tags") {
-		t.Fatalf("the visible section was not stored: %q", h.app.settings.VisibleSections)
+	if slices.Contains(h.app.settings.VisibleSections, "tags") {
+		t.Fatalf("the hidden section was still stored: %q", h.app.settings.VisibleSections)
 	}
 	if !h.app.sectionsOpen {
 		t.Fatal("the picker closed after one choice")
 	}
-	if !slices.Contains(h.texts(), "6 of 10 sections") {
+	if !slices.Contains(h.texts(), "10 of 11 sections") {
 		t.Fatalf("the picker summary did not count the choice: %q", h.texts())
 	}
 
 	if err := h.tester.Click("Show Tags"); err != nil {
-		t.Fatalf("hide Tags again: %v", err)
+		t.Fatalf("show Tags again: %v", err)
 	}
 	h.tester.Frame()
-	if h.app.sectionVisible(sectionTags) {
-		t.Fatal("the picker did not hide Tags again")
+	if !h.app.sectionVisible(sectionTags) {
+		t.Fatal("the picker did not show Tags again")
 	}
 
 	h.app.closeSettings()
 	h.tester.Frame()
-	if slices.Contains(h.texts(), "Tags") {
-		t.Fatalf("the sidebar still shows the hidden Tags section: %q", h.texts())
+	if !slices.Contains(h.texts(), "Tags") {
+		t.Fatalf("the sidebar does not show the restored Tags section: %q", h.texts())
 	}
 }
