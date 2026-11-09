@@ -247,10 +247,10 @@ func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 	// The toolbar uses the selected directory, not whichever document is open.
 	h.app.selectCodeTreePath("source", true)
 	h.tester.Frame()
-	if err := h.tester.Click("New File…"); err != nil {
+	if err := h.tester.Click("More actions"); err != nil {
 		t.Fatal(err)
 	}
-	h.tester.Frame()
+	h.chooseMenuItem(t, "New File…")
 	if got := h.app.code.fileFormDirectory; h.app.code.fileForm != codeFileFormNewFile || got != "source" {
 		t.Fatalf("toolbar New File targets form=%v directory=%q", h.app.code.fileForm, got)
 	}
@@ -386,15 +386,138 @@ func TestCodeFolderSearchUsesLiteralScopeAndRetainsRename(t *testing.T) {
 	// The visible scope is editable, so a deep folder can be changed without
 	// turning a literal folder name into an include glob.
 	h.tester.Frame()
-	if err := h.tester.Click("Workspace folder"); err != nil {
+	if err := h.tester.Click("Change workspace folder"); err != nil {
 		t.Fatal(err)
 	}
+	h.tester.Frame()
 	h.tester.Key(ui.Cmd, ui.KeyA)
 	h.tester.Type("rolesXabc")
 	h.tester.Key(0, ui.KeyEnter)
 	h.waitFor(t, "search in the edited folder", func() bool {
 		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 1 && h.app.code.searchResults[0].Path == "rolesXabc/outside.txt"
 	})
+}
+
+func TestCodeOpenFolderWorkspaceStaysInFilesAndReturnsToRoot(t *testing.T) {
+	h := menuTestApp(t)
+	useRealCodeWorkspace(t, h, map[string]string{
+		"root.txt":           "root\n",
+		"nested/deep/in.txt": "nested\n",
+	})
+	h.app.setAllFileTreeDirectories(codeFileTreeScope, h.app.code.files, false)
+	h.app.syncCodeTree()
+	h.tester.Frame()
+
+	filesToken := h.app.code.filesToken
+	h.rightClick(t, "Collapse directory nested/deep")
+	h.chooseMenuItem(t, "Open folder as workspace")
+	if h.app.code.sidebar != codeSidebarFiles || h.app.code.searchFolder != "nested/deep" {
+		t.Fatalf("opened workspace sidebar=%v folder=%q", h.app.code.sidebar, h.app.code.searchFolder)
+	}
+	if h.app.code.filesToken <= filesToken {
+		t.Fatal("opening a folder workspace did not refresh the file list")
+	}
+	if got, want := h.app.code.visiblePaths, []string{"nested/deep/in.txt"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("nested workspace files = %q, want %q", got, want)
+	}
+	if _, found := h.tester.Find("Open entire repository"); !found {
+		t.Fatal("a nested workspace has no return-to-root icon button")
+	}
+	h.waitFor(t, "the refreshed nested-workspace files", func() bool {
+		return h.app.code.filesLoaded && !h.app.code.filesLoading
+	})
+
+	filesToken = h.app.code.filesToken
+	if err := h.tester.Click("Open entire repository"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.code.sidebar != codeSidebarFiles || h.app.code.searchFolder != "" {
+		t.Fatalf("root workspace sidebar=%v folder=%q", h.app.code.sidebar, h.app.code.searchFolder)
+	}
+	if h.app.code.filesToken <= filesToken {
+		t.Fatal("returning to the repository root did not refresh the file list")
+	}
+	if _, found := h.tester.Find("Open entire repository"); found {
+		t.Fatal("the return-to-root button is redundant at the repository root")
+	}
+	h.waitFor(t, "the refreshed repository-root files", func() bool {
+		return h.app.code.filesLoaded && !h.app.code.filesLoading
+	})
+	if got, want := h.app.code.visiblePaths, []string{"nested/deep/in.txt", "root.txt"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("repository-root files = %q, want %q", got, want)
+	}
+}
+
+func TestCodeExplorerContextSearchUsesLiteralFolderAndFileScopes(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		target    string
+		result    string
+		menuLabel string
+		rowLabel  string
+		directory bool
+		files     map[string]string
+	}{
+		{
+			name:      "folder",
+			target:    "roles[old]*?",
+			result:    "roles[old]*?/inside.txt",
+			menuLabel: "Search in folder",
+			rowLabel:  "Collapse directory roles[old]*?",
+			directory: true,
+			files: map[string]string{
+				"roles[old]*?/inside.txt": "needle\n",
+				"rolesXabc/outside.txt":   "needle\n",
+			},
+		},
+		{
+			name:      "file",
+			target:    "notes[old]*?.txt",
+			result:    "notes[old]*?.txt",
+			menuLabel: "Search in file",
+			rowLabel:  "Open notes[old]*?.txt",
+			files: map[string]string{
+				"notes[old]*?.txt":         "needle\n",
+				"notesXabc.txt":            "needle\n",
+				"notes[old]*?/another.txt": "needle\n",
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := menuTestApp(t)
+			useRealCodeWorkspace(t, h, test.files)
+			h.app.setAllFileTreeDirectories(codeFileTreeScope, h.app.code.files, false)
+			h.app.syncCodeTree()
+			h.tester.Frame()
+			h.app.code.searchQuery = "needle"
+
+			h.rightClick(t, test.rowLabel)
+			h.requireMenuLabels(t, test.menuLabel)
+			h.chooseMenuItem(t, test.menuLabel)
+			if h.app.code.searchFolder != "" {
+				t.Fatalf("context search changed the opened workspace to %q", h.app.code.searchFolder)
+			}
+			if h.app.code.searchInclude != test.target {
+				t.Fatalf("context search include = %q, want the raw path %q", h.app.code.searchInclude, test.target)
+			}
+			if test.directory && (h.app.code.searchScopeFolder != test.target || h.app.code.searchScopeFile != "") {
+				t.Fatalf("folder scopes = %q / %q", h.app.code.searchScopeFolder, h.app.code.searchScopeFile)
+			}
+			if !test.directory && (h.app.code.searchScopeFile != test.target || h.app.code.searchScopeFolder != "") {
+				t.Fatalf("file scopes = %q / %q", h.app.code.searchScopeFolder, h.app.code.searchScopeFile)
+			}
+			h.waitFor(t, "the literal context-menu search", func() bool {
+				return !h.app.code.searchRunning && len(h.app.code.searchResults) == 1 &&
+					h.app.code.searchResults[0].Path == test.result
+			})
+			options := h.app.code.searchSubmittedOptions
+			if options.Include != test.target || options.File != h.app.code.searchScopeFile ||
+				(options.Folder != test.target && options.Folder != h.app.code.searchScopeFolder) {
+				t.Fatalf("submitted context-search options = %+v", options)
+			}
+		})
+	}
 }
 
 func TestCodeExplorerDragMovesFileAndPreservesOpenDocument(t *testing.T) {

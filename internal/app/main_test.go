@@ -1139,6 +1139,27 @@ func (u *updates) waitForUpdate(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for an update")
 	}
+	u.runPending()
+}
+
+// flushPending runs callbacks whose coalesced notification may already have
+// been consumed by an earlier wait. It returns false when no callback is due.
+func (u *updates) flushPending() bool {
+	select {
+	case <-u.done:
+	default:
+	}
+	u.mu.Lock()
+	fns := u.fns
+	u.fns = nil
+	u.mu.Unlock()
+	for _, fn := range fns {
+		fn()
+	}
+	return len(fns) != 0
+}
+
+func (u *updates) runPending() {
 	u.mu.Lock()
 	fns := u.fns
 	u.fns = nil

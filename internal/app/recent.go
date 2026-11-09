@@ -179,12 +179,17 @@ func (a *app) renameRecentEntry(path, name string) bool {
 // one of them stores it.
 func (a *app) setRecentName(path, name string) bool {
 	want := cleanRecentPath(path)
+	if a.recentNameOverrides == nil {
+		a.recentNameOverrides = make(map[string]string)
+	}
+	a.recentNameOverrides[want] = name
 	for i := range a.recentRepositories {
 		if cleanRecentPath(a.recentRepositories[i].Path) != want ||
 			a.recentRepositories[i].Name == name {
 			continue
 		}
 		a.recentRepositories[i].Name = name
+		a.historyRevision++
 		return true
 	}
 	return false
@@ -339,27 +344,24 @@ func localRecentIdentity(path string) (recentIdentity, bool) {
 	return identity, true
 }
 
-// loadHistory reads the stored history once the data directory is known. The
-// directory can be unavailable before a window exists, so it is called again
-// then; historyLoaded keeps the file from being re-read on every frame.
-func (a *app) loadHistory() {
-	if a.historyLoaded {
-		return
-	}
-	dir := a.dataDir()
-	if dir == "" {
-		return
-	}
-	a.recentRepositories = loadRecentRepositories(dir)
+// recentIdentityForPath isolates per-card filesystem reads for nonblocking
+// history tests. Production always uses localRecentIdentity.
+var recentIdentityForPath = localRecentIdentity
+
+// readRecentHistory loads stored cards and recovers their Git identity off the
+// UI thread. Canonical path and HEAD/commondir reads may wait on a network or
+// removable filesystem; they must never participate in Home rendering.
+func readRecentHistory(dir string) ([]recentRepository, bool) {
+	repositories := loadRecentRepositories(dir)
 	changed := false
-	for i := range a.recentRepositories {
-		repo := &a.recentRepositories[i]
+	for i := range repositories {
+		repo := &repositories[i]
 		path := cleanRepoPath(repo.Path)
 		if repo.Path != path {
 			repo.Path = path
 			changed = true
 		}
-		identity, ok := localRecentIdentity(path)
+		identity, ok := recentIdentityForPath(path)
 		if !ok {
 			continue
 		}
@@ -372,10 +374,70 @@ func (a *app) loadHistory() {
 			changed = true
 		}
 	}
-	if changed {
-		_ = saveRecentRepositories(dir, a.recentRepositories)
+	return repositories, changed
+}
+
+// mergeRecentHistory preserves changes made while history was loading. An
+// existing in-memory card is newer than the delayed file snapshot; unread
+// cards are appended without replacing it.
+func mergeRecentHistory(current, loaded []recentRepository) []recentRepository {
+	out := append([]recentRepository(nil), current...)
+	seen := make(map[string]struct{}, len(current)+len(loaded))
+	for _, repo := range current {
+		seen[cleanRecentPath(repo.Path)] = struct{}{}
 	}
-	a.historyLoaded = true
+	for _, repo := range loaded {
+		if _, exists := seen[cleanRecentPath(repo.Path)]; exists {
+			continue
+		}
+		out = append(out, repo)
+	}
+	return out
+}
+
+func (a *app) applyRecentNameOverrides() {
+	for i := range a.recentRepositories {
+		path := cleanRecentPath(a.recentRepositories[i].Path)
+		if name, ok := a.recentNameOverrides[path]; ok {
+			a.recentRepositories[i].Name = name
+		}
+	}
+}
+
+// loadHistory starts the stored-history read once the data directory is known.
+// The directory can be unavailable before a window exists, so it is called
+// again then. Home remains usable with the current in-memory cards while the
+// worker runs; the result and any migration write return to the UI thread.
+func (a *app) loadHistory() {
+	if a.historyLoading || a.historyLoaded {
+		return
+	}
+	dir := a.dataDir()
+	if dir == "" {
+		return
+	}
+	a.historyLoading = true
+	revision := a.historyRevision
+	go func() {
+		defer a.recoverBackground()
+		repositories, changed := readRecentHistory(dir)
+		a.update(func() {
+			a.recentRepositories = mergeRecentHistory(a.recentRepositories, repositories)
+			a.applyRecentNameOverrides()
+			a.historyLoading = false
+			a.historyLoaded = true
+			if changed && revision == a.historyRevision {
+				// Do not let a persistence write undo the responsiveness gained
+				// by moving branch reads off the UI thread. A card edited meanwhile
+				// has already persisted its own newer state, so skip this migration.
+				repositories := append([]recentRepository(nil), a.recentRepositories...)
+				go func() {
+					defer a.recoverBackground()
+					_ = saveRecentRepositories(dir, repositories)
+				}()
+			}
+		})
+	}()
 }
 
 // rememberOpened keeps a repository the app just opened in the history and
@@ -403,6 +465,7 @@ func (a *app) rememberOpened(path string) {
 			break
 		}
 	}
+	a.historyRevision++
 	_ = saveRecentRepositories(a.dataDir(), a.recentRepositories)
 }
 
@@ -415,6 +478,7 @@ func (a *app) forgetRecent(path string) {
 		}
 	}
 	a.recentRepositories = kept
+	a.historyRevision++
 	_ = saveRecentRepositories(a.dataDir(), a.recentRepositories)
 }
 
