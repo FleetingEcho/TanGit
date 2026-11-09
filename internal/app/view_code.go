@@ -229,6 +229,7 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 			a.beginCodeSearch()
 		}
 	})
+	a.codeSearchBackendControls(c)
 	if a.code.searchFiltersOpen {
 		include := ui.TextInput(c, &a.code.searchInclude).Label(tr("Files to include")).Placeholder(tr("files to include"))
 		if include.Submitted() {
@@ -242,7 +243,7 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 	if a.code.searchError != "" {
 		ui.Text(c, a.code.searchError).TextColor(theme.Danger).FontSize(theme.FontSize - 1).SingleLine().Ellipsis("…").Tooltip(a.code.searchError)
 	}
-	if a.code.filesLoading || a.code.searchRunning {
+	if a.code.filesLoading || (a.code.searchRunning && !a.code.searchLoadingMore) {
 		label := tr("Searching files")
 		if a.code.filesLoading {
 			label = tr("Loading files")
@@ -265,7 +266,7 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 	}
 	if len(a.code.searchResults) == 0 {
 		if a.code.searchBackend == workspaceSearchBackendRipgrep {
-			ui.Row(c).Children(func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
 				ui.Spacer(c)
 				a.codeSearchBackendBadge(c)
 			})
@@ -273,8 +274,12 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 		listSearchEmpty(c, "No matches found")
 		return
 	}
-	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+	ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
 		ui.Text(c, trf("%d matches", len(a.code.searchResults))).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1)
+		if a.code.searchHasMore {
+			flatIconButton(c, "Load more matches", "Load 500 more matches",
+				loadMoreIcon, 14, 3, a.code.searchLoadingMore, a.loadMoreCodeSearch)
+		}
 		a.codeSearchBackendBadge(c)
 	})
 	list := a.keyboardList(c, &a.code.searchList, len(a.code.searchRows)).Grow(1).Rows(func(row ui.ListRow) {
@@ -298,12 +303,49 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 	}
 }
 
+// codeSearchHasRipgrep caches executable discovery per workspace. Avoiding a
+// LookPath on every frame keeps the always-visible switch inexpensive.
+func (a *app) codeSearchHasRipgrep() bool {
+	if !a.code.searchRipgrepKnown {
+		_, err := workspaceSearchLookPath("rg")
+		a.code.searchRipgrepAvailable = err == nil
+		a.code.searchRipgrepKnown = true
+	}
+	return a.code.searchRipgrepAvailable
+}
+
+func (a *app) codeSearchBackendControls(c *ui.Context) {
+	ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
+		if a.codeSearchHasRipgrep() {
+			useRipgrep := !a.code.searchNativeOnly
+			toggle := ui.Switch(c, &useRipgrep).
+				Size(c.Theme().Space(7), c.Theme().Space(3.5)).Radius(c.Theme().Space(1.75)).
+				Label(tr("Use ripgrep")).Tooltip(tr("Use ripgrep when available; turn off to use the internal Go search"))
+			ui.Text(c, "ripgrep").FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().TextMuted)
+			if toggle.Changed() {
+				a.code.searchNativeOnly = !useRipgrep
+				if a.code.searchSubmitted != "" {
+					a.beginCodeSearch()
+				}
+			}
+		}
+		ui.Spacer(c)
+		pageLimit := trf("Search may be slow in huge repositories. Each page is limited to %d matches, and files larger than 8 MiB are skipped.", codeSearchPageSize)
+		ui.Badge(c, trf("%d per page", codeSearchPageSize)).Label(pageLimit).Tooltip(pageLimit)
+	})
+}
+
 func (a *app) codeSearchBackendBadge(c *ui.Context) {
-	if a.code.searchBackend != workspaceSearchBackendRipgrep {
+	var name, label string
+	switch a.code.searchBackend {
+	case workspaceSearchBackendGo:
+		name, label = "Go", tr("Search powered by the internal Go scanner")
+	case workspaceSearchBackendRipgrep:
+		name, label = "ripgrep", tr("Search powered by ripgrep")
+	default:
 		return
 	}
-	label := tr("Search powered by ripgrep")
-	ui.Badge(c, "ripgrep").Label(label).Tooltip(label)
+	ui.Badge(c, name).Label(label).Tooltip(label)
 }
 
 func (a *app) codeSearchOptionButton(c *ui.Context, text, label string, active *bool) {

@@ -56,9 +56,11 @@ func searchWorkspaceFilesWithOptions(ctx context.Context, root string, paths []s
 	if _, err := options.regularExpression(); err != nil {
 		return nil, workspaceSearchBackendNone, err
 	}
-	if executable, err := workspaceSearchLookPath("rg"); err == nil {
-		if matches, ok := searchWorkspaceFilesRipgrepWithOptions(ctx, executable, root, paths, options, limit); ok {
-			return matches, workspaceSearchBackendRipgrep, nil
+	if !options.PreferNative {
+		if executable, err := workspaceSearchLookPath("rg"); err == nil {
+			if matches, ok := searchWorkspaceFilesRipgrepWithOptions(ctx, executable, root, paths, options, limit); ok {
+				return matches, workspaceSearchBackendRipgrep, nil
+			}
 		}
 	}
 	matches, err := searchWorkspaceFilesGoWithOptions(ctx, root, paths, options, limit)

@@ -16,8 +16,11 @@ type workspaceSearchOptions struct {
 	CaseSensitive bool
 	WholeWord     bool
 	RegularExpr   bool
-	Include       string
-	Exclude       string
+	// PreferNative bypasses ripgrep even when it is installed. The zero value
+	// keeps the automatic ripgrep-with-Go-fallback behavior for existing callers.
+	PreferNative bool
+	Include      string
+	Exclude      string
 	// Folder is the literal repository-relative scope chosen by Search in
 	// folder. Include remains the editable glob text shown in the search panel.
 	Folder string

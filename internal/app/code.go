@@ -22,6 +22,7 @@ const (
 	codeSidebarSearch = 1
 
 	codeSearchDebounceDelay = 300 * time.Millisecond
+	codeSearchPageSize      = 500
 )
 
 // scheduleCodeSearch is a seam for proving that rapid edits collapse into one
@@ -154,6 +155,9 @@ type codeState struct {
 	searchCaseSensitive    bool
 	searchWholeWord        bool
 	searchRegularExpr      bool
+	searchNativeOnly       bool
+	searchRipgrepKnown     bool
+	searchRipgrepAvailable bool
 	searchInclude          string
 	searchExclude          string
 	// searchFolder is the opened workspace folder. searchFolderDraft is only
@@ -164,6 +168,9 @@ type codeState struct {
 	searchFolderSelectionSeq    uint64
 	searchError                 string
 	searchRunning               bool
+	searchLoadingMore           bool
+	searchHasMore               bool
+	searchLimit                 int
 	searchAfterFiles            bool
 	searchResults               []workspaceSearchMatch
 	searchBackend               workspaceSearchBackend
@@ -223,6 +230,9 @@ func (a *app) resetCode() {
 	a.code.searchCaseSensitive = false
 	a.code.searchWholeWord = false
 	a.code.searchRegularExpr = false
+	a.code.searchNativeOnly = false
+	a.code.searchRipgrepKnown = false
+	a.code.searchRipgrepAvailable = false
 	a.code.searchInclude, a.code.searchExclude = "", ""
 	a.code.searchFolder = ""
 	a.code.searchFolderDraft = ""
@@ -230,6 +240,9 @@ func (a *app) resetCode() {
 	a.code.searchFolderSelectionSeq++
 	a.code.searchError = ""
 	a.code.searchRunning = false
+	a.code.searchLoadingMore = false
+	a.code.searchHasMore = false
+	a.code.searchLimit = 0
 	a.code.searchAfterFiles = false
 	a.code.searchResults, a.code.searchRows = nil, nil
 	a.code.searchBackend = workspaceSearchBackendNone
@@ -266,6 +279,9 @@ func (a *app) refreshCodeAfterCheckout(old, current repository.Snapshot) bool {
 	a.code.searchToken++
 	a.code.searchCancel = nil
 	a.code.searchRunning = false
+	a.code.searchLoadingMore = false
+	a.code.searchHasMore = false
+	a.code.searchLimit = 0
 	a.code.searchAfterFiles = resubmitSearch && strings.TrimSpace(a.code.searchQuery) != ""
 	a.code.searchSubmitted = ""
 	a.code.searchSubmittedOptions = workspaceSearchOptions{}
@@ -966,6 +982,8 @@ func (a *app) codeSearchQueryChanged() {
 	}
 	a.code.searchToken++
 	a.code.searchRunning = false
+	a.code.searchLoadingMore = false
+	a.code.searchHasMore = false
 	a.code.searchAfterFiles = false
 	a.code.searchDebounceSeq++
 	sequence := a.code.searchDebounceSeq
@@ -979,6 +997,22 @@ func (a *app) codeSearchQueryChanged() {
 }
 
 func (a *app) beginCodeSearch() {
+	a.code.searchLimit = codeSearchPageSize
+	a.code.searchHasMore = false
+	a.code.searchLoadingMore = false
+	a.startCodeSearch(codeSearchPageSize, false)
+}
+
+// loadMoreCodeSearch raises the match cap without discarding the visible page.
+// A changed query or option always starts again at the first page instead.
+func (a *app) loadMoreCodeSearch() {
+	if a.code.searchRunning || !a.code.searchHasMore || a.code.searchSubmitted == "" || a.code.filesLoading {
+		return
+	}
+	a.startCodeSearch(a.code.searchLimit+codeSearchPageSize, true)
+}
+
+func (a *app) startCodeSearch(limit int, loadingMore bool) {
 	a.code.searchDebounceSeq++
 	query := strings.TrimSpace(a.code.searchQuery)
 	if a.code.filesLoading && query != "" {
@@ -993,6 +1027,7 @@ func (a *app) beginCodeSearch() {
 	a.code.searchToken++
 	token := a.code.searchToken
 	a.code.searchSubmitted = query
+	a.code.searchLimit = limit
 	folder, validFolder := normalizedCodeSearchFolder(a.code.searchFolder)
 	if !validFolder {
 		a.code.searchError = tr("Search folder must stay inside the repository")
@@ -1000,6 +1035,8 @@ func (a *app) beginCodeSearch() {
 		a.code.searchResults, a.code.searchRows = nil, nil
 		a.code.searchBackend = workspaceSearchBackendNone
 		a.code.searchRunning = false
+		a.code.searchLoadingMore = false
+		a.code.searchHasMore = false
 		return
 	}
 	a.code.searchFolder = folder
@@ -1009,16 +1046,19 @@ func (a *app) beginCodeSearch() {
 		CaseSensitive:       a.code.searchCaseSensitive,
 		WholeWord:           a.code.searchWholeWord,
 		RegularExpr:         a.code.searchRegularExpr,
+		PreferNative:        a.code.searchNativeOnly,
 		Include:             a.code.searchInclude,
 		Exclude:             a.code.searchExclude,
 		Folder:              a.code.searchFolder,
 		ExcludedDirectories: append([]string{}, a.settings.SearchExcludedDirectories...),
 	}
 	a.code.searchError = ""
-	a.code.searchResults, a.code.searchRows = nil, nil
-	a.code.searchBackend = workspaceSearchBackendNone
-	a.code.searchCollapsed = nil
-	a.code.searchSelected, a.code.searchSelectedRow = -1, -1
+	if !loadingMore {
+		a.code.searchResults, a.code.searchRows = nil, nil
+		a.code.searchBackend = workspaceSearchBackendNone
+		a.code.searchCollapsed = nil
+		a.code.searchSelected, a.code.searchSelectedRow = -1, -1
+	}
 	if query == "" || a.snapshot.Root == "" {
 		if query == "" {
 			a.code.searchCaseSensitive = false
@@ -1031,17 +1071,24 @@ func (a *app) beginCodeSearch() {
 			a.code.searchSubmittedOptions = workspaceSearchOptions{}
 		}
 		a.code.searchRunning = false
+		a.code.searchLoadingMore = false
+		a.code.searchHasMore = false
 		return
 	}
 	root := a.snapshot.Root
 	paths := append([]string(nil), a.code.files...)
+	if loadingMore {
+		paths = prioritizeNewCodeSearchFiles(paths, a.code.searchResults)
+	}
 	options := a.code.searchSubmittedOptions
+	previousResults := a.code.searchResults
 	ctx, cancel := context.WithCancel(context.Background())
 	a.code.searchCancel = cancel
 	a.code.searchRunning = true
+	a.code.searchLoadingMore = loadingMore
 	go func() {
 		defer a.recoverBackground()
-		matches, backend, err := runCodeSearch(ctx, root, paths, options, 500)
+		matches, backend, err := runCodeSearch(ctx, root, paths, options, limit)
 		if ctx.Err() == nil {
 			matches = rankWorkspaceSearchMatches(matches, options)
 		}
@@ -1050,15 +1097,64 @@ func (a *app) beginCodeSearch() {
 				return
 			}
 			a.code.searchRunning = false
+			a.code.searchLoadingMore = false
 			a.code.searchCancel = nil
 			a.code.searchError = safeError(err)
 			a.code.searchResults = matches
 			a.code.searchBackend = backend
-			a.code.searchSelected = 0
+			a.code.searchHasMore = err == nil && len(matches) == limit
+			if !loadingMore {
+				a.code.searchSelected = 0
+			}
 			a.code.searchSelectedRow = -1
 			a.rebuildCodeSearchRows()
+			if loadingMore {
+				a.scrollToFirstNewCodeSearchFile(previousResults)
+			}
 		})
 	}()
+}
+
+// prioritizeNewCodeSearchFiles lets each Load more click discover new file
+// groups before a match-heavy file consumes the enlarged global match cap.
+// Both search backends scan paths in their supplied order; ranking still sorts
+// the combined results for display after the scan completes.
+func prioritizeNewCodeSearchFiles(paths []string, existing []workspaceSearchMatch) []string {
+	if len(existing) == 0 {
+		return paths
+	}
+	represented := make(map[string]bool, len(existing))
+	for _, match := range existing {
+		represented[match.Path] = true
+	}
+	ordered := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if !represented[path] {
+			ordered = append(ordered, path)
+		}
+	}
+	for _, path := range paths {
+		if represented[path] {
+			ordered = append(ordered, path)
+		}
+	}
+	return ordered
+}
+
+// scrollToFirstNewCodeSearchFile makes newly discovered groups visible even
+// when an existing file contributes hundreds of rows ahead of them. Loading a
+// page does not otherwise move the selection or change any folding choices.
+func (a *app) scrollToFirstNewCodeSearchFile(previous []workspaceSearchMatch) {
+	represented := make(map[string]bool, len(previous))
+	for _, match := range previous {
+		represented[match.Path] = true
+	}
+	for row, item := range a.code.searchRows {
+		if item.isFile() && !represented[item.path] {
+			a.code.searchList.ScrollIntoView(row)
+			return
+		}
+	}
 }
 
 func (a *app) openCodeSearchMatch(match workspaceSearchMatch) {
