@@ -11,15 +11,45 @@ import (
 	"lazygitapp/internal/repository"
 )
 
-// recoveryPanel owns automatic discard recovery and named checkpoints. Those
-// refs are not native stashes, so they get their own compact Saved work group.
+func (a *app) recoveryModal(c *ui.Context) {
+	if !a.showRecoveryModal || a.confirm != nil {
+		return
+	}
+	theme := c.Theme()
+	ui.Overlay(c, func() {
+		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
+			Justify(ui.Center).AlignItems(ui.Center).
+			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
+		a.registerTerminalModalShortcuts(back)
+		back.Children(func() {
+			panel := ui.Column(c).Width(640).Height(520).MaxWidthPercent(92).MaxHeightPercent(85).
+				Padding(20).Gap(12).Background(theme.Background).
+				Border(1, theme.Border).Radius(theme.Radius + 4).
+				Role(ui.RoleDialog).Label(tr("Recovery & checkpoints"))
+			panel.Children(func() {
+				ui.Scroll(c).FillWidth().Grow(1).Shrink(1).MinHeight(0).Children(func() {
+					a.recoveryPanel(c)
+				})
+			})
+			if panel.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
+				a.showRecoveryModal = false
+			}
+		})
+	})
+}
+
+// recoveryPanel owns automatic discard recovery and named checkpoints.
+// These refs are separate from ordinary stashes.
 func (a *app) recoveryPanel(c *ui.Context) {
 	theme := c.Theme()
-	islandCard(c, ui.Column(c).Gap(8).Padding(12)).
+	ui.Column(c).FillWidth().Gap(12).
 		Role(ui.RoleRegion).Label(tr("Recovery & checkpoints")).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 			ui.Icon(c, softResetIcon).FontSize(15).TextColor(theme.Accent)
-			ui.Text(c, tr("Recovery & checkpoints")).Bold().Grow(1)
+			ui.Text(c, tr("Recovery & checkpoints")).FontSize(17).Bold().Grow(1)
+			iconButton(c, "Close", "Escape", closeIcon, false, func() { a.showRecoveryModal = false })
+		})
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
 			recoveryClicked := false
 			if a.savedWorkPanel == 0 {
 				recoveryClicked = compactTextButton(ui.PrimaryButton(c, tr("Recovery"))).Label(tr("Show recovery and checkpoints")).Clicked()
@@ -44,7 +74,10 @@ func (a *app) recoveryPanel(c *ui.Context) {
 			a.safetyJournalBody(c)
 			return
 		}
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+		ui.Text(c, tr("Recovery copies appear here after a discard. Named checkpoints stay until deleted.")).
+			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+		ui.Text(c, tr("Save all current work without changing it")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
 			input := ui.TextInput(c, &a.checkpointName).Label(tr("Checkpoint name")).
 				Placeholder(tr("Name a checkpoint")).Grow(1)
 			create := func() {
@@ -68,8 +101,6 @@ func (a *app) recoveryPanel(c *ui.Context) {
 			}
 		})
 		if len(a.snapshot.WorkSnapshots) == 0 {
-			ui.Text(c, tr("Recovery copies appear here after a discard. Named checkpoints stay until deleted.")).
-				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 			return
 		}
 		height := float32(min(len(a.snapshot.WorkSnapshots), 3)) * 48

@@ -525,6 +525,7 @@ func (a *app) closeAllForms() {
 	a.showRemoteForm = false
 	a.showRemoteWebURLForm = false
 	a.showRemoteCheckoutForm = false
+	a.showRecoveryModal = false
 	a.showStashForm = false
 	a.showStashRenameForm = false
 	a.showTagForm = false
@@ -577,6 +578,7 @@ func (a *app) anyFormOpen() bool {
 		a.showRemoteForm ||
 		a.showRemoteWebURLForm ||
 		a.showRemoteCheckoutForm ||
+		a.showRecoveryModal ||
 		a.showStashForm ||
 		a.showStashRenameForm ||
 		a.showTagForm ||

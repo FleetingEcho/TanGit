@@ -570,10 +570,10 @@ func (a *app) branchHeaderView(c *ui.Context, branch repository.Branch) {
 	theme := c.Theme()
 	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 		ui.Text(c, branchDisplay(branch)).FontSize(18).Bold().Grow(1).SingleLine().Tooltip(branchDisplay(branch))
-		if ui.Button(c, tr("Rename…")).Disabled(a.actionBusy).Clicked() {
+		iconButton(c, "Rename…", "Rename…", editIcon, a.actionBusy, func() {
 			a.showRenameForm = true
 			a.renameBranch = branch.Name
-		}
+		})
 
 		label, icon := "Expand branch page", expandIcon
 		if a.branchFullscreen {
@@ -586,22 +586,22 @@ func (a *app) branchHeaderView(c *ui.Context, branch repository.Branch) {
 	if !branch.Head {
 		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
 			if branch.UpstreamRemote != "" {
-				if ui.Button(c, tr("Pull latest")).Disabled(a.actionBusy).Clicked() {
+				iconButton(c, "Pull latest", "Pull latest", pullIcon, a.actionBusy, func() {
 					a.beginPullBranch(branch)
-				}
+				})
 			}
-			if ui.Button(c, tr("Rebase onto this…")).Disabled(a.actionBusy).Clicked() {
+			iconButton(c, "Rebase onto this…", "Rebase onto this…", rebaseIcon, a.actionBusy, func() {
 				a.confirmRebaseOntoBranch(branch)
-			}
-			if ui.Button(c, tr("Merge into current…")).Disabled(a.actionBusy).Clicked() {
+			})
+			iconButton(c, "Merge into current…", "Merge into current…", mergeIcon, a.actionBusy, func() {
 				a.confirmMergeSelectedBranch()
-			}
-			if ui.PrimaryButton(c, tr("Checkout")).Disabled(a.actionBusy).Clicked() {
+			})
+			primaryIconButton(c, "Checkout", "Checkout", branchIcon, a.actionBusy, func() {
 				a.checkoutBranch(branch.Name)
-			}
-			if ui.Button(c, tr("Delete…")).Disabled(a.actionBusy).Clicked() {
+			})
+			iconButton(c, "Delete…", "Delete…", trashIcon, a.actionBusy, func() {
 				a.confirmDeleteSelectedBranch()
-			}
+			})
 		})
 	}
 
@@ -957,6 +957,7 @@ func (a *app) branchCommitsView(c *ui.Context, branch repository.Branch) {
 						}
 					})
 				})
+				commitDiffStatBlocks(row.Context, commit.ShortHash, commit.LinesAdded, commit.LinesDeleted)
 			}).PopoverMenu(func(m *ui.Menu) {
 				// History edits move the checked-out branch, so offer those only
 				// while this list shows it. Every other action uses commit directly,
