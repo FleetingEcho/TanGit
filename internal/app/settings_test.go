@@ -324,6 +324,9 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 		HomeBackgroundDisabled: true,
 		HomeBackgroundOpacity:  0.42,
 		VisibleSections:        []string{"changes", "graph"},
+		RemoteWebURLs: map[string]map[string]string{
+			"/work/project": {"origin": "https://example.com/team/project"},
+		},
 	}
 	if err := saveAppSettings(dir, want); err != nil {
 		t.Fatalf("save: %v", err)

@@ -514,6 +514,7 @@ func (a *app) closeAllForms() {
 	a.showBranchForm = false
 	a.showRenameForm = false
 	a.showRemoteForm = false
+	a.showRemoteWebURLForm = false
 	a.showRemoteCheckoutForm = false
 	a.showStashForm = false
 	a.showStashRenameForm = false
@@ -540,6 +541,7 @@ func (a *app) anyFormOpen() bool {
 		a.showBranchForm ||
 		a.showRenameForm ||
 		a.showRemoteForm ||
+		a.showRemoteWebURLForm ||
 		a.showRemoteCheckoutForm ||
 		a.showStashForm ||
 		a.showStashRenameForm ||

@@ -89,6 +89,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.keyboardPrevious = append(a.keyboardPrevious[:0], a.keyboardPanes...)
 	a.keyboardPanes = a.keyboardPanes[:0]
 	a.applyPendingRecent()
+	a.services = c.Services()
 	a.registerShortcuts(c)
 	overlayTopInset := float32(0)
 	if systemWindowControls {
@@ -109,6 +110,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.branchFormModal(c)
 	a.stashFormModal(c)
 	a.remoteFormModal(c)
+	a.remoteWebURLFormModal(c)
 	a.tagFormModal(c)
 	a.worktreeFormModal(c)
 	a.submoduleFormModal(c)

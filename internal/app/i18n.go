@@ -999,6 +999,8 @@ var zhHans = map[string]string{
 	"Change this remote's name or fetch URL.":             "修改此远程的名称或获取 URL。",
 	"Updated remote %s":                                   "已更新远程 %s",
 	"Save changes":                                        "保存更改",
+	"Restore original":                                    "恢复原始值",
+	"Restore the remote name and fetch URL saved in Git.": "恢复保存在 Git 中的远程名称和获取 URL。",
 	"Fetch branches from this remote (F)":                 "从此远程获取分支 (F)",
 	"Edit this remote's name or fetch URL (E)":            "编辑此远程的名称或获取 URL (E)",
 	"Remove this remote and its remote-tracking refs (D)": "移除此远程及其远程跟踪引用 (D)",

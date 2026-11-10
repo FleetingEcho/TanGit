@@ -919,6 +919,8 @@ var french = map[string]string{
 	"Change this remote's name or fetch URL.":             "Modifier le nom ou l’URL de récupération de ce dépôt distant.",
 	"Updated remote %s":                                   "Dépôt distant %s mis à jour",
 	"Save changes":                                        "Enregistrer les modifications",
+	"Restore original":                                    "Restaurer l’original",
+	"Restore the remote name and fetch URL saved in Git.": "Restaure le nom du dépôt distant et l’URL de récupération enregistrés dans Git.",
 	"Fetch branches from this remote (F)":                 "Récupérer les branches de ce dépôt distant (F)",
 	"Edit this remote's name or fetch URL (E)":            "Modifier le nom ou l’URL de récupération de ce dépôt distant (E)",
 	"Remove this remote and its remote-tracking refs (D)": "Supprimer ce dépôt distant et ses références de suivi distant (D)",

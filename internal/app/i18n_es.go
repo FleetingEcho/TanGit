@@ -919,6 +919,8 @@ var spanish = map[string]string{
 	"Change this remote's name or fetch URL.":             "Cambiar el nombre o la URL de fetch de este remoto.",
 	"Updated remote %s":                                   "Se actualizó el remoto %s",
 	"Save changes":                                        "Guardar cambios",
+	"Restore original":                                    "Restaurar original",
+	"Restore the remote name and fetch URL saved in Git.": "Restaura el nombre del remoto y la URL de fetch guardados en Git.",
 	"Fetch branches from this remote (F)":                 "Hacer fetch de las ramas de este remoto (F)",
 	"Edit this remote's name or fetch URL (E)":            "Editar el nombre o la URL de fetch de este remoto (E)",
 	"Remove this remote and its remote-tracking refs (D)": "Eliminar este remoto y sus refs de seguimiento remoto (D)",

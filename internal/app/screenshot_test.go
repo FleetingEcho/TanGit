@@ -596,6 +596,34 @@ func TestScreenshot(t *testing.T) {
 	for _, appearance := range []struct {
 		name string
 		dark bool
+	}{{"remote-web-light", false}, {"remote-web-dark", true}} {
+		t.Run(appearance.name, func(t *testing.T) {
+			a, tt, _ := newScreenshotHarness(t, appearance.dark)
+			a.workspaceTab = sectionRemotes
+			a.selectedRemote, a.selectedRemoteRow = 0, 0
+			a.openEditRemoteWebURL(a.snapshot.Remotes[0])
+			tt.Frame()
+			saveScreenshot(t, dir, appearance.name, tt)
+		})
+	}
+
+	for _, appearance := range []struct {
+		name string
+		dark bool
+	}{{"remote-edit-light", false}, {"remote-edit-dark", true}} {
+		t.Run(appearance.name, func(t *testing.T) {
+			a, tt, _ := newScreenshotHarness(t, appearance.dark)
+			a.workspaceTab = sectionRemotes
+			a.selectedRemote, a.selectedRemoteRow = 0, 0
+			a.openEditRemote(a.snapshot.Remotes[0])
+			tt.Frame()
+			saveScreenshot(t, dir, appearance.name, tt)
+		})
+	}
+
+	for _, appearance := range []struct {
+		name string
+		dark bool
 	}{{"media-review-light", false}, {"media-review-dark", true}} {
 		t.Run(appearance.name, func(t *testing.T) {
 			snapshot := screenshotSnapshot()
