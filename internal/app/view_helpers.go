@@ -436,10 +436,47 @@ func paneSplitWithGrip(c *ui.Context, value *float32, vertical, percent bool,
 
 func collapsiblePaneSplitWith(c *ui.Context, collapsed *bool,
 	expandLabel string, first, second, split func()) {
+	collapsiblePaneSplitWithAxis(c, collapsed, expandLabel, false, first, second, split)
+}
+
+// collapsiblePaneSplitVertical is the stacked counterpart of
+// collapsiblePaneSplit: collapsing the upper pane leaves a slim restore rail
+// above the lower pane.
+func collapsiblePaneSplitVertical(c *ui.Context, size *float32, collapsed *bool,
+	expandLabel string, first, second func()) {
+	collapsiblePaneSplitWithAxis(c, collapsed, expandLabel, true, first, second,
+		func() { paneSplitVertical(c, size, first, second).Fill() })
+}
+
+func collapsiblePaneSplitWithAxis(c *ui.Context, collapsed *bool,
+	expandLabel string, vertical bool, first, second, split func()) {
 	theme := c.Theme()
-	host := ui.Box(c).Grow(1).FillHeight()
+	host := ui.Box(c).Grow(1)
+	if vertical {
+		host.FillWidth()
+	} else {
+		host.FillHeight()
+	}
 	host.Children(func() {
 		if *collapsed {
+			if vertical {
+				const restoreHeight = paneToggleHeight + islandGap
+				ui.Box(c).Absolute().Left(0).Right(0).Top(0).Height(restoreHeight).
+					Background(islandBackdrop(theme)).PassThrough()
+				ui.Column(c).Fill().Padding(restoreHeight, 0, 0, 0).Children(second)
+				ui.Box(c).Absolute().Left(0).Right(0).Top(0).Height(1).
+					Background(theme.Border).PassThrough()
+				button := paneToggle(c, ui.ButtonBase(c).Absolute()).
+					Left(islandGap / 2).Top(islandGap / 2).
+					Label(tr(expandLabel)).Tooltip(tr(expandLabel))
+				button.Children(func() {
+					ui.Icon(c, paneCollapsedIcon).FontSize(15).TextColor(theme.TextMuted)
+				})
+				if button.Clicked() {
+					*collapsed = false
+				}
+				return
+			}
 			// Each host already begins after its parent's restore rail, so every
 			// collapsed pane owns exactly one identical rail of its own.
 			const restoreWidth = paneToggleSize + islandGap
@@ -468,7 +505,7 @@ func collapsiblePaneSplitWith(c *ui.Context, collapsed *bool,
 
 // paneCollapseButton is part of the pane's own header action row, not an
 // overlay: it cannot cover the filter, create, or overflow actions beside it.
-func paneCollapseButton(c *ui.Context, collapsed *bool, label string) {
+func paneCollapseButton(c *ui.Context, collapsed *bool, label string) ui.Element {
 	theme := c.Theme()
 	button := paneToggle(c, ui.ButtonBase(c)).Label(tr(label)).Tooltip(tr(label))
 	button.Children(func() {
@@ -477,6 +514,7 @@ func paneCollapseButton(c *ui.Context, collapsed *bool, label string) {
 	if button.Clicked() {
 		*collapsed = true
 	}
+	return button
 }
 
 // paneToggle is a quiet header action that lives inside the island card. Its

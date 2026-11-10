@@ -120,30 +120,31 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 	go func() {
 		defer a.recoverBackground()
 		files, err := session.CommitFiles(context.Background(), commit)
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation {
 				// An action rewrote the repository: drop the request so
 				// the next frame reads the commit again.
 				if a.commitFilesHash == commit.Hash {
 					a.commitFilesHash = ""
 					a.commitFilesLoading = false
+					return true
 				}
-				return
+				return false
 			}
 			if a.commitFilesHash != commit.Hash {
-				return
+				return false
 			}
 			a.commitFilesLoading = false
 			if err != nil {
 				a.commitFilesError = safeError(err)
-				return
+				return true
 			}
 			a.commitFiles = files
 			if len(files) == 0 {
 				a.codeBlameHistoryTarget = nil
 				a.selectedCommitFileRow = -1
 				a.selectedCommitFile = -1
-				return
+				return true
 			}
 			a.selectedCommitFile = 0
 			if target := a.codeBlameHistoryTarget; target != nil && target.hash == commit.Hash {
@@ -168,6 +169,7 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 					a.codeBlameHistoryTarget = nil
 				}
 			}
+			return true
 		})
 	}()
 }
@@ -216,7 +218,7 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 				})
 			}
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation {
 				if a.commitDiffHash == commit.Hash && a.commitDiffPath == file.Path &&
 					a.commitDiffOptions == options {
@@ -224,17 +226,18 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 					a.commitDiffPath = ""
 					a.commitDiffPatch = ""
 					a.commitDiffLoading = false
+					return true
 				}
-				return
+				return false
 			}
 			if a.commitDiffHash != commit.Hash || a.commitDiffPath != file.Path ||
 				a.commitDiffOptions != options {
-				return
+				return false
 			}
 			a.commitDiffLoading = false
 			if err != nil {
 				a.commitDiffError = safeError(err)
-				return
+				return true
 			}
 			a.commitDiffPatch = diff.Patch
 			a.commitDiffState = state
@@ -242,6 +245,7 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 			if target := a.codeBlameHistoryTarget; target != nil && target.hash == commit.Hash && target.path == file.Path && state == nil {
 				a.codeBlameHistoryTarget = nil
 			}
+			return true
 		})
 	}()
 }
@@ -517,6 +521,7 @@ func (a *app) selectCommitFileRow(row int) {
 const (
 	commitDetailsLeftRight = iota
 	commitDetailsTopBottom
+	commitDetailsPaneGap float32 = 12
 )
 
 // commitDetailsLayoutControl switches the changed files and their diff between
@@ -560,12 +565,41 @@ func (a *app) commitDetailsLayoutControl(c *ui.Context) {
 }
 
 // commitDetailsSplit keeps independent divider positions for the two layouts,
-// so trying one never loses the size the user chose in the other.
+// so trying one never loses the size the user chose in the other. Each pane
+// leaves half the visual gap beside the divider, keeping the draggable line
+// centered in open space instead of pressed against either pane's content.
 func (a *app) commitDetailsSplit(c *ui.Context, first, second func()) ui.Element {
-	if a.commitDetailsLayout == commitDetailsTopBottom {
-		return paneSplitVertical(c, &a.commitFilesHeight, first, second)
+	vertical := a.commitDetailsLayout == commitDetailsTopBottom
+	withDividerSpace := func(before bool, content func()) func() {
+		return func() {
+			pane := ui.Box(c).Fill()
+			inset := commitDetailsPaneGap / 2
+			switch {
+			case vertical && before:
+				pane.Padding(0, 0, inset, 0)
+			case vertical:
+				pane.Padding(inset, 0, 0, 0)
+			case before:
+				pane.PaddingEnd(inset)
+			default:
+				pane.PaddingStart(inset)
+			}
+			pane.Children(content)
+		}
 	}
-	return paneSplit(c, &a.commitFilesWidth, first, second)
+	first = withDividerSpace(true, first)
+	second = withDividerSpace(false, second)
+	host := ui.Box(c).Grow(1)
+	host.Children(func() {
+		if vertical {
+			collapsiblePaneSplitVertical(c, &a.commitFilesHeight, &a.commitFilesCollapsed,
+				"Expand changed files", first, second)
+			return
+		}
+		collapsiblePaneSplit(c, &a.commitFilesWidth, &a.commitFilesCollapsed,
+			"Expand changed files", first, second)
+	})
+	return host
 }
 
 func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLabel string,
@@ -648,7 +682,8 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 					ui.Icon(c, folderIcon).FontSize(13).TextColor(theme.Accent)
 					ui.Text(c, tr("Commit files")).Bold().Grow(1)
 					ui.Badge(c, fmt.Sprintf("%d", len(a.commitFiles)))
-					a.fileTreeModeButton(c).Margin(0, 8, 0, 0)
+					a.fileTreeModeButton(c)
+					paneCollapseButton(c, &a.commitFilesCollapsed, "Collapse changed files").MarginEnd(8)
 				})
 				list := a.keyboardList(c, &a.commitFileList, len(a.commitFileRows)).Grow(1).Rows(func(row ui.ListRow) {
 					item := a.commitFileRows[row.Index]
