@@ -748,6 +748,10 @@ func TestTheCommitDiffFollowsTheCommitChosen(t *testing.T) {
 // row.
 func TestTheCommitFilesAndDiffShareTheirHeight(t *testing.T) {
 	h, _ := historyHarness(t)
+	// The files stack above the diff only in the top/bottom layout; the
+	// default left/right layout separates them side by side instead.
+	h.app.commitDetailsLayout = commitDetailsTopBottom
+	h.tester.Frame()
 	h.waitFor(t, "the commit files", func() bool { return len(h.app.commitFiles) > 0 })
 	h.waitFor(t, "the first file's diff", func() bool {
 		return h.app.commitDiffState != nil && !h.app.commitDiffLoading

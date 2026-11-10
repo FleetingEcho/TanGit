@@ -169,5 +169,10 @@ var featureTranslationsZhHant = map[string]string{
 	"Pushed all tags":        "已推送所有標籤",
 	"Delete tag %s from %s?": "刪除標籤 %s（遠端：%s）？",
 	"The tag is deleted only on the remote. Your local tag remains.": "只會刪除遠端標籤，本機標籤仍會保留。",
-	"Deleted tag %s from %s": "已刪除標籤 %s（遠端：%s）",
+	"Deleted tag %s from %s":     "已刪除標籤 %s（遠端：%s）",
+	"Commit details layout":      "提交詳情佈局",
+	"Switch layout (Left/Right)": "切換佈局（左/右）",
+	"Switch layout (Top/Bottom)": "切換佈局（上/下）",
+	"Refresh commits":            "重新整理提交",
+	"Reload the commit list":     "重新載入提交清單",
 }

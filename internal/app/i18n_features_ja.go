@@ -169,5 +169,10 @@ var featureTranslationsJa = map[string]string{
 	"Pushed all tags":        "すべてのタグをプッシュしました",
 	"Delete tag %s from %s?": "タグ %s を %s から削除しますか？",
 	"The tag is deleted only on the remote. Your local tag remains.": "タグはリモート上でのみ削除されます。ローカルタグは残ります。",
-	"Deleted tag %s from %s": "タグ %s を %s から削除しました",
+	"Deleted tag %s from %s":     "タグ %s を %s から削除しました",
+	"Commit details layout":      "コミットの詳細レイアウト",
+	"Switch layout (Left/Right)": "レイアウトを切り替え（左右）",
+	"Switch layout (Top/Bottom)": "レイアウトを切り替え（上下）",
+	"Refresh commits":            "コミットを更新",
+	"Reload the commit list":     "コミット一覧を再読み込み",
 }

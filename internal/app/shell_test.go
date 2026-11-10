@@ -746,7 +746,9 @@ func TestShellOverlaysRespectNativeWindowControls(t *testing.T) {
 			a.closeFileHistory()
 			a.diffFullscreen = true
 			tt.Frame()
-			assertClear("Restore diff view")
+			// The maximized diff leads with the repository toolbar; its
+			// first control must clear the same native title bar.
+			assertClear("Settings")
 		})
 	}
 }

@@ -169,5 +169,10 @@ var featureTranslationsFr = map[string]string{
 	"Pushed all tags":        "Tous les tags ont été poussés",
 	"Delete tag %s from %s?": "Supprimer le tag %s de %s ?",
 	"The tag is deleted only on the remote. Your local tag remains.": "Le tag est supprimé uniquement sur le dépôt distant. Votre tag local est conservé.",
-	"Deleted tag %s from %s": "Tag %s supprimé de %s",
+	"Deleted tag %s from %s":     "Tag %s supprimé de %s",
+	"Commit details layout":      "Disposition des détails du commit",
+	"Switch layout (Left/Right)": "Changer de disposition (gauche/droite)",
+	"Switch layout (Top/Bottom)": "Changer de disposition (haut/bas)",
+	"Refresh commits":            "Actualiser les commits",
+	"Reload the commit list":     "Recharger la liste des commits",
 }
