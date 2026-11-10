@@ -14,8 +14,15 @@ type managedLanguageServer struct {
 	profile      languageServerProfile
 	connection   languageServerConnection
 	starting     bool
+	analyzing    bool
+	missing      bool
 	sequence     uint64
 	error        string
+	requestError bool
+	statusBusy   bool
+	statusError  bool
+	progress     map[string]string
+	statusDetail string
 	documents    map[string]uint64
 	workspaceKey string
 }
@@ -76,7 +83,7 @@ func (a *app) syncAdditionalLanguageServers() {
 			}
 		}
 		if server.connection == nil {
-			if !server.starting && server.error == "" {
+			if !server.starting && !server.missing && server.error == "" {
 				a.startManagedLanguageServer(server)
 			}
 			continue
@@ -94,6 +101,14 @@ func (a *app) syncAdditionalLanguageServers() {
 }
 
 func (a *app) startManagedLanguageServer(server *managedLanguageServer) {
+	if !server.profile.Custom && !a.languageServerExecutableAvailable(server.profile) {
+		server.starting = false
+		server.analyzing = false
+		server.missing = true
+		server.error = ""
+		return
+	}
+	server.missing = false
 	program, arguments := languageServerProgram(a.settings.LanguageServers, server.profile)
 	programs := languageServerExecutableCandidates(a.settings.LanguageServers[server.profile.ID].Path, server.profile.Program)
 	id, dataDir := server.profile.ID, a.dataDir()
@@ -197,18 +212,10 @@ func rustLanguageServerInitializationOptions(root string, files, openFiles []str
 	return options
 }
 
-// The managed TypeScript package lives outside the workspace. Supply it as a
-// fallback so the server still prefers the repository's own TypeScript version.
-// Resolve this at startup, including for installations saved by older versions.
+// TypeScript 7 is itself the language server and needs no legacy tsserver
+// initialization options. Keep this hook for servers that need options later.
 func languageServerInitializationOptions(id, dataDir string) map[string]any {
-	if id != "typescript" || dataDir == "" {
-		return nil
-	}
-	path := filepath.Join(dataDir, "tools", "node", "node_modules", "typescript", "lib", "tsserver.js")
-	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
-		return nil
-	}
-	return map[string]any{"tsserver": map[string]any{"fallbackPath": path}}
+	return nil
 }
 
 func (a *app) watchManagedLanguageServer(server *managedLanguageServer, connection languageServerConnection, sequence uint64) {
@@ -223,6 +230,11 @@ func (a *app) watchManagedLanguageServer(server *managedLanguageServer, connecti
 			}
 			server.connection = nil
 			server.documents = nil
+			server.analyzing = false
+			server.statusBusy = false
+			server.statusError = false
+			server.progress = nil
+			server.statusDetail = ""
 			if err != nil {
 				server.error = safeError(err)
 			} else {
@@ -240,7 +252,14 @@ func (a *app) stopManagedLanguageServer(server *managedLanguageServer) {
 	connection := server.connection
 	server.connection = nil
 	server.starting = false
+	server.analyzing = false
+	server.missing = false
 	server.error = ""
+	server.requestError = false
+	server.statusBusy = false
+	server.statusError = false
+	server.progress = nil
+	server.statusDetail = ""
 	server.documents = nil
 	if connection != nil {
 		go connection.Close()
@@ -318,14 +337,19 @@ func (a *app) additionalLanguageRequest(document *codeDocument, requestSequence 
 					return
 				}
 				if err != nil {
-					if isLanguageServerContentModified(err) {
+					if isLanguageServerContentModified(err) || isLanguageServerRequestTimeout(err) {
 						return
 					}
 					if server.error == "" {
 						server.error = safeError(err)
+						server.requestError = true
 						a.notify("error", server.profile.Name+" request failed", server.error)
 					}
 					return
+				}
+				if server.requestError {
+					server.error = ""
+					server.requestError = false
 				}
 				delivered = result(raw, text)
 			})
@@ -372,6 +396,70 @@ func (a *app) requestAdditionalLanguageCompletions(document *codeDocument, reque
 }
 
 func (a *app) handleManagedLanguageServerNotification(server *managedLanguageServer, sequence uint64, method string, raw json.RawMessage) {
+	if method == "$/progress" {
+		var progress struct {
+			Token json.RawMessage `json:"token"`
+			Value struct {
+				Kind    string `json:"kind"`
+				Title   string `json:"title"`
+				Message string `json:"message"`
+			} `json:"value"`
+		}
+		if json.Unmarshal(raw, &progress) != nil || len(progress.Token) == 0 || progress.Value.Kind == "" {
+			return
+		}
+		a.update(func() {
+			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence {
+				return
+			}
+			if server.progress == nil {
+				server.progress = make(map[string]string)
+			}
+			key := string(progress.Token)
+			if progress.Value.Kind == "end" {
+				delete(server.progress, key)
+			} else {
+				detail := strings.TrimSpace(progress.Value.Message)
+				if detail == "" {
+					detail = strings.TrimSpace(progress.Value.Title)
+				}
+				server.progress[key] = detail
+			}
+			server.updateAnalysisStatus()
+		})
+		return
+	}
+	if method == "experimental/serverStatus" {
+		var status struct {
+			Health    string `json:"health"`
+			Quiescent bool   `json:"quiescent"`
+			Message   string `json:"message"`
+		}
+		if json.Unmarshal(raw, &status) != nil {
+			return
+		}
+		a.update(func() {
+			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence {
+				return
+			}
+			server.statusBusy = !status.Quiescent
+			server.statusDetail = strings.TrimSpace(status.Message)
+			if status.Health == "warning" || status.Health == "error" {
+				if server.error == "" || server.statusError {
+					server.error = server.statusDetail
+					if server.error == "" {
+						server.error = status.Health
+					}
+					server.statusError = true
+				}
+			} else if server.statusError {
+				server.error = ""
+				server.statusError = false
+			}
+			server.updateAnalysisStatus()
+		})
+		return
+	}
 	if method == "window/showMessage" {
 		var message struct {
 			Type    int    `json:"type"`
@@ -399,6 +487,10 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 	a.handleLanguageServerDiagnostics(server.profile.ID, raw, func() bool {
 		return a.additionalLanguageServers[server.profile.ID] == server && server.sequence == sequence
 	})
+}
+
+func (server *managedLanguageServer) updateAnalysisStatus() {
+	server.analyzing = server.statusBusy || len(server.progress) > 0
 }
 
 func (a *app) isAdditionalLanguageServerPath(path string) bool {

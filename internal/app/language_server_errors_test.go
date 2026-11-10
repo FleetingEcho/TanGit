@@ -62,6 +62,14 @@ func TestLanguageServerContentModifiedDoesNotPoisonServerStatus(t *testing.T) {
 			}
 
 			request()
+			toasts = len(h.app.pendingToasts)
+			answer(nil, errLanguageServerRequestTimedOut)
+			h.updates.waitForUpdate(t)
+			if serverError() != "" || len(h.app.pendingToasts) != toasts {
+				t.Fatalf("a transient request timeout poisoned the running server: %q", serverError())
+			}
+
+			request()
 			answer(nil, &languageServerRPCError{Code: -32603, Message: "internal error"})
 			h.updates.waitForUpdate(t)
 			if serverError() == "" || len(h.app.pendingToasts) <= toasts {

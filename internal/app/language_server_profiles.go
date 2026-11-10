@@ -23,7 +23,7 @@ type languageServerProfile struct {
 // languageServerDownloadURLs identifies the upstream package or release used
 // by each managed installer, so users can inspect it before downloading.
 var languageServerDownloadURLs = map[string]string{
-	"typescript":   "https://www.npmjs.com/package/typescript-language-server",
+	"typescript":   "https://www.npmjs.com/package/typescript",
 	"html":         "https://www.npmjs.com/package/@t1ckbase/vscode-langservers-extracted",
 	"css":          "https://www.npmjs.com/package/@t1ckbase/vscode-langservers-extracted",
 	"json":         "https://www.npmjs.com/package/@t1ckbase/vscode-langservers-extracted",
@@ -45,7 +45,7 @@ var languageServerDownloadURLs = map[string]string{
 }
 
 var languageServerProfiles = []languageServerProfile{
-	{ID: "typescript", Name: "TypeScript Language Server", Category: "core", Description: "JavaScript and TypeScript navigation, hover, and completion", Program: "typescript-language-server", Arguments: []string{"--stdio"}, VersionArguments: []string{"--version"}, Extensions: map[string]string{
+	{ID: "typescript", Name: "TypeScript Language Server", Category: "core", Description: "Native TypeScript 7 navigation, hover, and completion", Program: "tsc", Arguments: []string{"--lsp", "--stdio"}, VersionArguments: []string{"--version"}, Extensions: map[string]string{
 		".js": "javascript", ".jsx": "javascriptreact", ".mjs": "javascript", ".cjs": "javascript",
 		".ts": "typescript", ".tsx": "typescriptreact", ".mts": "typescript", ".cts": "typescript",
 	}},

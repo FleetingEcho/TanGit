@@ -16,6 +16,8 @@ import (
 
 const maxLanguageServerMessage = 16 << 20
 
+var errLanguageServerRequestTimedOut = errors.New("language server request timed out")
+
 type languageServerConnection interface {
 	DidOpen(uri, language, text string, version uint64)
 	DidChange(uri, text string, version uint64)
@@ -73,6 +75,13 @@ func (e *languageServerRPCError) Error() string {
 func isLanguageServerContentModified(err error) bool {
 	var rpcError *languageServerRPCError
 	return errors.As(err, &rpcError) && rpcError.Code == -32801
+}
+
+// A feature request can time out while a server is still indexing a large
+// workspace. The missing hover or completion is transient; the running server
+// itself has not failed and must not be left in the error state.
+func isLanguageServerRequestTimeout(err error) bool {
+	return errors.Is(err, errLanguageServerRequestTimedOut)
 }
 
 type languageServerEnvelope struct {
@@ -149,6 +158,10 @@ func connectStdioLanguageServer(launch languageServerLaunch) (languageServerConn
 		"rootUri":   rootURI,
 		"capabilities": map[string]any{
 			"workspace": map[string]any{"workspaceFolders": true},
+			"window":    map[string]any{"workDoneProgress": true},
+			"experimental": map[string]any{
+				"serverStatusNotification": true,
+			},
 			"textDocument": map[string]any{
 				"synchronization":    map[string]any{"didSave": true},
 				"hover":              map[string]any{"contentFormat": []string{"markdown", "plaintext"}},
@@ -231,7 +244,7 @@ func (s *stdioLanguageServer) request(method string, params any, timeout time.Du
 		return response.result, response.err
 	case <-timer.C:
 		s.removePending(id)
-		return nil, errors.New("language server request timed out")
+		return nil, errLanguageServerRequestTimedOut
 	case <-s.closed:
 		return nil, errors.New("language server stopped")
 	}

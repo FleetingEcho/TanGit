@@ -443,11 +443,15 @@ func (a *app) codeFileStatus(path string) string {
 }
 
 type codeLanguageServerStatus struct {
-	name     string
-	running  bool
-	starting bool
-	failed   bool
-	detail   string
+	id         string
+	name       string
+	running    bool
+	starting   bool
+	analyzing  bool
+	missing    bool
+	installing bool
+	failed     bool
+	detail     string
 }
 
 // codeLanguageServerStatuses includes every live workspace server, not just
@@ -456,21 +460,28 @@ type codeLanguageServerStatus struct {
 func (a *app) codeLanguageServerStatuses() []codeLanguageServerStatus {
 	statuses := make([]codeLanguageServerStatus, 0, len(a.additionalLanguageServers)+1)
 	for _, profile := range languageServerProfilesWithSettings(a.settings.LanguageServers) {
-		status := codeLanguageServerStatus{name: profile.Name}
+		status := codeLanguageServerStatus{id: profile.ID, name: profile.Name,
+			installing: a.languageServerInstalling[profile.ID]}
 		if profile.ID == goLanguageServerID {
 			status.running = a.goLanguageServer != nil
 			status.starting = a.goLanguageServerStarting
+			status.missing = a.goLanguageServerMissing
 			status.failed = a.goLanguageServerError != ""
 			status.detail = a.goLanguageServerError
 		} else if server := a.additionalLanguageServers[profile.ID]; server != nil {
 			status.running = server.connection != nil
 			status.starting = server.starting
+			status.analyzing = server.analyzing
+			status.missing = server.missing
 			status.failed = server.error != ""
 			status.detail = server.error
+			if status.detail == "" {
+				status.detail = server.statusDetail
+			}
 		} else {
 			continue
 		}
-		if status.running || status.starting || status.failed {
+		if status.running || status.starting || status.installing || status.missing || status.failed {
 			statuses = append(statuses, status)
 		}
 	}
@@ -490,9 +501,13 @@ func (a *app) codeLanguageServersButton(c *ui.Context) {
 	color := theme.Success
 	running := false
 	starting := false
+	analyzing := false
+	missing := false
 	for _, status := range statuses {
 		running = running || status.running
 		starting = starting || status.starting
+		analyzing = analyzing || (status.analyzing && !status.failed)
+		missing = missing || status.missing || status.installing
 		if status.failed {
 			color = theme.Danger
 		}
@@ -500,10 +515,26 @@ func (a *app) codeLanguageServersButton(c *ui.Context) {
 	if color != theme.Danger && !running && starting {
 		color = theme.Warning
 	}
-	button := compactIconButton(ui.ButtonBase(c)).Label(tr("Language servers")).
-		Tooltip(tr("Show language servers"))
+	if color != theme.Danger && analyzing {
+		color = theme.Warning
+	}
+	if color != theme.Danger && missing {
+		color = theme.Warning
+	}
+	var button ui.Element
+	if analyzing {
+		button = compactTextButton(ui.ButtonBase(c))
+	} else {
+		button = compactIconButton(ui.ButtonBase(c))
+	}
+	button.Label(tr("Language servers")).Tooltip(tr("Show language servers"))
 	button.Children(func() {
-		ui.Icon(c, languageServerOnlineIcon).FontSize(16).TextColor(color)
+		ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
+			ui.Icon(c, languageServerOnlineIcon).FontSize(16).TextColor(color)
+			if analyzing {
+				ui.Text(c, tr("Analyzing…")).FontSize(theme.FontSize - 1).TextColor(theme.Warning)
+			}
+		})
 	})
 	hovered := button.Hovered()
 	if !hovered {
@@ -523,6 +554,12 @@ func (a *app) codeLanguageServersButton(c *ui.Context) {
 				switch {
 				case status.failed:
 					label, stateColor = tr("Error"), theme.Danger
+				case status.installing:
+					label, stateColor = tr("Installing…"), theme.Warning
+				case status.missing:
+					label, stateColor = tr("Download required"), theme.Warning
+				case status.analyzing:
+					label, stateColor = tr("Analyzing…"), theme.Warning
 				case status.starting:
 					label, stateColor = tr("Starting"), theme.Warning
 				}
@@ -532,6 +569,13 @@ func (a *app) codeLanguageServersButton(c *ui.Context) {
 					ui.Text(c, "●").TextColor(stateColor).FontSize(theme.FontSize - 2)
 					ui.Text(c, status.name).Grow(1).SingleLine()
 					ui.Text(c, label).TextColor(stateColor).FontSize(theme.FontSize - 1)
+					if status.missing && !status.installing {
+						download := compactTextButton(ui.Button(c, tr("Download"))).
+							Label(tr("Download") + " " + status.name)
+						if download.Clicked() {
+							a.installLanguageServer(status.id)
+						}
+					}
 				})
 			}
 		})

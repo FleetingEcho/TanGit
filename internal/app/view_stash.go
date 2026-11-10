@@ -516,11 +516,12 @@ func (a *app) stashRowMenu(m *ui.Menu, row ui.ListRow) {
 
 func (a *app) stashView(c *ui.Context) {
 	theme := c.Theme()
-	ui.Column(c).Grow(1).Gap(10).Children(func() {
+	ui.Column(c).Grow(1).Gap(0).Children(func() {
 		a.recoveryPanel(c)
 		a.collapsibleContentPaneSplit(c, &a.filePaneWidth, &a.workspacePaneCollapsed[sectionStash],
 			"Expand list pane", func() {
-				islandCard(c, ui.Column(c).Grow(1).Gap(8).Padding(12)).Children(func() {
+				islandCard(c, ui.Column(c).Grow(1).Gap(8).Padding(12)).
+					Role(ui.RoleRegion).Label(tr("Saved work")).Children(func() {
 					ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
 						ui.Icon(c, stashIcon).FontSize(14).TextColor(theme.Accent)
 						ui.Text(c, tr("Saved work")).Bold().Grow(1)
