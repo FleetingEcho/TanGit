@@ -758,8 +758,6 @@ func (a *app) headerView(c *ui.Context) {
 					})
 			}
 			// Labeled actions lead the toolbar; icon-only actions follow them.
-			iconButton(c, "Compare refs", "Compare two branches, tags, or commits (W)", compareIcon,
-				a.actionBusy, a.openCompare)
 			iconButton(c, "Fetch", "Fetch from the remotes", fetchIcon,
 				a.actionBusy || len(a.snapshot.Remotes) == 0, func() {
 					a.beginRepositoryActionMessage(tr("Fetched from the remotes"), "",

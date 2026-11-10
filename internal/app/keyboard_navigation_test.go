@@ -363,7 +363,7 @@ func TestKeyboardTabLeavesListRowCheckbox(t *testing.T) {
 	h.tester.Key(0, ui.KeyTab)
 	h.tester.Frame()
 	if !h.tester.Focused("Commit files") {
-		t.Fatalf("Tab was trapped among commit-row controls: commit=%v files=%v toolbar=%v pending=%q group=%q", h.tester.Focused("Commits"), h.tester.Focused("Commit files"), h.tester.Focused("Compare refs"), h.app.keyboardFocus, h.app.keyboardCurrentGroup)
+		t.Fatalf("Tab was trapped among commit-row controls: commit=%v files=%v toolbar=%v pending=%q group=%q", h.tester.Focused("Commits"), h.tester.Focused("Commit files"), h.tester.Focused("Fetch"), h.app.keyboardFocus, h.app.keyboardCurrentGroup)
 	}
 }
 
@@ -418,12 +418,12 @@ func TestKeyboardTabStillTraversesToolbarAndConfirmationControls(t *testing.T) {
 	h.tester.Frame()
 	h.tester.Key(0, ui.KeyTab)
 	h.tester.Frame()
-	if !h.tester.Focused("Compare refs") {
+	if !h.tester.Focused("Fetch") {
 		t.Fatal("Tab no longer enters toolbar controls")
 	}
 	h.tester.Key(0, ui.KeyTab)
 	h.tester.Frame()
-	if !h.tester.Focused("Fetch") {
+	if !h.tester.Focused("Pull") {
 		t.Fatal("Tab skipped toolbar controls")
 	}
 	h.app.askConfirm(confirmRequest{title: "Review", confirmLabel: "Proceed"})

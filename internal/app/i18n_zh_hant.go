@@ -278,7 +278,6 @@ var zhHant = map[string]string{
 	"Refresh comparison": "重新整理比較",
 	"Cancel comparison":  "取消比較",
 	"Compare two refs":   "比較兩個參照",
-	"Compare two branches, tags, or commits (W)":                                "比較兩個分支、標籤或提交 (W)",
 	"Review two branches, tags, or commits without changing your working tree.": "比較兩個分支、標籤或提交，而不更改工作樹。",
 	"Close comparison":                       "關閉比較",
 	"From ref":                               "起始參照",

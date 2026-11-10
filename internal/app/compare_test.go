@@ -152,13 +152,15 @@ func TestCompareRefsPageLoadsFilesAndAppliesOptions(t *testing.T) {
 		t.Error("switching comparison pages changed the underlying file or diff")
 	}
 
-	// The same feature is reachable without the keyboard from the header.
-	if err := h.tester.Click("Compare refs"); err != nil {
-		t.Fatalf("open comparison from the header: %v", err)
+	// The repository header does not duplicate Compare navigation. Its W
+	// shortcut still restores the workspace without resetting its state.
+	if _, found := h.tester.AccessByRole(ui.RoleButton, "Compare refs"); found {
+		t.Fatal("the repository header still shows the removed Compare refs button")
 	}
+	h.press(t, ui.KeyW)
 	h.tester.Frame()
 	if h.app.workspaceTab != sectionCompare || h.app.compare.from != "HEAD" || h.app.compare.to != "HEAD~1" {
-		t.Error("header Compare refs did not restore the comparison page and its state")
+		t.Error("W did not restore the comparison page and its state")
 	}
 }
 
