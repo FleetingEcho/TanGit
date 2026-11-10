@@ -82,18 +82,39 @@ func (t *tab) path() string {
 	return strings.TrimSpace(t.app.path)
 }
 
+// linkedWorktree reports the opened checkout's identity, not merely whether
+// its repository has other worktrees. Core-only snapshots do not guess: the
+// indicator appears when the details identify the current worktree.
+func (t *tab) linkedWorktree() bool {
+	return t != nil && t.app != nil && t.app.state == stateReady && t.app.openedLinkedWorktree()
+}
+
+func (a *app) openedLinkedWorktree() bool {
+	for _, worktree := range a.snapshot.Worktrees {
+		if worktree.Current {
+			return !worktree.Main
+		}
+	}
+	return false
+}
+
 // title is the name the tab pill shows: the name the repository was given,
-// its folder while it has none, or Home.
+// its folder while it has none, or Home. A linked checkout says so in the
+// title itself rather than relying on an ambiguous icon alone.
 func (t *tab) title() string {
+	title := tr("Home")
 	if path := t.path(); path != "" {
+		title = repoName(path)
 		if t.app != nil {
 			if name := t.app.recentNameFor(path); name != "" {
-				return name
+				title = name
 			}
 		}
-		return repoName(path)
 	}
-	return tr("Home")
+	if t.linkedWorktree() {
+		title += " · " + tr("Worktree")
+	}
+	return title
 }
 
 // tooltip names the page under the pointer, so a pinned tab, which hides its
@@ -106,6 +127,12 @@ func (t *tab) tooltip() string {
 		return tr("Home — open a repository")
 	}
 	path := t.path()
+	if t.linkedWorktree() {
+		path += " · " + tr("Linked worktree")
+		if owner := t.app.openedMainWorktreePath(); owner != "" {
+			path += "\n" + tr("Main worktree") + ": " + owner
+		}
+	}
 	if t.pinned {
 		path += " · " + tr("Pinned")
 	}
@@ -1213,8 +1240,15 @@ func (s *shell) tabView(c *ui.Context, i int, width float32) {
 	closeClicked := false
 	pill.Children(func() {
 		if t.pinned {
-			ui.Icon(c, pinIcon).FontSize(11).TextColor(theme.TextMuted)
+			icon := pinIcon
+			if t.linkedWorktree() {
+				icon = worktreesIcon
+			}
+			ui.Icon(c, icon).FontSize(11).TextColor(theme.TextMuted)
 			return
+		}
+		if t.linkedWorktree() && !narrow {
+			ui.Icon(c, worktreesIcon).FontSize(12).TextColor(theme.Accent)
 		}
 		showClose := (active || hovered) && s.canClose(t) && !tiny
 		if showClose && narrow {

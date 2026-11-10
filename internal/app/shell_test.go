@@ -757,6 +757,67 @@ func TestShellSurfaceClipsAllWindowCorners(t *testing.T) {
 	}
 }
 
+func TestLinkedWorktreeTabAndHeaderShowTheirIdentity(t *testing.T) {
+	h := menuTestApp(t)
+	tester := h.tester
+	repositoryTab := &tab{app: h.app}
+	main := repository.Worktree{Name: "project", Path: "/work/project", Branch: "main", Current: true, Main: true}
+	linked := repository.Worktree{Name: "feature", Path: "/work/feature", Branch: "feature"}
+	h.app.snapshot.Worktrees = []repository.Worktree{main, linked}
+	tester.Frame()
+	if got := repositoryTab.title(); got != "project" {
+		t.Fatalf("main-repository tab title = %q, want project", got)
+	}
+	if strings.Contains(repositoryTab.tooltip(), "Linked worktree") || tester.HasText("Linked worktree") {
+		t.Fatal("the main repository is mislabeled as a linked worktree")
+	}
+
+	main.Current = false
+	linked.Current = true
+	h.app.snapshot.Root = linked.Path
+	h.app.snapshot.Branch = linked.Branch
+	h.app.snapshot.Worktrees = []repository.Worktree{main, linked}
+	h.app.path = linked.Path
+	h.app.location = workspace.Location{Kind: workspace.Local, Root: linked.Path}
+	tester.Frame()
+	if got := repositoryTab.title(); got != "feature · Worktree" {
+		t.Fatalf("linked-worktree tab title = %q", got)
+	}
+	if !strings.Contains(repositoryTab.tooltip(), "Linked worktree") || !tester.HasText("Linked worktree") {
+		t.Fatalf("linked-worktree identity is not visible: tooltip=%q texts=%v", repositoryTab.tooltip(), tester.Texts())
+	}
+	if !strings.Contains(repositoryTab.tooltip(), "Main worktree: /work/project") ||
+		!tester.HasText("Main worktree · project") {
+		t.Fatalf("linked-worktree owner is not visible: tooltip=%q texts=%v", repositoryTab.tooltip(), tester.Texts())
+	}
+	repositoryTab.pinned = true
+	if tooltip := repositoryTab.tooltip(); !strings.Contains(tooltip, "Linked worktree") || !strings.Contains(tooltip, "Pinned") {
+		t.Fatalf("pinned linked-worktree tooltip = %q", tooltip)
+	}
+
+	linked.Branch = ""
+	h.app.snapshot.Branch = "(no branch)"
+	h.app.snapshot.Head = "0123456789abcdef0123456789abcdef01234567"
+	h.app.snapshot.Worktrees = []repository.Worktree{main, linked}
+	tester.Frame()
+	_, placeholder := tester.Find("(no branch)")
+	if placeholder || !tester.HasText("Worktree · detached 0123456") {
+		t.Fatalf("detached linked-worktree identity is unclear: %v", tester.Texts())
+	}
+
+	main.Current = true
+	linked.Current = false
+	h.app.snapshot.Root = main.Path
+	h.app.snapshot.Worktrees = []repository.Worktree{main, linked}
+	h.app.path = main.Path
+	h.app.location = workspace.Location{Kind: workspace.Local, Root: main.Path}
+	tester.Frame()
+	if tester.HasText("Worktree · detached 0123456") || !tester.HasText("detached 0123456") ||
+		tester.HasText("Main worktree · project") {
+		t.Fatalf("detached main-worktree identity is unclear: %v", tester.Texts())
+	}
+}
+
 // tabTitles names the pages for a failure message.
 func (s *shell) tabTitles() string {
 	titles := make([]string, 0, len(s.tabs))

@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"slices"
 	"sync/atomic"
 	"testing"
@@ -17,15 +16,26 @@ func captureAgentTerminalOptions(t *testing.T) (<-chan terminal.Options, *atomic
 	t.Helper()
 	original := newTerminal
 	starts := make(chan terminal.Options, terminalSessionLimit+1)
+	peers := make(chan monitoredTerminalPeer, terminalSessionLimit+1)
 	var calls atomic.Int32
 	newTerminal = func(options terminal.Options) (*terminal.Terminal, error) {
 		calls.Add(1)
 		options.Command = append([]string(nil), options.Command...)
 		options.Env = append([]string(nil), options.Env...)
 		starts <- options
-		return nil, errors.New("recorded test terminal")
+		return newMonitoredTerminal(options, peers)
 	}
-	t.Cleanup(func() { newTerminal = original })
+	t.Cleanup(func() {
+		newTerminal = original
+		for {
+			select {
+			case peer := <-peers:
+				_ = peer.Close()
+			default:
+				return
+			}
+		}
+	})
 	return starts, &calls
 }
 
@@ -67,9 +77,10 @@ func TestAgentTerminalLaunchUsesExactTargetAndReopensExistingSession(t *testing.
 	}
 	wantCommand := h.app.agentTaskCommand(task, false, requestPath)
 	wantEnvironment := []string{
+		"TANGIT_AGENT_OPERATION_ID=" + task.ID,
+		"TANGIT_AGENT_REQUEST_FILE=" + requestPath,
 		"TANGIT_AGENT_TASK_ID=" + task.ID,
 		"TANGIT_AGENT_WORKTREE=" + task.WorktreePath,
-		"TANGIT_AGENT_REQUEST_FILE=" + requestPath,
 	}
 	if options.Dir != task.WorktreePath {
 		t.Fatalf("terminal directory = %q, want task worktree %q", options.Dir, task.WorktreePath)
@@ -156,6 +167,34 @@ func TestAgentLaunchRefusalsLeaveTaskReady(t *testing.T) {
 				t.Fatalf("refusal notification = %+v, want title %q", h.app.pendingToasts, test.toastTitle)
 			}
 		})
+	}
+}
+
+func TestAgentTerminalFastExitWaitsForInitialLaunchMutation(t *testing.T) {
+	h, store := newAgentTestHarness(t)
+	task := createAgentTestTask(t, h, store, agentwork.Task{
+		Profile: agentwork.Profile{LaunchCommand: "agent {worktree}"},
+	})
+	starts, _ := captureAgentTerminalOptions(t)
+	h.app.launchAgentTask(task.ID, false)
+	options := receiveAgentTerminalOptions(t, starts)
+	if !h.app.agents.mutating[task.ID] {
+		t.Fatal("agent did not reach its initial launch mutation")
+	}
+
+	options.OnExit(0)
+	h.waitFor(t, "the queued fast agent exit", func() bool {
+		current, ok := h.app.selectedAgentTask()
+		_, pending := h.app.agents.processCompletions[task.ID]
+		return ok && current.Status == agentwork.StatusExited && !pending &&
+			!h.app.agents.mutating[task.ID] && len(h.app.term.sessions) == 0
+	})
+	persisted, err := store.Get(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Status != agentwork.StatusExited || persisted.ExitCode == nil || *persisted.ExitCode != 0 {
+		t.Fatalf("fast agent exit was dropped: status=%q exit=%v", persisted.Status, persisted.ExitCode)
 	}
 }
 
