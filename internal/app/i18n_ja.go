@@ -278,7 +278,6 @@ var japanese = map[string]string{
 	"Refresh comparison": "比較を更新",
 	"Cancel comparison":  "比較をキャンセル",
 	"Compare two refs":   "2 つの参照を比較",
-	"Compare two branches, tags, or commits (W)":                                "2 つのブランチ、タグ、またはコミットを比較 (W)",
 	"Review two branches, tags, or commits without changing your working tree.": "ワークツリーを変更せずに、2 つのブランチ、タグ、またはコミットを比較します。",
 	"Close comparison":                       "比較を閉じる",
 	"From ref":                               "比較元の参照",
