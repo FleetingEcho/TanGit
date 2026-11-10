@@ -171,4 +171,5 @@ var sectionIcons = []*ui.SVG{
 	worktreesIcon,
 	submodulesIcon,
 	reflogIcon,
+	compareIcon,
 }

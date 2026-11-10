@@ -274,8 +274,10 @@ var japanese = map[string]string{
 	"Resize terminal split": "ターミナル分割のサイズを変更",
 
 	// Ref comparison.
-	"Compare refs":     "参照を比較",
-	"Compare two refs": "2 つの参照を比較",
+	"Compare refs":       "参照を比較",
+	"Refresh comparison": "比較を更新",
+	"Cancel comparison":  "比較をキャンセル",
+	"Compare two refs":   "2 つの参照を比較",
 	"Compare two branches, tags, or commits (W)":                                "2 つのブランチ、タグ、またはコミットを比較 (W)",
 	"Review two branches, tags, or commits without changing your working tree.": "ワークツリーを変更せずに、2 つのブランチ、タグ、またはコミットを比較します。",
 	"Close comparison":                       "比較を閉じる",
@@ -1334,8 +1336,10 @@ var japanese = map[string]string{
 	"Copied":                    "コピーしました",
 	"Save diff":                 "差分を保存",
 	"Save this diff to a file…": "この差分をファイルに保存…",
-	"Save":                      "保存",
-	"Patch files":               "パッチファイル",
-	"Saved the diff":            "差分を保存しました",
-	"Could not save the diff":   "差分を保存できませんでした",
+	"Save comparison diff":      "比較差分を保存",
+	"Download every change between these refs as a patch…": "これらの参照間のすべての変更をパッチとしてダウンロード…",
+	"Save":                    "保存",
+	"Patch files":             "パッチファイル",
+	"Saved the diff":          "差分を保存しました",
+	"Could not save the diff": "差分を保存できませんでした",
 }

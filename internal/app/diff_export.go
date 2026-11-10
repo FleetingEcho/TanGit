@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 
@@ -41,30 +42,76 @@ func (a *app) exportDiff() {
 			{Name: tr("Patch files"), Extensions: []string{"patch", "diff"}},
 		},
 	}
-	patch := shown.patch
+	go a.writePatch(opts, shown.patch)
+}
+
+// exportCompareDiffButton downloads Git's complete comparison, not a patch
+// assembled from the file viewer. It stays independent of the selected file.
+func (a *app) exportCompareDiffButton(c *ui.Context) {
+	disabled := a.compare.appliedFrom == "" || len(a.compare.files) == 0 ||
+		a.compare.filesLoading || a.compare.wholeDiffLoading
+	iconButton(c, "Save comparison diff", "Download every change between these refs as a patch…",
+		downloadIcon, disabled, a.exportCompareDiff)
+}
+
+func (a *app) exportCompareDiff() {
+	if a.session == nil || a.compare.appliedFrom == "" || len(a.compare.files) == 0 ||
+		a.compare.filesLoading || a.compare.wholeDiffLoading {
+		return
+	}
+	a.compare.wholeDiffLoading = true
+	session := a.session
+	from, to, options := a.compare.appliedFrom, a.compare.appliedTo, a.compare.appliedOptions
+	generation, token := a.generation, a.compare.token
+	opts := mygo.SaveDialogOptions{
+		Parent:      a.window,
+		Title:       tr("Save comparison diff"),
+		DefaultPath: filepath.Join(a.snapshot.Root, "comparison.patch"),
+		ButtonLabel: tr("Save"),
+		Filters: []mygo.FileFilter{
+			{Name: tr("Patch files"), Extensions: []string{"patch", "diff"}},
+		},
+	}
 	go func() {
 		defer a.recoverBackground()
-		path, err := chooseSavePath(opts)
-		if err != nil {
-			a.update(func() {
-				a.notify("error", "Could not save the diff", safeError(err))
-			})
-			return
-		}
-		if path == "" {
-			// Canceled: no file, and nothing to say about it.
-			return
-		}
-		if err := os.WriteFile(path, []byte(patch), 0o644); err != nil {
-			a.update(func() {
-				a.notify("error", "Could not save the diff", safeError(err))
-			})
-			return
-		}
+		diff, err := session.CompareDiff(context.Background(), from, to, options)
 		a.update(func() {
-			a.notify("success", "Saved the diff", path)
+			if generation == a.generation && token == a.compare.token {
+				a.compare.wholeDiffLoading = false
+			}
+			if err != nil {
+				a.notify("error", "Could not save the diff", safeError(err))
+			}
 		})
+		if err == nil {
+			a.writePatch(opts, diff.Patch)
+		}
 	}()
+}
+
+// writePatch runs off the UI goroutine: both the desktop dialog and file write
+// may block. Canceling the dialog leaves no file and raises no notification.
+func (a *app) writePatch(opts mygo.SaveDialogOptions, patch string) {
+	defer a.recoverBackground()
+	path, err := chooseSavePath(opts)
+	if err != nil {
+		a.update(func() {
+			a.notify("error", "Could not save the diff", safeError(err))
+		})
+		return
+	}
+	if path == "" {
+		return
+	}
+	if err := os.WriteFile(path, []byte(patch), 0o644); err != nil {
+		a.update(func() {
+			a.notify("error", "Could not save the diff", safeError(err))
+		})
+		return
+	}
+	a.update(func() {
+		a.notify("success", "Saved the diff", path)
+	})
 }
 
 // diffFileName names the file a saved diff starts as: the changed file's own

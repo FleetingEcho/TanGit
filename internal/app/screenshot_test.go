@@ -215,6 +215,10 @@ func (s screenshotSession) CompareFiles(context.Context, string, string, reposit
 	return []repository.CommitFile{{Path: "changed.txt", Status: "M", LinesAdded: 2, LinesDeleted: 1}}, nil
 }
 
+func (s screenshotSession) CompareDiff(context.Context, string, string, repository.DiffOptions) (repository.Diff, error) {
+	return repository.Diff{Patch: screenshotPatch, Kind: "Compare"}, nil
+}
+
 func (s screenshotSession) CompareFileDiff(context.Context, string, string, repository.CommitFile, repository.DiffOptions) (repository.Diff, error) {
 	return repository.Diff{Patch: screenshotPatch, Kind: "Compare"}, nil
 }

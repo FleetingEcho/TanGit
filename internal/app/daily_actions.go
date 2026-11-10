@@ -126,9 +126,6 @@ func (a *app) compareCommit(commit repository.Commit, parent bool) {
 	}
 	a.closeCompare()
 	a.openCompare()
-	if !a.compare.open {
-		return
-	}
 	a.compare.from, a.compare.to = from, to
 	a.beginCompare()
 }

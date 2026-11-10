@@ -471,7 +471,9 @@ func (a *app) syncCodeTree() {
 			}
 		}
 	}
-	if len(a.code.rows) > 0 && a.code.selectedRow < 0 {
+	// The ordinary Explorer starts without a selection. Quick open still
+	// prepares its first match so Enter can open it immediately.
+	if filter != "" && len(a.code.rows) > 0 && a.code.selectedRow < 0 {
 		a.code.selectedRow = firstFileTreeFile(a.code.rows)
 		if a.code.selectedRow >= 0 {
 			a.code.selectedSource = a.code.rows[a.code.selectedRow].source

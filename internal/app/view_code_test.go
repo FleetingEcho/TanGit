@@ -68,6 +68,21 @@ func waitForCodeDocument(t *testing.T, h *harness, path string) *codeDocument {
 	return h.app.code.documents[path]
 }
 
+func TestCodePageInitiallyHasNoSelectedFile(t *testing.T) {
+	stubCodeWorkspace(t, map[string]string{
+		".editorconfig":  "root = true\n",
+		".gitattributes": "* text=auto\n",
+	})
+	h := menuTestApp(t)
+	openCodePageForTest(t, h, 2)
+	if h.app.code.selectedRow != -1 || h.app.code.selectedSource != -1 {
+		t.Fatalf("the initial explorer selected row %d from source %d", h.app.code.selectedRow, h.app.code.selectedSource)
+	}
+	if h.app.code.active != "" || len(h.app.code.tabs) != 0 {
+		t.Fatalf("the initial Editor opened %q with tabs %v", h.app.code.active, h.app.code.tabs)
+	}
+}
+
 func TestCodePageOpensFiltersAndClosesPersistentTabs(t *testing.T) {
 	written := stubCodeWorkspace(t, map[string]string{
 		"main.go":              "package main\n",

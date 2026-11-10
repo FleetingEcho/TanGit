@@ -141,8 +141,8 @@ func TestCompareCommitPrefillsRefsAndStartsImmediately(t *testing.T) {
 			h, calls := menuTestAppWithCalls(t)
 			h.app.compareCommit(h.app.snapshot.Commits[0], test.parent)
 
-			if !h.app.compare.open {
-				t.Fatal("the comparison did not open")
+			if h.app.workspaceTab != sectionCompare {
+				t.Fatal("the comparison page did not open")
 			}
 			if h.app.compare.from != test.wantFrom || h.app.compare.to != test.wantTo {
 				t.Fatalf("draft refs = %q to %q, want %q to %q",
@@ -171,7 +171,7 @@ func TestCompareRootCommitToParentIsNoOp(t *testing.T) {
 
 	h.app.compareCommit(root, true)
 
-	if h.app.compare.open || h.app.compare.from != "" || h.app.compare.to != "" || h.app.compare.filesLoading {
+	if h.app.compare.from != "" || h.app.compare.to != "" || h.app.compare.filesLoading {
 		t.Fatalf("root-parent comparison changed comparison state: %#v", h.app.compare)
 	}
 	for _, call := range calls.all() {

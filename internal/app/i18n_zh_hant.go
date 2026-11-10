@@ -274,8 +274,10 @@ var zhHant = map[string]string{
 	"Resize terminal split": "調整終端機分割大小",
 
 	// Ref comparison.
-	"Compare refs":     "比較參照",
-	"Compare two refs": "比較兩個參照",
+	"Compare refs":       "比較參照",
+	"Refresh comparison": "重新整理比較",
+	"Cancel comparison":  "取消比較",
+	"Compare two refs":   "比較兩個參照",
 	"Compare two branches, tags, or commits (W)":                                "比較兩個分支、標籤或提交 (W)",
 	"Review two branches, tags, or commits without changing your working tree.": "比較兩個分支、標籤或提交，而不更改工作樹。",
 	"Close comparison":                       "關閉比較",
@@ -1334,8 +1336,10 @@ var zhHant = map[string]string{
 	"Copied":                    "已複製",
 	"Save diff":                 "儲存差異",
 	"Save this diff to a file…": "將此差異儲存到檔案…",
-	"Save":                      "儲存",
-	"Patch files":               "修補程式檔案",
-	"Saved the diff":            "已儲存差異",
-	"Could not save the diff":   "無法儲存差異",
+	"Save comparison diff":      "儲存比較差異",
+	"Download every change between these refs as a patch…": "將這兩個參照之間的所有變更下載為補丁…",
+	"Save":                    "儲存",
+	"Patch files":             "修補程式檔案",
+	"Saved the diff":          "已儲存差異",
+	"Could not save the diff": "無法儲存差異",
 }

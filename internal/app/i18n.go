@@ -354,8 +354,10 @@ var zhHans = map[string]string{
 	"Resize terminal split": "调整终端分割大小",
 
 	// Ref comparison.
-	"Compare refs":     "比较引用",
-	"Compare two refs": "比较两个引用",
+	"Compare refs":       "比较引用",
+	"Refresh comparison": "刷新比较",
+	"Cancel comparison":  "取消比较",
+	"Compare two refs":   "比较两个引用",
 	"Compare two branches, tags, or commits (W)":                                "比较两个分支、标签或提交 (W)",
 	"Review two branches, tags, or commits without changing your working tree.": "比较两个分支、标签或提交，而不更改工作树。",
 	"Close comparison":                       "关闭比较",
@@ -1414,8 +1416,10 @@ var zhHans = map[string]string{
 	"Copied":                    "已复制",
 	"Save diff":                 "保存差异",
 	"Save this diff to a file…": "将此差异保存到文件…",
-	"Save":                      "保存",
-	"Patch files":               "补丁文件",
-	"Saved the diff":            "已保存差异",
-	"Could not save the diff":   "无法保存差异",
+	"Save comparison diff":      "保存比较差异",
+	"Download every change between these refs as a patch…": "将这两个引用之间的所有更改下载为补丁…",
+	"Save":                    "保存",
+	"Patch files":             "补丁文件",
+	"Saved the diff":          "已保存差异",
+	"Could not save the diff": "无法保存差异",
 }

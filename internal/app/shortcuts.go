@@ -62,10 +62,6 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		c.OnShortcut(0, ui.KeyEscape, a.closeSettings)
 		return
 	}
-	if a.compare.open {
-		c.OnShortcut(0, ui.KeyEscape, a.closeCompare)
-		return
-	}
 	if a.diffFullscreen {
 		c.OnShortcut(0, ui.KeyEscape, a.closeDiffFullscreen)
 		return
@@ -237,6 +233,8 @@ func (a *app) focusActiveSearch() {
 		count = len(a.snapshot.Submodules)
 	case sectionReflog:
 		count = len(a.snapshot.Reflog)
+	case sectionCompare:
+		count = len(a.compare.files)
 	}
 	if count == 0 {
 		return

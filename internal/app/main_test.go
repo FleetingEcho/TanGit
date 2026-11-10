@@ -584,6 +584,12 @@ func (f fakeSession) CompareFiles(_ context.Context, from, to string, options re
 	}, nil
 }
 
+func (f fakeSession) CompareDiff(_ context.Context, from, to string, options repository.DiffOptions) (repository.Diff, error) {
+	f.calls.record("compare-diff:" + from + ":" + to + ":" +
+		strconv.FormatBool(options.IgnoreWhitespace) + ":" + strconv.Itoa(options.ContextLines))
+	return repository.Diff{Patch: fakeWorkingTreePatch, Kind: "Compare"}, nil
+}
+
 func (f fakeSession) CompareFileDiff(_ context.Context, from, to string, file repository.CommitFile, options repository.DiffOptions) (repository.Diff, error) {
 	f.calls.record("compare-file-diff:" + from + ":" + to + ":" + file.Path + ":" +
 		strconv.FormatBool(options.IgnoreWhitespace) + ":" + strconv.Itoa(options.ContextLines))

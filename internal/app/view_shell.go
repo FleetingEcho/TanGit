@@ -27,12 +27,13 @@ const (
 	sectionWorktrees
 	sectionSubmodules
 	sectionReflog
+	sectionCompare
 	workspaceSectionCount
 )
 
 var workspaceSections = []string{
 	"Editor", "Changes", "History", "Graph", "Branches", "Remotes", "Stash", "Tags",
-	"Worktrees", "Submodules", "Reflog",
+	"Worktrees", "Submodules", "Reflog", "Compare refs",
 }
 
 // workspaceSectionIDs are the stable names of the sections the settings
@@ -40,7 +41,7 @@ var workspaceSections = []string{
 // sections are ever reordered.
 var workspaceSectionIDs = []string{
 	"code", "changes", "history", "graph", "branches", "remotes", "stash", "tags",
-	"worktrees", "submodules", "reflog",
+	"worktrees", "submodules", "reflog", "compare",
 }
 
 // defaultVisibleSections shows every workspace section on a fresh install.
@@ -104,7 +105,6 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	}
 	a.branchFullscreenView(c, overlayTopInset)
 	a.diffFullscreenView(c, overlayTopInset)
-	a.compareModal(c)
 	a.commitActionModals(c)
 	a.branchFormModal(c)
 	a.stashFormModal(c)
@@ -967,6 +967,8 @@ func (a *app) contentView(c *ui.Context) {
 		a.reflogView(c)
 	case sectionCode:
 		a.codeView(c)
+	case sectionCompare:
+		a.comparePage(c)
 	}
 }
 

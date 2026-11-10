@@ -274,8 +274,10 @@ var french = map[string]string{
 	"Resize terminal split": "Redimensionner la division du terminal",
 
 	// Ref comparison.
-	"Compare refs":     "Comparer les références",
-	"Compare two refs": "Comparer deux références",
+	"Compare refs":       "Comparer les références",
+	"Refresh comparison": "Actualiser la comparaison",
+	"Cancel comparison":  "Annuler la comparaison",
+	"Compare two refs":   "Comparer deux références",
 	"Compare two branches, tags, or commits (W)":                                "Comparer deux branches, étiquettes ou commits (W)",
 	"Review two branches, tags, or commits without changing your working tree.": "Examinez deux branches, étiquettes ou commits sans modifier votre arbre de travail.",
 	"Close comparison":                       "Fermer la comparaison",
@@ -1334,8 +1336,10 @@ var french = map[string]string{
 	"Copied":                    "Copié",
 	"Save diff":                 "Enregistrer les différences",
 	"Save this diff to a file…": "Enregistrer ces différences dans un fichier…",
-	"Save":                      "Enregistrer",
-	"Patch files":               "Fichiers patch",
-	"Saved the diff":            "Différences enregistrées",
-	"Could not save the diff":   "Impossible d’enregistrer les différences",
+	"Save comparison diff":      "Enregistrer le diff de comparaison",
+	"Download every change between these refs as a patch…": "Télécharger tous les changements entre ces références sous forme de patch…",
+	"Save":                    "Enregistrer",
+	"Patch files":             "Fichiers patch",
+	"Saved the diff":          "Différences enregistrées",
+	"Could not save the diff": "Impossible d’enregistrer les différences",
 }

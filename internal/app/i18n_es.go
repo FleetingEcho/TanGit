@@ -274,8 +274,10 @@ var spanish = map[string]string{
 	"Resize terminal split": "Redimensionar la división del terminal",
 
 	// Ref comparison.
-	"Compare refs":     "Comparar refs",
-	"Compare two refs": "Comparar dos refs",
+	"Compare refs":       "Comparar refs",
+	"Refresh comparison": "Actualizar comparación",
+	"Cancel comparison":  "Cancelar comparación",
+	"Compare two refs":   "Comparar dos refs",
 	"Compare two branches, tags, or commits (W)":                                "Comparar dos ramas, etiquetas o commits (W)",
 	"Review two branches, tags, or commits without changing your working tree.": "Compara dos ramas, etiquetas o commits sin modificar tu árbol de trabajo.",
 	"Close comparison":                       "Cerrar comparación",
@@ -1334,8 +1336,10 @@ var spanish = map[string]string{
 	"Copied":                    "Copiado",
 	"Save diff":                 "Guardar diff",
 	"Save this diff to a file…": "Guardar este diff en un archivo…",
-	"Save":                      "Guardar",
-	"Patch files":               "Archivos de parche",
-	"Saved the diff":            "Se guardó el diff",
-	"Could not save the diff":   "No se pudo guardar el diff",
+	"Save comparison diff":      "Guardar diff de comparación",
+	"Download every change between these refs as a patch…": "Descargar todos los cambios entre estas refs como un parche…",
+	"Save":                    "Guardar",
+	"Patch files":             "Archivos de parche",
+	"Saved the diff":          "Se guardó el diff",
+	"Could not save the diff": "No se pudo guardar el diff",
 }

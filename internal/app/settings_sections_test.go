@@ -176,7 +176,7 @@ func TestSettingsSectionPickerTogglesTabs(t *testing.T) {
 	if !h.app.sectionsOpen {
 		t.Fatal("the picker closed after one choice")
 	}
-	if !slices.Contains(h.texts(), "10 of 11 sections") {
+	if !slices.Contains(h.texts(), "11 of 12 sections") {
 		t.Fatalf("the picker summary did not count the choice: %q", h.texts())
 	}
 

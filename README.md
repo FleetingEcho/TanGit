@@ -51,7 +51,7 @@ keyboard navigation and visual tools for the work that needs a closer look.
 - **Turn mixed edits into clean commits.** Stage, unstage, or stash selected lines across separate hunks, keeping the rest of your changes untouched.
 - **Shape history visually.** Follow the commit graph and file history, then batch cherry-pick, squash, fix up, drop, or reorder commits.
 - **Resolve conflicts in place.** Compare base, current, and incoming versions; choose individual hunks, edit the result, and undo a choice before staging.
-- **Keep your development tools together.** Switch repository tabs, edit files in the Editor workspace, run a shell in the built-in terminal, and open your configured editor with one click.
+- **Keep your development tools together.** Switch repository tabs, edit code with syntax highlighting and language-server assistance, run a shell in the built-in terminal, and open your configured editor with one click.
 - **Make the workspace yours.** Resize and expand panels, browse directory trees, and choose from 20 palettes, custom fonts, and six interface languages.
 
 Confirmations explain consequential actions. Force push with lease, eligible
@@ -65,7 +65,7 @@ undo/redo operations, and reflog recovery help you manage changes deliberately.
 | **History & graph** | Filter commits, inspect file history, cherry-pick batches, reword, squash, and reorder commits. |
 | **Branches & recovery** | Manage remotes, tags, stashes, worktrees, and submodules; inspect the reflog and undo eligible operations. |
 | **Conflict resolution** | Review base, current, and incoming versions; choose hunks, edit the result, and stage the resolution. |
-| **Editor workspace** | Browse the repository tree, keep multiple editor tabs, fuzzy quick-open files with fzf, and search tracked and non-ignored content. |
+| **Editor workspace** | Edit with syntax highlighting and language-server assistance; manage files and tabs; use fzf Quick Open, advanced content search, and Markdown preview. |
 | **Your workspace** | Repository tabs, directory trees, resizable panels, expanded branch/diff views, a terminal, and external editors. |
 | **Your preferences** | Themes, fonts, six interface languages, configurable visible sections, and signed in-app updates. |
 
@@ -73,6 +73,13 @@ Commit actions live in detail panels and right-click menus. Click a diff line
 number to start multiple-line selection; Shift-click selects a range.
 
 [Common workflows →](docs/guide.md#common-workflows)
+
+### A code editor inside your Git workspace
+
+- **Write and review code.** Use syntax highlighting, undo/redo, temporary previews and persistent tabs, back/forward navigation, and unsaved-change prompts. Save with `Ctrl/Cmd+S`, save all with `Ctrl/Cmd+Shift+S`, preview Markdown beside its source, and inspect images without another app.
+- **Find and understand code.** Open paths with fuzzy fzf matching. Search by case, whole word, or regular expression; add include/exclude globs; page through grouped results; and jump directly to a match. Optional language servers add completion, hover documentation, diagnostics, and go-to-definition.
+- **Use your existing tools.** Install a supported language server through TanGit, configure a custom one, or switch the search backend between ripgrep and the built-in Go scanner.
+- **Manage files without leaving Editor.** Create files and folders, rename or delete them, and drag items between folders. Open tabs and unsaved buffers follow renames and moves, and a repository subfolder can become the workspace root.
 
 ## Get started
 
