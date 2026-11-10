@@ -74,6 +74,8 @@ type appSettings struct {
 	// ids of workspaceSectionIDs. A file without the choice, or one naming no
 	// known section, starts from defaultVisibleSections.
 	VisibleSections []string `json:"visibleSections"`
+	// SectionOrder includes hidden pages so toggling a page retains its position.
+	SectionOrder []string `json:"sectionOrder"`
 	// RemoteWebURLs stores browser-page overrides by repository root and then
 	// remote name, allowing origin, upstream, and arbitrary hosts to differ.
 	RemoteWebURLs map[string]map[string]string `json:"remoteWebUrls,omitempty"`
@@ -123,6 +125,7 @@ func defaultSettings() appSettings {
 		SearchExcludedDirectories: defaultWorkspaceSearchExcludedDirectories(),
 		HomeBackgroundOpacity:     defaultHomeBackgroundOpacity,
 		VisibleSections:           slices.Clone(defaultVisibleSections),
+		SectionOrder:              slices.Clone(workspaceSectionIDs),
 	}
 }
 
@@ -171,6 +174,7 @@ func normalizeSettings(s appSettings) appSettings {
 	s.LanguageServers = normalizeLanguageServerSettings(s.LanguageServers)
 	s.HomeBackgroundOpacity = normalizeHomeBackgroundOpacity(s.HomeBackgroundOpacity)
 	s.VisibleSections = normalizeVisibleSections(s.VisibleSections)
+	s.SectionOrder = normalizeSectionOrder(s.SectionOrder)
 	s.RemoteWebURLs = normalizeRemoteWebURLs(s.RemoteWebURLs)
 	return s
 }
@@ -261,6 +265,23 @@ func normalizeVisibleSections(visible []string) []string {
 	}
 	if len(kept) == 0 {
 		return slices.Clone(defaultVisibleSections)
+	}
+	return kept
+}
+
+// normalizeSectionOrder preserves the user's order and appends missing pages,
+// including pages introduced by a newer app version.
+func normalizeSectionOrder(order []string) []string {
+	kept := make([]string, 0, len(workspaceSectionIDs))
+	for _, id := range order {
+		if slices.Contains(workspaceSectionIDs, id) && !slices.Contains(kept, id) {
+			kept = append(kept, id)
+		}
+	}
+	for _, id := range workspaceSectionIDs {
+		if !slices.Contains(kept, id) {
+			kept = append(kept, id)
+		}
 	}
 	return kept
 }

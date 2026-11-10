@@ -1456,8 +1456,7 @@ func TestScreenshot(t *testing.T) {
 		saveScreenshot(t, dir, "50-command-log-selection-tokyo-night", tt)
 	})
 
-	// The section picker is one field whose popup toggles several tabs
-	// without closing, starting from the default set.
+	// Page chips show enabled and disabled sections directly.
 	t.Run("settings-sections-light", func(t *testing.T) {
 		a, tt := newScreenshotApp(t, false)
 		a.openSettings()
@@ -1466,11 +1465,20 @@ func TestScreenshot(t *testing.T) {
 			t.Fatalf("open Workspace settings: %v", err)
 		}
 		tt.Frame()
-		if err := tt.Click("Shown sections"); err != nil {
-			t.Fatalf("open the section picker: %v", err)
+		if err := tt.Click("Show Tags"); err != nil {
+			t.Fatalf("toggle the Tags chip: %v", err)
 		}
 		tt.Frame()
 		saveScreenshot(t, dir, "32-settings-sections-light", tt)
+		tt.SetDark(true)
+		tt.Frame()
+		saveScreenshot(t, dir, "32-settings-sections-dark", tt)
+		a.moveWorkspaceSection("tags", "code")
+		tt.Frame()
+		saveScreenshot(t, dir, "32-settings-sections-reordered", tt)
+		tt.SetSize(1000, 760)
+		tt.Frame()
+		saveScreenshot(t, dir, "32-settings-sections-narrow", tt)
 	})
 
 	// The behavior block, where the switch that turns every shortcut off

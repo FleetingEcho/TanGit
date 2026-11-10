@@ -24,6 +24,88 @@ func TestNormalizeVisibleSections(t *testing.T) {
 	}
 }
 
+func TestNormalizeSectionOrder(t *testing.T) {
+	got := normalizeSectionOrder([]string{"tags", "unknown", "tags", "code"})
+	want := append([]string{"tags", "code"}, slices.DeleteFunc(slices.Clone(workspaceSectionIDs), func(id string) bool {
+		return id == "tags" || id == "code"
+	})...)
+	if !slices.Equal(got, want) {
+		t.Fatalf("normalized order = %v, want %v", got, want)
+	}
+	if got := normalizeSectionOrder(nil); !slices.Equal(got, workspaceSectionIDs) {
+		t.Fatalf("default order = %v", got)
+	}
+}
+
+func TestWorkspaceSectionDragReordersSidebar(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.pathUserData = t.TempDir()
+	h.app.settingsPage = settingsPageWorkspace
+	h.app.openSettings()
+	h.tester.Frame()
+	for _, name := range workspaceSections {
+		if chip, ok := h.tester.AccessByRole(ui.RoleCheckBox, "Show "+name); !ok || !chip.Checked {
+			t.Fatalf("%s should be enabled by default", name)
+		}
+	}
+	drag := func(source, target string) {
+		t.Helper()
+		from, fromOK := h.tester.Find("Show " + source)
+		to, toOK := h.tester.Find("Show " + target)
+		if !fromOK || !toOK {
+			t.Fatalf("missing drag chips: %s, %s", source, target)
+		}
+		x, y := from.X+from.W/2, from.Y+from.H/2
+		tx, ty := to.X+to.W/2, to.Y+to.H/2
+		h.tester.Press(x, y)
+		h.tester.Move(x+10, y)
+		h.tester.Move(tx, ty)
+		h.tester.Release(tx, ty)
+		h.tester.Frame()
+	}
+
+	// Move across wrapped rows; a drag must never toggle the dragged page.
+	drag("Tags", "Editor")
+	if h.app.visibleSections()[0] != sectionTags || !slices.Equal(h.app.settings.VisibleSections, workspaceSectionIDs) {
+		t.Fatalf("drag changed visibility or missed the first position: %+v", h.app.settings)
+	}
+	if saved := loadAppSettings(h.app.pathUserData); !slices.Equal(saved.SectionOrder, h.app.settings.SectionOrder) {
+		t.Fatalf("order did not persist: %v", saved.SectionOrder)
+	}
+	h.app.closeSettings()
+	h.tester.Frame()
+	h.press(t, ui.Key1)
+	if h.app.workspaceTab != sectionTags || h.app.navSelected != 0 {
+		t.Fatalf("digit shortcut ignored order: page=%d, row=%d", h.app.workspaceTab, h.app.navSelected)
+	}
+
+	h.app.openSettings()
+	h.tester.Frame()
+	if err := h.tester.Click("Show Tags"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	drag("Tags", "Graph")
+	if h.app.sectionVisible(sectionTags) || h.app.settings.SectionOrder[4] != "tags" {
+		t.Fatalf("moving a hidden page changed its visibility or missed its target: %v", h.app.settings.SectionOrder)
+	}
+	if err := h.tester.Click("Show Tags"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.visibleSections()[4] != sectionTags {
+		t.Fatal("enabling the page lost its chosen position")
+	}
+
+	// The sole enabled page can still be dragged without being disabled.
+	h.app.settings.VisibleSections = []string{"tags"}
+	h.tester.Frame()
+	drag("Tags", "Editor")
+	if h.app.settings.SectionOrder[0] != "tags" || !slices.Equal(h.app.settings.VisibleSections, []string{"tags"}) {
+		t.Fatal("dragging the sole enabled page changed visibility or failed")
+	}
+}
+
 // A fresh workspace lists every section, using the editor's new display name
 // while retaining its stable "code" settings id.
 func TestDefaultSectionsShowEveryWorkspaceTab(t *testing.T) {
@@ -136,8 +218,7 @@ func TestHidingSectionsKeepsOnePane(t *testing.T) {
 	}
 }
 
-// The section picker is one field listing every section: opening it and
-// clicking rows toggles several sections without reopening it.
+// Every section can be toggled directly from a chip without opening a popup.
 func TestSettingsSectionPickerTogglesTabs(t *testing.T) {
 	h := menuTestApp(t)
 	h.tester.Key(ui.Ctrl, ui.KeyComma)
@@ -150,19 +231,11 @@ func TestSettingsSectionPickerTogglesTabs(t *testing.T) {
 		t.Fatalf("open Workspace settings: %v", err)
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Shown sections"); err != nil {
-		t.Fatalf("open the section picker: %v", err)
-	}
-	h.tester.Frame()
-	if !h.app.sectionsOpen {
-		t.Fatal("the section picker did not open")
-	}
 	if !slices.Contains(h.texts(), "Show Tags") {
 		t.Fatalf("the picker does not offer every section: %q", h.texts())
 	}
 
-	// Every section starts visible: hide Tags, then show it again without
-	// reopening the picker.
+	// Every section starts visible: hide Tags, then show it again.
 	if err := h.tester.Click("Show Tags"); err != nil {
 		t.Fatalf("hide Tags: %v", err)
 	}
@@ -173,11 +246,8 @@ func TestSettingsSectionPickerTogglesTabs(t *testing.T) {
 	if slices.Contains(h.app.settings.VisibleSections, "tags") {
 		t.Fatalf("the hidden section was still stored: %q", h.app.settings.VisibleSections)
 	}
-	if !h.app.sectionsOpen {
-		t.Fatal("the picker closed after one choice")
-	}
-	if !slices.Contains(h.texts(), "11 of 12 sections") {
-		t.Fatalf("the picker summary did not count the choice: %q", h.texts())
+	if chip, ok := h.tester.AccessByRole(ui.RoleCheckBox, "Show Tags"); !ok || chip.Checked {
+		t.Fatal("the Tags chip did not expose its disabled state")
 	}
 
 	if err := h.tester.Click("Show Tags"); err != nil {
@@ -186,6 +256,26 @@ func TestSettingsSectionPickerTogglesTabs(t *testing.T) {
 	h.tester.Frame()
 	if !h.app.sectionVisible(sectionTags) {
 		t.Fatal("the picker did not show Tags again")
+	}
+
+	if chip, ok := h.tester.AccessByRole(ui.RoleCheckBox, "Show Tags"); !ok || !chip.Checked {
+		t.Fatal("the Tags chip did not expose its enabled state")
+	}
+	for section := range workspaceSectionIDs {
+		if section == sectionTags {
+			continue
+		}
+		if err := h.tester.Click("Show " + workspaceSections[section]); err != nil {
+			t.Fatal(err)
+		}
+		h.tester.Frame()
+	}
+	if err := h.tester.Click("Show Tags"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if !slices.Equal(h.app.settings.VisibleSections, []string{"tags"}) {
+		t.Fatalf("the last enabled chip was disabled: %v", h.app.settings.VisibleSections)
 	}
 
 	h.app.closeSettings()

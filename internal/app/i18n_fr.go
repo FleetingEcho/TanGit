@@ -802,6 +802,7 @@ var french = map[string]string{
 	"Choose which tabs the sidebar shows":          "Choisir les onglets affichés dans la barre latérale",
 	"Sidebar tabs":                                 "Onglets de la barre latérale",
 	"Shown sections":                               "Sections affichées",
+	"Click to toggle; drag to reorder":             "Cliquer pour activer ; glisser pour réorganiser",
 	"Pick any number of tabs":                      "Sélectionnez autant d’onglets que vous le souhaitez",
 	"All sections":                                 "Toutes les sections",
 	"%d of %d sections":                            "%d sections sur %d",

@@ -165,9 +165,6 @@ type app struct {
 	// standalone app views keep harmless defaults.
 	checkForUpdates func()
 	updateInfo      func() appUpdateInfo
-	// sectionsOpen is the popup of the settings' section picker, which
-	// stays open while several sections are chosen.
-	sectionsOpen bool
 	// keybindingsOpen shows the shortcut reference, with the switch that
 	// turns every shortcut off; keybindingFilter narrows its list.
 	keybindingsOpen        bool

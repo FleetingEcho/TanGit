@@ -26,7 +26,6 @@ const (
 )
 
 func (a *app) openSettings() {
-	a.sectionsOpen = false
 	a.loadGoLanguageServerDraft()
 	a.settingsOpen = true
 }
@@ -65,7 +64,6 @@ func (a *app) themeMenuItems(m *ui.Menu, c *ui.Context) {
 }
 
 func (a *app) closeSettings() {
-	a.sectionsOpen = false
 	a.settingsOpen = false
 	a.closeCustomEditorForm()
 	a.saveSettings()
@@ -221,7 +219,6 @@ func (a *app) settingsPageButton(c *ui.Context, page int, icon *ui.SVG, label st
 		button.Background(theme.SurfaceHover)
 	}
 	if button.Clicked() {
-		a.sectionsOpen = false
 		a.settingsPage = page
 	}
 }
@@ -588,8 +585,8 @@ func (a *app) searchExclusionSettings(c *ui.Context) {
 func (a *app) workspaceSettings(c *ui.Context) {
 	settingsSection(c, func() {
 		settingsGroup(c, worktreesIcon, "Workspace sections", "The tabs the sidebar lists")
-		settingRow(c, "Sidebar tabs", "Pick any number of tabs", func() {
-			a.workspaceSectionsSelect(c)
+		settingRow(c, "Sidebar tabs", "Click to toggle; drag to reorder", func() {
+			a.workspaceSectionChips(c)
 		})
 		ui.Text(c, tr("Keep the tools you use close at hand. At least one section always stays visible.")).
 			TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).MaxWidth(480)
@@ -634,61 +631,58 @@ func (a *app) updatesSettings(c *ui.Context) {
 	})
 }
 
-// workspaceSectionsSelect is the settings' one multiple selector: a field
-// summarizing the sections that show, whose popup lists them all and toggles
-// each as it is clicked, staying open for the next.
-func (a *app) workspaceSectionsSelect(c *ui.Context) {
-	theme := c.Theme()
-	field := ui.ButtonBase(c).Grow(1).Padding(7, 10).Gap(8).Radius(theme.Radius).
-		Background(theme.Surface).Border(1, theme.Border).
-		Label(tr("Shown sections")).
-		Tooltip(tr("Choose which tabs the sidebar shows"))
-	field.Children(func() {
-		ui.Text(c, a.workspaceSectionsSummary()).Grow(1).SingleLine()
-		ui.Text(c, "▾").TextColor(theme.TextMuted)
-	})
-	if field.Clicked() {
-		a.sectionsOpen = !a.sectionsOpen
-	}
-	ui.Popover(c, field, &a.sectionsOpen, func() {
-		// The rows fit in the panel at the default size, but scroll if a
-		// smaller window or a larger font makes them too tall.
-		ui.Scroll(c).MaxHeight(theme.Space(80)).Children(func() {
-			visible := a.visibleSections()
-			for section := range workspaceSectionIDs {
-				shown := a.sectionVisible(section)
-				row := ui.ButtonBase(c).Padding(5, 10).Gap(8).Radius(theme.Radius)
-				row.Label(trf("Show %s", tr(workspaceSections[section])))
-				row.Children(func() {
-					ui.Icon(c, sectionIcons[section]).FontSize(14).TextColor(theme.TextMuted)
-					ui.Text(c, tr(workspaceSections[section])).Grow(1).SingleLine()
-					if shown {
-						ui.Icon(c, commitIcon).FontSize(14).TextColor(theme.Accent)
-					}
-				})
-				if row.Hovered() {
-					row.Background(theme.SurfaceHover)
-				}
-				// The workspace always keeps one pane, so the last visible
-				// section cannot be turned off.
-				if shown && len(visible) <= 1 {
-					row.Disabled(true).Tooltip(tr("The workspace keeps at least one section"))
-				} else if row.Clicked() {
-					a.setSectionVisible(section, !shown)
-					a.settingsChanged(c)
-				}
-			}
-		})
-	})
-}
+// workspaceSectionChips toggles sidebar pages directly, keeping their state
+// visible while users choose which pages to keep.
+type workspaceSectionDrag struct{ id string }
 
-// workspaceSectionsSummary says how many of the workspace's sections show.
-func (a *app) workspaceSectionsSummary() string {
-	shown, total := len(a.visibleSections()), len(workspaceSectionIDs)
-	if shown == total {
-		return tr("All sections")
+func (a *app) workspaceSectionChips(c *ui.Context) {
+	theme := c.Theme()
+	visible := a.visibleSections()
+	var moveSource, moveTarget string
+	for _, section := range a.orderedSections() {
+		id := workspaceSectionIDs[section]
+		shown := a.sectionVisible(section)
+		last := shown && len(visible) == 1
+		c.Key("workspace-section:" + id)
+		chip := ui.ButtonBase(c).Height(28).Padding(3, 8).Gap(6).Radius(theme.Radius).
+			Role(ui.RoleCheckBox).Checked(shown).
+			Background(theme.Surface).Border(1, theme.Border).TextColor(theme.TextMuted).
+			Label(trf("Show %s", tr(workspaceSections[section]))).
+			Tooltip(tr("Click to toggle; drag to reorder")).Drag(workspaceSectionDrag{id: id})
+		if shown {
+			chip.Background(theme.Accent.Alpha(0.16)).Border(1, theme.Accent.Alpha(0.45)).TextColor(theme.Accent)
+		}
+		if chip.Hovered() {
+			if shown {
+				chip.Background(theme.Accent.Alpha(0.24))
+			} else {
+				chip.Background(theme.SurfaceHover)
+			}
+		}
+		if last {
+			chip.Tooltip(tr("The workspace keeps at least one section"))
+		}
+		if dragged, over := ui.DragOver[workspaceSectionDrag](chip); over && dragged.id != id {
+			chip.Background(theme.Accent.Alpha(0.3)).Border(2, theme.Accent)
+		}
+		if dragged, dropped := ui.Drop[workspaceSectionDrag](chip); dropped {
+			moveSource, moveTarget = dragged.id, id
+		}
+		chip.Children(func() {
+			ui.Icon(c, sectionIcons[section]).FontSize(14)
+			ui.Text(c, tr(workspaceSections[section])).SingleLine()
+		})
+		chip.OnClick(func() {
+			if last {
+				return
+			}
+			a.setSectionVisible(section, !shown)
+			a.settingsChanged(c)
+		})
 	}
-	return trf("%d of %d sections", shown, total)
+	if moveSource != "" && a.moveWorkspaceSection(moveSource, moveTarget) {
+		a.settingsChanged(c)
+	}
 }
 
 // settingsSection groups the heading and rows of one settings part, so the

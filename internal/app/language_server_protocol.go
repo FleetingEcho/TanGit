@@ -64,6 +64,17 @@ type languageServerRPCError struct {
 	Message string `json:"message"`
 }
 
+func (e *languageServerRPCError) Error() string {
+	return fmt.Sprintf("language server error %d: %s", e.Code, e.Message)
+}
+
+// ContentModified invalidates one request when the server's analysis changes.
+// It does not indicate a broken server and should not be shown as a UI error.
+func isLanguageServerContentModified(err error) bool {
+	var rpcError *languageServerRPCError
+	return errors.As(err, &rpcError) && rpcError.Code == -32801
+}
+
 type languageServerEnvelope struct {
 	JSONRPC string                  `json:"jsonrpc"`
 	ID      json.RawMessage         `json:"id,omitempty"`
@@ -317,7 +328,7 @@ func (s *stdioLanguageServer) readLoop() {
 			if answer != nil {
 				response := languageServerResponse{result: envelope.Result}
 				if envelope.Error != nil {
-					response.err = fmt.Errorf("language server error %d: %s", envelope.Error.Code, envelope.Error.Message)
+					response.err = envelope.Error
 				}
 				answer <- response
 			}

@@ -324,6 +324,7 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 		HomeBackgroundDisabled: true,
 		HomeBackgroundOpacity:  0.42,
 		VisibleSections:        []string{"changes", "graph"},
+		SectionOrder:           normalizeSectionOrder([]string{"graph", "changes"}),
 		RemoteWebURLs: map[string]map[string]string{
 			"/work/project": {"origin": "https://example.com/team/project"},
 		},

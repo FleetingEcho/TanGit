@@ -793,15 +793,39 @@ func (a *app) sectionVisible(section int) bool {
 	return slices.Contains(a.settings.VisibleSections, workspaceSectionIDs[section])
 }
 
-// visibleSections lists the sections the sidebar shows, in tab order.
+// orderedSections lists every page in the user's chosen order.
+func (a *app) orderedSections() []int {
+	sections := make([]int, 0, len(workspaceSectionIDs))
+	for _, id := range normalizeSectionOrder(a.settings.SectionOrder) {
+		sections = append(sections, slices.Index(workspaceSectionIDs, id))
+	}
+	return sections
+}
+
+// visibleSections lists the sections the sidebar shows, in the user's order.
 func (a *app) visibleSections() []int {
 	sections := make([]int, 0, len(workspaceSectionIDs))
-	for section := range workspaceSectionIDs {
+	for _, section := range a.orderedSections() {
 		if a.sectionVisible(section) {
 			sections = append(sections, section)
 		}
 	}
 	return sections
+}
+
+// moveWorkspaceSection moves a page to the target's position. Visibility is
+// independent, so disabled pages can be arranged before they are enabled.
+func (a *app) moveWorkspaceSection(source, target string) bool {
+	order := normalizeSectionOrder(a.settings.SectionOrder)
+	from, to := slices.Index(order, source), slices.Index(order, target)
+	if from < 0 || to < 0 || from == to {
+		return false
+	}
+	order = slices.Delete(order, from, from+1)
+	order = slices.Insert(order, to, source)
+	a.settings.SectionOrder = order
+	a.syncNavSelection()
+	return true
 }
 
 // navRow maps a sidebar row to the section it shows. The row is out of range
