@@ -61,6 +61,9 @@ type app struct {
 	opener repositoryOpener
 	update func(func())
 	window *mygo.Window
+	// services is refreshed from the active window so keyboard-only actions
+	// can use the same clipboard and browser services as pointer actions.
+	services ui.Services
 
 	path       string
 	state      openState
@@ -495,8 +498,13 @@ type app struct {
 	renameBranch           string
 	showRemoteForm         bool
 	remoteOriginalName     string
+	remoteOriginalURL      string
 	remoteName             string
 	remoteURL              string
+	showRemoteWebURLForm   bool
+	remoteWebOriginalName  string
+	remoteWebURL           string
+	remoteWebURLError      string
 	showRemoteCheckoutForm bool
 	remoteLocalBranch      string
 	showStashForm          bool

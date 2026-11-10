@@ -101,6 +101,46 @@ func TestEditRemoteUsesTheFilteredMenuRow(t *testing.T) {
 	})
 }
 
+func TestEditRemoteRestoresOriginalNameAndURL(t *testing.T) {
+	h, calls := menuTestAppWithCalls(t)
+	h.app.workspaceTab = sectionRemotes
+	h.tester.Frame()
+	h.press(t, ui.KeyE)
+	originalName, originalURL := h.app.remoteName, h.app.remoteURL
+	if err := h.tester.Click("Restore original"); err != nil {
+		t.Fatalf("restore original should be available before editing: %v", err)
+	}
+	h.tester.Frame()
+
+	for label, value := range map[string]string{
+		"Remote name": "backup",
+		"Remote URL":  "https://example.com/backup.git",
+	} {
+		if err := h.tester.Click(label); err != nil {
+			t.Fatalf("focus %s: %v", label, err)
+		}
+		h.tester.Key(ui.Ctrl, ui.KeyA)
+		h.tester.Type(value)
+		h.tester.Frame()
+	}
+	if err := h.tester.Click("Restore original"); err != nil {
+		t.Fatalf("restore original remote: %v", err)
+	}
+	h.tester.Frame()
+
+	if !h.app.showRemoteForm {
+		t.Fatal("restoring the form closed the edit dialog")
+	}
+	if h.app.remoteName != originalName || h.app.remoteURL != originalURL {
+		t.Fatalf("restored form = %q / %q, want %q / %q", h.app.remoteName, h.app.remoteURL, originalName, originalURL)
+	}
+	for _, call := range calls.all() {
+		if strings.HasPrefix(call, "update-remote:") {
+			t.Fatalf("restoring the form changed Git before Save changes: %q", call)
+		}
+	}
+}
+
 func TestUnsetUpstreamFromLocalBranchMenu(t *testing.T) {
 	h, calls := menuTestAppWithCalls(t)
 	h.app.workspaceTab = sectionBranches
