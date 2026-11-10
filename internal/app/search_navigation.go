@@ -154,6 +154,33 @@ func (a *app) navigateChangeSearch(direction int) {
 	}
 }
 
+func (a *app) navigateCompareSearch(direction int) {
+	if strings.TrimSpace(a.compare.fileSearch) == "" {
+		return
+	}
+	a.compare.fileRows = a.syncCompareFileRows()
+	files := make([]int, 0, len(a.compare.fileRows))
+	for row, item := range a.compare.fileRows {
+		if !item.isDirectory() {
+			files = append(files, row)
+		}
+	}
+	current := -1
+	for index, row := range files {
+		if row == a.compare.selectedRow {
+			current = index
+			break
+		}
+	}
+	match, ok := wrappedSearchRow(current, len(files), direction)
+	if !ok {
+		return
+	}
+	row := files[match]
+	a.selectCompareFileRow(row)
+	a.compare.list.ScrollIntoView(row)
+}
+
 // navigateActiveSearch routes F3 to the quick search on the current page. The
 // nested remote-branch search wins when it has text; History and Graph's
 // structured filters are intentionally not treated as quick-search results.
@@ -186,6 +213,8 @@ func (a *app) navigateActiveSearch(direction int) {
 		if a.code.sidebar == codeSidebarSearch {
 			a.navigateCodeSearch(direction)
 		}
+	case sectionCompare:
+		a.navigateCompareSearch(direction)
 	}
 }
 
@@ -196,9 +225,17 @@ func (a *app) searchNavigationButtons(c *ui.Context, enabled bool) {
 		return
 	}
 	commitHeaderButton(c, "Previous file search result", "Shift+F3", chevronUpIcon, func() {
-		a.navigateChangeSearch(-1)
+		if a.workspaceTab == sectionCompare {
+			a.navigateCompareSearch(-1)
+		} else {
+			a.navigateChangeSearch(-1)
+		}
 	})
 	commitHeaderButton(c, "Next file search result", "F3", chevronDownIcon, func() {
-		a.navigateChangeSearch(1)
+		if a.workspaceTab == sectionCompare {
+			a.navigateCompareSearch(1)
+		} else {
+			a.navigateChangeSearch(1)
+		}
 	})
 }

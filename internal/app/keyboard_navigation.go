@@ -183,6 +183,8 @@ func (a *app) moveKeyboardList(s *ui.ListState, n, delta int) {
 		a.selectCommitFileRow(selected)
 	case &a.branchCommitFileList:
 		a.selectBranchCommitFileRow(selected)
+	case &a.compare.list:
+		a.selectCompareFileRow(selected)
 	}
 	s.ScrollIntoView(selected)
 	if a.keyboardMoved == nil {
@@ -202,7 +204,7 @@ func (a *app) visibleKeyboardPanes() []keyboardPane {
 	if len(panes) == 0 {
 		panes = a.keyboardPrevious
 	}
-	if !a.diffFullscreen && !a.compare.open && !a.branchFullscreen {
+	if !a.diffFullscreen && !a.branchFullscreen {
 		return panes
 	}
 	visible := make([]keyboardPane, 0, len(panes))
@@ -211,8 +213,6 @@ func (a *app) visibleKeyboardPanes() []keyboardPane {
 		switch {
 		case a.diffFullscreen:
 			shown = strings.HasPrefix(pane.id, "fullscreen-")
-		case a.compare.open:
-			shown = strings.HasPrefix(pane.id, "comparison-")
 		case a.branchFullscreen:
 			shown = strings.HasPrefix(pane.id, "branch-")
 		}
@@ -293,12 +293,14 @@ func (a *app) primaryKeyboardPane() string {
 			return "code-results"
 		}
 		return "code-files"
+	case sectionCompare:
+		return "comparison-files"
 	}
 	return "sidebar"
 }
 
 func (a *app) finishKeyboardFrame(c *ui.Context) {
-	paneModal := a.diffFullscreen || a.compare.open || a.branchFullscreen
+	paneModal := a.diffFullscreen || a.branchFullscreen
 	if a.modalOpen() {
 		if !a.keyboardModalWasOpen {
 			a.keyboardModalReturn = a.keyboardLastPane
@@ -335,7 +337,7 @@ func (a *app) finishKeyboardFrame(c *ui.Context) {
 				return
 			}
 		}
-		if a.commitFilesLoading || a.branchCommitsLoading || a.branchCommitFilesLoading || a.stashFilesLoading || a.fileHistoryLoading || a.commitDiffLoading || a.branchCommitDiffLoading || a.stashDiffLoading || a.diffLoading {
+		if a.commitFilesLoading || a.branchCommitsLoading || a.branchCommitFilesLoading || a.stashFilesLoading || a.fileHistoryLoading || a.commitDiffLoading || a.branchCommitDiffLoading || a.stashDiffLoading || a.diffLoading || a.compare.filesLoading || a.compare.diffLoading {
 			a.keyboardFocus = target
 		} else if !paneModal {
 			primary := a.primaryKeyboardPane()
@@ -636,6 +638,11 @@ func (a *app) keyboardToggleDirectory(id string) bool {
 			a.toggleFileTreeDirectory(codeFileTreeScope, dir)
 			return true
 		}
+	case "comparison-files":
+		if dir := selectedFileTreeDirectory(a.compare.fileRows, a.compare.selectedRow); dir != "" {
+			a.toggleFileTreeDirectory(fileTreeCompareScope, dir)
+			return true
+		}
 	}
 	return false
 }
@@ -649,13 +656,10 @@ func (a *app) keyboardPanelTabs(id string, e ui.Element) ui.Element {
 	}
 	// Never let a background list claim a dialog's native Tab key.
 	if a.modalOpen() {
-		if a.confirm != nil || a.settingsOpen || a.keybindingsOpen || a.commandLogOpen || a.anyFormOpen() && !a.compare.open {
+		if a.confirm != nil || a.settingsOpen || a.keybindingsOpen || a.commandLogOpen || a.anyFormOpen() {
 			return e
 		}
 		if a.diffFullscreen && !strings.HasPrefix(id, "fullscreen-") {
-			return e
-		}
-		if a.compare.open && !strings.HasPrefix(id, "comparison-") {
 			return e
 		}
 		if a.branchFullscreen && !strings.HasPrefix(id, "branch-") {

@@ -14,6 +14,7 @@ const (
 	fileTreeCommitScope  = "commit"
 	fileTreeBranchScope  = "branch-commit"
 	fileTreeStashScope   = "stash"
+	fileTreeCompareScope = "compare"
 )
 
 func changeFilePaths(files []repository.File) []string {
@@ -261,9 +262,23 @@ func (a *app) setAllFileTreeDirectories(scope string, paths []string, collapse b
 	}
 }
 
-// fileTreeButtons offers the same flat/tree and directory controls in every
-// file pane. The controls act on view state only; no Git operation is involved.
+// fileTreeButtons offers flat/tree grouping and bulk folds in most file panes.
+// Compare uses fileTreeModeButton alone, keeping its per-directory fold arrows
+// without the two bulk-fold controls.
 func (a *app) fileTreeButtons(c *ui.Context, scope string, paths []string) {
+	a.fileTreeModeButton(c)
+	if !a.fileTreeMode {
+		return
+	}
+	iconButton(c, "Expand all directories", "Show files in every directory", chevronDownIcon, false, func() {
+		a.setAllFileTreeDirectories(scope, paths, false)
+	})
+	iconButton(c, "Collapse all directories", "Show only top-level files and directories", chevronUpIcon, false, func() {
+		a.setAllFileTreeDirectories(scope, paths, true)
+	})
+}
+
+func (a *app) fileTreeModeButton(c *ui.Context) {
 	label, tooltip := "Show files as tree", "Group files by directory"
 	if a.fileTreeMode {
 		label, tooltip = "Show files as a flat list", "Show every full file path"
@@ -280,15 +295,6 @@ func (a *app) fileTreeButtons(c *ui.Context, scope string, paths []string) {
 	if button.Clicked() {
 		a.fileTreeMode = !a.fileTreeMode
 	}
-	if !a.fileTreeMode {
-		return
-	}
-	iconButton(c, "Expand all directories", "Show files in every directory", chevronDownIcon, false, func() {
-		a.setAllFileTreeDirectories(scope, paths, false)
-	})
-	iconButton(c, "Collapse all directories", "Show only top-level files and directories", chevronUpIcon, false, func() {
-		a.setAllFileTreeDirectories(scope, paths, true)
-	})
 }
 
 func (a *app) fileTreeMenuItems(m *ui.Menu, scope string, paths []string) {

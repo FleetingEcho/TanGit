@@ -536,7 +536,6 @@ func (a *app) closeAllForms() {
 // swallow keystrokes meant for a text input.
 func (a *app) anyFormOpen() bool {
 	return a.filterOpen ||
-		a.compare.open ||
 		a.showCommitForm ||
 		a.showBranchForm ||
 		a.showRenameForm ||
