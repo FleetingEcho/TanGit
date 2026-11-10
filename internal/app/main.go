@@ -145,6 +145,7 @@ type app struct {
 	// data such as Zoekt shards outside every repository working tree.
 	pathUserData       string
 	pathCache          string
+	authorAvatars      *authorAvatarStore
 	recentRepositories []recentRepository
 	// historyLoading and historyLoaded keep filesystem reads away from
 	// picker creation and rendering. Results join the UI-owned history only
@@ -1342,6 +1343,12 @@ func openAppWindow(opener repositoryOpener, path string) {
 	// The settings and history are read once the window exists, because the
 	// data directory is resolved from it.
 	s.loadPreferences()
+	avatarDirectory := ""
+	if s.pathCache != "" {
+		avatarDirectory = filepath.Join(s.pathCache, "avatars")
+	}
+	s.authorAvatars = newAuthorAvatarStore(avatarDirectory)
+	win.OnClosed(s.authorAvatars.cancel)
 	installNativeHelpShortcut(s)
 	s.start(path)
 	s.startAutoRefresh()

@@ -153,6 +153,7 @@ type shell struct {
 	settingsLoaded bool
 	pathUserData   string
 	pathCache      string
+	authorAvatars  *authorAvatarStore
 
 	tabs   []*tab
 	active int
@@ -238,6 +239,7 @@ func (s *shell) start(path string) {
 func (s *shell) newTab(path string) *tab {
 	a := newApp(s.opener)
 	a.window = s.window
+	a.authorAvatars = s.authorAvatars
 	a.update = s.update
 	if s.window != nil {
 		// Window.Update always repaints, even when a quiet Git read found the
@@ -313,6 +315,9 @@ func (s *shell) view(c *ui.Context) {
 	defer s.recoverView(c)
 	defer s.applyPending()
 	s.applyPending()
+	if s.authorAvatars != nil {
+		s.authorAvatars.beginFrame(s.windowVisible)
+	}
 	// CornerRadius only rounds native frameless windows on macOS and Windows.
 	// Clear the root instead, then clip the app surface on every platform;
 	// keeping the native hidden-title-bar frame preserves its resize edges.
@@ -587,6 +592,9 @@ func (s *shell) handleWindowBlurred() {
 func (s *shell) handleWindowHidden() {
 	s.windowVisible = false
 	s.windowFocused = false
+	if s.authorAvatars != nil {
+		s.authorAvatars.beginFrame(false)
+	}
 }
 
 // refreshActiveTab reads the repository of the page on screen again.

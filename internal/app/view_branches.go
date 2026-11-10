@@ -946,7 +946,7 @@ func (a *app) branchCommitsView(c *ui.Context, branch repository.Branch) {
 			commit := a.branchCommits[row.Index]
 			services := row.Context.Services()
 			ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(6, 8).Children(func() {
-				authorAvatar(row.Context, commit.AuthorName, commit.AuthorEmail, 18)
+				a.authorAvatar(row.Context, commit, 18)
 				ui.Column(row.Context).Gap(2).Grow(1).Children(func() {
 					ui.Text(row.Context, commit.Subject).SingleLine()
 					ui.Row(row.Context).Gap(8).Children(func() {
@@ -1000,7 +1000,7 @@ func (a *app) branchCommitDetailView(c *ui.Context, branch repository.Branch) {
 		ui.Text(c, commit.Subject).FontSize(16).Bold().SingleLine().Tooltip(commit.Subject)
 		a.commitHashRow(c, commit, "Copy commit hash")
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			authorAvatar(c, commit.AuthorName, commit.AuthorEmail, 20)
+			a.authorAvatar(c, commit, 20)
 			ui.Textf(c, "%s <%s>", commit.AuthorName, commit.AuthorEmail).TextColor(theme.TextMuted).
 				SingleLine().Grow(1).MinWidth(0).Tooltip(fmt.Sprintf("%s <%s>", commit.AuthorName, commit.AuthorEmail))
 			if rel := relTime(commit.UnixTimestamp); rel != "" {

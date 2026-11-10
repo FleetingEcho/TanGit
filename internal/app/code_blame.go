@@ -19,15 +19,20 @@ const codeBlameHoverDelay = time.Second
 // editor hover. The hover itself remains editor-owned, so moving into the card
 // keeps it open and pressing a button never turns it into a modal dialog.
 type codeBlameHoverState struct {
-	open      bool
-	source    *codeDocument
-	path      string
-	line      int
-	blame     repository.BlameLine
-	commit    repository.Commit
-	loading   bool
-	loadError string
-	token     uint64
+	open           bool
+	source         *codeDocument
+	path           string
+	line           int
+	blame          repository.BlameLine
+	commit         repository.Commit
+	description    string
+	files          []repository.CommitFile
+	filesLoaded    bool
+	filesCollapsed bool
+	infoExpanded   bool
+	loading        bool
+	loadError      string
+	token          uint64
 }
 
 // codeBlameHistoryTarget survives the asynchronous History, file-list and
@@ -309,6 +314,11 @@ func (a *app) openCodeBlameDetails(document *codeDocument, line int) {
 	hover.line = line + 1
 	hover.blame = blame
 	hover.commit = repository.Commit{}
+	hover.description = ""
+	hover.files = nil
+	hover.filesLoaded = false
+	hover.filesCollapsed = false
+	hover.infoExpanded = true
 	hover.loading = false
 	hover.loadError = ""
 	offset := document.state.Buffer.Snapshot().LineEnd(line)
@@ -334,6 +344,13 @@ func (a *app) openCodeBlameDetails(document *codeDocument, line int) {
 		if err == nil && (len(commits) != 1 || commits[0].Hash != blame.Hash) {
 			err = fmt.Errorf("commit %s was not found", strings.TrimSpace(shortBlameHash(blame.Hash)))
 		}
+		var message repository.CommitMessage
+		var files []repository.CommitFile
+		var messageErr, filesErr error
+		if err == nil {
+			message, messageErr = session.CommitMessage(context.Background(), commits[0])
+			files, filesErr = session.CommitFiles(context.Background(), commits[0])
+		}
 		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation || token != hover.token || !hover.open || hover.blame.Hash != blame.Hash ||
 				document.generation != documentGeneration || document.blameToken != blameToken ||
@@ -346,6 +363,16 @@ func (a *app) openCodeBlameDetails(document *codeDocument, line int) {
 				hover.loadError = safeError(err)
 			} else {
 				hover.commit = commits[0]
+				hover.description = message.Description
+				hover.files = files
+				hover.filesLoaded = filesErr == nil
+				var failures []string
+				for _, detailErr := range []error{messageErr, filesErr} {
+					if detailErr != nil {
+						failures = append(failures, safeError(detailErr))
+					}
+				}
+				hover.loadError = strings.Join(failures, "\n")
 			}
 			return a.workspaceTab == sectionCode && a.activeCodeDocument() == document
 		})
