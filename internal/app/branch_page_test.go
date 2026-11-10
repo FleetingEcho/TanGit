@@ -17,6 +17,22 @@ func branchPageHarness(t *testing.T) *harness {
 	return h
 }
 
+func TestBranchHeaderOmitsMaximizeButKeepsRename(t *testing.T) {
+	h := branchPageHarness(t)
+	for _, removed := range []string{"Expand branch page", "Restore branch page"} {
+		if h.tester.HasText(removed) {
+			t.Fatalf("branch header still offers %q", removed)
+		}
+	}
+	if err := h.tester.Click("Rename…"); err != nil {
+		t.Fatalf("the remaining rename control is unavailable: %v", err)
+	}
+	h.tester.Frame()
+	if !h.app.showRenameForm || !h.tester.HasText("New branch name") {
+		t.Fatal("removing maximize also disturbed the rename form")
+	}
+}
+
 func TestBranchPageExpandsAndRestores(t *testing.T) {
 	for _, escape := range []bool{false, true} {
 		h := branchPageHarness(t)
@@ -25,9 +41,7 @@ func TestBranchPageExpandsAndRestores(t *testing.T) {
 			t.Fatal("the branch has no summary")
 		}
 		width, collapsed := h.app.branchListWidth, h.app.workspacePaneCollapsed[sectionBranches]
-		if err := h.tester.Click("Expand branch page"); err != nil {
-			t.Fatal(err)
-		}
+		h.app.branchFullscreen = true
 		h.tester.Frame()
 		h.tester.Frame()
 		h.settle(t)
@@ -50,13 +64,13 @@ func TestBranchPageExpandsAndRestores(t *testing.T) {
 		if escape {
 			h.app.settings.DisableShortcuts = true
 			h.press(t, ui.KeyEscape)
-		} else if err := h.tester.Click("Restore branch page"); err != nil {
-			t.Fatal(err)
+		} else {
+			h.app.closeBranchFullscreen()
 		}
 		h.tester.Frame()
 		h.tester.Frame()
-		if h.app.branchFullscreen || !h.tester.HasText("Expand branch page") {
-			t.Fatalf("the branch page did not restore (Escape=%v, expanded=%v): %q", escape, h.app.branchFullscreen, h.texts())
+		if h.app.branchFullscreen {
+			t.Fatalf("the branch page did not restore (Escape=%v): %q", escape, h.texts())
 		}
 		if h.app.branchListWidth != width || h.app.workspacePaneCollapsed[sectionBranches] != collapsed {
 			t.Fatal("expanding the page changed the normal branch layout")
@@ -66,9 +80,7 @@ func TestBranchPageExpandsAndRestores(t *testing.T) {
 
 func TestExpandedBranchEscapeCancelsFormsBeforeRestoring(t *testing.T) {
 	h := branchPageHarness(t)
-	if err := h.tester.Click("Expand branch page"); err != nil {
-		t.Fatal(err)
-	}
+	h.app.branchFullscreen = true
 	h.tester.Frame()
 	h.settle(t)
 	if err := h.tester.Click("Rename…"); err != nil {
@@ -96,9 +108,7 @@ func TestBranchSummaryDividerResizesAndSurvivesExpansion(t *testing.T) {
 	h := branchPageHarness(t)
 	for _, expanded := range []bool{false, true} {
 		if expanded {
-			if err := h.tester.Click("Expand branch page"); err != nil {
-				t.Fatal(err)
-			}
+			h.app.branchFullscreen = true
 			h.tester.Frame()
 		}
 		before := h.app.branchHeaderHeight
