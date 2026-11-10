@@ -120,11 +120,13 @@ type stdioLanguageServer struct {
 }
 
 func connectStdioLanguageServer(launch languageServerLaunch) (languageServerConnection, error) {
-	command := exec.Command(launch.Program, launch.Arguments...)
-	command.Dir = launch.Root
-	if len(launch.Env) > 0 {
-		command.Env = append(os.Environ(), launch.Env...)
+	program, err := languageServerLookPath(launch.Program)
+	if err != nil {
+		return nil, err
 	}
+	command := exec.Command(program, launch.Arguments...)
+	command.Dir = launch.Root
+	command.Env = languageServerCommandEnvironment(command.Environ(), program, launch.Env)
 	stdin, err := command.StdinPipe()
 	if err != nil {
 		return nil, err

@@ -22,7 +22,7 @@ var runLanguageServerVersion = func(program string, arguments []string) (string,
 
 // languageServerLookPath distinguishes a managed download or configured system
 // executable from a catalog entry that has not been installed yet.
-var languageServerLookPath = exec.LookPath
+var languageServerLookPath = lookPathLanguageServerProgram
 
 func (a *app) languageServerExecutableAvailable(profile languageServerProfile) bool {
 	executable := false
@@ -90,7 +90,12 @@ func sameLanguageServerPath(left, right string) bool {
 func runLanguageServerVersionArguments(program string, arguments, versionArguments []string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	program, err := languageServerLookPath(program)
+	if err != nil {
+		return "", err
+	}
 	command := exec.CommandContext(ctx, program, append(append([]string(nil), arguments...), versionArguments...)...)
+	command.Env = languageServerCommandEnvironment(command.Environ(), program, nil)
 	output, err := command.CombinedOutput()
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return "", errors.New("the language server did not respond within 5 seconds")
