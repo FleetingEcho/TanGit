@@ -89,10 +89,72 @@ func (a *app) requestQuietRefresh() {
 // continue to use requestQuietRefresh directly because a save can land after
 // an in-flight snapshot has read the changed file.
 func (a *app) requestAmbientRefresh() {
+	a.maybeAutoFetch()
 	if a.refreshBusy || a.actionBusy || a.repositoryDetailsLoading {
 		return
 	}
 	a.requestQuietRefresh()
+}
+
+// fetchWithSetting runs the configured fetch: plain, or with remote-tracking
+// pruning when the user turned pruning on.
+func (a *app) fetchWithSetting(ctx context.Context, session repository.Session) error {
+	if a.settings.FetchPrune {
+		return session.FetchPrune(ctx)
+	}
+	return session.Fetch(ctx)
+}
+
+// fetchSuccessMessage names what the fetch did, so the toast matches the
+// action the user actually took.
+func (a *app) fetchSuccessMessage() string {
+	if a.settings.FetchPrune {
+		return "Fetched from the remotes and pruned stale branches"
+	}
+	return "Fetched from the remotes"
+}
+
+// maybeAutoFetch fetches every remote when the configured interval elapsed.
+// It stays quiet: no toast on success and no error dialog on failure, because
+// this runs without the user asking; the command log records either outcome.
+// The refresh timer calls it while the window is visible, so a window left
+// open keeps the branch list honest without fetching behind the user's back
+// more often than they asked for.
+func (a *app) maybeAutoFetch() {
+	interval := a.settings.AutoFetchInterval
+	if interval <= 0 {
+		return
+	}
+	if a.session == nil || a.state != stateReady || a.actionBusy || a.repositoryDetailsLoading {
+		return
+	}
+	if len(a.snapshot.Remotes) == 0 {
+		return
+	}
+	if !a.lastAutoFetch.IsZero() && time.Since(a.lastAutoFetch) < time.Duration(interval)*time.Minute {
+		return
+	}
+	a.lastAutoFetch = time.Now()
+	session := a.session
+	prune := a.settings.FetchPrune
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		var err error
+		if prune {
+			err = session.FetchPrune(ctx)
+		} else {
+			err = session.Fetch(ctx)
+		}
+		if err != nil {
+			// The command log already holds the failure; do not nag.
+			return
+		}
+		a.updateChanged(func() bool {
+			a.requestQuietRefresh()
+			return false
+		})
+	}()
 }
 
 // recoverQuietRefresh contains a failed repository read just like the generic
@@ -374,5 +436,9 @@ func refsSignature(snapshot repository.Snapshot) string {
 	for _, commit := range snapshot.Reflog {
 		fmt.Fprintf(&b, "%s\x00%s\x00", commit.Hash, commit.Subject)
 	}
+	// Bisect lives in the gitdir rather than a ref, but its banner belongs
+	// to the workspace view just like the operation in progress. Without
+	// this, a bisect started from the terminal never repaints the UI.
+	fmt.Fprintf(&b, "%+v\x00", snapshot.Bisect)
 	return b.String()
 }

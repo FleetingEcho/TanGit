@@ -19,3 +19,9 @@ func configureBackgroundCommand(command *exec.Cmd) {
 	command.SysProcAttr.HideWindow = true
 	command.SysProcAttr.CreationFlags |= createNoWindow
 }
+
+// ConfigureBackgroundCommand exposes the same hidden-process behavior for
+// custom user-invoked background commands.
+func ConfigureBackgroundCommand(command *exec.Cmd) {
+	configureBackgroundCommand(command)
+}

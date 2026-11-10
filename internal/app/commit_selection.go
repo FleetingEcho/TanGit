@@ -114,6 +114,9 @@ func (a *app) commitBatchMenu(m *ui.Menu) {
 	if m.Item(tr("Cherry-pick selected commits…")).Disabled(a.actionBusy).Chosen() {
 		a.confirmBatchCommits("", true)
 	}
+	if m.Item(tr("Export selected commits as mailbox patches…")).Disabled(a.actionBusy).Chosen() {
+		a.openExportPatchForm(selected)
+	}
 	for _, entry := range []struct {
 		label  string
 		action repository.CommitRangeAction

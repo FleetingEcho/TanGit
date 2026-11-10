@@ -45,6 +45,18 @@ type appSettings struct {
 	// DisableShortcuts switches the window's keyboard shortcuts off. The
 	// header icons keep working, so every action stays reachable.
 	DisableShortcuts bool `json:"disableShortcuts"`
+	// AutoFetchInterval is how often, in minutes, the window fetches every
+	// remote while it is open and idle. Zero disables background fetching.
+	AutoFetchInterval int `json:"autoFetchInterval"`
+	// AutoFetchConfigured distinguishes a deliberate zero (off) from an older
+	// settings file that predates the feature, where zero means use defaults.
+	AutoFetchConfigured bool `json:"autoFetchConfigured,omitempty"`
+	// FetchPrune prunes remote-tracking branches whose upstream is gone on
+	// every fetch, manual and automatic alike.
+	FetchPrune bool `json:"fetchPrune"`
+	// CustomCommands are user-defined shell commands bound to keys, run in
+	// the repository root.
+	CustomCommands []customCommandSetting `json:"customCommands,omitempty"`
 	// Language is the code of the language the interface is drawn in, from
 	// languageChoices; English is the default.
 	Language string `json:"language"`
@@ -127,6 +139,8 @@ func defaultSettings() appSettings {
 		Radius:                    float64(base.Radius),
 		Language:                  defaultLanguage,
 		EditorCommand:             defaultEditorCommand,
+		AutoFetchInterval:         5,
+		AutoFetchConfigured:       true,
 		SearchExcludedDirectories: defaultWorkspaceSearchExcludedDirectories(),
 		HomeBackgroundOpacity:     defaultHomeBackgroundOpacity,
 		VisibleSections:           slices.Clone(defaultVisibleSections),
@@ -177,6 +191,16 @@ func normalizeSettings(s appSettings) appSettings {
 		s.SearchExcludedDirectories = normalizeWorkspaceSearchExcludedDirectories(s.SearchExcludedDirectories)
 	}
 	s.LanguageServers = normalizeLanguageServerSettings(s.LanguageServers)
+	if !s.AutoFetchConfigured {
+		if s.AutoFetchInterval == 0 {
+			s.AutoFetchInterval = defaultSettings().AutoFetchInterval
+		}
+		s.AutoFetchConfigured = true
+	}
+	if s.AutoFetchInterval < 0 || s.AutoFetchInterval > 24*60 {
+		s.AutoFetchInterval = defaultSettings().AutoFetchInterval
+	}
+	s.CustomCommands = normalizeCustomCommands(s.CustomCommands)
 	s.HomeBackgroundOpacity = normalizeHomeBackgroundOpacity(s.HomeBackgroundOpacity)
 	s.VisibleSections = normalizeVisibleSections(s.VisibleSections)
 	s.SectionOrder = normalizeSectionOrder(s.SectionOrder)
