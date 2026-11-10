@@ -38,13 +38,20 @@ var runLanguageServerInstallCommand = func(ctx context.Context, program string, 
 
 func (a *app) offerLanguageServerInstall(path string) {
 	for _, profile := range languageServerProfiles {
-		if profile.ID != "typescript" && profile.ID != "rust" {
+		if profile.Custom {
 			continue
 		}
 		if _, matches := languageServerProfileForPath(profile, path); !matches {
 			continue
 		}
-		if _, configured := a.settings.LanguageServers[profile.ID]; configured || a.languageServerInstallPrompted[profile.ID] {
+		server, configured := a.settings.LanguageServers[profile.ID]
+		if server.Disabled || a.languageServerInstallPrompted[profile.ID] || a.languageServerExecutableAvailable(profile) {
+			continue
+		}
+		// TypeScript and Rust keep their first-use offer. Other servers are
+		// offered only after the user enabled them (or when enabled by default),
+		// so one JavaScript file does not advertise every optional analyzer.
+		if !configured && profile.ID != "typescript" && profile.ID != "rust" && !profile.EnabledByDefault {
 			continue
 		}
 		if a.languageServerInstallPrompted == nil {
@@ -57,7 +64,6 @@ func (a *app) offerLanguageServerInstall(path string) {
 			description: "Download and configure code intelligence for " + filepath.Ext(path) + " files.",
 			action:      "Download", onAction: func() { a.installLanguageServer(id) }, timeout: 12 * time.Second,
 		})
-		return
 	}
 }
 
@@ -146,7 +152,7 @@ func installLanguageServerTool(profile languageServerProfile, dataDir string) (l
 		}
 		return languageServerInstallation{Path: path, ProbeArguments: append([]string(nil), profile.VersionArguments...)}, nil
 	case "typescript":
-		return installNodeLanguageServer(ctx, toolsDir, profile, "typescript-language-server", "typescript")
+		return installNodeLanguageServer(ctx, toolsDir, profile, "typescript")
 	case "html", "css", "json", "eslint":
 		return installNodeLanguageServer(ctx, toolsDir, profile, "@t1ckbase/vscode-langservers-extracted")
 	case "tailwind":
@@ -324,20 +330,14 @@ func installNodeLanguageServer(ctx context.Context, toolsDir string, profile lan
 	for _, name := range packages {
 		version := "@latest"
 		if name == "typescript" {
-			// typescript-language-server wraps the JS tsserver API. TypeScript
-			// 7 no longer ships it; upstream requires TypeScript 6 instead.
-			version = "@6"
+			// TypeScript 7 ships its own native LSP. Pin the major so a future
+			// compiler release cannot silently change TanGit's protocol backend.
+			version = "@7"
 		}
 		arguments = append(arguments, name+version)
 	}
 	if err := runLanguageServerInstaller(ctx, npm, arguments, nil); err != nil {
 		return languageServerInstallation{}, err
-	}
-	if profile.ID == "typescript" {
-		path := filepath.Join(prefix, "node_modules", "typescript", "lib", "tsserver.js")
-		if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
-			return languageServerInstallation{}, errors.New("installed TypeScript has no tsserver.js; reinstall TypeScript Language Server with TypeScript 6")
-		}
 	}
 	binPath, err := nodePackageExecutable(prefix, packages[0], profile.Program)
 	if err != nil {

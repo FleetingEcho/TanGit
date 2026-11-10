@@ -86,8 +86,13 @@ func (s *fakeLanguageServerConnection) isClosed() bool {
 func stubLanguageServerConnection(t *testing.T, connect func(languageServerLaunch) (languageServerConnection, error)) {
 	t.Helper()
 	original := connectLanguageServer
+	originalLookPath := languageServerLookPath
 	connectLanguageServer = connect
-	t.Cleanup(func() { connectLanguageServer = original })
+	languageServerLookPath = func(program string) (string, error) { return program, nil }
+	t.Cleanup(func() {
+		connectLanguageServer = original
+		languageServerLookPath = originalLookPath
+	})
 }
 
 func TestGoLanguageServerSynchronizesOpenChangeAndClose(t *testing.T) {
@@ -226,7 +231,7 @@ func TestStdioLanguageServerInitializesAndShutsDown(t *testing.T) {
 		Arguments:             []string{"-test.run=^TestLanguageServerHelperProcess$"},
 		Root:                  t.TempDir(),
 		Env:                   []string{"TANGIT_LANGUAGE_SERVER_HELPER=1"},
-		InitializationOptions: map[string]any{"tsserver": map[string]any{"fallbackPath": "/managed tools/typescript/lib/tsserver.js"}},
+		InitializationOptions: map[string]any{"test": map[string]any{"value": "enabled"}},
 	})
 	if err != nil {
 		t.Fatalf("connect helper language server: %v", err)
@@ -279,13 +284,24 @@ func TestLanguageServerHelperProcess(t *testing.T) {
 		switch envelope.Method {
 		case "initialize":
 			var params struct {
+				Capabilities struct {
+					Window struct {
+						WorkDoneProgress bool `json:"workDoneProgress"`
+					} `json:"window"`
+					Experimental struct {
+						ServerStatusNotification bool `json:"serverStatusNotification"`
+					} `json:"experimental"`
+				} `json:"capabilities"`
 				InitializationOptions struct {
-					Tsserver struct {
-						FallbackPath string `json:"fallbackPath"`
-					} `json:"tsserver"`
+					Test struct {
+						Value string `json:"value"`
+					} `json:"test"`
 				} `json:"initializationOptions"`
 			}
-			if json.Unmarshal(envelope.Params, &params) != nil || params.InitializationOptions.Tsserver.FallbackPath != "/managed tools/typescript/lib/tsserver.js" {
+			if json.Unmarshal(envelope.Params, &params) != nil ||
+				params.InitializationOptions.Test.Value != "enabled" ||
+				!params.Capabilities.Window.WorkDoneProgress ||
+				!params.Capabilities.Experimental.ServerStatusNotification {
 				os.Exit(4)
 			}
 			writeLanguageServerTestResponse(writer, envelope.ID, map[string]any{"capabilities": map[string]any{}})

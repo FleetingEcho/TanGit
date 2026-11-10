@@ -371,8 +371,8 @@ func (a *app) compareDiffViewOptions(c *ui.Context, fullscreen bool) {
 }
 
 const (
-	compareControlHeight  float32 = 32
-	compareDownloadMargin float32 = 6
+	compareControlHeight    float32 = 32
+	comparePaneDividerInset float32 = 8
 )
 
 func compareHeaderIconButton(c *ui.Context, label string, icon *ui.SVG, disabled bool, run func()) {
@@ -533,7 +533,7 @@ func (a *app) compareResults(c *ui.Context, theme *ui.Theme) {
 	a.compare.fileRows = a.syncCompareFileRows()
 	a.collapsibleContentPaneSplit(c, &a.compare.listWidth, &a.workspacePaneCollapsed[sectionCompare],
 		"Expand list pane", func() {
-			ui.Column(c).Grow(1).FillHeight().Gap(7).Children(func() {
+			ui.Column(c).Grow(1).FillHeight().Gap(7).Padding(0, comparePaneDividerInset, 0, 0).Children(func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
 					paneTitle(c, folderIcon, "Changed files")
 					ui.Spacer(c).Grow(1)
@@ -545,9 +545,7 @@ func (a *app) compareResults(c *ui.Context, theme *ui.Theme) {
 					ui.SearchField(c, &a.compare.fileSearch).Bind(&a.sectionSearch[sectionCompare]).
 						Label(tr("Search files")).Placeholder(tr("Search files")).Grow(1)
 					a.searchNavigationButtons(c, strings.TrimSpace(a.compare.fileSearch) != "")
-					ui.Row(c).Padding(0, compareDownloadMargin, 0, 0).Children(func() {
-						a.exportCompareDiffButton(c)
-					})
+					a.exportCompareDiffButton(c)
 				})
 				if len(a.compare.fileRows) == 0 {
 					ui.Column(c).Grow(1).Center().Children(func() {
@@ -578,7 +576,7 @@ func (a *app) compareResults(c *ui.Context, theme *ui.Theme) {
 				normalizeFileTreeRow(a.compare.fileRows, &a.compare.selectedRow, &a.compare.selected)
 			})
 		}, func() {
-			ui.Column(c).Grow(1).FillHeight().Gap(7).Children(func() {
+			ui.Column(c).Grow(1).FillHeight().Gap(7).Padding(0, 0, 0, comparePaneDividerInset).Children(func() {
 				if a.compare.selected < 0 || a.compare.selected >= len(a.compare.files) {
 					ui.Column(c).Grow(1).Center().Children(func() {
 						ui.Text(c, tr("Select a file to see its diff.")).TextColor(theme.TextMuted)
@@ -586,7 +584,8 @@ func (a *app) compareResults(c *ui.Context, theme *ui.Theme) {
 					return
 				}
 				file := a.compare.files[a.compare.selected]
-				ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				ui.Row(c).AlignItems(ui.Center).Gap(8).
+					Role(ui.RoleRegion).Label(tr("File diff")).Children(func() {
 					ui.Text(c, file.Path).Bold().SingleLine().Tooltip(file.Path).Grow(1)
 					a.compareDiffViewOptions(c, false)
 				})

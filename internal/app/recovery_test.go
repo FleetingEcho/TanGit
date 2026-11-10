@@ -3,8 +3,29 @@ package app
 import (
 	"testing"
 
+	"github.com/egoist/mygo/ui"
+
 	"lazygitapp/internal/repository"
 )
+
+func TestRecoveryCardUsesTheStandardIslandGapAboveSavedWork(t *testing.T) {
+	h, _ := changesTestApp(t, unstagedTrackedFile())
+	h.app.setWorkspaceTab(sectionStash)
+	h.tester.Frame()
+
+	recovery, found := h.tester.AccessByRole(ui.RoleRegion, "Recovery & checkpoints")
+	if !found {
+		t.Fatal("the recovery card is missing its region")
+	}
+	savedWork, found := h.tester.AccessByRole(ui.RoleRegion, "Saved work")
+	if !found {
+		t.Fatal("the saved-work card is missing its region")
+	}
+	gap := savedWork.Bounds.Y - (recovery.Bounds.Y + recovery.Bounds.H)
+	if gap != islandGap {
+		t.Fatalf("gap below the recovery card = %v, want the standard island gap %v", gap, islandGap)
+	}
+}
 
 func TestRecoveryAndCheckpointActionsAskBeforeChangingSavedWork(t *testing.T) {
 	h, calls := changesTestApp(t, unstagedTrackedFile())

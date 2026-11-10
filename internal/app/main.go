@@ -145,6 +145,7 @@ type app struct {
 	customLanguageServerForm      customLanguageServerForm
 	goLanguageServer              languageServerConnection
 	goLanguageServerStarting      bool
+	goLanguageServerMissing       bool
 	goLanguageServerSeq           uint64
 	goLanguageServerError         string
 	goLanguageServerDocs          map[string]uint64

@@ -3,6 +3,8 @@ package app
 import (
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
 	"strings"
 	"testing"
 
@@ -10,6 +12,23 @@ import (
 
 	"lazygitapp/internal/repository"
 )
+
+func TestPickerUsesASolidThemeBackground(t *testing.T) {
+	a := newApp(fakeOpener{})
+	a.settings.Theme = "System"
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.SetDark(true)
+	tt.Frame()
+
+	theme := themeForSettings(a.settings, true)
+	want := color.RGBA{R: theme.Background.R, G: theme.Background.G, B: theme.Background.B, A: theme.Background.A}
+	for _, point := range []image.Point{{X: 40, Y: 120}, {X: 40, Y: 700}, {X: 1240, Y: 400}} {
+		got := color.RGBAModel.Convert(tt.Image().At(point.X, point.Y))
+		if got != want {
+			t.Errorf("picker background at %v = %v, want solid theme background %v", point, got, want)
+		}
+	}
+}
 
 // The launch card and the repository history are one aligned column at both
 // desktop and narrow widths, and the launch card starts near the top.

@@ -15,7 +15,8 @@ import (
 // refs are not native stashes, so they get their own compact Saved work group.
 func (a *app) recoveryPanel(c *ui.Context) {
 	theme := c.Theme()
-	islandCard(c, ui.Column(c).Gap(8).Padding(12)).Children(func() {
+	islandCard(c, ui.Column(c).Gap(8).Padding(12)).
+		Role(ui.RoleRegion).Label(tr("Recovery & checkpoints")).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 			ui.Icon(c, softResetIcon).FontSize(15).TextColor(theme.Accent)
 			ui.Text(c, tr("Recovery & checkpoints")).Bold().Grow(1)

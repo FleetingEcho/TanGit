@@ -165,7 +165,7 @@ func (a *app) goLanguageRequest(document *codeDocument, requestSequence *uint64,
 				*requestSequence != sequence || document.state.Buffer.Version() != version {
 				return
 			}
-			if err != nil && !isLanguageServerContentModified(err) {
+			if err != nil && !isLanguageServerContentModified(err) && !isLanguageServerRequestTimeout(err) {
 				a.reportGoLanguageServerError(err.Error())
 			}
 			result(raw, err, text, version)
