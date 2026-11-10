@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -176,6 +177,31 @@ func TestGoLanguageServerUsesConfiguredProgramAndRejectsStaleStartup(t *testing.
 	h.waitFor(t, "the stale connection shutdown", connection.isClosed)
 	if h.app.goLanguageServer != nil {
 		t.Fatal("a connection from before reset became active")
+	}
+}
+
+func TestGoLanguageServerFallsBackToNextConfiguredProgram(t *testing.T) {
+	connection := newFakeLanguageServerConnection()
+	launches := make(chan string, 2)
+	stubLanguageServerConnection(t, func(launch languageServerLaunch) (languageServerConnection, error) {
+		launches <- launch.Program
+		if launch.Program == "/missing/gopls" {
+			return nil, errors.New("not installed")
+		}
+		return connection, nil
+	})
+	stubCodeWorkspace(t, map[string]string{"main.go": "package main\n"})
+	h := menuTestApp(t)
+	h.app.settings.LanguageServers = map[string]languageServerSettings{
+		"go": {Path: "/missing/gopls, /zed/gopls"},
+	}
+	openCodePageForTest(t, h, 1)
+	h.app.openCodeFile("main.go", 0)
+	waitForCodeDocument(t, h, "main.go")
+	h.waitFor(t, "the fallback gopls connection", func() bool { return h.app.goLanguageServer == connection })
+
+	if first, second := <-launches, <-launches; first != "/missing/gopls" || second != "/zed/gopls" {
+		t.Fatalf("launch order = %q then %q, want the configured fallback order", first, second)
 	}
 }
 

@@ -17,6 +17,11 @@ const fileHistoryPage = 100
 // commitFileMenu adds the actions of a changed file to m: read or restore its
 // history, and copy either of its paths.
 func (a *app) commitFileMenu(m *ui.Menu, commit *repository.Commit, file repository.CommitFile, services ui.Services) {
+	root := a.snapshot.Root
+	if m.Item(tr("Open in built-in editor")).Chosen() {
+		a.openGitFileInBuiltInEditor(root, file.Path)
+	}
+	m.Separator()
 	if m.Item(tr("View file changes…")).Chosen() {
 		a.openFileHistory(file.Path)
 	}

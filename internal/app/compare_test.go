@@ -107,6 +107,43 @@ func TestCompareRefsDialogLoadsFilesAndAppliesOptions(t *testing.T) {
 	h.press(t, ui.KeyEscape)
 }
 
+func TestCompareRefInputsSuggestBranchesAndKeepArbitraryRevisions(t *testing.T) {
+	h := menuTestApp(t)
+	h.press(t, ui.KeyW)
+
+	if err := h.tester.Click("From ref"); err != nil {
+		t.Fatalf("open the source ref choices: %v", err)
+	}
+	h.tester.Frame()
+	for _, ref := range []string{"main", "feature", "origin/feature/menus", "v1.0.0"} {
+		if !h.tester.HasText(ref) {
+			t.Fatalf("the source ref choices have no %q: %q", ref, h.texts())
+		}
+	}
+	h.tester.Key(ui.Cmd, ui.KeyA)
+	h.tester.Type("menus")
+	h.tester.Frame()
+	if !h.tester.HasText("origin/feature/menus") || h.tester.HasText("origin/main") {
+		t.Fatalf("typing did not filter the ref choices: %q", h.texts())
+	}
+	h.tester.Key(0, ui.KeyEnter)
+	h.tester.Frame()
+	if got := h.app.compare.from; got != "origin/feature/menus" {
+		t.Fatalf("chosen source ref = %q", got)
+	}
+
+	if err := h.tester.Click("To ref"); err != nil {
+		t.Fatalf("focus the target ref: %v", err)
+	}
+	h.tester.Key(ui.Cmd, ui.KeyA)
+	h.tester.Type("HEAD~2")
+	h.tester.Key(0, ui.KeyTab)
+	h.tester.Frame()
+	if got := h.app.compare.to; got != "HEAD~2" {
+		t.Fatalf("an arbitrary revision was not preserved: %q", got)
+	}
+}
+
 type controlledCompareListRequest struct {
 	from, to string
 	options  repository.DiffOptions

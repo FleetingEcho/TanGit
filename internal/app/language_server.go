@@ -23,7 +23,9 @@ func (a *app) reportGoLanguageServerError(message string) {
 func languageServerFileURI(path string) string {
 	path = filepath.ToSlash(filepath.Clean(path))
 	if len(path) >= 2 && path[1] == ':' {
-		path = "/" + path
+		// filepath.ToSlash follows the host OS. Normalize a Windows drive path
+		// explicitly as well so URI construction is consistent on every host.
+		path = "/" + strings.ReplaceAll(path, `\`, "/")
 	}
 	return (&url.URL{Scheme: "file", Path: path}).String()
 }
@@ -36,14 +38,11 @@ func (a *app) startGoLanguageServer() {
 	if server.Disabled {
 		return
 	}
-	program := strings.TrimSpace(server.Path)
-	if program == "" {
-		program = "gopls"
-	}
+	programs := languageServerExecutableCandidates(server.Path, "gopls")
 	a.goLanguageServerSeq++
 	sequence := a.goLanguageServerSeq
 	launch := languageServerLaunch{
-		Program: program, Arguments: append([]string(nil), server.Arguments...), Root: a.snapshot.Root,
+		Program: programs[0], Arguments: append([]string(nil), server.Arguments...), Root: a.snapshot.Root,
 		Notify: func(method string, params json.RawMessage) {
 			a.handleGoLanguageServerNotification(sequence, method, params)
 		},
@@ -52,7 +51,7 @@ func (a *app) startGoLanguageServer() {
 	a.goLanguageServerError = ""
 	go func() {
 		defer a.recoverBackground()
-		connection, err := connectLanguageServer(launch)
+		connection, err := connectLanguageServerCandidates(launch, programs)
 		a.update(func() {
 			if sequence != a.goLanguageServerSeq || a.snapshot.Root != launch.Root {
 				if connection != nil {
