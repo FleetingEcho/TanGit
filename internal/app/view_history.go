@@ -93,6 +93,13 @@ func (a *app) resetCommitDetails() {
 	a.commitDiffError = ""
 }
 
+// commitDetailsVisible reports whether the shared commit file/diff model is
+// on screen. Results still publish while another section is active, but only
+// these sections need a frame for that publication.
+func (a *app) commitDetailsVisible() bool {
+	return isCommitSection(a.workspaceTab) || a.workspaceTab == sectionReflog
+}
+
 // requestCommitDetails lists the files commit changed, unless the pane
 // already holds them. It is asked for while the pane draws, so a read that an
 // action dropped, or a newer choice replaced, starts again on the next frame
@@ -127,7 +134,7 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 				if a.commitFilesHash == commit.Hash {
 					a.commitFilesHash = ""
 					a.commitFilesLoading = false
-					return true
+					return a.commitDetailsVisible()
 				}
 				return false
 			}
@@ -137,14 +144,14 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 			a.commitFilesLoading = false
 			if err != nil {
 				a.commitFilesError = safeError(err)
-				return true
+				return a.commitDetailsVisible()
 			}
 			a.commitFiles = files
 			if len(files) == 0 {
 				a.codeBlameHistoryTarget = nil
 				a.selectedCommitFileRow = -1
 				a.selectedCommitFile = -1
-				return true
+				return a.commitDetailsVisible()
 			}
 			a.selectedCommitFile = 0
 			if target := a.codeBlameHistoryTarget; target != nil && target.hash == commit.Hash {
@@ -169,7 +176,7 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 					a.codeBlameHistoryTarget = nil
 				}
 			}
-			return true
+			return a.commitDetailsVisible()
 		})
 	}()
 }
@@ -226,7 +233,7 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 					a.commitDiffPath = ""
 					a.commitDiffPatch = ""
 					a.commitDiffLoading = false
-					return true
+					return a.commitDetailsVisible()
 				}
 				return false
 			}
@@ -237,7 +244,7 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 			a.commitDiffLoading = false
 			if err != nil {
 				a.commitDiffError = safeError(err)
-				return true
+				return a.commitDetailsVisible()
 			}
 			a.commitDiffPatch = diff.Patch
 			a.commitDiffState = state
@@ -245,7 +252,7 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 			if target := a.codeBlameHistoryTarget; target != nil && target.hash == commit.Hash && target.path == file.Path && state == nil {
 				a.codeBlameHistoryTarget = nil
 			}
-			return true
+			return a.commitDetailsVisible()
 		})
 	}()
 }
@@ -569,6 +576,14 @@ func (a *app) commitDetailsLayoutControl(c *ui.Context) {
 // leaves half the visual gap beside the divider, keeping the draggable line
 // centered in open space instead of pressed against either pane's content.
 func (a *app) commitDetailsSplit(c *ui.Context, first, second func()) ui.Element {
+	return a.commitDetailsSplitWith(c, &a.commitFilesWidth, &a.commitFilesHeight,
+		&a.commitFilesCollapsed, first, second)
+}
+
+// commitDetailsSplitWith shares the layout while keeping each data source's
+// divider and collapse state independent.
+func (a *app) commitDetailsSplitWith(c *ui.Context, width, height *float32, collapsed *bool,
+	first, second func()) ui.Element {
 	vertical := a.commitDetailsLayout == commitDetailsTopBottom
 	withDividerSpace := func(before bool, content func()) func() {
 		return func() {
@@ -592,149 +607,195 @@ func (a *app) commitDetailsSplit(c *ui.Context, first, second func()) ui.Element
 	host := ui.Box(c).Grow(1)
 	host.Children(func() {
 		if vertical {
-			collapsiblePaneSplitVertical(c, &a.commitFilesHeight, &a.commitFilesCollapsed,
+			collapsiblePaneSplitVertical(c, height, collapsed,
 				"Expand changed files", first, second)
 			return
 		}
-		collapsiblePaneSplit(c, &a.commitFilesWidth, &a.commitFilesCollapsed,
+		collapsiblePaneSplit(c, width, collapsed,
 			"Expand changed files", first, second)
 	})
 	return host
 }
 
+// commitDetailViewState binds the shared commit-detail renderer to one data
+// source. Keeping these as pointers preserves History and Branches' separate
+// selections, async reads, keyboard identities, and pane sizes.
+type commitDetailViewState struct {
+	scope           string
+	filesHash       *string
+	filesLoading    *bool
+	filesError      *string
+	files           *[]repository.CommitFile
+	fileRows        *[]fileTreeRow
+	fileList        *ui.ListState
+	selectedFileRow *int
+	selectedFile    *int
+	filesHeight     *float32
+	filesWidth      *float32
+	filesCollapsed  *bool
+	diffLoading     *bool
+	diffError       *string
+	diffPath        *string
+	diffState       **editor.DiffState
+	diffMedia       **mediaReview
+	requestDetails  func(repository.Commit)
+	requestDiff     func(repository.Commit, repository.CommitFile)
+	selectFileRow   func(int)
+}
+
+func (a *app) historyCommitDetailViewState() commitDetailViewState {
+	return commitDetailViewState{
+		scope:     fileTreeCommitScope,
+		filesHash: &a.commitFilesHash, filesLoading: &a.commitFilesLoading, filesError: &a.commitFilesError,
+		files: &a.commitFiles, fileRows: &a.commitFileRows, fileList: &a.commitFileList,
+		selectedFileRow: &a.selectedCommitFileRow, selectedFile: &a.selectedCommitFile,
+		filesHeight: &a.commitFilesHeight, filesWidth: &a.commitFilesWidth, filesCollapsed: &a.commitFilesCollapsed,
+		diffLoading: &a.commitDiffLoading, diffError: &a.commitDiffError, diffPath: &a.commitDiffPath,
+		diffState: &a.commitDiffState, diffMedia: &a.commitDiffMedia,
+		requestDetails: a.requestCommitDetails, requestDiff: a.requestCommitFileDiff,
+		selectFileRow: a.selectCommitFileRow,
+	}
+}
+
 func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLabel string,
 	actionIcons func(*ui.Context, repository.Commit)) {
-	theme := c.Theme()
 	islandCard(c, ui.Column(c).Grow(1).Gap(10).Padding(16)).Children(func() {
-		if commit == nil {
-			ui.Column(c).Grow(1).Center().Children(func() {
-				ui.Text(c, tr(emptyLabel)).TextColor(theme.TextMuted)
-			})
-			return
-		}
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Text(c, commit.Subject).FontSize(18).Bold().SingleLine().Tooltip(commit.Subject).
-				Grow(1).MinWidth(0)
-			a.expandDiffButton(c)
-		})
-		if actionIcons != nil {
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(4).Wrap().Children(func() { actionIcons(c, *commit) })
-		}
-		a.diffViewOptionsWith(c, a.commitDetailsLayoutControl, false)
-		a.customPatchBar(c)
-		copyLabel := "Copy commit hash"
-		if a.workspaceTab == sectionReflog {
-			copyLabel = "Copy reflog commit hash"
-		}
-		a.commitHashRow(c, *commit, copyLabel)
-		if commit.AuthorName != "" || commit.AuthorEmail != "" {
-			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-				a.authorAvatar(c, *commit, 24)
-				switch {
-				case commit.AuthorName == "":
-					ui.Text(c, commit.AuthorEmail).Grow(1).SingleLine().Tooltip(commit.AuthorEmail)
-				case commit.AuthorEmail == "":
-					ui.Text(c, commit.AuthorName).Grow(1).SingleLine().Tooltip(commit.AuthorName)
-				default:
-					ui.Textf(c, "%s <%s>", commit.AuthorName, commit.AuthorEmail).Grow(1).SingleLine().
-						Tooltip(fmt.Sprintf("%s <%s>", commit.AuthorName, commit.AuthorEmail))
-				}
-			})
-		}
-		if rel := relTime(commit.UnixTimestamp); rel != "" {
-			ui.Text(c, rel).TextColor(theme.TextMuted)
-		}
-		if len(commit.Tags) > 0 {
-			ui.Textf(c, tr("Tags: %s"), strings.Join(commit.Tags, ", ")).TextColor(theme.TextMuted)
-		}
-		a.requestCommitDetails(*commit)
-		if a.commitFilesLoading {
-			ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
-				ui.Spinner(c).Label(tr("Loading commit details"))
-				ui.Text(c, tr("Loading commit details…")).TextColor(theme.TextMuted)
-			})
-			return
-		}
-		if a.commitFilesError != "" {
-			ui.Text(c, a.commitFilesError).TextColor(theme.Danger)
-		}
-		if a.commitFiles == nil {
-			ui.Column(c).Grow(1).Center().Children(func() {
-				if ui.Button(c, tr("Load changed files")).Clicked() {
-					// Drop the failed read's key so this click reads it
-					// again.
-					a.commitFilesHash = ""
-					a.requestCommitDetails(*commit)
-				}
-			})
-			return
-		}
-		paths := commitFilePaths(a.commitFiles)
-		previousSelectedRow := a.selectedCommitFileRow
-		a.commitFileRows = a.syncFileTreeRows(fileTreeCommitScope, paths, a.commitFileRows,
-			&a.selectedCommitFileRow, &a.selectedCommitFile)
-		revealSelectedRow := a.selectedCommitFileRow >= 0 && a.selectedCommitFileRow != previousSelectedRow
-		// The files and the diff share the rest of the pane, and the line
-		// between them is dragged to give one more room than the other.
-		a.commitDetailsSplit(c, func() {
-			ui.Column(c).Fill().Gap(6).Children(func() {
-				ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
-					ui.Icon(c, folderIcon).FontSize(13).TextColor(theme.Accent)
-					ui.Text(c, tr("Commit files")).Bold().Grow(1)
-					ui.Badge(c, fmt.Sprintf("%d", len(a.commitFiles)))
-					a.fileTreeModeButton(c)
-					paneCollapseButton(c, &a.commitFilesCollapsed, "Collapse changed files").MarginEnd(8)
-				})
-				list := a.keyboardList(c, &a.commitFileList, len(a.commitFileRows)).Grow(1).Rows(func(row ui.ListRow) {
-					item := a.commitFileRows[row.Index]
-					if item.isDirectory() {
-						a.fileTreeDirectoryRow(row.Context, fileTreeCommitScope, item, row.Selected(), func() {
-							a.selectCommitFileRow(row.Index)
-						})
-						return
-					}
-					file := a.commitFiles[item.source]
-					services := row.Context.Services()
-					ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(6, 8, 6, float32(8+16*item.depth)).Children(func() {
-						fileTypeMark(row.Context, file.Path, 13, row.Selected())
-						ui.Text(row.Context, item.name).Grow(1).SingleLine().Tooltip(file.Path)
-						fileDiffStatCounts(row.Context, file.Path, file.LinesAdded, file.LinesDeleted)
-						statusSlot(row.Context, statusLetter(file.Status),
-							rowStatusColor(theme, row, theme.Warning))
-					}).PopoverMenu(func(m *ui.Menu) {
-						a.commitFileMenu(m, commit, file, services)
-					})
-				})
-				if a.keyboardListChanged(&a.commitFileList, list) {
-					a.selectCommitFileRow(a.selectedCommitFileRow)
-				}
-				if revealSelectedRow {
-					// A programmatic choice such as Open in History has no list input
-					// for MyGo to reveal. Scroll after its rows exist, not when the
-					// asynchronous file read chooses the source file.
-					a.commitFileList.ScrollIntoView(a.selectedCommitFileRow)
-				}
-				normalizeFileTreeRow(a.commitFileRows, &a.selectedCommitFileRow, &a.selectedCommitFile)
-			})
-		}, func() {
-			ui.Column(c).Fill().Children(func() {
-				if a.selectedCommitFile >= 0 && a.selectedCommitFile < len(a.commitFiles) {
-					a.requestCommitFileDiff(*commit, a.commitFiles[a.selectedCommitFile])
-				}
-				switch {
-				case a.commitDiffLoading:
-					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-						ui.Spinner(c).Label(tr("Loading diff"))
-						ui.Text(c, tr("Loading diff…")).TextColor(theme.TextMuted)
-					})
-				case a.commitDiffError != "":
-					ui.Text(c, a.commitDiffError).TextColor(theme.Danger)
-				case a.commitDiffState != nil:
-					a.keyboardDiffViewer(c, a.commitDiffState)
-				default:
-					noTextualDiffOrMedia(c, a.commitDiffMedia, a.commitDiffPath)
-				}
-			})
-		}).Grow(1)
+		a.commitDetailBody(c, commit, emptyLabel, actionIcons, a.historyCommitDetailViewState())
 	})
+}
+
+// commitDetailBody is the one presentation used by History, Graph, Reflog,
+// and Branches. Data loading and commit actions remain specific to the caller.
+func (a *app) commitDetailBody(c *ui.Context, commit *repository.Commit, emptyLabel string,
+	actionIcons func(*ui.Context, repository.Commit), state commitDetailViewState) {
+	theme := c.Theme()
+	if commit == nil {
+		ui.Column(c).Grow(1).Center().Children(func() {
+			ui.Text(c, tr(emptyLabel)).TextColor(theme.TextMuted)
+		})
+		return
+	}
+	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+		ui.Text(c, commit.Subject).FontSize(18).Bold().SingleLine().Tooltip(commit.Subject).
+			Grow(1).MinWidth(0)
+		a.expandDiffButton(c)
+	})
+	if actionIcons != nil {
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(4).Wrap().Children(func() { actionIcons(c, *commit) })
+	}
+	a.diffViewOptionsWith(c, a.commitDetailsLayoutControl, false)
+	a.customPatchBar(c)
+	copyLabel := "Copy commit hash"
+	if a.workspaceTab == sectionReflog {
+		copyLabel = "Copy reflog commit hash"
+	}
+	a.commitHashRow(c, *commit, copyLabel)
+	if commit.AuthorName != "" || commit.AuthorEmail != "" {
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+			a.authorAvatar(c, *commit, 24)
+			switch {
+			case commit.AuthorName == "":
+				ui.Text(c, commit.AuthorEmail).Grow(1).SingleLine().Tooltip(commit.AuthorEmail)
+			case commit.AuthorEmail == "":
+				ui.Text(c, commit.AuthorName).Grow(1).SingleLine().Tooltip(commit.AuthorName)
+			default:
+				ui.Textf(c, "%s <%s>", commit.AuthorName, commit.AuthorEmail).Grow(1).SingleLine().
+					Tooltip(fmt.Sprintf("%s <%s>", commit.AuthorName, commit.AuthorEmail))
+			}
+		})
+	}
+	if rel := relTime(commit.UnixTimestamp); rel != "" {
+		ui.Text(c, rel).TextColor(theme.TextMuted)
+	}
+	if len(commit.Tags) > 0 {
+		ui.Textf(c, tr("Tags: %s"), strings.Join(commit.Tags, ", ")).TextColor(theme.TextMuted)
+	}
+	state.requestDetails(*commit)
+	if *state.filesLoading {
+		ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
+			ui.Spinner(c).Label(tr("Loading commit details"))
+			ui.Text(c, tr("Loading commit details…")).TextColor(theme.TextMuted)
+		})
+		return
+	}
+	if *state.filesError != "" {
+		ui.Text(c, *state.filesError).TextColor(theme.Danger)
+	}
+	if *state.files == nil {
+		ui.Column(c).Grow(1).Center().Children(func() {
+			if ui.Button(c, tr("Load changed files")).Clicked() {
+				// Drop the failed read's key so this click reads it again.
+				*state.filesHash = ""
+				state.requestDetails(*commit)
+			}
+		})
+		return
+	}
+	files := *state.files
+	paths := commitFilePaths(files)
+	previousSelectedRow := *state.selectedFileRow
+	*state.fileRows = a.syncFileTreeRows(state.scope, paths, *state.fileRows,
+		state.selectedFileRow, state.selectedFile)
+	revealSelectedRow := *state.selectedFileRow >= 0 && *state.selectedFileRow != previousSelectedRow
+	// The files and the diff share the rest of the pane, and the line
+	// between them is dragged to give one more room than the other.
+	a.commitDetailsSplitWith(c, state.filesWidth, state.filesHeight, state.filesCollapsed, func() {
+		ui.Column(c).Fill().Gap(6).Children(func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
+				ui.Icon(c, folderIcon).FontSize(13).TextColor(theme.Accent)
+				ui.Text(c, tr("Commit files")).Bold().Grow(1)
+				ui.Badge(c, fmt.Sprintf("%d", len(files)))
+				a.fileTreeModeButton(c)
+				paneCollapseButton(c, state.filesCollapsed, "Collapse changed files").MarginEnd(8)
+			})
+			list := a.keyboardList(c, state.fileList, len(*state.fileRows)).Grow(1).Rows(func(row ui.ListRow) {
+				item := (*state.fileRows)[row.Index]
+				if item.isDirectory() {
+					a.fileTreeDirectoryRow(row.Context, state.scope, item, row.Selected(), func() {
+						state.selectFileRow(row.Index)
+					})
+					return
+				}
+				file := files[item.source]
+				services := row.Context.Services()
+				ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(6, 8, 6, float32(8+16*item.depth)).Children(func() {
+					fileTypeMark(row.Context, file.Path, 13, row.Selected())
+					ui.Text(row.Context, item.name).Grow(1).SingleLine().Tooltip(file.Path)
+					fileDiffStatCounts(row.Context, file.Path, file.LinesAdded, file.LinesDeleted)
+					statusSlot(row.Context, statusLetter(file.Status),
+						rowStatusColor(theme, row, theme.Warning))
+				}).PopoverMenu(func(m *ui.Menu) {
+					a.commitFileMenu(m, commit, file, services)
+				})
+			})
+			if a.keyboardListChanged(state.fileList, list) {
+				state.selectFileRow(*state.selectedFileRow)
+			}
+			if revealSelectedRow {
+				// A programmatic choice has no list input for MyGo to reveal.
+				// Scroll after its rows exist, not when the async read chooses it.
+				state.fileList.ScrollIntoView(*state.selectedFileRow)
+			}
+			normalizeFileTreeRow(*state.fileRows, state.selectedFileRow, state.selectedFile)
+		})
+	}, func() {
+		ui.Column(c).Fill().Children(func() {
+			if *state.selectedFile >= 0 && *state.selectedFile < len(files) {
+				state.requestDiff(*commit, files[*state.selectedFile])
+			}
+			switch {
+			case *state.diffLoading:
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Spinner(c).Label(tr("Loading diff"))
+					ui.Text(c, tr("Loading diff…")).TextColor(theme.TextMuted)
+				})
+			case *state.diffError != "":
+				ui.Text(c, *state.diffError).TextColor(theme.Danger)
+			case *state.diffState != nil:
+				a.keyboardDiffViewer(c, *state.diffState)
+			default:
+				noTextualDiffOrMedia(c, *state.diffMedia, *state.diffPath)
+			}
+		})
+	}).Grow(1)
 }

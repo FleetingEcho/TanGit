@@ -147,6 +147,7 @@ type shell struct {
 	window         *mygo.Window
 	opener         repositoryOpener
 	update         func(func())
+	postMain       func(func())
 	invalidate     func()
 
 	settings       appSettings
@@ -186,7 +187,7 @@ type shell struct {
 // newShell builds the window's frame without a window yet: a test builds one
 // on its own, and the real app hands it a mygo.Window right after.
 func newShell(opener repositoryOpener) *shell {
-	return &shell{
+	s := &shell{
 		opener:          opener,
 		update:          func(fn func()) { fn() },
 		invalidate:      func() {},
@@ -198,6 +199,10 @@ func newShell(opener repositoryOpener) *shell {
 		windowVisible: true,
 		windowFocused: true,
 	}
+	// Tests without a native window retain their update collector. The real
+	// window replaces this with mygo.RunOnMain, which does not repaint itself.
+	s.postMain = func(fn func()) { s.update(fn) }
+	return s
 }
 
 // loadPreferences reads the settings and resolves the directory the history
@@ -240,13 +245,20 @@ func (s *shell) newTab(path string) *tab {
 	a := newApp(s.opener)
 	a.window = s.window
 	a.authorAvatars = s.authorAvatars
-	a.update = s.update
-	if s.window != nil {
-		// Window.Update always repaints, even when a quiet Git read found the
-		// same snapshot. Only changed reads should cost a whole-window frame.
-		a.updateChanged = func(fn func() bool) {
-			mygo.RunOnMain(func() { s.updateAppChanged(a, fn) })
-		}
+	// Run every page's callbacks on the UI thread, but paint only when that
+	// page is active or its tab metadata changed. Window.Update cannot make
+	// that distinction: it repaints the visible page after every callback,
+	// including no-op and stale results belonging to a background page.
+	a.update = func(fn func()) {
+		s.postMain(func() {
+			s.updateAppChanged(a, func() bool {
+				fn()
+				return true
+			})
+		})
+	}
+	a.updateChanged = func(fn func() bool) {
+		s.postMain(func() { s.updateAppChanged(a, fn) })
 	}
 	a.pathUserData = s.pathUserData
 	a.pathCache = s.pathCache

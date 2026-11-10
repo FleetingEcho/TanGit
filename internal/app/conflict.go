@@ -367,21 +367,62 @@ func (s *conflictState) lineBackgrounds(theme *ui.Theme) []editor.LineBackground
 	return backgrounds
 }
 
+// quietConflictUnchanged compares every user-visible part of a conflict read.
+// Selection, undo history, editor buffers, and remote save bookkeeping are not
+// disk content: unchanged results intentionally keep those objects alive.
+func (a *app) quietConflictUnchanged(state *conflictState, sides *conflictSides,
+	stages repository.ConflictStages, patch string) bool {
+	if a.diffError != "" || a.conflictStages != stages || a.conflictDiffPatch != patch {
+		return false
+	}
+	if (a.conflictState == nil) != (state == nil) {
+		return false
+	}
+	if state != nil {
+		current := a.conflictState
+		if current.path != state.path || current.markerSize != state.markerSize || current.text() != state.text() {
+			return false
+		}
+	}
+	if (a.conflictSides == nil) != (sides == nil) {
+		return false
+	}
+	if sides != nil {
+		current := a.conflictSides
+		if current.file != sides.file || current.content != sides.content ||
+			current.current != sides.current || current.incoming != sides.incoming || current.kept != sides.kept {
+			return false
+		}
+	}
+	return true
+}
+
 // requestConflictFile reads the chosen conflicted file into the pane, replacing
 // the diff read the pane otherwise shows. A file with markers is read as the
 // merged text the picks work on; a conflict Git wrote without markers is read
 // as the side it kept. The read is generation-guarded as a diff is, so choosing
 // another file drops its answer.
 func (a *app) requestConflictFile(file repository.File, generation uint64) {
-	remote := a.location.IsRemote()
-	client, clientErr := remoteWorkspaceClientFor(a.session, remote)
-	a.requestConflictFileRead(file, generation, remote, client, clientErr)
+	a.requestConflictFileMode(file, generation, false)
 }
 
-// requestConflictFileRead performs one conflict read against the local working
-// tree or the session's POSIX filesystem. Tests supply a remoteWorkspaceClient
-// directly; production always obtains it from the session above.
+func (a *app) requestConflictFileMode(file repository.File, generation uint64, quiet bool) {
+	remote := a.location.IsRemote()
+	client, clientErr := remoteWorkspaceClientFor(a.session, remote)
+	a.requestConflictFileReadMode(file, generation, remote, client, clientErr, quiet)
+}
+
+// requestConflictFileRead performs the ordinary full conflict load. Tests use
+// this seam to supply a remote client directly.
 func (a *app) requestConflictFileRead(file repository.File, generation uint64, remote bool, client remoteWorkspaceClient, clientErr error) {
+	a.requestConflictFileReadMode(file, generation, remote, client, clientErr, false)
+}
+
+// requestConflictFileReadMode performs one conflict read against the local
+// working tree or the session's POSIX filesystem. Quiet reads keep the current
+// pane intact and publish only an actual content or metadata change.
+func (a *app) requestConflictFileReadMode(file repository.File, generation uint64, remote bool,
+	client remoteWorkspaceClient, clientErr error, quiet bool) {
 	path := file.Path
 	inline := hasInlineConflict(file)
 	session := a.session
@@ -438,18 +479,38 @@ func (a *app) requestConflictFileRead(file repository.File, generation uint64, r
 				patch = diff.Patch
 			}
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if generation != a.diffGeneration {
-				return
+				return false
 			}
 			a.cancelDiff = nil
 			a.diffLoading = false
+			if quiet && a.conflictView != nil && a.conflictView.Buffer != nil && a.conflictView.Buffer.Modified() {
+				// Typing made the current read obsolete while it was in flight.
+				// Leave the user's text alone; a later refresh can try again.
+				return false
+			}
+			if err != nil && sides == nil {
+				message := safeError(err)
+				if quiet && a.diffError == message {
+					return false
+				}
+				a.diffError = message
+				return true
+			}
+			if quiet && a.quietConflictUnchanged(state, sides, stages, patch) {
+				// Refresh the stamp used to protect a later SSH save, without
+				// replacing the editor, undo history, selection, or scrollback.
+				if a.conflictState != nil && state != nil {
+					a.conflictState.remoteStamp = state.remoteStamp
+					a.conflictState.remoteStampKnown = state.remoteStampKnown
+					a.conflictState.remoteClient = state.remoteClient
+				}
+				return false
+			}
+			a.diffError = ""
 			a.conflictSaveError = ""
 			a.conflictSaveVersion = 0
-			if err != nil && sides == nil {
-				a.diffError = safeError(err)
-				return
-			}
 			a.conflictState = state
 			a.conflictStages = stages
 			a.conflictStageViews = [3]*editor.State{}
@@ -461,6 +522,7 @@ func (a *app) requestConflictFileRead(file repository.File, generation uint64, r
 			}
 			a.refreshConflictViewer()
 			a.refreshConflictDiff()
+			return true
 		})
 	}()
 }

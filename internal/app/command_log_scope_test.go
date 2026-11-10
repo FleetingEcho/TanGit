@@ -123,9 +123,44 @@ func TestHighlightedCommandCopiesWithoutInsertedWhitespace(t *testing.T) {
 	}
 }
 
+func TestCommandLogPublicationsCoalesceAndRecheckVisibility(t *testing.T) {
+	a := newApp(&recordedOpener{})
+	a.openCommandLog()
+	var queued []func() bool
+	a.updateChanged = func(fn func() bool) {
+		queued = append(queued, fn)
+	}
+	logger := repository.NewCommandLog()
+	a.attachRepositoryCommandLog(logger)
+
+	logger.Record("git first", "one", false)
+	logger.Record("git second", "two", false)
+	if len(queued) != 1 {
+		t.Fatalf("two log notifications queued %d UI publications, want 1", len(queued))
+	}
+	a.closeCommandLog()
+	if queued[0]() {
+		t.Fatal("a log closed before publication still requested a repaint")
+	}
+	logger.Record("git hidden", "hidden", false)
+	if len(queued) != 1 {
+		t.Fatal("a closed command log queued another UI publication")
+	}
+
+	a.openCommandLog()
+	logger.Record("git visible", "visible", false)
+	if len(queued) != 2 {
+		t.Fatal("reopening the log did not allow a new UI publication")
+	}
+	if !queued[1]() {
+		t.Fatal("a visible command-log publication did not request a repaint")
+	}
+}
+
 func TestVisibleCommandLogRequestsRepaintForNewCommands(t *testing.T) {
 	a := newApp(&recordedOpener{})
-	a.update = newUpdates().update
+	updated := newUpdates()
+	a.update = updated.update
 	a.openCommandLog()
 	invalidations := 0
 	previous := a.update
@@ -140,8 +175,13 @@ func TestVisibleCommandLogRequestsRepaintForNewCommands(t *testing.T) {
 		t.Fatal("a running command did not schedule a live repaint")
 	}
 	entries("completed", false)
-	if invalidations < 2 {
-		t.Fatalf("completion did not update the visible log; notifications = %d", invalidations)
+	if invalidations != 1 {
+		t.Fatalf("a start/completion burst queued %d repaints, want 1", invalidations)
+	}
+	updated.waitForUpdate(t)
+	logger.Record("git status", "clean", false)
+	if invalidations != 2 {
+		t.Fatalf("a later visible change did not repaint; notifications = %d", invalidations)
 	}
 	a.closeCommandLog()
 	logger.Record("git audit", "done", false)

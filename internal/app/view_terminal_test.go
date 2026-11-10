@@ -729,6 +729,26 @@ func TestTerminalHideAndRestoreKeepShellDimensionsStable(t *testing.T) {
 	}
 }
 
+func TestTerminalHideAndMaximizeDoNotScheduleUnusedAnimations(t *testing.T) {
+	for _, action := range []string{"Hide terminal", "Maximize terminal"} {
+		t.Run(action, func(t *testing.T) {
+			h, _, _ := monitoredTerminalTestApp(t)
+			h.tester.Advance(250 * time.Millisecond)
+			h.tester.Frame()
+			if h.tester.FramePending() {
+				t.Fatal("test did not start from a settled terminal layout")
+			}
+			if err := h.tester.Click(action); err != nil {
+				t.Fatal(err)
+			}
+			h.tester.Frame()
+			if h.tester.FramePending() {
+				t.Fatalf("%s scheduled an animation whose size is not rendered", action)
+			}
+		})
+	}
+}
+
 func TestTerminalMaximizeRestoresPanelHeightAndSessions(t *testing.T) {
 	h, peers, first := monitoredTerminalTestApp(t)
 	if err := h.tester.Click("New terminal tab"); err != nil {
@@ -1235,7 +1255,9 @@ func TestTerminalSplitHideAndCloseHaveIndependentLifetimes(t *testing.T) {
 	}
 	requireTerminalRunning(t, first)
 	requireTerminalRunning(t, second)
-	h.app.openTerminal()
+	if err := h.tester.Click("Toggle terminal"); err != nil {
+		t.Fatal(err)
+	}
 	h.tester.Advance(250 * time.Millisecond)
 	h.tester.Frame()
 	if h.app.term.sessions[0].pane != firstPane || h.app.term.sessions[1].pane != secondPane {
@@ -1244,7 +1266,7 @@ func TestTerminalSplitHideAndCloseHaveIndependentLifetimes(t *testing.T) {
 
 	// Close applies to the selected session, not the other split or the panel.
 	if err := h.tester.Click("Close terminal 2"); err != nil {
-		t.Fatal(err)
+		t.Fatalf("%v; terminal=%+v; texts=%q", err, h.app.term, h.texts())
 	}
 	h.tester.Frame()
 	requireTerminalClosed(t, second)

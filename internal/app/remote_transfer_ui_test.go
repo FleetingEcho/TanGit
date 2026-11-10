@@ -153,6 +153,109 @@ func TestRemoteTransferNotificationsKeepIdentityAndTerminalActions(t *testing.T)
 	}
 }
 
+func TestRemoteTransferDuplicateProgressDoesNotRebuildNotification(t *testing.T) {
+	a, updated := newRemoteTransferUITestApp(t)
+	manager, generation, _, err := a.remoteTransferManager()
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated.waitForUpdate(t)
+	a.ensureRemoteTransferJob(12, "upload", nil, "/srv/repo", nil)
+	result := transfer.Result{
+		ID: 12, Status: transfer.StatusRunning, TotalItems: 2,
+		TotalBytes: 200, CompletedBytes: 50,
+	}
+	snapshot := transfer.Snapshot{Jobs: []transfer.Result{result}}
+	a.applyRemoteTransferSnapshot(manager, generation, snapshot)
+	if len(a.pendingToasts) != 1 {
+		t.Fatalf("initial progress produced %d notifications, want 1", len(a.pendingToasts))
+	}
+	first := a.pendingToasts[0]
+	a.applyRemoteTransferSnapshot(manager, generation, snapshot)
+	if len(a.pendingToasts) != 1 {
+		t.Fatalf("duplicate progress rebuilt the toast: %d notifications", len(a.pendingToasts))
+	}
+	if got := a.pendingToasts[0]; got.id != first.id || got.title != first.title || got.description != first.description {
+		t.Fatal("duplicate progress replaced the visible progress toast")
+	}
+}
+
+func TestRemoteTransferProgressCoalescesLatestSnapshot(t *testing.T) {
+	originalSchedule := scheduleRemoteTransferProgress
+	t.Cleanup(func() { scheduleRemoteTransferProgress = originalSchedule })
+	type scheduled struct {
+		delay time.Duration
+		run   func()
+	}
+	var pending []scheduled
+	cancels := 0
+	scheduleRemoteTransferProgress = func(delay time.Duration, run func()) func() bool {
+		pending = append(pending, scheduled{delay: delay, run: run})
+		return func() bool { cancels++; return true }
+	}
+
+	a, updated := newRemoteTransferUITestApp(t)
+	manager, generation, _, err := a.remoteTransferManager()
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated.waitForUpdate(t)
+	a.ensureRemoteTransferJob(12, "upload", nil, "/srv/repo", nil)
+	progress := func(bytes int64) transfer.Snapshot {
+		return transfer.Snapshot{Jobs: []transfer.Result{{
+			ID: 12, Status: transfer.StatusRunning, TotalItems: 1,
+			TotalBytes: 200, CompletedBytes: bytes,
+		}}}
+	}
+	// Start the first progress publication after an idle window so it is
+	// immediate; subsequent updates in this test belong to the rate gate.
+	a.remoteTransfers.snapshotMu.Lock()
+	a.remoteTransfers.lastSnapshot = time.Time{}
+	a.remoteTransfers.snapshotMu.Unlock()
+	a.queueRemoteTransferSnapshot(manager, generation, progress(10))
+	updated.waitForUpdate(t)
+	if len(a.pendingToasts) != 1 {
+		t.Fatalf("initial progress produced %d toasts, want 1", len(a.pendingToasts))
+	}
+
+	a.queueRemoteTransferSnapshot(manager, generation, progress(20))
+	a.queueRemoteTransferSnapshot(manager, generation, progress(30))
+	if len(pending) != 1 || pending[0].delay <= 0 || pending[0].delay > remoteTransferProgressInterval {
+		t.Fatalf("progress schedules = %+v, want one delay in (0, %s]", pending, remoteTransferProgressInterval)
+	}
+	if updated.flushPending() {
+		t.Fatal("rate-limited progress bypassed the scheduler and reached the UI queue")
+	}
+	run := pending[0].run
+	pending = nil
+	run()
+	updated.waitForUpdate(t)
+	if len(a.pendingToasts) != 2 || !strings.Contains(a.pendingToasts[1].description, "30 B") ||
+		strings.Contains(a.pendingToasts[1].description, "20 B") {
+		t.Fatalf("coalesced progress = %+v, want only 30 bytes", a.pendingToasts)
+	}
+
+	a.queueRemoteTransferSnapshot(manager, generation, progress(40))
+	if len(pending) != 1 {
+		t.Fatal("the next progress window was not scheduled")
+	}
+	a.queueRemoteTransferSnapshot(manager, generation, transfer.Snapshot{Jobs: []transfer.Result{{
+		ID: 12, Status: transfer.StatusSucceeded, TotalItems: 1,
+		CompletedItems: 1, TotalBytes: 200, CompletedBytes: 200,
+	}}})
+	updated.waitForUpdate(t)
+	if cancels == 0 {
+		t.Fatal("terminal completion did not cancel delayed progress")
+	}
+	if len(a.pendingToasts) != 3 || !strings.Contains(a.pendingToasts[2].description, "1 completed") {
+		t.Fatalf("terminal completion was not published immediately: %+v", a.pendingToasts)
+	}
+	pending[0].run() // A canceled timer that still fires is stale and harmless.
+	if updated.flushPending() {
+		t.Fatal("a canceled timer published stale progress")
+	}
+}
+
 func TestRemoteTransferTextTranslatesStaticFormatsButNotErrors(t *testing.T) {
 	const payload = "server supplied transfer failure"
 	stubScopedTranslationCatalog(t, map[string]string{
