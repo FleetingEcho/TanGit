@@ -59,6 +59,8 @@ var (
 	inputRegionShown func(w *window, shown bool)
 )
 
+func (w *window) IgnoresMouseEvents() bool { return w.ignoreMouse }
+
 func (w *window) SetIgnoreMouseEvents(v bool) {
 	w.ignoreMouse, w.through = v, v
 	w.setExStyle(wsExTransparent, v)

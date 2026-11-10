@@ -3,7 +3,6 @@ package ui
 import (
 	"math"
 	"strings"
-	"sync"
 
 	"github.com/egoist/mygo/internal/imagesrc"
 	"github.com/egoist/mygo/internal/platform"
@@ -335,6 +334,7 @@ type layoutStyle struct {
 	keepSpaces bool
 	ellipsis   string
 	middle     bool
+	cutStart   bool
 }
 
 // Element is a node of a frame's user interface. The functions that create
@@ -349,25 +349,51 @@ type layoutStyle struct {
 // Common input queries return false or zero for nil or cleared elements;
 // this does not make references to reused storage safe.
 type node struct {
+	// What the layout reads and writes of an element, in the lines it
+	// touches: a tree of a hundred thousand elements is walked again and
+	// again a frame, and each of them is read in as few lines as it can
+	// be.
+	c     *context
+	flags uint32
+	// special tells that the element lays out by more than what it is
+	// built with: a list, a toolbar, a form or a table's columns. The
+	// layout looks for those on every element it lays out, and this tells
+	// it that there are none to look for.
+	special bool
+	// lay says what the layout cache may do with the element
+	// (layOwner, layReuse), and laid when layoutBox last laid it out, in
+	// engine.laySeq.
+	lay  uint8
+	laid uint64
+	// hold is the element's entry in the engine's holds (0 for none):
+	// what a measuring pass resolved for its in-flow children, which a
+	// commit pass at the same size uses instead of building them again.
+	hold int32
+
+	parent *node
+	first  *node
+	last   *node
+	next   *node
+	st     *state
+
+	// layoutStyle holds what lays the element out.
+	layoutStyle
+
+	// Layout results, in DIPs relative to the window.
+	x, y, w, h float32
+	// measured is what was measured of the element: its max-content and
+	// min-content widths, and its heights at widths.
+	measured
+
 	epoch      uint64
 	key        any
 	valueInput func(*node)
-	c          *context
 	id         uint64
-	flags      uint32
-	parent     *node
-	first      *node
-	last       *node
-	next       *node
 	nchild     int
 	depth      int
-	st         *state
 	// track is the ScrollState of a scroll container (TrackScroll).
 	track *ScrollState
-
-	// layoutStyle holds what lays the element out, and cols and rows
-	// the tracks of a grid.
-	layoutStyle
+	// cols and rows are the tracks of a grid.
 	cols, rows []Track
 
 	// Visual geometry, composed after layout.
@@ -549,6 +575,9 @@ type node struct {
 	// accFill describes the element to assistive technology further, as
 	// a code editor its text and selection.
 	accFill func(n *platform.AccessNode)
+	// accChildren adds nodes of its own inside the element's, as a diff
+	// viewer the lines it shows (AccessChildren).
+	accChildren func(parent *platform.AccessNode, add func(platform.AccessNode))
 	// accStep is how far the keys move the value of a range.
 	accStep float64
 	// keyShortcuts are the keys that press or focus the element, as the
@@ -560,8 +589,6 @@ type node struct {
 	accGrid [4]int32
 	accSet  [2]int32
 
-	// Layout results, in DIPs relative to the window.
-	x, y, w, h float32
 	// contentW and contentH are the size of a scroll container's content.
 	contentW, contentH float64
 	// barInset moves a scroll container's scroll bars in from its edges
@@ -673,12 +700,6 @@ type node struct {
 	hasPopup        Popup
 	popupSet        bool
 	tl              *text.Layout
-	measured
-	// lay says what the layout cache may do with the element
-	// (layOwner, layReuse), and laid when layoutBox last laid it out, in
-	// engine.laySeq.
-	lay  uint8
-	laid uint64
 	// leaving marks a copy of an element gone, which its exit transition
 	// animates (1 if it was in its parent's flow, 2 if absolute), and
 	// ghosts an element holding such copies; lift one flying with a
@@ -1390,6 +1411,19 @@ func (e *node) KeepFocus() *node { e.flags |= flagKeepFocus; return e }
 // too, as those of other text fields do not.
 func (e *node) Access(fn func(n *platform.AccessNode)) *node { e.accFill = fn; return e }
 
+// AccessChildren has fn add nodes of its own inside the element's, after
+// Access's fn described it and before the elements inside it, only while
+// assistive technology reads the window: what stands for parts of the
+// element that are no elements, as the lines a diff viewer shows, each
+// read as added or deleted. fn reads the element's node, parent, and adds
+// each node with add, whose Parent it sets; their IDs must be no
+// element's, and the same for the same part from frame to frame. Actions
+// on them do nothing. As Access, it takes the module's internal type.
+func (e *node) AccessChildren(fn func(parent *platform.AccessNode, add func(platform.AccessNode))) *node {
+	e.accChildren = fn
+	return e
+}
+
 // AspectRatio makes the height the width divided by r.
 func (e *node) AspectRatio(r float32) *node { e.aspect = r; return e }
 
@@ -1866,16 +1900,12 @@ func (e *node) TextShadow(x, y, blur float32, c Color) *node {
 // sets them, which differs between systems.
 func (e *node) TabSize(n float32) *node {
 	if n > 0 {
-		linkTabs.Do(text.Shared().UseTabSize)
+		e.c.rt.text.UseTabSize()
 	}
 	e.ts.tabSize = max(n, 0)
 	e.ts.set |= setTabSize
 	return e
 }
-
-// linkTabs lets the text system set tab stops once an element sets a tab
-// size, so that apps that never do not link it.
-var linkTabs sync.Once
 
 // Strikethrough strikes text through.
 func (e *node) Strikethrough() *node { e.ts.strike = true; e.ts.set |= setStrike; return e }
@@ -1953,14 +1983,10 @@ func (e *node) Balance() *node { e.balance = true; return e }
 // paragraph of body text then ends on more than one word, at no cost to
 // the rest of its lines; Balance balances them all instead.
 func (e *node) Pretty() *node {
-	linkPretty.Do(text.Shared().UsePretty)
+	e.c.rt.text.UsePretty()
 	e.pretty = true
 	return e
 }
-
-// linkPretty lets the text system wrap text pretty once an element or a
-// TextShape asks for it, so that apps that never do not link it.
-var linkPretty sync.Once
 
 // PreserveSpaces keeps the spaces the element's text ends its lines with,
 // and a text of only spaces, with their advance, as CSS's white-space:
@@ -1977,16 +2003,25 @@ func (e *node) Ellipsis(s string) *node { e.ellipsis = s; return e }
 // cuts in the middle of its last line rather than at its end, so that it
 // keeps both its start and its end, about as wide each, in the room
 // layout gives it: a list of files shows "src/components/…/picker.go",
-// whose folder and file's name both show.
+// whose folder and file's name both show. TruncateStart, with it, cuts
+// the start instead.
 func (e *node) TruncateMiddle() *node {
-	linkTruncateMiddle.Do(text.Shared().UseTruncateMiddle)
+	e.c.rt.text.UseTruncateMiddle()
 	e.middle = true
 	return e
 }
 
-// linkTruncateMiddle lets the text system cut text in its middle once an
-// element asks for it, so that apps that never do not link it.
-var linkTruncateMiddle sync.Once
+// TruncateStart puts the ellipsis of text that SingleLine or MaxLines
+// cuts at the start of its last line rather than at its end, so that it
+// keeps as much of its end as fits the room layout gives it: a list of
+// files shows "…/theme/picker.go", whose file's name and nearest folders
+// show where its start does not matter. With TruncateMiddle too, the
+// start is cut.
+func (e *node) TruncateStart() *node {
+	e.c.rt.text.UseTruncateStart()
+	e.cutStart = true
+	return e
+}
 
 // Label names the element for assistive technology and for finding it in
 // tests, when its text does not.

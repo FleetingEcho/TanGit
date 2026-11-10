@@ -39,6 +39,11 @@ type view struct {
 	wrapWidth  float32
 	scale      float32
 	theme      *Theme
+	// sys is the text system of the window the editor draws in, which
+	// build sets of the context each frame: a Tester's window shapes
+	// apart from the others' shared system (#1722). A view styled before
+	// a frame built it shapes in the shared one.
+	sys *text.System
 	// faces are the faces of the kinds of tokens, by the theme; styled
 	// tells whether any is not the regular one.
 	faces  [tokenKinds]uint8
@@ -79,6 +84,14 @@ type view struct {
 	// faceWidths measure the bold and italic faces, by face, as widths
 	// does the regular one (faceWidths[0] is unused).
 	faceWidths [4]charWidths
+	// lineStyles are the app's styles of lines, sorted by line
+	// (State.SetLineStyles), laid out by the views of styleViews, one per
+	// font and line height, which styleGen marks in use; stylesDirty asks
+	// for the heights of their rows again (refreshLineHeights).
+	lineStyles  []appLineStyle
+	styleViews  map[lineStyleKey]*view
+	styleGen    int
+	stylesDirty bool
 }
 
 // inlay is text shown in a line at an offset, as an inlay hint or a
@@ -113,6 +126,10 @@ type lineLayout struct {
 	faces []faceRun // the faces of toks, none when all are regular
 	width float32
 	used  uint64
+	// owner is the view that laid it out: the editor's, or for a styled
+	// line its style's (styledView), whose metrics its rows have.
+	owner                      *view
+	rowHeight, ascent, descent float32
 }
 
 // dispSeg maps a run of the displayed text to the line's: text, a tab
@@ -180,6 +197,7 @@ type lineCache struct {
 // over as it uses them, and those of this one.
 type shapeCache struct {
 	style     text.Style
+	sys       *text.System
 	prev, cur map[shapeKey]*text.Layout
 }
 
@@ -206,14 +224,23 @@ func (c *shapeCache) getSpans(s, spans string, style text.Style) *text.Layout {
 		c.cur[k] = l
 		return l
 	}
-	l := shapeText(text.Params{Text: s, Style: style, NoWrap: true, KeepSpaces: true, Spans: spans})
+	l := shapeText(orShared(c.sys), text.Params{Text: s, Style: style, NoWrap: true, KeepSpaces: true, Spans: spans})
 	c.cur[k] = l
 	return l
 }
 
-// shapeText shapes text for the view: text.Shared().Shape, which tests
-// replace with a shaper of their own.
-var shapeText = func(p text.Params) *text.Layout { return text.Shared().Shape(p) }
+// shapeText shapes text for the view in the system of the window the
+// editor draws in, which tests replace with a shaper of their own.
+var shapeText = func(sys *text.System, p text.Params) *text.Layout { return sys.Shape(p) }
+
+// orShared returns sys, or the shared text system for a view styled
+// before a frame built it.
+func orShared(sys *text.System) *text.System {
+	if sys == nil {
+		return text.Shared()
+	}
+	return sys
+}
 
 func (c *shapeCache) endFrame() {
 	c.prev, c.cur = c.cur, c.prev
@@ -230,20 +257,21 @@ func (c *shapeCache) endFrame() {
 // out in are shaped to fit (wrapBreaks).
 type charWidths struct {
 	style text.Style
+	sys   *text.System
 	ascii [128]float32
 	other map[rune]float32
 	mono  float32 // the advance of every printable ASCII character, if one
 }
 
-func (w *charWidths) reset(style text.Style) {
+func (w *charWidths) reset(style text.Style, sys *text.System) {
 	if w.style == style && w.other != nil {
 		return
 	}
-	*w = charWidths{style: style, other: map[rune]float32{}}
+	*w = charWidths{style: style, sys: sys, other: map[rune]float32{}}
 	for i := range w.ascii {
 		w.ascii[i] = -1
 	}
-	l := shapeText(text.Params{Text: asciiPrintableCode, Style: style, NoWrap: true, KeepSpaces: true})
+	l := shapeText(orShared(sys), text.Params{Text: asciiPrintableCode, Style: style, NoWrap: true, KeepSpaces: true})
 	mono := float32(-1)
 	if len(l.Lines) == 1 {
 		line := l.Lines[0]
@@ -278,7 +306,7 @@ func (w *charWidths) of(r rune) float32 {
 	if v, ok := w.other[r]; ok {
 		return v
 	}
-	l := shapeText(text.Params{Text: string(r), Style: w.style, NoWrap: true, KeepSpaces: true})
+	l := shapeText(orShared(w.sys), text.Params{Text: string(r), Style: w.style, NoWrap: true, KeepSpaces: true})
 	v := l.Width
 	if len(w.other) < 4096 {
 		w.other[r] = v
@@ -304,7 +332,7 @@ func (v *view) widthsOf(face uint8) *charWidths {
 		return &v.widths
 	}
 	w := &v.faceWidths[face&3]
-	w.reset(v.faceStyle(face))
+	w.reset(v.faceStyle(face), v.sys)
 	return w
 }
 
@@ -378,10 +406,12 @@ func (v *view) setStyle(f ui.Font, lineHeight, scale float32, tabSize int) {
 	}
 	lh := float32(math.Round(float64(f.Size*lineHeight*scale))) / scale
 	tabSize = max(1, min(tabSize, 16))
+	sys := orShared(v.sys)
+	v.shaped.sys = sys
 	// A new generation of the text system shapes text anew, as when the
 	// language the app shows changes, which the editor's text, naming
 	// none, is shaped in: what was measured and shaped is to be again.
-	gen := text.Shared().Generation()
+	gen := sys.Generation()
 	if v.style == style && v.lineHeight == lh && v.tabSize == tabSize && v.scale == scale && v.textGen == gen {
 		return
 	}
@@ -395,14 +425,15 @@ func (v *view) setStyle(f ui.Font, lineHeight, scale float32, tabSize int) {
 	v.font, v.style, v.lineHeight, v.tabSize, v.scale = f, style, lh, tabSize, scale
 	v.heights.lh = lh
 	v.heights.dirty = true
-	a, d, _ := text.Shared().Metrics(style)
+	a, d, _ := sys.Metrics(style)
 	v.ascent, v.descent = a, d
-	v.widths.reset(style)
+	v.widths.reset(style, sys)
 	v.charWidth = v.widths.of('0')
 	if fontChanged {
 		v.maxLine = 0
 	}
 	v.lines.m = nil
+	v.stylesDirty = true
 	if v.wrap {
 		v.heights.wraps.reset(v.text.LineCount(), true)
 		v.wrapAt = 0
@@ -437,6 +468,7 @@ func (v *view) setWrap(on bool, width float32) {
 		return
 	}
 	v.wrap, v.wrapWidth = on, width
+	v.stylesDirty = true
 	v.heights.wraps.reset(v.text.LineCount(), on)
 	v.heights.dirty = true
 	v.wrapAt = 0
@@ -488,6 +520,8 @@ func (v *view) sync(moved func(cs []change)) bool {
 			v.inlays[i].at = mapOffset(v.inlays[i].at, cs, biasRight)
 		}
 		v.moveRepls(cs)
+		v.moveLineStyles(cs)
+		v.settleLineStyles()
 		if moved != nil {
 			moved(cs)
 		}
@@ -503,10 +537,12 @@ func (v *view) sync(moved func(cs []change)) bool {
 			v.inlays[i].at = mapOffset(v.inlays[i].at, cs, biasRight)
 		}
 		v.moveRepls(cs)
+		v.moveLineStyles(cs)
 		if moved != nil {
 			moved(cs)
 		}
 	}
+	v.settleLineStyles()
 	v.heights.setLines(text.LineCount())
 	v.heights.dirty = true
 	return true
@@ -541,6 +577,18 @@ func (v *view) followHighlighter() Highlighter {
 
 // line returns line n laid out.
 func (v *view) line(n int) *lineLayout {
+	// A styled line, as its style's view lays it out.
+	if s := v.lineStyle(n); s != nil {
+		child := v.styledView(s.LineStyle)
+		l := child.line(n)
+		if child.approx {
+			// Its tokens are a guess: frames go on until they are known.
+			v.approx, child.approx = true, false
+		}
+		v.heights.wraps.set(n, len(l.rows))
+		v.maxLine = max(v.maxLine, l.width)
+		return l
+	}
 	if v.lines.m == nil {
 		v.lines.m = map[int]*lineLayout{}
 	}
@@ -560,7 +608,7 @@ func (v *view) line(n int) *lineLayout {
 		}
 		return l
 	}
-	l := &lineLayout{n: n, used: v.lines.frame}
+	l := &lineLayout{n: n, used: v.lines.frame, owner: v, rowHeight: v.lineHeight, ascent: v.ascent, descent: v.descent}
 	l.start = v.text.LineStart(n)
 	l.text = v.text.Slice(l.start, v.text.LineEnd(n))
 	l.toks, l.exact = v.tokens(n, l.text, nil)
@@ -586,6 +634,9 @@ func (v *view) line(n int) *lineLayout {
 
 // endFrame forgets the lines and layouts no recent frame used.
 func (v *view) endFrame() {
+	for _, child := range v.styleViews {
+		child.endFrame()
+	}
 	v.lines.frame++
 	if len(v.lines.m) > 512 {
 		for k, l := range v.lines.m {
@@ -1056,6 +1107,9 @@ func (v *view) shapeRow(l *lineLayout, row *rowLayout, lazy, fitted bool) {
 
 // piece returns the layout of a row's piece, shaping it the first time.
 func (v *view) piece(l *lineLayout, p *rowPiece) *text.Layout {
+	if l.owner != nil && l.owner != v {
+		return l.owner.piece(l, p)
+	}
 	if p.l == nil {
 		p.l = v.shaped.getSpans(l.disp[p.from:p.to], v.spansOf(l, p.from, p.to), v.style)
 	}
@@ -1287,6 +1341,10 @@ func (v *view) measureWraps(near int, budget time.Duration) bool {
 		if w.extra[i] != wrapUnknown {
 			return true
 		}
+		if v.lineStyle(i) != nil {
+			v.line(i)
+			return true
+		}
 		disp := s
 		var faces []faceRun
 		if strings.IndexByte(s, '\t') >= 0 || len(v.inlaysIn(at, at+len(s))) > 0 || len(v.replsIn(at, at+len(s))) > 0 {
@@ -1395,10 +1453,16 @@ func (v *view) dispAt(l *lineLayout, r *rowLayout, x float32) int {
 	}
 	// The end of a row a line wraps after is the start of the next, where
 	// a caret shows: on this row, it is before the row's last character,
-	// as Zed clips there.
+	// as Zed clips there, before the marks of that character too.
 	if d >= r.to && r.to < len(l.disp) && r.to > r.from {
-		_, size := utf8.DecodeLastRuneInString(l.disp[r.from:r.to])
-		d = r.to - size
+		d = r.to
+		for d > r.from {
+			c, size := utf8.DecodeLastRuneInString(l.disp[r.from:d])
+			d -= size
+			if !extends(c) {
+				break
+			}
+		}
 	}
 	return d
 }
@@ -1496,7 +1560,13 @@ func (cc *runColors) at(d int, def ui.Color) ui.Color {
 // y, colored by cc, or by override when given.
 func (v *view) paintRow(p *ui.Painter, l *lineLayout, r *rowLayout, x, y float32, cc *runColors, override func(d int, c ui.Color) ui.Color) {
 	clip := p.Visible()
-	baseline := y + (v.lineHeight-(v.ascent+v.descent))/2 + v.ascent
+	// A styled line's rows have its style's metrics; rows made to paint
+	// alone, as the gutter's numbers, the view's.
+	rowHeight, ascent, descent := l.rowHeight, l.ascent, l.descent
+	if rowHeight <= 0 {
+		rowHeight, ascent, descent = v.lineHeight, v.ascent, v.descent
+	}
+	baseline := y + (rowHeight-(ascent+descent))/2 + ascent
 	def := v.theme.Text
 	for pi := range r.pieces {
 		pc := &r.pieces[pi]
@@ -1555,7 +1625,7 @@ func (v *view) rangeRects(l *lineLayout, r *rowLayout, a, b int, out []ui.Rect) 
 			rb = ra + utf8.RuneCountInString(l.disp[pa:pb])
 		}
 		for _, rc := range lay.SelectionVisual(ra, rb, false) {
-			out = append(out, ui.Rect{X: r.indent + pc.x + rc.X, Y: 0, W: rc.W, H: v.lineHeight})
+			out = append(out, ui.Rect{X: r.indent + pc.x + rc.X, Y: 0, W: rc.W, H: l.rowHeight})
 		}
 	}
 	return out

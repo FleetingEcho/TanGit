@@ -82,8 +82,8 @@ github.com/invopop/jsonschema v0.10.0 h1:c1ktzNLBun3LyQQhyty5WE3lulbOdIIyOVlkmDL
 github.com/invopop/jsonschema v0.10.0/go.mod h1:ffZ5Km5SWWRAIN6wbDXItl95euhFz2uON45H2qjYt+0=
 github.com/jesseduffield/generics v0.0.0-20250517122708-b0b4a53a6f5c h1:tC2PaiisXAC5sOjDPfMArSnbswDObtCssx+xn28edX4=
 github.com/jesseduffield/generics v0.0.0-20250517122708-b0b4a53a6f5c/go.mod h1:F2fEBk0ddf6ixrBrJjY7phfQ3hL9rXG0uSjvwYe50bE=
-github.com/jesseduffield/lazygit v0.66.4-0.20261110130621-8290cc9357ad h1:vXnkEqk5jd4ngf4L/fr98BNLFHV/JdeQUNsJej1rQVM=
-github.com/jesseduffield/lazygit v0.66.4-0.20261110130621-8290cc9357ad/go.mod h1:kbajfcqS66VlcvQUv+RIIxRB1VNPtLrIOhKXMqyjj0o=
+github.com/jesseduffield/lazygit v0.66.4-0.20261115072517-54cc6af1d77b h1:eISr+QvzfQ8UDcXA3v+rrVItggwahqQXDjCeptrnRyM=
+github.com/jesseduffield/lazygit v0.66.4-0.20261115072517-54cc6af1d77b/go.mod h1:kbajfcqS66VlcvQUv+RIIxRB1VNPtLrIOhKXMqyjj0o=
 github.com/junegunn/fzf v0.75.0 h1:r//SHCBpbbVw5ZSjh4swLHOMj1/7dIJz5xlSQRsvGvQ=
 github.com/junegunn/fzf v0.75.0/go.mod h1:TBRY54j3mGjAm4JcpDyiUIuDq38QlHvAzrB3GLKxQXM=
 github.com/junegunn/go-shellwords v0.0.0-20250127100254-2aa3b3277741 h1:7dYDtfMDfKzjT+DVfIS4iqknSEKtZpEcXtu6vuaasHs=
@@ -156,8 +156,8 @@ github.com/sirupsen/logrus v1.10.2 h1:G2SED73/qrAu6YwbdxOD6peLkCBI3z7L+ykJFTXJBB
 github.com/sirupsen/logrus v1.10.2/go.mod h1:SLEg8TqYulVKKfIGHldVp2K2aYz2DKSVBq4g/H5bR7Q=
 github.com/sourcegraph/go-ctags v0.0.0-20261111104506-538b0daedfe1 h1:lvx96+KuDNxhummTJ5qcpDuqZKjD5y2fcVZ5jTQufNc=
 github.com/sourcegraph/go-ctags v0.0.0-20261111104506-538b0daedfe1/go.mod h1:ol3v7qt2iNcy5vpILcsBY7f0BnSW0fi4oUNMYDpH2Yc=
-github.com/sourcegraph/zoekt v0.0.0-20261113144410-b808c14e30c9 h1:5qg+qKfqZF4N4otCStKcCYF4/tAmHxDnmvuRD1y+tkQ=
-github.com/sourcegraph/zoekt v0.0.0-20261113144410-b808c14e30c9/go.mod h1:Ub2RJcMI1yRl0aSQSU0UHJTsWCPYexvzCQoPzmDWrJk=
+github.com/sourcegraph/zoekt v0.0.0-20261116114912-33ce1d04d373 h1:l2nvP1OB+NLVP0OwXZ87UyEW/pnMQhcJrRly1qvXLLU=
+github.com/sourcegraph/zoekt v0.0.0-20261116114912-33ce1d04d373/go.mod h1:Ub2RJcMI1yRl0aSQSU0UHJTsWCPYexvzCQoPzmDWrJk=
 github.com/spf13/afero v1.15.0 h1:b/YBCLWAJdFWJTN9cLhiXXcD7mzKn9Dm86dNnfyQw1I=
 github.com/spf13/afero v1.15.0/go.mod h1:NC2ByUVxtQs4b3sIUphxK0NioZnmxgyCrfzeuq8lxMg=
 github.com/stefanhaller/git-todo-parser v0.0.7-0.20250905083220-c50528f08304 h1:bg+K3E0GYuqwTGaEfNrsZ0rH0Bw4p3EmPjk9Zjnua+w=

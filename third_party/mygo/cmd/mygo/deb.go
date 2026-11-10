@@ -328,7 +328,7 @@ func mimePackage(c *Config) string {
 		if !defined {
 			continue
 		}
-		fmt.Fprintf(&b, "  <mime-type type=\"%s\">\n", t)
+		fmt.Fprintf(&b, "  <mime-type type=\"%s\">\n", xmlEscape(t))
 		if fa.Name != "" {
 			fmt.Fprintf(&b, "    <comment>%s</comment>\n", xmlEscape(fa.Name))
 		}

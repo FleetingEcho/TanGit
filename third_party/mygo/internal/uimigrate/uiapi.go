@@ -126,6 +126,7 @@ var uiResults = map[string]string{
 var elementChains = map[string]bool{
 	"Absolute":             true,
 	"Access":               true,
+	"AccessChildren":       true,
 	"AccessDisabled":       true,
 	"AccessHidden":         true,
 	"AccessSelected":       true,
@@ -323,6 +324,7 @@ var elementChains = map[string]bool{
 	"PositionInSet":        true,
 	"PreserveSpaces":       true,
 	"Pretty":               true,
+	"Query":                true,
 	"RadialGradient":       true,
 	"Radius":               true,
 	"Range":                true,
@@ -397,6 +399,7 @@ var elementChains = map[string]bool{
 	"TranslatePercent":     true,
 	"TranslateZ":           true,
 	"TruncateMiddle":       true,
+	"TruncateStart":        true,
 	"Underline":            true,
 	"UnderlineOffset":      true,
 	"Unselectable":         true,

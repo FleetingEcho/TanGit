@@ -37,9 +37,9 @@ func coreView(view func(c *context)) *Content { return &Content{view: view} }
 // RegisterFont adds a TrueType or OpenType font, or collection, that text
 // can use with Font(family). An empty family keeps the font's own name.
 // The fonts registered under a family make it up, apart from other fonts
-// of their own family.
+// of their own family. A Tester's window draws them too.
 func RegisterFont(data []byte, family string) error {
-	return text.Shared().RegisterFont(data, family)
+	return text.RegisterAppFont(data, family)
 }
 
 // A FontFamily is a font family text can use, as FontFamilies lists it.
@@ -820,13 +820,17 @@ func (h *windowHost) post(fn func()) {
 // know them.
 func (h *windowHost) uiFont() {
 	if h.conn.UIFont != nil {
-		text.Shared().SetUIFamily(h.conn.UIFont())
+		h.textSystem().SetUIFamily(h.conn.UIFont())
 	}
 	if h.conn.FontRendering != nil {
 		r := h.conn.FontRendering()
-		text.Shared().SetFontRendering(r.Antialias, r.Hinting, r.Subpixels)
+		h.textSystem().SetFontRendering(r.Antialias, r.Hinting, r.Subpixels)
 	}
 }
+
+// textSystem returns the window's text system: the process's shared one,
+// which the app's windows shape and paint in together.
+func (h *windowHost) textSystem() *text.System { return text.Shared() }
 
 func (h *windowHost) setCursor(c Cursor) { h.conn.Surface.SetCursor(platform.Cursor(c)) }
 
@@ -951,7 +955,7 @@ func (h *windowHost) region() i18n.Region {
 // textLanguage makes the language the app shows that of the text the
 // text engine lays out without one, as Painter.Shape does.
 func (h *windowHost) textLanguage() {
-	text.Shared().SetLanguage(h.locale())
+	h.textSystem().SetLanguage(h.locale())
 }
 
 func (h *windowHost) titleBar() TitleBar {
@@ -1019,7 +1023,7 @@ func (h *windowHost) placeWebViews(views []placedWebView) {
 	}
 	if slices.EqualFunc(list, h.placed, func(a, b platform.WebViewPlacement) bool {
 		return a.WebView == b.WebView && a.Frame == b.Frame && a.Clip == b.Clip && a.Width == b.Width && a.Height == b.Height &&
-			a.Radii == b.Radii && slices.Equal(a.Covers, b.Covers)
+			a.Radii == b.Radii && a.Opacity == b.Opacity && slices.Equal(a.Covers, b.Covers)
 	}) {
 		return
 	}

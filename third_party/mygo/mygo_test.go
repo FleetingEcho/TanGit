@@ -3,6 +3,7 @@
 package mygo
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
@@ -44,16 +45,14 @@ func TestMain(m *testing.M) {
 		helper := fake.New()
 		backendOnce.Do(func() { theBackend = helper })
 		packageIdentifier = os.Getenv("MYGO_TEST_IDENTIFIER")
-		App.SetName("MyGoTest")
-		if App.RequestSingleInstanceLock() {
-			fmt.Println("locked")
-			releaseSingleInstanceLock()
-		} else {
-			fmt.Println("forwarded")
-		}
-		if helper.ForegroundAllowed > 0 {
-			fmt.Println("passed the foreground on")
-		}
+		App.SetName(cmp.Or(os.Getenv("MYGO_TEST_INSTANCE_NAME"), "MyGoTest"))
+		singleInstanceTestHelper(helper)
+		os.Exit(0)
+	}
+	if os.Getenv("MYGO_TEST_INSTANCE_CHILD") == "1" {
+		// A process that an instance started, which outlives it.
+		fmt.Println("child started")
+		_, _ = io.Copy(io.Discard, os.Stdin)
 		os.Exit(0)
 	}
 	fb = fake.New()
@@ -161,6 +160,35 @@ func call(t *testing.T, fw *fake.Window, id int, method string, args ...any) map
 	return received(t, fw, func(m map[string]any) bool {
 		return m["t"] == "reply" && m["id"] == float64(id)
 	})
+}
+
+// A window made with IgnoreMouseEvents lets the mouse through from the
+// start, as one given SetIgnoreMouseEvents(true) does later.
+func TestWindowIgnoreMouseEvents(t *testing.T) {
+	w, _ := testWindow(t, WindowOptions{})
+	if w.IgnoresMouseEvents() {
+		t.Error("a window takes the mouse by default, and says it ignores it")
+	}
+	w.SetIgnoreMouseEvents(true)
+	if !w.IgnoresMouseEvents() {
+		t.Error("IgnoresMouseEvents is false after SetIgnoreMouseEvents(true)")
+	}
+	w.SetIgnoreMouseEvents(false)
+	if w.IgnoresMouseEvents() {
+		t.Error("IgnoresMouseEvents is true after SetIgnoreMouseEvents(false)")
+	}
+
+	through, fw := testWindow(t, WindowOptions{IgnoreMouseEvents: true})
+	if !fw.IgnoresMouseEvents() {
+		t.Error("the backend's window made with IgnoreMouseEvents takes the mouse")
+	}
+	if !through.IgnoresMouseEvents() {
+		t.Error("IgnoresMouseEvents is false for a window made with IgnoreMouseEvents")
+	}
+	through.Destroy()
+	if through.IgnoresMouseEvents() {
+		t.Error("a destroyed window says it ignores the mouse")
+	}
 }
 
 func TestWindowDefaults(t *testing.T) {
@@ -1723,6 +1751,46 @@ func TestMenuRolesAndState(t *testing.T) {
 	}
 }
 
+func TestMenuBadge(t *testing.T) {
+	menu := NewMenu([]*MenuItem{{
+		ID: "node", Label: "Node", Badge: "120 ms", BadgeAlign: BadgeAlignLeft,
+		BadgeShape: BadgeShapePill, BadgeColor: "#34c759", BadgeTextColor: "#fff",
+	}})
+	snap := menu.snapshot()
+	if got := snap.Items[0].Badge; got != "120 ms" {
+		t.Fatalf("badge = %q", got)
+	}
+	if got := snap.Items[0].BadgeAlign; got != platform.BadgeAlignLeft {
+		t.Fatalf("badge align = %q", got)
+	}
+	if pill := snap.Items[0]; pill.BadgeShape != platform.BadgeShapePill || pill.BadgeColor == nil ||
+		*pill.BadgeColor != (platform.Color{R: 0x34, G: 0xc7, B: 0x59, A: 255}) ||
+		pill.BadgeTextColor == nil || *pill.BadgeTextColor != (platform.Color{R: 255, G: 255, B: 255, A: 255}) {
+		t.Fatalf("badge pill = %+v", pill)
+	}
+	item := menu.ItemByID("node")
+	item.SetBadge("1.2s")
+	item.SetBadgeAlign(BadgeAlignCenter)
+	item.SetBadgeShape("")
+	item.SetBadgeColor("")
+	item.SetBadgeTextColor("#000")
+	onMain(func() {}) // the updates reach the backend on the main thread
+	updates := fb.MenuUpdates()
+	last := updates[len(updates)-1]
+	if last.ID != item.uid || last.Badge != "1.2s" || last.BadgeAlign != platform.BadgeAlignCenter ||
+		last.BadgeShape != "" || last.BadgeColor != nil ||
+		last.BadgeTextColor == nil || *last.BadgeTextColor != (platform.Color{R: 0, G: 0, B: 0, A: 255}) {
+		t.Errorf("badge updates not propagated: %+v", last)
+	}
+}
+
+func TestMenuKeepOpen(t *testing.T) {
+	menu := NewMenu([]*MenuItem{{ID: "node", Label: "Node", KeepOpen: true}})
+	if !menu.snapshot().Items[0].KeepOpen {
+		t.Error("KeepOpen lost in the snapshot")
+	}
+}
+
 func TestDefaultMenu(t *testing.T) {
 	m := fb.AppMenu()
 	if runtime.GOOS != "darwin" {
@@ -2472,6 +2540,49 @@ func TestGlobalShortcut(t *testing.T) {
 	GlobalShortcut.Unregister("CmdOrCtrl+Shift+K")
 	if GlobalShortcut.IsRegistered("CmdOrCtrl+Shift+K") {
 		t.Error("Unregister")
+	}
+}
+
+// TestGlobalShortcutKeys: a desktop that binds shortcuts for apps hears
+// what a shortcut does, and the shortcut hears the keys it got, once for
+// each change, until it is unregistered.
+func TestGlobalShortcutKeys(t *testing.T) {
+	defer GlobalShortcut.UnregisterAll()
+	const acc = "CmdOrCtrl+Alt+."
+	var got []string
+	opts := GlobalShortcutOptions{Description: "Stop all", OnKeys: func(keys string) { got = append(got, keys) }}
+	if err := GlobalShortcut.RegisterWith(acc, opts, func() {}); err != nil {
+		t.Fatal(err)
+	}
+	if err := GlobalShortcut.Register("CmdOrCtrl+Alt+,", func() {}); err != nil {
+		t.Fatal(err)
+	}
+	onMain(func() {
+		if d := fb.HotkeyDescription(acc); d != "Stop all" {
+			t.Errorf("the desktop heard the description %q", d)
+		}
+		if d := fb.HotkeyDescription("CmdOrCtrl+Alt+,"); d != "" {
+			t.Errorf("a shortcut without a description got %q", d)
+		}
+		fb.BindHotkey("CmdOrCtrl+Alt+,", "Ctrl+Alt+,") // nobody listens
+		fb.BindHotkey(acc, "")                         // the user declined it
+		fb.BindHotkey(acc, "")                         // the desktop answers again as other shortcuts change
+		fb.BindHotkey(acc, "Meta+S")                   // the user picked keys in the desktop's settings
+		fb.BindHotkey(acc, "Meta+S")
+		fb.BindHotkey(acc, "")
+	})
+	if want := []string{"", "Meta+S", ""}; !slices.Equal(got, want) {
+		t.Errorf("the shortcut heard the keys %q, want %q", got, want)
+	}
+	// A shortcut registered again starts over: it hears keys it heard before.
+	got = nil
+	GlobalShortcut.Unregister(acc)
+	if err := GlobalShortcut.RegisterWith(acc, opts, func() {}); err != nil {
+		t.Fatal(err)
+	}
+	onMain(func() { fb.BindHotkey(acc, "") })
+	if want := []string{""}; !slices.Equal(got, want) {
+		t.Errorf("registered again, the shortcut heard the keys %q, want %q", got, want)
 	}
 }
 

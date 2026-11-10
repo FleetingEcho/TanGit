@@ -35,6 +35,7 @@ func coreToolbar(c *context, fn func()) *node {
 	tb.FocusGroup(Horizontal)
 	items := coreLocal(tb, "overflow", func() []toolbarItem { return nil })
 	tb.overflow = items
+	tb.special = true // it lays its own controls out
 	saved := c.buttons
 	c.buttons = toolbarButtons
 	tb.Children(func() {

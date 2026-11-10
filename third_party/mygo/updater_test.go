@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/internal/update"
+	"github.com/egoist/mygo/internal/wait"
 )
 
 // updateServer serves a signed update whose app holds main with content,
@@ -513,6 +514,103 @@ func TestHTTPGetRetries(t *testing.T) {
 	}
 	if got := retryAfter(" 5 "); got != 5*time.Second {
 		t.Errorf("Retry-After 5: %v", got)
+	}
+}
+
+// A server that accepts the connection and never answers is given up on,
+// rather than holding a check open until the socket times out.
+func TestHTTPGetHeaderTimeout(t *testing.T) {
+	transport := httpClient().Transport.(*http.Transport)
+	defer func(r []time.Duration, d time.Duration) {
+		httpRetries, transport.ResponseHeaderTimeout = r, d
+	}(httpRetries, transport.ResponseHeaderTimeout)
+	httpRetries = []time.Duration{time.Millisecond}
+	transport.ResponseHeaderTimeout = 50 * time.Millisecond
+
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		<-block
+	}))
+	defer srv.Close()
+	defer close(block)
+
+	start := time.Now()
+	if _, err := httpGet(t.Context(), srv.URL+"/file"); err == nil {
+		t.Fatal("a server that never answers returned no error")
+	}
+	if waited := time.Since(start); waited > 5*time.Second {
+		t.Fatalf("waited %v for the headers of a response", waited)
+	}
+}
+
+// A body that stops arriving is given up on, rather than blocking the read
+// of a download until the socket times out.
+func TestHTTPGetStallGivesUp(t *testing.T) {
+	defer func(d time.Duration) { httpStallTimeout = d }(httpStallTimeout)
+	httpStallTimeout = 100 * time.Millisecond
+
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		io.WriteString(w, "start")
+		w.(http.Flusher).Flush()
+		<-block
+	}))
+	defer srv.Close()
+	defer close(block)
+
+	body, err := httpGet(t.Context(), srv.URL+"/file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer body.Close()
+	if _, err := io.ReadAll(body); err == nil || !strings.Contains(err.Error(), "stalled") {
+		t.Fatalf("reading a body that stopped ended with %v", err)
+	}
+}
+
+// Even an immediately firing callback sees a fully initialized body.
+func TestStalledBodyShortTimeout(t *testing.T) {
+	defer func(d time.Duration) { httpStallTimeout = d }(httpStallTimeout)
+	httpStallTimeout = time.Nanosecond
+	for range 100 {
+		ctx, cancel := context.WithCancel(t.Context())
+		body := newStalledBody(io.NopCloser(strings.NewReader("")), cancel)
+		wait.For(t, "the stalled body to cancel its request", ctx.Done())
+		body.Close()
+		if !body.stalled.Load() {
+			t.Fatal("the body did not report a stall")
+		}
+	}
+}
+
+// A body that keeps arriving is not given up, however slowly it sends.
+func TestHTTPGetKeepsASlowBody(t *testing.T) {
+	defer func(d time.Duration) { httpStallTimeout = d }(httpStallTimeout)
+	// Each byte comes well within the stall timeout, even on a loaded
+	// runner whose sleeps overrun, and all of them take longer than it.
+	httpStallTimeout = 400 * time.Millisecond
+
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for i := 0; i < 10; i++ {
+			io.WriteString(w, "x")
+			w.(http.Flusher).Flush()
+			time.Sleep(50 * time.Millisecond)
+		}
+		<-block
+	}))
+	defer srv.Close()
+	defer close(block)
+
+	body, err := httpGet(t.Context(), srv.URL+"/file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer body.Close()
+	b, err := io.ReadAll(io.LimitReader(body, 10))
+	if err != nil || len(b) != 10 {
+		t.Fatalf("read %d bytes of a slow body: %v", len(b), err)
 	}
 }
 

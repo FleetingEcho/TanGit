@@ -67,6 +67,10 @@ func (l *clipboardLifetime) release() {
 }
 
 var clipboardProviding, clipboardStopped bool
+
+// afterClipboardOperations runs once no clipboard operation is under way,
+// for what Clipboard.OnChanged holds back until then. Main thread only.
+var afterClipboardOperations func()
 var clipboardOperations int
 var clipboardReleases []func()
 
@@ -91,6 +95,9 @@ func withClipboardOperation(fn func()) {
 			clipboardReleases = nil
 			for _, release := range pending {
 				queueClipboardRelease(release)
+			}
+			if afterClipboardOperations != nil {
+				afterClipboardOperations()
 			}
 		}
 	}()

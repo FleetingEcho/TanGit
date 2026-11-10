@@ -33,7 +33,7 @@ func (ed *editor) run(cmd Command) bool {
 	case MoveSubwordRight, SelectSubwordRight:
 		return ed.move(cmd == SelectSubwordRight, func(s sel) int { return wordRight(*r, s.head, extra, true) })
 	case MoveUp, SelectUp, MoveDown, SelectDown, MovePageUp, SelectPageUp, MovePageDown, SelectPageDown:
-		if ed.complete.open() && (cmd == MoveUp || cmd == MoveDown) {
+		if ed.completing() && (cmd == MoveUp || cmd == MoveDown) {
 			ed.complete.step(direction(cmd == MoveUp))
 			return true
 		}
@@ -164,7 +164,7 @@ func (ed *editor) run(cmd Command) bool {
 		return true
 	case Cancel:
 		switch {
-		case ed.complete.open():
+		case ed.completing():
 			ed.complete.close()
 		case ed.hover.open():
 			ed.hover.close()
@@ -245,7 +245,7 @@ func (ed *editor) run(cmd Command) bool {
 	case DeleteLine:
 		return ed.deleteLines()
 	case Newline:
-		if ed.complete.open() {
+		if ed.completing() {
 			return ed.acceptCompletion()
 		}
 		return ed.newline()
@@ -275,7 +275,7 @@ func (ed *editor) run(cmd Command) bool {
 		}
 		return ed.indentLines(-1)
 	case Tab:
-		if ed.complete.open() {
+		if ed.completing() {
 			return ed.acceptCompletion()
 		}
 		if ed.stepSnippet(false) {
