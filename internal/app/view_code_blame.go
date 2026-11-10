@@ -6,8 +6,51 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 	"lazygitapp/internal/repository"
 )
+
+func codeBlameCardWidth(c *ui.Context) float32 {
+	width, _ := c.Size()
+	return min(float32(540), max(float32(180), width-48))
+}
+
+// A blame card must not inherit the language server's smaller scrolling
+// container. The editor still owns anchoring, pointer capture and Escape.
+func (a *app) renderCodeBlameHover(c *ui.Context, panel ui.Element, hover *editor.HoverCard) {
+	theme := c.Theme()
+	// Anchor at the range's midpoint instead of requiring all of a large
+	// card to fit strictly above or below it. AttachTo can then shift the
+	// card within the window when neither side has enough room.
+	panel.AttachTo(hover.Anchor(), ui.AnchorLeft, ui.AnchorTopLeft).
+		Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius).
+		Shadow(0, 4, 16, 0, ui.RGBA(0, 0, 0, 0.2)).Padding(12).
+		Width(codeBlameCardWidth(c)+26).Margin(0, 0, 4, 0).Selectable()
+	panel.Children(hover.Content)
+}
+
+// Prefer the path recorded by blame at this commit, including renames. If
+// that path is unavailable, use the currently open working-tree path.
+func codeBlameCurrentFileIndex(hover *codeBlameHoverState) int {
+	paths := []string{hover.blame.CommitPath, hover.path}
+	for _, previous := range []bool{false, true} {
+		for _, path := range paths {
+			if path == "" {
+				continue
+			}
+			for index, file := range hover.files {
+				candidate := file.Path
+				if previous {
+					candidate = file.PreviousPath
+				}
+				if candidate == path {
+					return index
+				}
+			}
+		}
+	}
+	return -1
+}
 
 // codeBlameDetailsCard stays inside the editor-owned interactive hover, so
 // moving into the card keeps it open and Escape returns to the editor.
@@ -18,9 +61,10 @@ func (a *app) codeBlameDetailsCard(c *ui.Context) {
 	}
 	theme := c.Theme()
 	width, height := c.Size()
-	ui.Scroll(c).Key(fmt.Sprintf("blame-card-scroll-%d", hover.token)).Label(tr("Commit details")).Width(min(float32(540), max(float32(180), width-48))).
+	cardWidth := codeBlameCardWidth(c)
+	ui.Scroll(c).Key(fmt.Sprintf("blame-card-scroll-%d", hover.token)).Label(tr("Commit details")).Width(cardWidth).
 		MaxHeight(max(float32(100), height-64)).Children(func() {
-		ui.Column(c).FillWidth().Gap(12).Padding(4).Children(func() {
+		ui.Column(c).Width(cardWidth).MinWidth(0).Gap(12).Padding(4).Children(func() {
 			if uncommittedBlameHash(hover.blame.Hash) {
 				ui.Text(c, tr("Uncommitted changes")).Bold()
 				ui.Text(c, tr("This line has not been committed yet.")).TextColor(theme.TextMuted)
@@ -81,9 +125,9 @@ func (a *app) codeBlameDetailsCard(c *ui.Context) {
 			if subject == "" {
 				subject = shortBlameHash(hover.blame.Hash)
 			}
-			ui.Text(c, subject).Bold().FontSize(theme.FontSize + 2)
+			ui.Text(c, subject).FillWidth().MinWidth(0).Bold().FontSize(theme.FontSize + 2)
 			if hover.description != "" {
-				ui.Text(c, hover.description).TextColor(theme.TextMuted)
+				ui.Text(c, hover.description).FillWidth().MinWidth(0).TextColor(theme.TextMuted)
 			}
 			if a.snapshot.HeadHash == hover.blame.Hash || len(hover.commit.Tags) > 0 {
 				ui.Row(c).Gap(6).Wrap().AlignItems(ui.Center).Children(func() {
@@ -116,9 +160,17 @@ func (a *app) codeBlameDetailsCard(c *ui.Context) {
 				codeBlameDisclosure(c, label, !hover.filesCollapsed, func() { hover.filesCollapsed = !hover.filesCollapsed })
 				if !hover.filesCollapsed {
 					ui.Scroll(c).Key("blame-files").Label(tr("Changed files")).FillWidth().Height(144).Shrink(0).Children(func() {
-						ui.Column(c).FillWidth().Gap(6).Children(func() {
-							for _, file := range hover.files {
-								ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+						ui.Column(c).Width(cardWidth-8).Padding(0, scrollbarGutter(theme), 0, 0).Gap(4).Children(func() {
+							currentIndex := codeBlameCurrentFileIndex(hover)
+							renderFile := func(file repository.CommitFile, current bool) {
+								c.Key(file.Path)
+								row := ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(8).
+									Padding(3, 5).Border(1, ui.Transparent).Radius(theme.Radius).
+									Role(ui.RoleListItem).Label(file.Path)
+								if current {
+									row.Label(trf("Current file: %s", file.Path)).Background(theme.Accent.Alpha(0.16)).Border(1, theme.Accent.Alpha(0.4))
+								}
+								row.Children(func() {
 									ui.Icon(c, fileIcon).FontSize(15).TextColor(theme.Accent).Shrink(0)
 									path := file.Path
 									if file.PreviousPath != "" {
@@ -127,6 +179,14 @@ func (a *app) codeBlameDetailsCard(c *ui.Context) {
 									ui.Text(c, path).Grow(1).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(path)
 									fileDiffStatCounts(c, file.Path, file.LinesAdded, file.LinesDeleted)
 								})
+							}
+							if currentIndex >= 0 {
+								renderFile(hover.files[currentIndex], true)
+							}
+							for index, file := range hover.files {
+								if index != currentIndex {
+									renderFile(file, false)
+								}
 							}
 						})
 					})
