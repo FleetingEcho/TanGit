@@ -6,6 +6,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"lazygitapp/internal/agentwork"
 	"lazygitapp/internal/repository"
 )
 
@@ -143,6 +144,13 @@ func keyboardCommands() []keyboardCommand {
 		{"Worktrees", "r", "Repair worktree metadata", 0, ui.KeyR, (*app).repairWorktrees},
 		{"Worktrees", "d", "Remove worktree…", 0, ui.KeyD, (*app).confirmDeleteSelectedWorktree},
 		{"Worktrees", "Shift+D", "Force remove worktree…", ui.Shift, ui.KeyD, (*app).confirmForceDeleteSelectedWorktree},
+		{"Agent tasks", "n", "New Agent Task", 0, ui.KeyN, (*app).beginNewAgentTask},
+		{"Agent tasks", "r", "Launch or resume selected agent", 0, ui.KeyR, func(a *app) {
+			if task, ok := a.selectedAgentTask(); ok {
+				a.launchAgentTask(task.ID, task.Status != agentwork.StatusReady)
+			}
+		}},
+		{"Agent tasks", "o", "Open task worktree", 0, ui.KeyO, (*app).openSelectedAgentWorktree},
 		{"Submodules", "n", "Add Submodule", 0, ui.KeyN, func(a *app) { a.showSubmoduleForm = true }},
 		{"Submodules", "u", "Update submodule", 0, ui.KeyU, (*app).updateSelectedSubmodule},
 		{"Submodules", "d", "Delete submodule…", 0, ui.KeyD, (*app).confirmDeleteSelectedSubmodule},
@@ -188,6 +196,8 @@ func (a *app) keyboardActionGroup(c *ui.Context) string {
 		return "Tags"
 	case sectionWorktrees:
 		return "Worktrees"
+	case sectionAgents:
+		return "Agent tasks"
 	case sectionSubmodules:
 		return "Submodules"
 	case sectionReflog:

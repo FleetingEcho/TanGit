@@ -450,6 +450,7 @@ type Session interface {
 	ContinueOperation(context.Context) error
 	AbortOperation(context.Context) error
 	CreateWorktree(context.Context, WorktreeCreateOptions) error
+	ResolveCommit(context.Context, string) (string, error)
 	DeleteWorktree(context.Context, string, bool) error
 	MoveWorktree(context.Context, string, string, bool) error
 	FetchWorktree(context.Context, string) error
@@ -518,6 +519,14 @@ type Session interface {
 	// RestoreCommitFile replaces working-tree content with the commit's
 	// version without changing the index or creating a commit.
 	RestoreCommitFile(context.Context, Commit, CommitFile) error
+	// CommitRange reads base..head, where head is the commit captured when an
+	// agent review started rather than a branch that may have moved since.
+	CommitRange(context.Context, string, string, int, int) ([]Commit, error)
+	// FinalFiles compares base directly with the current index and tracked
+	// worktree, then adds untracked files. FinalFileDiff reads the same final
+	// change for one file without compositing an intermediate HEAD diff.
+	FinalFiles(context.Context, string, DiffOptions) ([]CommitFile, error)
+	FinalFileDiff(context.Context, string, CommitFile, DiffOptions) (Diff, error)
 	// CompareFiles lists the files whose trees differ from the first ref to
 	// the second. CompareDiff reads their whole patch and CompareFileDiff reads
 	// one file without changing the checkout, index, or working tree.
@@ -2911,6 +2920,27 @@ func (s *gitSession) finishOperation(ctx context.Context, action string) error {
 		return fmt.Errorf("%s %s: %w", action, operation, err)
 	}
 	return s.finalizePausedRebaseJournal(ctx, action)
+}
+
+// ResolveCommit freezes a user-selected base ref to the commit an agent task
+// must review against, even when that branch later moves.
+func (s *gitSession) ResolveCommit(ctx context.Context, ref string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", fmt.Errorf("base ref is required")
+	}
+	hash, err := s.cmd.New([]string{"git", "rev-parse", "--verify", "--end-of-options", ref + "^{commit}"}).DontLog().RunWithOutput()
+	if err != nil {
+		return "", fmt.Errorf("resolve base ref %s: %w", ref, err)
+	}
+	hash = strings.TrimSpace(hash)
+	if hash == "" {
+		return "", fmt.Errorf("base ref %s does not resolve to a commit", ref)
+	}
+	return hash, nil
 }
 
 func (s *gitSession) CreateWorktree(ctx context.Context, options WorktreeCreateOptions) error {
