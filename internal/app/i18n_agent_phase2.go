@@ -1,0 +1,92 @@
+package app
+
+var agentPhase2Translations = map[string]map[string]string{
+	"zh-Hans": {
+		"Could not record agent activity": "无法记录代理活动",
+		"Checkpoint saved":                "检查点已保存",
+		"Status":                          "状态",
+		"Tests":                           "测试",
+		"Session":                         "会话",
+		"Reference":                       "引用",
+		"Snapshot":                        "快照",
+		"Recent activity":                 "最近活动",
+		"Agent task %s is waiting for your response.": "代理任务 %s 正在等待您的回复。",
+		"Agent task %s is ready for your review.":     "代理任务 %s 已准备好供您审核。",
+		"Agent task %s exited. Review readiness is NOT inferred; inspect its work before marking it ready for review.": "代理任务 %s 已退出。不会据此推断其已准备好审核；请先检查其工作，再将其标记为可供审核。",
+		"Agent task %s failed. Inspect its terminal output and worktree.":                                              "代理任务 %s 失败。请检查其终端输出和工作树。",
+		"The latest tests passed for %s.":                              "%s 的最新测试已通过。",
+		"The latest tests failed for %s. Inspect the terminal output.": "%s 的最新测试未通过。请检查终端输出。",
+	},
+	"zh-Hant": {
+		"Could not record agent activity": "無法記錄代理活動",
+		"Checkpoint saved":                "檢查點已儲存",
+		"Status":                          "狀態",
+		"Tests":                           "測試",
+		"Session":                         "工作階段",
+		"Reference":                       "參照",
+		"Snapshot":                        "快照",
+		"Recent activity":                 "最近活動",
+		"Agent task %s is waiting for your response.": "代理任務 %s 正在等待您的回覆。",
+		"Agent task %s is ready for your review.":     "代理任務 %s 已準備好供您審核。",
+		"Agent task %s exited. Review readiness is NOT inferred; inspect its work before marking it ready for review.": "代理任務 %s 已退出。不會據此推斷其已準備好審核；請先檢查其工作，再將其標記為可供審核。",
+		"Agent task %s failed. Inspect its terminal output and worktree.":                                              "代理任務 %s 失敗。請檢查其終端機輸出和工作樹。",
+		"The latest tests passed for %s.":                              "%s 的最新測試已通過。",
+		"The latest tests failed for %s. Inspect the terminal output.": "%s 的最新測試未通過。請檢查終端機輸出。",
+	},
+	"ja": {
+		"Could not record agent activity": "エージェントのアクティビティを記録できませんでした",
+		"Checkpoint saved":                "チェックポイントを保存しました",
+		"Status":                          "ステータス",
+		"Tests":                           "テスト",
+		"Session":                         "セッション",
+		"Reference":                       "参照",
+		"Snapshot":                        "スナップショット",
+		"Recent activity":                 "最近のアクティビティ",
+		"Agent task %s is waiting for your response.": "エージェントタスク %s が応答を待っています。",
+		"Agent task %s is ready for your review.":     "エージェントタスク %s のレビュー準備が整いました。",
+		"Agent task %s exited. Review readiness is NOT inferred; inspect its work before marking it ready for review.": "エージェントタスク %s が終了しました。レビュー可能な状態とは推定されません。レビュー準備完了としてマークする前に、作業内容を確認してください。",
+		"Agent task %s failed. Inspect its terminal output and worktree.":                                              "エージェントタスク %s が失敗しました。ターミナル出力とワークツリーを確認してください。",
+		"The latest tests passed for %s.":                              "%s の最新テストは成功しました。",
+		"The latest tests failed for %s. Inspect the terminal output.": "%s の最新テストは失敗しました。ターミナル出力を確認してください。",
+	},
+	"es": {
+		"Could not record agent activity": "No se pudo registrar la actividad del agente",
+		"Checkpoint saved":                "Punto de control guardado",
+		"Status":                          "Estado",
+		"Tests":                           "Pruebas",
+		"Session":                         "Sesión",
+		"Reference":                       "Referencia",
+		"Snapshot":                        "Instantánea",
+		"Recent activity":                 "Actividad reciente",
+		"Agent task %s is waiting for your response.": "La tarea del agente %s está esperando tu respuesta.",
+		"Agent task %s is ready for your review.":     "La tarea del agente %s está lista para tu revisión.",
+		"Agent task %s exited. Review readiness is NOT inferred; inspect its work before marking it ready for review.": "La tarea del agente %s finalizó. No se infiere que esté lista para revisión; inspecciona su trabajo antes de marcarla como lista para revisión.",
+		"Agent task %s failed. Inspect its terminal output and worktree.":                                              "La tarea del agente %s falló. Inspecciona la salida del terminal y el árbol de trabajo.",
+		"The latest tests passed for %s.":                              "Las últimas pruebas de %s se completaron correctamente.",
+		"The latest tests failed for %s. Inspect the terminal output.": "Las últimas pruebas de %s fallaron. Inspecciona la salida del terminal.",
+	},
+	"fr": {
+		"Could not record agent activity": "Impossible d’enregistrer l’activité de l’agent",
+		"Checkpoint saved":                "Point de contrôle enregistré",
+		"Status":                          "Statut",
+		"Tests":                           "Tests",
+		"Session":                         "Session",
+		"Reference":                       "Référence",
+		"Snapshot":                        "Instantané",
+		"Recent activity":                 "Activité récente",
+		"Agent task %s is waiting for your response.": "La tâche d’agent %s attend votre réponse.",
+		"Agent task %s is ready for your review.":     "La tâche d’agent %s est prête pour votre révision.",
+		"Agent task %s exited. Review readiness is NOT inferred; inspect its work before marking it ready for review.": "La tâche d’agent %s s’est terminée. Son aptitude à la révision n’est PAS déduite ; inspectez son travail avant de la marquer comme prête pour la révision.",
+		"Agent task %s failed. Inspect its terminal output and worktree.":                                              "La tâche d’agent %s a échoué. Inspectez la sortie du terminal et l’arbre de travail.",
+		"The latest tests passed for %s.":                              "Les derniers tests de %s ont réussi.",
+		"The latest tests failed for %s. Inspect the terminal output.": "Les derniers tests de %s ont échoué. Inspectez la sortie du terminal.",
+	},
+}
+
+func init() {
+	for language, entries := range agentPhase2Translations {
+		for english, translated := range entries {
+			translations[language][english] = translated
+		}
+	}
+}

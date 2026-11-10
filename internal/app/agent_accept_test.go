@@ -1,6 +1,8 @@
 package app
 
 import (
+	"errors"
+	"slices"
 	"testing"
 
 	"lazygitapp/internal/agentwork"
@@ -13,6 +15,10 @@ func TestAgentAcceptCherryPicksCapturedRangeAndMarksTaskDone(t *testing.T) {
 	calls := &callRecorder{}
 	h.app.snapshot.Branch = "main"
 	h.app.session = fakeSession{snapshot: h.app.snapshot, calls: calls}
+	h.app.opener = agentCheckpointOpener{session: &agentCheckpointSession{
+		fakeSession: fakeSession{snapshot: repository.Snapshot{Root: task.WorktreePath}},
+		head:        "agent-head",
+	}}
 	h.app.agents.review.open = true
 	h.app.agents.review.taskID = task.ID
 	h.app.agents.review.commits = []repository.Commit{
@@ -38,12 +44,54 @@ func TestAgentAcceptCherryPicksCapturedRangeAndMarksTaskDone(t *testing.T) {
 	}
 }
 
+func TestAgentAcceptCheckpointFailurePreventsCherryPick(t *testing.T) {
+	h, store := newAgentTestHarness(t)
+	task := readyAgentReviewTask(t, h, store)
+	mainCalls := &callRecorder{}
+	h.app.snapshot.Branch = "main"
+	h.app.session = fakeSession{snapshot: h.app.snapshot, calls: mainCalls}
+	checkpointCalls := &callRecorder{}
+	h.app.opener = agentCheckpointOpener{calls: checkpointCalls, session: &agentCheckpointSession{
+		fakeSession: fakeSession{snapshot: repository.Snapshot{Root: task.WorktreePath}},
+		calls:       checkpointCalls, head: "agent-head", checkpointErr: errors.New("cannot capture WIP"),
+	}}
+	h.app.agents.review.open = true
+	h.app.agents.review.taskID = task.ID
+	h.app.agents.review.commits = []repository.Commit{{Hash: "agent-commit"}}
+
+	h.app.confirmAcceptAgentCommits()
+	if h.app.confirm == nil {
+		t.Fatal("accepting commits did not preserve user confirmation")
+	}
+	h.app.acceptConfirm()
+	h.waitFor(t, "the required pre-accept checkpoint failure", func() bool {
+		return !h.app.agents.checkpointBusy[task.ID]
+	})
+	if mainCalls.has("batch-cherry-pick:agent-commit") || h.app.actionBusy {
+		t.Fatalf("checkpoint failure started the main-repository mutation: calls=%v busy=%t", mainCalls.all(), h.app.actionBusy)
+	}
+	stored, err := store.Get(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != agentwork.StatusReadyForReview || len(stored.Checkpoints) != 0 {
+		t.Fatalf("checkpoint failure changed the task: %#v", stored)
+	}
+	if got, want := checkpointCalls.all(), []string{"open-checkpoint:" + task.WorktreePath, "checkpoint:Before accept"}; !slices.Equal(got, want) {
+		t.Fatalf("pre-accept calls = %v, want %v", got, want)
+	}
+}
+
 func TestAgentAcceptMergeUsesTaskBranchAndMarksTaskDone(t *testing.T) {
 	h, store := newAgentTestHarness(t)
 	task := readyAgentReviewTask(t, h, store)
 	calls := &callRecorder{}
 	h.app.snapshot.Branch = "main"
 	h.app.session = fakeSession{snapshot: h.app.snapshot, calls: calls}
+	h.app.opener = agentCheckpointOpener{session: &agentCheckpointSession{
+		fakeSession: fakeSession{snapshot: repository.Snapshot{Root: task.WorktreePath}},
+		head:        "agent-head",
+	}}
 	h.app.agents.review.open = true
 	h.app.agents.review.taskID = task.ID
 	h.app.agents.review.commits = []repository.Commit{{Hash: "agent-commit"}}
