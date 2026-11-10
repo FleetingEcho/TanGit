@@ -37,6 +37,20 @@ func (a *app) confirmPull() {
 		})
 }
 
+func (a *app) confirmPullStrategy(strategy repository.PullStrategy) {
+	title := "Pull with merge"
+	detail := "Fetch the upstream branch and merge it into the current branch. This creates a merge commit when needed, and conflicts may require resolution. It does not change your Git configuration."
+	if strategy == repository.PullRebase {
+		title = "Pull with rebase"
+		detail = "Fetch the upstream branch and replay your local commits onto its tip. This rewrites your local commit history, and conflicts may require resolution. It does not change your Git configuration."
+	}
+	a.confirmAttention(title, a.snapshot.Branch, detail, func() {
+		a.beginRepositoryActionMessage(tr("Pulled the latest changes"), "", func(ctx context.Context, s repository.Session) error {
+			return s.PullWithStrategy(ctx, strategy)
+		}, nil)
+	})
+}
+
 func (a *app) confirmContinueOperation() {
 	if hasConflictedFiles(a.snapshot.Files) {
 		return
