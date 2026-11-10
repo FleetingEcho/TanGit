@@ -802,6 +802,7 @@ var zhHant = map[string]string{
 	"Choose which tabs the sidebar shows":          "選擇側欄顯示哪些分頁",
 	"Sidebar tabs":                                 "側欄分頁",
 	"Shown sections":                               "顯示的區域",
+	"Click to toggle; drag to reorder":             "點擊切換；拖曳排序",
 	"Pick any number of tabs":                      "可任意選擇多個分頁",
 	"All sections":                                 "全部區域",
 	"%d of %d sections":                            "%d / %d 個區域",

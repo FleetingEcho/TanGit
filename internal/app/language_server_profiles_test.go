@@ -40,6 +40,7 @@ func TestLanguageServerExecutableCandidatesSplitTrimAndFallBack(t *testing.T) {
 func TestLanguageServerProfilesMatchLanguagesAndDefaults(t *testing.T) {
 	settings := map[string]languageServerSettings{
 		"typescript": {}, "tailwind": {}, "oxlint": {}, "rust": {},
+		"ty": {}, "ruff": {},
 	}
 	tests := []struct {
 		path string
@@ -49,6 +50,8 @@ func TestLanguageServerProfilesMatchLanguagesAndDefaults(t *testing.T) {
 		{"main.rs", []string{"rust"}},
 		{"main.tsx", []string{"typescript", "tailwind", "oxlint"}},
 		{"index.html", []string{"tailwind"}},
+		{"main.py", []string{"ty", "ruff"}},
+		{"types.pyi", []string{"ty", "ruff"}},
 	}
 	for _, test := range tests {
 		profiles := configuredLanguageServerProfiles(settings, test.path)
@@ -70,6 +73,54 @@ func TestLanguageServerProfilesMatchLanguagesAndDefaults(t *testing.T) {
 	if program != "oxlint" || !reflect.DeepEqual(arguments, []string{"--lsp"}) {
 		t.Fatalf("Oxlint launch = %q %v", program, arguments)
 	}
+}
+
+func TestTyAndRuffSharePythonDocuments(t *testing.T) {
+	ty, ruff := newFakeLanguageServerConnection(), newFakeLanguageServerConnection()
+	ty.request = func(_ string, _ any, result func(json.RawMessage, error)) {
+		result(json.RawMessage(`{"contents":"value: int"}`), nil)
+	}
+	ruff.request = func(_ string, _ any, result func(json.RawMessage, error)) {
+		result(json.RawMessage("null"), nil)
+	}
+	stubLanguageServerConnection(t, func(launch languageServerLaunch) (languageServerConnection, error) {
+		if !reflect.DeepEqual(launch.Arguments, []string{"server"}) {
+			t.Errorf("%s launch arguments = %q", launch.Program, launch.Arguments)
+		}
+		switch launch.Program {
+		case "ty":
+			return ty, nil
+		case "ruff":
+			return ruff, nil
+		default:
+			t.Errorf("unexpected Python server %q", launch.Program)
+			return nil, fmt.Errorf("unexpected Python server")
+		}
+	})
+	stubCodeWorkspace(t, map[string]string{"main.py": "value = 1\n"})
+	h := menuTestApp(t)
+	h.app.settings.LanguageServers = map[string]languageServerSettings{"go": {Disabled: true}, "ty": {}, "ruff": {}}
+	openCodePageForTest(t, h, 1)
+	h.app.openCodeFile("main.py", 0)
+	document := waitForCodeDocument(t, h, "main.py")
+	h.waitFor(t, "ty and Ruff to open Python", func() bool {
+		return len(ty.snapshot()) > 0 && len(ruff.snapshot()) > 0
+	})
+	h.tester.Frame()
+	document.state.Insert("# changed\n")
+	h.tester.Frame()
+	h.tester.Frame()
+	h.app.saveCodeDocument(document)
+	for name, events := range map[string][]languageServerDocumentEvent{"ty": ty.snapshot(), "Ruff": ruff.snapshot()} {
+		if len(events) < 3 || events[0].kind != "open" || events[0].language != "python" ||
+			events[1].kind != "change" || events[2].kind != "save" {
+			t.Fatalf("%s document synchronization = %#v", name, events)
+		}
+	}
+	document.state.OnHover(editor.HoverRequest{Offset: strings.Index(document.state.Buffer.String(), "value")})
+	h.waitFor(t, "ty hover with Ruff enabled", func() bool {
+		return document.hoverState != nil && document.hoverState.Buffer.String() == "value: int"
+	})
 }
 
 func TestMultipleLanguageServersShareATypeScriptDocument(t *testing.T) {

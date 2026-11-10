@@ -167,8 +167,8 @@ func installLanguageServerTool(profile languageServerProfile, dataDir string) (l
 		return installNodeLanguageServer(ctx, toolsDir, profile, "bash-language-server")
 	case "docker":
 		return installNodeLanguageServer(ctx, toolsDir, profile, "dockerfile-language-server-nodejs")
-	case "ruff":
-		return installPythonLanguageServer(ctx, toolsDir, profile, "ruff")
+	case "ty", "ruff":
+		return installPythonLanguageServer(ctx, toolsDir, profile, profile.ID)
 	case "marksman":
 		return installMarksman(ctx, toolsDir)
 	default:

@@ -318,6 +318,9 @@ func (a *app) additionalLanguageRequest(document *codeDocument, requestSequence 
 					return
 				}
 				if err != nil {
+					if isLanguageServerContentModified(err) {
+						return
+					}
 					if server.error == "" {
 						server.error = safeError(err)
 						a.notify("error", server.profile.Name+" request failed", server.error)
