@@ -101,6 +101,27 @@ func TestWorkspaceSearchFallsBackWhenRipgrepIsUnavailable(t *testing.T) {
 	}
 }
 
+func TestWorkspaceSearchNativePreferenceDoesNotLookForRipgrep(t *testing.T) {
+	originalLookPath := workspaceSearchLookPath
+	t.Cleanup(func() { workspaceSearchLookPath = originalLookPath })
+	lookedUp := false
+	workspaceSearchLookPath = func(string) (string, error) {
+		lookedUp = true
+		return "rg", nil
+	}
+	root := t.TempDir()
+	writeWorkspaceSearchTestFile(t, root, "source.txt", "needle\n")
+	matches, backend, err := searchWorkspaceFilesWithOptions(context.Background(), root, []string{"source.txt"}, workspaceSearchOptions{
+		Query: "needle", PreferNative: true,
+	}, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lookedUp || backend != workspaceSearchBackendGo || len(matches) != 1 {
+		t.Fatalf("native-only search looked up rg = %v, backend = %v, matches = %v", lookedUp, backend, matches)
+	}
+}
+
 func TestWorkspaceSearchRipgrepMatchesTheNativeScanner(t *testing.T) {
 	executable, err := exec.LookPath("rg")
 	if err != nil {

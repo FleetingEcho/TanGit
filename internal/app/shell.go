@@ -28,7 +28,7 @@ const (
 	// still fits: ten repositories and a picker at the window's smallest
 	// width leave about that much room each.
 	tabNarrowWidth float32 = 76
-	// tabTinyWidth is where a pill has room for its dot alone.
+	// tabTinyWidth is where a pill has no room for its title or close control.
 	tabTinyWidth      float32 = 34
 	pinnedTabWidth    float32 = 46
 	windowControlSize float32 = 32
@@ -107,25 +107,6 @@ func (t *tab) tooltip() string {
 		path += " · " + tr("Pinned")
 	}
 	return path
-}
-
-// statusColor is the dot on the pill: the state of the page at a glance.
-func (t *tab) statusColor(theme *ui.Theme) ui.Color {
-	a := t.app
-	switch {
-	case a == nil:
-		return theme.TextMuted
-	case a.crash != "" || a.state == stateError || hasConflictedFiles(a.snapshot.Files):
-		return theme.Danger
-	case a.state == stateLoading:
-		return theme.Accent
-	case !t.repository():
-		return theme.TextMuted
-	case a.snapshot.ChangeCount() > 0 || a.snapshot.Operation != "":
-		return theme.Warning
-	default:
-		return theme.Success
-	}
 }
 
 // shell is the window around the tabs: it owns the frame, the shared
@@ -1076,8 +1057,8 @@ func pillRadius(theme *ui.Theme) float32 {
 	return min(max(theme.Radius+2, 3), 10)
 }
 
-// tabView is one pill: its state, its name, and the close control on the page
-// the pointer is on. A right click opens the tab's menu.
+// tabView is one pill: its name and the close control on the page the pointer
+// is on. A right click opens the tab's menu.
 func (s *shell) tabView(c *ui.Context, i int, width float32) {
 	theme := c.Theme()
 	t := s.tabs[i]
@@ -1107,7 +1088,6 @@ func (s *shell) tabView(c *ui.Context, i int, width float32) {
 	services := c.Services()
 	closeClicked := false
 	pill.Children(func() {
-		ui.Box(c).Size(7, 7).Radius(4).Background(t.statusColor(theme))
 		if t.pinned {
 			ui.Icon(c, pinIcon).FontSize(11).TextColor(theme.TextMuted)
 			return
@@ -1120,8 +1100,8 @@ func (s *shell) tabView(c *ui.Context, i int, width float32) {
 			return
 		}
 		if tiny {
-			// Too narrow for a name or a control: the dot alone says a page
-			// is here, and its tooltip and menu still name it.
+			// The tooltip and menu still name a page too narrow for either a
+			// title or a control.
 			return
 		}
 		color := theme.TextMuted
