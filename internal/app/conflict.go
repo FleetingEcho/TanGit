@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -50,9 +51,12 @@ const (
 // conflicts still in it, the one the toolbar acts on, and the contents the
 // picks before it replaced, so a pick can be undone.
 type conflictState struct {
-	path    string
-	lines   []string
-	regions []conflictRegion
+	path string
+	// originalLines is the conflict as it was first opened, before any hunk
+	// picks or manual Result edits. It stays immutable for this state's life.
+	originalLines []string
+	lines         []string
+	regions       []conflictRegion
 	// selected is the index of the conflict the toolbar acts on.
 	selected int
 	undo     [][]string
@@ -81,6 +85,7 @@ func newConflictState(path, content string, markerSize int) *conflictState {
 	}
 	state.trailingNewline = strings.HasSuffix(content, "\n")
 	state.lines = splitConflictLines(content)
+	state.originalLines = slices.Clone(state.lines)
 	state.regions = findConflictRegions(state.lines, state.markerSize)
 	return state
 }
@@ -334,6 +339,25 @@ func (s *conflictState) resolve(side conflictSide) bool {
 	return true
 }
 
+// isInitial reports whether Result is still exactly the conflict first read.
+func (s *conflictState) isInitial() bool {
+	return slices.Equal(s.lines, s.originalLines)
+}
+
+// restoreInitial resets every hunk to the conflict first read. The previous
+// Result is pushed onto the ordinary undo stack, so even this recovery action
+// is reversible and manual edits are not silently discarded.
+func (s *conflictState) restoreInitial() bool {
+	if s.isInitial() {
+		return false
+	}
+	s.undo = append(s.undo, slices.Clone(s.lines))
+	s.lines = slices.Clone(s.originalLines)
+	s.regions = findConflictRegions(s.lines, s.markerSize)
+	s.selected = 0
+	return true
+}
+
 // undoResolution puts back the content before the last pick, and reports
 // whether there was one.
 func (s *conflictState) undoResolution() bool {
@@ -348,31 +372,47 @@ func (s *conflictState) undoResolution() bool {
 	return true
 }
 
-// lineBackgrounds tints the marker rows of every conflict, the selected one
-// more strongly, so the eye lands on the conflict the toolbar acts on.
+// lineBackgrounds gives the two sides the same deletion/addition colors as
+// a diff while keeping the file's real text editable. Markers remain more
+// strongly tinted, especially on the conflict the toolbar currently acts on.
 func (s *conflictState) lineBackgrounds(theme *ui.Theme) []editor.LineBackground {
-	backgrounds := make([]editor.LineBackground, 0, len(s.regions)*2)
-	for i, region := range s.regions {
-		color := theme.Warning.Alpha(0.16)
-		if i == s.selected {
-			color = theme.Danger.Alpha(0.24)
+	backgrounds := make([]editor.LineBackground, 0, len(s.regions)*6)
+	add := func(first, last int, color ui.Color) {
+		if first < 0 || last < first {
+			return
 		}
+		backgrounds = append(backgrounds, editor.LineBackground{First: first, Last: last, Color: color})
+	}
+	for i, region := range s.regions {
+		selected := i == s.selected
+		var alpha float32 = 0.08
+		markerColor := theme.Warning.Alpha(0.16)
+		if selected {
+			alpha = 0.14
+			markerColor = theme.Danger.Alpha(0.24)
+		}
+
+		currentEnd := region.split
+		if region.hasBase() {
+			currentEnd = region.base
+			add(region.base+1, region.split-1, theme.Warning.Alpha(alpha))
+		}
+		add(region.start+1, currentEnd-1, theme.Danger.Alpha(alpha))
+		add(region.split+1, region.end-1, theme.Success.Alpha(alpha))
 		for _, line := range []int{region.start, region.base, region.split, region.end} {
-			if line < 0 {
-				continue
-			}
-			backgrounds = append(backgrounds, editor.LineBackground{First: line, Last: line, Color: color})
+			add(line, line, markerColor)
 		}
 	}
 	return backgrounds
 }
 
-// quietConflictUnchanged compares every user-visible part of a conflict read.
-// Selection, undo history, editor buffers, and remote save bookkeeping are not
-// disk content: unchanged results intentionally keep those objects alive.
+// quietConflictUnchanged compares the identity and content of a conflict,
+// not its derived diff patch. Resolving one hunk necessarily changes the
+// patch, but that must not replace the state holding originalLines and undo.
+// Selection, editor buffers and remote save bookkeeping stay alive as well.
 func (a *app) quietConflictUnchanged(state *conflictState, sides *conflictSides,
-	stages repository.ConflictStages, patch string) bool {
-	if a.diffError != "" || a.conflictStages != stages || a.conflictDiffPatch != patch {
+	stages repository.ConflictStages) bool {
+	if a.diffError != "" || a.conflictStages != stages {
 		return false
 	}
 	if (a.conflictState == nil) != (state == nil) {
@@ -498,13 +538,21 @@ func (a *app) requestConflictFileReadMode(file repository.File, generation uint6
 				a.diffError = message
 				return true
 			}
-			if quiet && a.quietConflictUnchanged(state, sides, stages, patch) {
+			if quiet && a.quietConflictUnchanged(state, sides, stages) {
 				// Refresh the stamp used to protect a later SSH save, without
 				// replacing the editor, undo history, selection, or scrollback.
 				if a.conflictState != nil && state != nil {
 					a.conflictState.remoteStamp = state.remoteStamp
 					a.conflictState.remoteStampKnown = state.remoteStampKnown
 					a.conflictState.remoteClient = state.remoteClient
+				}
+				// A hunk pick leaves the same file content and index stages but a
+				// different combined diff. Accept that metadata and repaint only
+				// the review; the state that owns recovery must stay untouched.
+				if a.conflictDiffPatch != patch {
+					a.conflictDiffPatch = patch
+					a.refreshConflictDiff()
+					return true
 				}
 				return false
 			}
@@ -585,6 +633,9 @@ func (a *app) refreshConflictDiff() {
 		state = &editor.DiffState{ContextLines: 3, Inline: editor.DiffInlineWordAlt}
 		a.conflictDiffState = state
 	}
+	// Classic signs make additions and deletions as easy to scan as they are
+	// in an ordinary code review, in both unified and side-by-side layouts.
+	state.Indicators = editor.DiffClassic
 	state.Old = editor.NewBuffer(oldText)
 	state.New = editor.NewBuffer(newText)
 	language := editor.LanguageFor(path)
@@ -600,9 +651,14 @@ func (a *app) conflictStageSelector(c *ui.Context) {
 	ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
 		for tab, label := range []string{"Base", "Current", "Incoming", "Result"} {
 			tab, label := tab, tr(label)
-			button := ui.Button(c, label)
+			// Widget constructors append immediately. Pick the visual role before
+			// constructing once; constructing Button and then PrimaryButton would
+			// draw both variants of the selected tab.
+			var button ui.Element
 			if a.conflictStageTab == tab {
 				button = ui.PrimaryButton(c, label)
+			} else {
+				button = ui.Button(c, label)
 			}
 			if compactTextButton(button).Label(label).Tooltip(tr(conflictStageTooltip(tab))).Clicked() {
 				a.conflictStageTab = tab
@@ -808,6 +864,7 @@ func (a *app) syncConflictEdits() {
 	a.conflictSaveVersion = version
 
 	state.adoptText(view.Buffer.String())
+	a.invalidateConflictRead()
 	if a.location.IsRemote() {
 		a.startRemoteConflictWrite(state, state.text(), version, func(err error) {
 			if err != nil {
@@ -853,6 +910,20 @@ func (a *app) writeConflictFileToDisk() error {
 	return writeWorkingFile(a.workingFilePath(a.conflictState.path), []byte(a.conflictState.text()))
 }
 
+// invalidateConflictRead retires any answer that started before the latest
+// in-app conflict write. Its bytes could still arrive from disk or SSH later,
+// but they must not repaint an older resolution over the user's latest edit.
+func (a *app) invalidateConflictRead() {
+	a.diffGeneration++
+	if cancel := a.cancelDiff; cancel != nil {
+		a.cancelDiff = nil
+		cancel()
+	}
+	// A generation-rejected answer intentionally does not touch the newer
+	// pane state, so cancellation also retires its otherwise stale spinner.
+	a.diffLoading = false
+}
+
 // resolveConflictSide keeps one hunk of the selected conflict, writes the file
 // and moves the pane to the next conflict. A failed write puts the previous
 // content back, so the pane never claims a resolution the file does not hold.
@@ -864,6 +935,7 @@ func (a *app) resolveConflictSide(side conflictSide) {
 	if !state.resolve(side) {
 		return
 	}
+	a.invalidateConflictRead()
 	if a.location.IsRemote() {
 		view := a.conflictView
 		lockRemoteConflictResolution(view)
@@ -910,12 +982,61 @@ func (a *app) undoConflictResolution() {
 	if !state.undoResolution() {
 		return
 	}
+	a.invalidateConflictRead()
 	writeFailed := func(err error) {
 		// The file still holds the resolved text, so the pane must keep
 		// showing it rather than the content the undo could not write.
 		state.lines = resolved
 		state.regions = findConflictRegions(resolved, state.markerSize)
 		state.clampSelection()
+		a.notify("error", "Could not write the resolved file", safeError(err))
+	}
+	if a.location.IsRemote() {
+		view := a.conflictView
+		lockRemoteConflictResolution(view)
+		started := a.startRemoteConflictWrite(state, state.text(), 0, func(err error) {
+			unlockRemoteConflictResolution(view)
+			if err != nil {
+				writeFailed(err)
+				return
+			}
+			a.scrollToSelectedConflict()
+			a.refreshConflictViewer()
+		})
+		if !started {
+			unlockRemoteConflictResolution(view)
+		}
+		return
+	}
+	if err := a.writeConflictFileToDisk(); err != nil {
+		writeFailed(err)
+		return
+	}
+	a.scrollToSelectedConflict()
+	a.refreshConflictViewer()
+}
+
+// restoreInitialConflict rewrites Result to the conflict first read and
+// selects its first region. As with a hunk pick, this only changes this file's
+// working-tree text: it neither stages it nor aborts the repository operation.
+func (a *app) restoreInitialConflict() {
+	if a.conflictState == nil || a.actionBusy {
+		return
+	}
+	state := a.conflictState
+	resolved := slices.Clone(state.lines)
+	selected := state.selected
+	undoLen := len(state.undo)
+	if !state.restoreInitial() {
+		return
+	}
+	a.invalidateConflictRead()
+	writeFailed := func(err error) {
+		state.lines = resolved
+		state.regions = findConflictRegions(resolved, state.markerSize)
+		state.selected = selected
+		state.clampSelection()
+		state.undo = state.undo[:undoLen]
 		a.notify("error", "Could not write the resolved file", safeError(err))
 	}
 	if a.location.IsRemote() {

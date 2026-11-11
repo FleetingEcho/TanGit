@@ -203,6 +203,15 @@ func (a *app) registerShortcuts(c *ui.Context) {
 			c.OnShortcut(ui.Alt, ui.Key2, func() { a.resolveConflictSide(conflictBase) })
 			c.OnShortcut(ui.Alt, ui.Key3, func() { a.resolveConflictSide(conflictIncoming) })
 			c.OnShortcut(ui.Alt, ui.Key4, func() { a.resolveConflictSide(conflictBoth) })
+			// While Result has no unsaved manual text, conventional undo applies
+			// to the hunk resolutions too. A dirty editor keeps its native text
+			// undo until that buffer is saved, so the two histories do not race.
+			if a.conflictView == nil || a.conflictView.Buffer == nil || !a.conflictView.Buffer.Modified() {
+				c.OnShortcut(ui.Cmd, ui.KeyZ, a.undoConflictResolution)
+				if ui.Cmd != ui.Ctrl {
+					c.OnShortcut(ui.Ctrl, ui.KeyZ, a.undoConflictResolution)
+				}
+			}
 			c.OnShortcut(ui.Alt, ui.KeyZ, a.undoConflictResolution)
 		}
 		if !a.editorOnlyWorkspace() {
