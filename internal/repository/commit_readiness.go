@@ -24,7 +24,7 @@ func (s *gitSession) commitReadiness(amend bool) error {
 	if output != "" {
 		return fmt.Errorf("resolve merge conflicts before committing")
 	}
-	if command := commandBlockingCommit(s.git.Status.WorkingTreeState()); command != "" {
+	if command := commandBlockingCommit(s.workingTreeState()); command != "" {
 		return fmt.Errorf("finish or abort the %s in progress first", command)
 	}
 	for _, identity := range []string{"GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"} {

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -227,6 +228,34 @@ func TestCommandLogTextCanBeCopied(t *testing.T) {
 	h.tester.Frame()
 	if got := h.tester.Clipboard(); !strings.Contains(got, "fatal: not a git repository") {
 		t.Fatalf("copying the log put %q on the clipboard", got)
+	}
+}
+
+func TestRichNotificationReplacesProgressAndRunsSecondaryAction(t *testing.T) {
+	s, tt, _ := newShellTester(t, repository.Snapshot{})
+	a := s.activeApp()
+	a.notifyToast(appToast{
+		id: "workspace-transfer:test", title: "Uploading", description: "1 of 3 files", timeout: -1,
+	})
+	tt.Frame()
+	revealed := false
+	a.notifyToast(appToast{
+		id: "workspace-transfer:test", kind: "success", title: "Upload complete", description: "3 files",
+		timeout: 4 * time.Second, moreActions: []appToastAction{{label: "Reveal", onAction: func() { revealed = true }}},
+	})
+	tt.Frame()
+	if slices.Contains(tt.Texts(), "Uploading") || !slices.Contains(tt.Texts(), "Upload complete") {
+		t.Fatalf("progress notification was not replaced: %q", tt.Texts())
+	}
+	if count := strings.Count(strings.Join(tt.Texts(), "\n"), "3 files"); count != 1 {
+		t.Fatalf("updated notification appears %d times, want once", count)
+	}
+	if err := tt.Click("Reveal"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !revealed {
+		t.Fatal("secondary notification action did not run")
 	}
 }
 

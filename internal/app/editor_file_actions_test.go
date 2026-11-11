@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -16,6 +17,8 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 
 	"lazygitapp/internal/repository"
+	"lazygitapp/internal/sshworkspace"
+	"lazygitapp/internal/workspace"
 )
 
 type codeTestSession struct {
@@ -180,6 +183,10 @@ func TestCodeFileOperationDoesNotReindexAgainForItsQuietSnapshot(t *testing.T) {
 
 func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 	h := menuTestApp(t)
+	originalReveal := revealCodeItemInFolder
+	revealed := ""
+	revealCodeItemInFolder = func(filename string) { revealed = filename }
+	t.Cleanup(func() { revealCodeItemInFolder = originalReveal })
 	root := useRealCodeWorkspace(t, h, map[string]string{
 		"source/old.txt":       "old\n",
 		"destination/keep.txt": "keep\n",
@@ -189,7 +196,7 @@ func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 	h.tester.Frame()
 
 	h.rightClick(t, "Open source/old.txt")
-	h.requireMenuLabels(t, "New File…", "New Folder…", "View File History…", "Rename…", "Delete…", "Copy path", "Copy relative path")
+	h.requireMenuLabels(t, "New File…", "New Folder…", "Open in explorer", "View File History…", "Rename…", "Delete…", "Copy path", "Copy relative path")
 	h.chooseMenuItem(t, "Copy relative path")
 	if got := h.tester.Clipboard(); got != "source/old.txt" {
 		t.Fatalf("explorer copied relative path %q", got)
@@ -198,6 +205,11 @@ func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 	h.chooseMenuItem(t, "Copy path")
 	if got, want := h.tester.Clipboard(), filepath.Join(root, "source", "old.txt"); got != want {
 		t.Fatalf("explorer copied absolute path %q, want %q", got, want)
+	}
+	h.rightClick(t, "Open source/old.txt")
+	h.chooseMenuItem(t, "Open in explorer")
+	if want := filepath.Join(root, "source", "old.txt"); revealed != want {
+		t.Fatalf("Open in explorer revealed %q, want %q", revealed, want)
 	}
 	h.rightClick(t, "Open source/old.txt")
 	h.chooseMenuItem(t, "View File History…")
@@ -275,6 +287,75 @@ func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 	}
 	waitForCodeFileOperation(t, h)
 	assertCodeFileMissing(t, root, "source/renamed.txt")
+}
+
+func TestRemoteOpenInExplorerLaunchesRemoteNarwhal(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.state = stateReady
+	h.app.snapshot.Root = "/srv/repo"
+	h.app.location = workspace.Location{Kind: workspace.SSH, ProfileID: "test", Root: "/srv/repo"}
+	h.app.session = sshProviderSession{client: &sshworkspace.Client{}}
+	originalReveal := revealCodeItemInFolder
+	hostCalled := false
+	revealCodeItemInFolder = func(string) { hostCalled = true }
+	t.Cleanup(func() { revealCodeItemInFolder = originalReveal })
+	type invocation struct {
+		root, filename string
+	}
+	launched := make(chan invocation, 1)
+	originalRun := runRemoteCodeItemInExplorer
+	runRemoteCodeItemInExplorer = func(_ context.Context, _ remoteWorkspaceClient, root, filename string) (sshworkspace.ExecResult, error) {
+		launched <- invocation{root: root, filename: filename}
+		return sshworkspace.ExecResult{}, nil
+	}
+	t.Cleanup(func() { runRemoteCodeItemInExplorer = originalRun })
+
+	h.app.openCodeItemInExplorer(fileTreeRow{path: "source/old file.txt", name: "old file.txt"})
+	select {
+	case got := <-launched:
+		if got.root != "/srv/repo" || got.filename != "/srv/repo/source/old file.txt" {
+			t.Fatalf("remote Narwhal launch = %+v", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("remote Narwhal was not launched")
+	}
+	if hostCalled {
+		t.Fatal("an SSH POSIX path reached the host file manager")
+	}
+}
+
+func TestRunRemoteCodeItemInExplorerUsesDisplayAndDirectArguments(t *testing.T) {
+	client := newRemoteTestClient()
+	result, err := runRemoteCodeItemInExplorer(context.Background(), client, "/srv/repo", "/srv/repo/source/old file.txt")
+	if err != nil || result.ExitCode != 0 {
+		t.Fatalf("remote Narwhal result = %+v, %v", result, err)
+	}
+	if client.runName != "Narwhal" || client.runDir != "/srv/repo" ||
+		!reflect.DeepEqual(client.runArgs, []string{"/srv/repo/source/old file.txt"}) ||
+		!reflect.DeepEqual(client.runEnvironment, map[string]string{"DISPLAY": ":0"}) {
+		t.Fatalf("remote command = %q %q in %q with %v", client.runName, client.runArgs, client.runDir, client.runEnvironment)
+	}
+}
+
+func TestRemoteOpenInExplorerReportsFailureWithoutStaleTeardownToast(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.state = stateReady
+	generation := h.app.generation
+	h.app.reportRemoteCodeItemInExplorerError(generation, errors.New("Narwhal exited: desktop unavailable"))
+	if len(h.app.pendingToasts) != 1 {
+		t.Fatalf("remote Explorer failure toasts = %+v", h.app.pendingToasts)
+	}
+	toast := h.app.pendingToasts[0]
+	if toast.title != "Could not open remote Explorer" || !strings.Contains(toast.description, "desktop unavailable") {
+		t.Fatalf("remote Explorer failure toast = %+v", toast)
+	}
+
+	h.app.pendingToasts = nil
+	h.app.generation++
+	h.app.reportRemoteCodeItemInExplorerError(generation, context.Canceled)
+	if len(h.app.pendingToasts) != 0 {
+		t.Fatalf("closed workspace reported a stale Explorer error: %+v", h.app.pendingToasts)
+	}
 }
 
 func TestCodeFolderSearchUsesLiteralScopeAndRetainsRename(t *testing.T) {

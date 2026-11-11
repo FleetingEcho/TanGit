@@ -1,9 +1,9 @@
 package app
 
 import (
-	"strings"
-
 	"context"
+	"path"
+	"strings"
 
 	"github.com/egoist/mygo/ui"
 
@@ -40,8 +40,20 @@ func (a *app) openWorktree(worktree repository.Worktree) {
 	if worktree.Missing {
 		return
 	}
-	a.path = worktree.Path
+	a.path = a.worktreeOpenPath(worktree.Path)
 	a.beginOpen()
+}
+
+// worktreeOpenPath keeps a linked worktree on the source repository's host.
+// Snapshot worktree paths are native POSIX paths for SSH repositories, not
+// local paths to pass back to the opener.
+func (a *app) worktreeOpenPath(worktreePath string) string {
+	if !a.location.IsRemote() {
+		return worktreePath
+	}
+	location := a.location
+	location.Root = path.Clean(worktreePath)
+	return location.String()
 }
 
 func (a *app) confirmDeleteSelectedWorktree() {

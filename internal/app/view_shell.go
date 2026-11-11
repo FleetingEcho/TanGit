@@ -118,6 +118,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.codeFileFormModal(c)
 	a.terminalRenameModal(c)
 	a.cloneModal(c)
+	a.sshWorkspaceModal(c)
 	a.patchPreviewModal(c)
 	a.customPatchModal(c)
 	a.changeCourierModal(c)
@@ -126,6 +127,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.keybindingsModal(c)
 	a.commitFilterModal(c)
 	a.confirmModal(c)
+	a.sshHostKeyModal(c)
 	a.keyboardTextFocus = c.FocusTakesText()
 	a.finishKeyboardFrame(c)
 	// Notifications are queued by the actions this pass ran, so they are
@@ -302,9 +304,19 @@ func (a *app) pickerHeroView(c *ui.Context) {
 		Padding(22).Background(theme.Surface).Border(1, theme.Border).
 		Radius(theme.Radius+10).
 		Shadow(0, 12, 30, 0, ui.RGBA(0, 0, 0, 0.13)).Children(func() {
-		ui.Text(c, tr("Open a repository")).FontSize(25).Bold()
-		ui.Text(c, tr("Your changes, history, branches, and remotes — all in one focused place.")).
-			TextColor(theme.TextMuted).MaxWidth(560)
+		ui.Row(c).FillWidth().AlignItems(ui.Start).Gap(16).Wrap().Children(func() {
+			ui.Column(c).Grow(1).MinWidth(280).Gap(5).Children(func() {
+				ui.Text(c, tr("Open a repository")).FontSize(25).Bold()
+				ui.Text(c, tr("Your changes, history, branches, and remotes — all in one focused place.")).
+					TextColor(theme.TextMuted).MaxWidth(560)
+			})
+			ui.Row(c).Justify(ui.End).AlignItems(ui.Center).Gap(10).Wrap().Children(func() {
+				pickerRemoteAction(c, "Open SSH",
+					"Open a Git folder through a saved SSH profile", remotesIcon, a.openSSHWorkspacePicker)
+				pickerRemoteAction(c, "Clone",
+					"Clone an HTTPS or SSH repository and open it (C)", downloadIcon, a.openCloneForm)
+			})
+		})
 		bar := ui.Row(c).FillWidth().Height(48).AlignItems(ui.Center).Gap(9).
 			Padding(5, 6, 5, 13).Background(theme.Background).Border(1, theme.Border).
 			Radius(theme.Radius + 6)
@@ -333,10 +345,6 @@ func (a *app) pickerHeroView(c *ui.Context) {
 				a.browse()
 			}
 		})
-		ui.Row(c).Justify(ui.End).Children(func() {
-			iconTextButton(c, "Clone remote repository…",
-				"Clone an HTTPS or SSH repository and open it (C)", downloadIcon, false, a.openCloneForm)
-		})
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(16).Wrap().Children(func() {
 			pickerHint(c, "↵", "Enter opens the path")
 			pickerHint(c, "C", "Clone a remote repository")
@@ -344,6 +352,21 @@ func (a *app) pickerHeroView(c *ui.Context) {
 			pickerHint(c, "tangit <path>", "Terminal: open a repository path directly in TanGit")
 		})
 	})
+}
+
+// pickerRemoteAction gives the two secondary ways into a repository a generous
+// target without letting their full descriptions crowd out the launch card.
+func pickerRemoteAction(c *ui.Context, label, tooltip string, icon *ui.SVG, run func()) {
+	theme := c.Theme()
+	button := ui.Button(c, "").Label(tr(label)).Tooltip(tr(tooltip)).
+		Height(38).Padding(6, 14).Center().Gap(8).Radius(theme.Radius + 4)
+	button.Children(func() {
+		ui.Icon(c, icon).FontSize(17)
+		ui.Text(c, tr(label)).FontSize(15)
+	})
+	if button.Clicked() {
+		run()
+	}
 }
 
 // pickerErrorView is a failed open, kept above the history: the message says

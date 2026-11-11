@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+
+	"lazygitapp/internal/sshworkspace"
 )
 
 // appSettings is what the settings modal edits and the app stores between
@@ -79,6 +81,9 @@ type appSettings struct {
 	// RemoteWebURLs stores browser-page overrides by repository root and then
 	// remote name, allowing origin, upstream, and arbitrary hosts to differ.
 	RemoteWebURLs map[string]map[string]string `json:"remoteWebUrls,omitempty"`
+	// SSHProfiles contains connection settings only. Passwords and private-key
+	// passphrases live under SecretRef accounts in the system keychain instead.
+	SSHProfiles []sshworkspace.Profile `json:"sshProfiles,omitempty"`
 }
 
 type languageServerSettings struct {
@@ -176,6 +181,7 @@ func normalizeSettings(s appSettings) appSettings {
 	s.VisibleSections = normalizeVisibleSections(s.VisibleSections)
 	s.SectionOrder = normalizeSectionOrder(s.SectionOrder)
 	s.RemoteWebURLs = normalizeRemoteWebURLs(s.RemoteWebURLs)
+	s.SSHProfiles = normalizeSSHProfiles(s.SSHProfiles)
 	return s
 }
 

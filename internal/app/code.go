@@ -85,6 +85,9 @@ type codeDocument struct {
 	blameActiveLine     int
 	blameAnnotationSet  bool
 	markdownPreviewOpen bool
+	remoteStamp         remoteFileStamp
+	remoteStampKnown    bool
+	remoteSave          remoteSaveState
 }
 
 type codeNavigationLocation struct {
@@ -103,7 +106,13 @@ type codeSearchRow struct {
 
 func (r codeSearchRow) isFile() bool { return r.match < 0 }
 
+type shutdownPreparation struct {
+	running   bool
+	callbacks []func(bool)
+}
+
 type codeState struct {
+	shutdown       shutdownPreparation
 	paneWidth      float32
 	list           ui.ListState
 	files          []string
@@ -194,9 +203,22 @@ type codeState struct {
 	// markdownOptions preserves the renderer's caches across editor frames.
 	// It is a pointer because renderer options contain their image-cache lock.
 	markdownOptions *markdown.Options
+	// remoteFileEdit carries only SSH asynchronous-save state for the Changes
+	// editor. Local editing keeps its original synchronous fields and control flow.
+	remoteFileEdit struct {
+		save       remoteSaveState
+		client     remoteWorkspaceClient
+		stamp      remoteFileStamp
+		stampKnown bool
+		closing    bool
+	}
 }
 
 func (a *app) resetCode() {
+	a.code.remoteFileEdit.save.invalidate()
+	a.code.remoteFileEdit.client = nil
+	a.code.remoteFileEdit.stampKnown = false
+	a.code.remoteFileEdit.closing = false
 	a.stopGoLanguageServer()
 	a.stopAdditionalLanguageServers()
 	if a.code.searchCancel != nil {
@@ -207,6 +229,7 @@ func (a *app) resetCode() {
 	a.code.searchDebounceSeq++
 	for _, document := range a.code.documents {
 		document.generation++
+		document.remoteSave.invalidate()
 		invalidateCodeBlame(document)
 	}
 	a.closeCodeBlameDetails()
@@ -344,12 +367,29 @@ func (a *app) requestCodeFiles() {
 	token := a.code.filesToken
 	a.code.filesLoading = true
 	a.code.filesError = ""
+	remote := a.location.IsRemote()
+	var remoteClient remoteWorkspaceClient
+	var remoteErr error
+	if remote {
+		remoteClient, remoteErr = a.remoteWorkspaceClient()
+	}
 	go func() {
 		defer a.recoverBackground()
-		paths, err := listCodeFiles(root)
-		var emptyDirectories []string
-		if err == nil {
-			emptyDirectories = listCodeEmptyDirectories(root)
+		var paths, emptyDirectories []string
+		var err error
+		if remote {
+			err = remoteErr
+			if err == nil {
+				paths, err = listRemoteCodeFiles(context.Background(), remoteClient, root)
+				if err == nil {
+					emptyDirectories = listRemoteCodeEmptyDirectories(context.Background(), remoteClient, root)
+				}
+			}
+		} else {
+			paths, err = listCodeFiles(root)
+			if err == nil {
+				emptyDirectories = listCodeEmptyDirectories(root)
+			}
 		}
 		a.updateChanged(func() bool {
 			if token != a.code.filesToken {
@@ -368,7 +408,9 @@ func (a *app) requestCodeFiles() {
 				}
 				a.code.extraDirectories[directory] = true
 			}
-			a.pruneCodeDirectories(root)
+			if !remote {
+				a.pruneCodeDirectories(root)
+			}
 			a.syncCodeTree()
 			a.applyPendingCodeReveal()
 			if a.code.searchAfterFiles {
@@ -670,6 +712,10 @@ func (a *app) requestCodeDocument(document *codeDocument) {
 	if document == nil || document.loading || a.snapshot.Root == "" {
 		return
 	}
+	if a.location.IsRemote() {
+		a.requestRemoteCodeDocument(document)
+		return
+	}
 	invalidateCodeBlame(document)
 	root := a.snapshot.Root
 	path := document.path
@@ -750,6 +796,10 @@ func (a *app) revealCodeLine(document *codeDocument) {
 }
 
 func (a *app) saveCodeDocument(document *codeDocument) {
+	if a.location.IsRemote() {
+		a.saveRemoteCodeDocument(document, nil)
+		return
+	}
 	if document != nil && document.readOnly {
 		return
 	}
@@ -820,6 +870,14 @@ func (a *app) confirmCodeChanges(paths []string, run func()) {
 		detail: strings.Join(names, "\n"), confirmLabel: "Save", alternativeLabel: "Don't Save",
 		alternative: run,
 		run: func() {
+			if a.location.IsRemote() {
+				a.saveRemoteCodeDocuments(dirty, func(ok bool) {
+					if ok {
+						run()
+					}
+				})
+				return
+			}
 			for _, document := range dirty {
 				if a.code.documents[document.path] != document {
 					return
@@ -871,6 +929,7 @@ func (a *app) removeCodeDocument(path string) {
 		return
 	}
 	document.generation++
+	document.remoteSave.invalidate()
 	a.closeCodeBlameDetailsFor(document)
 	invalidateCodeBlame(document)
 	delete(a.code.documents, path)
@@ -1115,9 +1174,25 @@ func (a *app) startCodeSearch(limit int, loadingMore bool) {
 	a.code.searchCancel = cancel
 	a.code.searchRunning = true
 	a.code.searchLoadingMore = loadingMore
+	remote := a.location.IsRemote()
+	var remoteClient remoteWorkspaceClient
+	var remoteErr error
+	if remote {
+		remoteClient, remoteErr = a.remoteWorkspaceClient()
+	}
 	go func() {
 		defer a.recoverBackground()
-		matches, backend, err := runCodeSearch(ctx, root, paths, options, limit)
+		var matches []workspaceSearchMatch
+		var backend workspaceSearchBackend
+		var err error
+		if remote {
+			err = remoteErr
+			if err == nil {
+				matches, backend, err = searchRemoteWorkspaceFiles(ctx, remoteClient, root, paths, options, limit)
+			}
+		} else {
+			matches, backend, err = runCodeSearch(ctx, root, paths, options, limit)
+		}
 		if ctx.Err() == nil {
 			matches = rankWorkspaceSearchMatches(matches, options)
 		}

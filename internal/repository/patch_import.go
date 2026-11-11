@@ -37,6 +37,7 @@ type PatchPreview struct {
 	sourcePath      string
 	patchBytes      []byte
 	byteBacked      bool
+	files           sessionFiles
 }
 
 // PatchFile is one path affected by an imported patch. OldPath is populated
@@ -58,95 +59,75 @@ type patchSource struct {
 	textLimited bool
 	patchBytes  []byte
 	byteBacked  bool
+	files       sessionFiles
 }
 
 // readPatchSource takes a private, immutable copy for Git to consume. Apart
 // from making preview reads consistent, this closes the source-replacement
 // race between hashing a patch and asking Git to apply it. The source itself
 // is only ever opened for reading.
-func readPatchSource(path string) (patchSource, error) {
-	absolute, err := filepath.Abs(path)
-	if err != nil {
-		return patchSource{}, fmt.Errorf("resolve patch path: %w", err)
+func (s *gitSession) readPatchSource(patchPath string) (patchSource, error) {
+	absolute := patchPath
+	if s.sshClient != nil {
+		absolute = s.absoluteRemoteOrLocalPath(s.git.RepoPaths.WorktreePath(), patchPath)
+	} else {
+		var err error
+		absolute, err = filepath.Abs(patchPath)
+		if err != nil {
+			return patchSource{}, fmt.Errorf("resolve patch path: %w", err)
+		}
 	}
-	source, err := os.Open(absolute)
-	if err != nil {
-		return patchSource{}, fmt.Errorf("open patch: %w", err)
-	}
-	defer source.Close()
-	info, err := source.Stat()
+	files := s.fileService()
+	info, err := files.Stat(absolute)
 	if err != nil {
 		return patchSource{}, fmt.Errorf("inspect patch: %w", err)
 	}
 	if !info.Mode().IsRegular() {
 		return patchSource{}, fmt.Errorf("patch is not a regular file: %s", absolute)
 	}
-
-	temporary, err := os.CreateTemp("", "tangit-import-*.patch")
+	data, err := files.ReadFile(absolute)
 	if err != nil {
-		return patchSource{}, fmt.Errorf("copy patch for inspection: %w", err)
-	}
-	result := patchSource{path: absolute, temporary: temporary.Name()}
-	keep := false
-	defer func() {
-		temporary.Close()
-		if !keep {
-			os.Remove(result.temporary)
-		}
-	}()
-
-	hash := sha256.New()
-	text := &patchTextCollector{limit: patchPreviewTextLimit}
-	if _, err := io.Copy(io.MultiWriter(temporary, hash, text), source); err != nil {
 		return patchSource{}, fmt.Errorf("read patch: %w", err)
 	}
-	if err := temporary.Close(); err != nil {
-		return patchSource{}, fmt.Errorf("copy patch for inspection: %w", err)
+	result, err := s.newBytePatchSource(data)
+	if err != nil {
+		return patchSource{}, err
 	}
-	result.digest = fmt.Sprintf("%x", hash.Sum(nil))
-	result.text = string(text.data)
-	result.textLimited = text.truncated
-	keep = true
+	result.path = absolute
+	// File-backed previews must revalidate the original source when exported
+	// or applied. The private copy is only a consistent snapshot for Git's
+	// read-only preview commands, not approval to bypass later source changes.
+	result.patchBytes = nil
+	result.byteBacked = false
 	return result, nil
 }
 
 // newBytePatchSource owns a private copy of content and a private temporary
 // file containing exactly those bytes. It is used both for text previews and
 // for reconstructing the approved bytes when an in-memory preview is applied.
-func newBytePatchSource(content []byte) (patchSource, error) {
+func (s *gitSession) newBytePatchSource(content []byte) (patchSource, error) {
 	data := bytes.Clone(content)
-	temporary, err := os.CreateTemp("", "tangit-import-*.patch")
+	name, cleanup, err := s.temporaryFile("tangit-import-*.patch", data, 0o600)
 	if err != nil {
 		return patchSource{}, fmt.Errorf("copy patch for inspection: %w", err)
 	}
-	result := patchSource{temporary: temporary.Name()}
-	keep := false
-	defer func() {
-		temporary.Close()
-		if !keep {
-			os.Remove(result.temporary)
-		}
-	}()
-	if _, err := io.Copy(temporary, bytes.NewReader(data)); err != nil {
-		return patchSource{}, fmt.Errorf("copy patch for inspection: %w", err)
-	}
-	if err := temporary.Close(); err != nil {
-		return patchSource{}, fmt.Errorf("copy patch for inspection: %w", err)
-	}
+	_ = cleanup // close below removes the same file through the owning session
 	text := &patchTextCollector{limit: patchPreviewTextLimit}
 	_, _ = text.Write(data)
-	result.digest = fmt.Sprintf("%x", sha256.Sum256(data))
-	result.text = string(text.data)
-	result.textLimited = text.truncated
-	result.patchBytes = data
-	result.byteBacked = true
-	keep = true
-	return result, nil
+	return patchSource{
+		temporary: name, digest: fmt.Sprintf("%x", sha256.Sum256(data)),
+		text: string(text.data), textLimited: text.truncated,
+		patchBytes: data, byteBacked: true, files: s.fileService(),
+	}, nil
 }
 
 func (p patchSource) close() {
 	if p.temporary != "" {
-		os.Remove(p.temporary)
+		if p.files != nil {
+			_ = p.files.Remove(p.temporary)
+		} else {
+			_ = os.Remove(p.temporary)
+		}
 	}
 }
 
@@ -163,20 +144,22 @@ func (p PatchPreview) Bytes() ([]byte, error) {
 		}
 		return bytes.Clone(p.patchBytes), nil
 	}
-	if p.sourcePath == "" || p.sourcePath != p.Path {
+	if p.sourcePath == "" || p.sourcePath != p.Path || p.files == nil {
 		return nil, fmt.Errorf("read patch bytes: a complete file-backed preview is required")
 	}
-	source, err := readPatchSource(p.sourcePath)
+	info, err := p.files.Stat(p.sourcePath)
 	if err != nil {
-		return nil, fmt.Errorf("read patch bytes: %w", err)
+		return nil, fmt.Errorf("read patch bytes: inspect patch: %w", err)
 	}
-	defer source.close()
-	if source.digest != p.digest {
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("read patch bytes: patch is not a regular file: %s", p.sourcePath)
+	}
+	data, err := p.files.ReadFile(p.sourcePath)
+	if err != nil {
+		return nil, fmt.Errorf("read patch bytes: read patch: %w", err)
+	}
+	if digest := fmt.Sprintf("%x", sha256.Sum256(data)); digest != p.digest {
 		return nil, fmt.Errorf("read patch bytes: patch file changed since preview; preview it again")
-	}
-	data, err := os.ReadFile(source.temporary)
-	if err != nil {
-		return nil, fmt.Errorf("read patch bytes: %w", err)
 	}
 	return data, nil
 }
@@ -218,7 +201,7 @@ func (s *gitSession) PreviewPatch(ctx context.Context, path string) (PatchPrevie
 	if err := ctx.Err(); err != nil {
 		return PatchPreview{}, err
 	}
-	source, err := readPatchSource(path)
+	source, err := s.readPatchSource(path)
 	if err != nil {
 		return PatchPreview{}, err
 	}
@@ -229,8 +212,9 @@ func (s *gitSession) PreviewPatch(ctx context.Context, path string) (PatchPrevie
 		Text:           source.text,
 		TextTruncated:  source.textLimited,
 		digest:         source.digest,
-		repositoryRoot: s.git.RepoPaths.WorktreePath(),
+		repositoryRoot: s.repositoryIdentity(),
 		sourcePath:     source.path,
+		files:          source.files,
 	})
 }
 
@@ -241,7 +225,7 @@ func (s *gitSession) PreviewPatchText(ctx context.Context, text string) (PatchPr
 	if err := ctx.Err(); err != nil {
 		return PatchPreview{}, err
 	}
-	source, err := newBytePatchSource([]byte(text))
+	source, err := s.newBytePatchSource([]byte(text))
 	if err != nil {
 		return PatchPreview{}, err
 	}
@@ -251,7 +235,7 @@ func (s *gitSession) PreviewPatchText(ctx context.Context, text string) (PatchPr
 		Text:           source.text,
 		TextTruncated:  source.textLimited,
 		digest:         source.digest,
-		repositoryRoot: s.git.RepoPaths.WorktreePath(),
+		repositoryRoot: s.repositoryIdentity(),
 		patchBytes:     source.patchBytes,
 		byteBacked:     true,
 	})
@@ -281,7 +265,7 @@ func (s *gitSession) previewPatchSource(source patchSource, preview PatchPreview
 	}).RunWithOutput()
 	if summaryErr == nil && statErr == nil {
 		preview.Files = applyPatchSummaries(preview.Files, summary)
-		if err := applyPatchHeaderMetadata(preview.Files, source.temporary); err != nil {
+		if err := s.applyPatchHeaderMetadata(preview.Files, source.temporary); err != nil {
 			return PatchPreview{}, fmt.Errorf("preview patch metadata: %w", err)
 		}
 		preview.Additions, preview.Deletions = 0, 0
@@ -408,8 +392,8 @@ type patchHeader struct {
 	action  string
 }
 
-func applyPatchHeaderMetadata(files []PatchFile, path string) error {
-	file, err := os.Open(path)
+func (s *gitSession) applyPatchHeaderMetadata(files []PatchFile, path string) error {
+	file, err := s.fileService().Open(path)
 	if err != nil {
 		return err
 	}
@@ -530,12 +514,13 @@ func (s *gitSession) patchRepositoryState() (string, error) {
 
 func (s *gitSession) hashWorktreeFiles(hash io.Writer, paths []string) error {
 	for _, path := range paths {
-		name, err := worktreeFilePath(s.git.RepoPaths.WorktreePath(), path)
+		name, err := s.worktreeFilePath(s.git.RepoPaths.WorktreePath(), path)
 		if err != nil {
 			return err
 		}
 		fmt.Fprintf(hash, "path\x00%s\x00", path)
-		info, err := os.Lstat(name)
+		files := s.fileService()
+		info, err := files.Lstat(name)
 		if os.IsNotExist(err) {
 			hash.Write([]byte("missing\x00"))
 			continue
@@ -546,13 +531,13 @@ func (s *gitSession) hashWorktreeFiles(hash io.Writer, paths []string) error {
 		fmt.Fprintf(hash, "%s\x00", info.Mode())
 		switch {
 		case info.Mode()&os.ModeSymlink != 0:
-			target, err := os.Readlink(name)
+			target, err := files.Readlink(name)
 			if err != nil {
 				return err
 			}
 			fmt.Fprintf(hash, "link\x00%d\x00%s\x00", len(target), target)
 		case info.Mode().IsRegular():
-			content, err := os.ReadFile(name)
+			content, err := files.ReadFile(name)
 			if err != nil {
 				return err
 			}
@@ -582,7 +567,7 @@ func (s *gitSession) resetRepositoryState(before, after string) (string, error) 
 }
 
 func (s *gitSession) patchOperationDiagnostic() (string, error) {
-	state := s.git.Status.WorkingTreeState()
+	state := s.workingTreeState()
 	if state.Any() {
 		return fmt.Sprintf("cannot import a patch while %s is in progress", state.Effective().CommandName()), nil
 	}
@@ -648,7 +633,7 @@ func (s *gitSession) ApplyPatch(ctx context.Context, preview PatchPreview) error
 		(!preview.byteBacked && preview.sourcePath == "") || (preview.byteBacked && preview.sourcePath != "") {
 		return fmt.Errorf("apply patch: a complete PreviewPatch result is required")
 	}
-	if preview.repositoryRoot != s.git.RepoPaths.WorktreePath() ||
+	if preview.repositoryRoot != s.repositoryIdentity() ||
 		(!preview.byteBacked && preview.sourcePath != preview.Path) {
 		return fmt.Errorf("apply patch: preview belongs to a different repository or patch path")
 	}
@@ -668,9 +653,9 @@ func (s *gitSession) ApplyPatch(ctx context.Context, preview PatchPreview) error
 	var source patchSource
 	var err error
 	if preview.byteBacked {
-		source, err = newBytePatchSource(preview.patchBytes)
+		source, err = s.newBytePatchSource(preview.patchBytes)
 	} else {
-		source, err = readPatchSource(preview.sourcePath)
+		source, err = s.readPatchSource(preview.sourcePath)
 	}
 	if err != nil {
 		return fmt.Errorf("apply patch: %w", err)
@@ -690,39 +675,15 @@ func (s *gitSession) ApplyPatch(ctx context.Context, preview PatchPreview) error
 	if err != nil {
 		return fmt.Errorf("apply patch: %w", err)
 	}
-	patchName := filepath.Join(s.journalDir(), record.ID+".patch")
-	if err := os.MkdirAll(filepath.Dir(patchName), 0o700); err != nil {
-		return fmt.Errorf("apply patch: save recovery patch: %w", err)
-	}
-	data, err := os.ReadFile(source.temporary)
+	patchName := s.joinPath(s.journalDir(), record.ID+".patch")
+	data, err := s.fileService().ReadFile(source.temporary)
 	if err != nil {
 		return fmt.Errorf("apply patch: save recovery patch: %w", err)
 	}
-	temporary, err := os.CreateTemp(s.journalDir(), "recovery-*.patch")
-	if err != nil {
+	if err := s.fileService().WriteFileAtomic(patchName, data, 0o600); err != nil {
 		return fmt.Errorf("apply patch: save recovery patch: %w", err)
 	}
-	temporaryName := temporary.Name()
-	defer os.Remove(temporaryName)
-	if err := temporary.Chmod(0o600); err != nil {
-		temporary.Close()
-		return fmt.Errorf("apply patch: save recovery patch: %w", err)
-	}
-	if _, err := temporary.Write(data); err != nil {
-		temporary.Close()
-		return fmt.Errorf("apply patch: save recovery patch: %w", err)
-	}
-	if err := temporary.Sync(); err != nil {
-		temporary.Close()
-		return fmt.Errorf("apply patch: save recovery patch: %w", err)
-	}
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("apply patch: save recovery patch: %w", err)
-	}
-	if err := os.Rename(temporaryName, patchName); err != nil {
-		return fmt.Errorf("apply patch: save recovery patch: %w", err)
-	}
-	if err := syncDirectory(s.journalDir()); err != nil {
+	if err := s.syncDirectory(s.journalDir()); err != nil {
 		return fmt.Errorf("apply patch: save recovery patch: %w", err)
 	}
 

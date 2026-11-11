@@ -14,12 +14,33 @@ import (
 // window is neither building nor holding a context, so they queue the toast
 // and the next frame adds it to MyGo's list, which owns its time and place.
 type appToast struct {
+	id          string
 	kind        string
 	title       string
 	description string
 	action      string
 	onAction    func()
+	moreActions []appToastAction
 	timeout     time.Duration
+}
+
+// appToastAction adds a secondary action, such as Details beside Reveal,
+// without hiding it in a notification's descriptive text.
+type appToastAction struct {
+	label    string
+	onAction func()
+}
+
+// notifyToast queues a rich notification. A nonempty id replaces the visible
+// notification in place, which keeps progress updates from accumulating.
+func (a *app) notifyToast(toast appToast) {
+	toast.title = tr(toast.title)
+	toast.description = shorten(repository.RedactSecrets(toast.description), 320)
+	toast.action = tr(toast.action)
+	for index := range toast.moreActions {
+		toast.moreActions[index].label = tr(toast.moreActions[index].label)
+	}
+	a.pendingToasts = append(a.pendingToasts, toast)
 }
 
 // notify queues a toast as the result of what the user just did. kind picks
@@ -82,14 +103,19 @@ func shorten(text string, limit int) string {
 func (a *app) flushToasts(c *ui.Context) {
 	for _, pending := range a.pendingToasts {
 		a.toastSeq++
+		id := pending.id
+		if id == "" {
+			id = fmt.Sprintf("app-toast-%d", a.toastSeq)
+		}
 		c.AddToast(ui.Toast{
-			ID:          fmt.Sprintf("app-toast-%d", a.toastSeq),
+			ID:          id,
 			Title:       pending.title,
 			Description: pending.description,
 			Type:        pending.kind,
 			Timeout:     pending.timeout,
 			Action:      pending.action,
 			OnAction:    pending.onAction,
+			Data:        pending.moreActions,
 		})
 	}
 	a.pendingToasts = nil
@@ -134,6 +160,23 @@ func (a *app) toastViewport(c *ui.Context, topInset float32) {
 							}
 							c.CloseToast(toast.ID)
 						}
+					}
+					if actions, ok := toast.Data.([]appToastAction); ok {
+						ui.Row(c).Gap(12).Children(func() {
+							for _, extra := range actions {
+								action := ui.ButtonBase(c).Label(extra.label).Padding(2, 0).AlignSelf(ui.Start)
+								action.TextColor(color)
+								action.Children(func() {
+									ui.Text(c, extra.label).FontSize(theme.FontSize - 1).Bold()
+								})
+								if action.Clicked() {
+									if extra.onAction != nil {
+										extra.onAction()
+									}
+									c.CloseToast(toast.ID)
+								}
+							}
+						})
 					}
 				})
 				dismiss := ui.ButtonBase(c).Label(tr("Dismiss notification")).Padding(2)

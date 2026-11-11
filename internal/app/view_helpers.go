@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"lazygitapp/internal/repository"
+	"lazygitapp/internal/workspace"
 )
 
 // timeNow is a seam so relative-time formatting is testable.
@@ -511,6 +512,8 @@ func iconTextButtonState(c *ui.Context, label, tooltip string, icon *ui.SVG, pri
 // closeAllForms drops every text-entry form the sections open, so leaving a
 // repository never leaves one behind for the next.
 func (a *app) closeAllForms() {
+	a.closeSSHWorkspacePicker()
+	a.respondSSHHostKey(false)
 	a.showCommitForm = false
 	a.showBranchForm = false
 	a.showRenameForm = false
@@ -560,6 +563,7 @@ func (a *app) anyFormOpen() bool {
 		a.showCommitBranchForm ||
 		a.showCommitRewordForm ||
 		a.showRenameRecent ||
+		a.sshProfileFormOpen ||
 		a.cloneOpen ||
 		a.code.fileForm != codeFileFormNone ||
 		a.term.renameID != 0 || a.term.renameGroup != 0
@@ -575,6 +579,8 @@ func (a *app) modalOpen() bool {
 		a.patchPreviewOpen ||
 		a.customPatch.open ||
 		a.courier.open ||
+		a.sshWorkspaceOpen ||
+		a.sshHostKeyPrompt != nil ||
 		a.state == stateCloning ||
 		a.diffFullscreen ||
 		a.branchFullscreen ||
@@ -698,6 +704,9 @@ func (a *app) repositoryFormModal(c *ui.Context, open *bool, width float32, titl
 // repoName is the last element of a repository path, which the picker's cards
 // show as their title.
 func repoName(path string) string {
+	if location, err := workspace.Parse(path); err == nil && location.IsRemote() {
+		return location.Base()
+	}
 	clean := strings.TrimRight(path, string(filepath.Separator))
 	name := filepath.Base(clean)
 	if name == "." || name == string(filepath.Separator) || name == "" {

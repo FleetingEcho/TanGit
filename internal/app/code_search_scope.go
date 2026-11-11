@@ -86,6 +86,12 @@ func (a *app) browseCodeSearchFolder() {
 	if a.snapshot.Root == "" {
 		return
 	}
+	if a.location.IsRemote() {
+		// Native picker results are local paths and cannot be resolved against a
+		// remote root. The editable repository-relative scope remains available.
+		a.code.searchError = tr("Enter a repository-relative folder for an SSH workspace")
+		return
+	}
 	a.code.searchFolderSelectionSeq++
 	selection := a.code.searchFolderSelectionSeq
 	root := a.snapshot.Root

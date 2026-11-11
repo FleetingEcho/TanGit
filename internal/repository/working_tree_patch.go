@@ -2,9 +2,7 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/jesseduffield/lazygit/pkg/commands/models"
@@ -50,7 +48,7 @@ func (s *gitSession) WorkingTreeFilePatch(ctx context.Context, file File) (strin
 	}
 	args = append(args, "--")
 	for _, path := range fileNames(file) {
-		if _, err := worktreeFilePath(s.git.RepoPaths.WorktreePath(), path); err != nil {
+		if _, err := s.worktreeFilePath(s.git.RepoPaths.WorktreePath(), path); err != nil {
 			return "", fmt.Errorf("load canonical working-tree file patch: %w", err)
 		}
 		// A literal pathspec keeps wildcard and pathspec-magic characters in
@@ -68,24 +66,18 @@ func (s *gitSession) WorkingTreeFilePatch(ctx context.Context, file File) (strin
 // comparison supplies its /dev/null-to-file addition, including a new-file
 // header for an empty file and a literal binary patch for binary contents.
 func (s *gitSession) untrackedFilePatch(file File) (string, error) {
-	if _, err := worktreeFilePath(s.git.RepoPaths.WorktreePath(), file.Path); err != nil {
+	if _, err := s.worktreeFilePath(s.git.RepoPaths.WorktreePath(), file.Path); err != nil {
 		return "", fmt.Errorf("load canonical untracked file patch: %w", err)
 	}
-	command := backgroundExec(s.cmd.New([]string{
+	output, stderr, err := s.output(s.cmd.New([]string{
 		"git", "diff", "--no-index", "--no-color", "--no-ext-diff", "--no-textconv",
 		"--binary", "--full-index", "--unified=3", "--submodule",
 		"--", "/dev/null", file.Path,
 	}))
-	output, err := command.Output()
 	if err != nil {
-		var exitError *exec.ExitError
 		// Git uses status 1 for an ordinary difference between the two paths.
-		if !errors.As(err, &exitError) || exitError.ExitCode() != 1 {
-			stderr := ""
-			if exitError != nil {
-				stderr = string(exitError.Stderr)
-			}
-			return "", fmt.Errorf("load canonical untracked file patch: %w: %s", err, strings.TrimSpace(stderr))
+		if code, ok := commandExitCode(err); !ok || code != 1 {
+			return "", fmt.Errorf("load canonical untracked file patch: %w: %s", err, strings.TrimSpace(string(stderr)))
 		}
 	}
 	return string(output), nil

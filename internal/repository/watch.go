@@ -31,6 +31,17 @@ func (s *gitSession) Watch(ctx context.Context) (<-chan struct{}, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if s.sshClient != nil {
+		// fsnotify and filepath.WalkDir always operate on the GUI machine. SSH
+		// sessions already have timer/focus refreshes, so provide an idle watch
+		// channel rather than accidentally walking a same-named local path.
+		notifications := make(chan struct{})
+		go func() {
+			<-ctx.Done()
+			close(notifications)
+		}()
+		return notifications, nil
+	}
 	watcher, err := fsnotify.NewBufferedWatcher(64)
 	if err != nil {
 		return nil, err

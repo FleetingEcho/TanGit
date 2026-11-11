@@ -30,8 +30,13 @@ type changeCourierState struct {
 	preview          *repository.PatchPreview
 	previewError     string
 	destinationError string
-	target           repository.Session
-	token            uint64
+	// target belongs to the dialog only while the user reviews a preview. An
+	// in-flight preview owns its uninstalled session, and apply takes ownership
+	// when it starts, so every terminal path has exactly one closer.
+	target        repository.Session
+	previewCancel context.CancelFunc
+	applyCancel   context.CancelFunc
+	token         uint64
 }
 
 func courierDestinations(snapshot repository.Snapshot) []repository.Worktree {
@@ -74,11 +79,28 @@ func (a *app) courierButtonTooltip(tooltip string) string {
 	return tooltip
 }
 
+func (a *app) cancelChangeCourierOperations() {
+	if a.courier.previewCancel != nil {
+		a.courier.previewCancel()
+		a.courier.previewCancel = nil
+	}
+	if a.courier.applyCancel != nil {
+		a.courier.applyCancel()
+		a.courier.applyCancel = nil
+	}
+}
+
+func (a *app) closeChangeCourierTarget() {
+	target := a.courier.target
+	a.courier.target = nil
+	closeRepositorySession(target)
+}
+
 func (a *app) openChangeCourier(text, source string) {
 	if !a.courierEligible() || strings.TrimSpace(text) == "" {
 		return
 	}
-	a.courier.token++
+	a.resetChangeCourier()
 	a.courier.open = true
 	a.courier.sourceLoading = false
 	a.courier.source = source
@@ -104,6 +126,8 @@ func (a *app) closeChangeCourier() {
 
 func (a *app) resetChangeCourier() {
 	a.courier.token++
+	a.cancelChangeCourierOperations()
+	a.closeChangeCourierTarget()
 	a.courier.open = false
 	a.courier.sourceLoading = false
 	a.courier.source = ""
@@ -132,28 +156,49 @@ func (a *app) beginCourierDestination(path string) {
 		return
 	}
 	a.courier.token++
+	a.cancelChangeCourierOperations()
+	a.closeChangeCourierTarget()
 	token := a.courier.token
 	generation := a.generation
 	frozen := a.courier.patchText
+	openPath := a.worktreeOpenPath(path)
+	ctx, cancel := context.WithCancel(context.Background())
 	a.courier.destination = path
 	a.courier.previewLoading = true
 	a.courier.preview = nil
 	a.courier.previewError = ""
 	a.courier.destinationError = ""
 	a.courier.target = nil
+	a.courier.previewCancel = cancel
 	go func() {
 		defer a.recoverBackground()
-		target, err := a.opener.Open(context.Background(), path)
+		defer cancel()
+		var target repository.Session
+		completionOwnsTarget := false
+		defer func() {
+			if !completionOwnsTarget {
+				closeRepositorySession(target)
+			}
+		}()
+		target, err := a.opener.Open(ctx, openPath)
 		var preview repository.PatchPreview
 		if err == nil {
-			preview, err = target.PreviewPatchText(context.Background(), frozen)
+			preview, err = target.PreviewPatchText(ctx, frozen)
 		}
+		// Once its completion is queued, that callback either installs the
+		// target or closes it on an error or stale result.
+		completionOwnsTarget = true
 		a.update(func() {
+			if token == a.courier.token {
+				a.courier.previewCancel = nil
+			}
 			if generation != a.generation || token != a.courier.token || !a.courier.open {
+				closeRepositorySession(target)
 				return
 			}
 			a.courier.previewLoading = false
 			if err != nil {
+				closeRepositorySession(target)
 				a.courier.destinationError = safeError(err)
 				return
 			}
@@ -169,6 +214,11 @@ func (a *app) beginCourierApply() {
 		return
 	}
 	target := a.courier.target
+	// The apply goroutine now owns the target. Reset can cancel the operation,
+	// but only the goroutine closes it after ApplyPatch has returned.
+	a.courier.target = nil
+	ctx, cancel := context.WithCancel(context.Background())
+	a.courier.applyCancel = cancel
 	preview := *a.courier.preview
 	generation := a.generation
 	token := a.courier.token
@@ -183,8 +233,13 @@ func (a *app) beginCourierApply() {
 	a.actionError = ""
 	go func() {
 		defer a.recoverBackground()
-		err := target.ApplyPatch(context.Background(), preview)
+		defer closeRepositorySession(target)
+		defer cancel()
+		err := target.ApplyPatch(ctx, preview)
 		a.update(func() {
+			if token == a.courier.token {
+				a.courier.applyCancel = nil
+			}
 			if generation != a.generation {
 				return
 			}
@@ -258,7 +313,7 @@ func (a *app) beginWorkingTreeCourierAtDiff(file repository.File, lines []patch.
 	}
 	session := a.session
 	generation := a.generation
-	a.courier.token++
+	a.resetChangeCourier()
 	token := a.courier.token
 	a.courier.open = true
 	a.courier.sourceLoading = true

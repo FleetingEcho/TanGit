@@ -63,6 +63,12 @@ type conflictState struct {
 	// markerSize is how many characters this file's markers are, from its
 	// conflict-marker-size attribute, or Git's default when it is unset.
 	markerSize int
+	// SSH reads and writes use the stamp of the bytes this state opened. The
+	// save state serializes writes and retires completions after a reload.
+	remoteStamp      remoteFileStamp
+	remoteStampKnown bool
+	remoteSave       remoteSaveState
+	remoteClient     remoteWorkspaceClient
 }
 
 // newConflictState reads content as the file at path. The text is stored by
@@ -367,12 +373,37 @@ func (s *conflictState) lineBackgrounds(theme *ui.Theme) []editor.LineBackground
 // as the side it kept. The read is generation-guarded as a diff is, so choosing
 // another file drops its answer.
 func (a *app) requestConflictFile(file repository.File, generation uint64) {
+	remote := a.location.IsRemote()
+	client, clientErr := remoteWorkspaceClientFor(a.session, remote)
+	a.requestConflictFileRead(file, generation, remote, client, clientErr)
+}
+
+// requestConflictFileRead performs one conflict read against the local working
+// tree or the session's POSIX filesystem. Tests supply a remoteWorkspaceClient
+// directly; production always obtains it from the session above.
+func (a *app) requestConflictFileRead(file repository.File, generation uint64, remote bool, client remoteWorkspaceClient, clientErr error) {
 	path := file.Path
 	inline := hasInlineConflict(file)
 	session := a.session
+	root := a.snapshot.Root
+	localPath := ""
+	if !remote {
+		localPath = a.workingFilePath(path)
+	}
 	go func() {
 		defer a.recoverBackground()
-		content, err := readWorkingFile(a.workingFilePath(path))
+		var content []byte
+		var stamp remoteFileStamp
+		var err error
+		if remote {
+			if clientErr != nil {
+				err = clientErr
+			} else {
+				content, stamp, err = readRemoteWorkingFile(client, root, path)
+			}
+		} else {
+			content, err = readWorkingFile(localPath)
+		}
 		stages := repository.ConflictStages{}
 		if session != nil {
 			var stageErr error
@@ -386,6 +417,10 @@ func (a *app) requestConflictFile(file repository.File, generation uint64) {
 		if inline {
 			if err == nil {
 				state = newConflictState(path, string(content), file.ConflictMarkerSize)
+				if remote {
+					state.remoteStamp, state.remoteStampKnown = stamp, true
+					state.remoteClient = client
+				}
 			}
 		} else if err == nil || errors.Is(err, fs.ErrNotExist) {
 			// Git leaves no markers when one side has no version of the
@@ -701,6 +736,9 @@ func (a *app) syncConflictEdits() {
 	if state == nil || view == nil || view.Buffer == nil || !view.Buffer.Modified() {
 		return
 	}
+	if a.location.IsRemote() && (state.remoteSave.running || a.actionBusy) {
+		return
+	}
 	version := view.Buffer.Version()
 	if a.conflictSaveError != "" && version == a.conflictSaveVersion {
 		return
@@ -708,6 +746,27 @@ func (a *app) syncConflictEdits() {
 	a.conflictSaveVersion = version
 
 	state.adoptText(view.Buffer.String())
+	if a.location.IsRemote() {
+		a.startRemoteConflictWrite(state, state.text(), version, func(err error) {
+			if err != nil {
+				if a.conflictSaveError != safeError(err) {
+					a.conflictSaveError = safeError(err)
+					a.notify("error", "Could not save the file", safeError(err))
+				}
+				return
+			}
+			a.conflictSaveError = ""
+			if a.conflictView == view && view.Buffer.Version() == version {
+				view.Buffer.MarkSaved()
+			}
+			// Keystrokes that arrived on the wire's wait remain modified. They
+			// become a second stamped save only after the first stamp returns.
+			if a.conflictView == view && view.Buffer.Modified() {
+				a.syncConflictEdits()
+			}
+		})
+		return
+	}
 	if err := a.writeConflictFileToDisk(); err != nil {
 		if a.conflictSaveError != safeError(err) {
 			a.conflictSaveError = safeError(err)
@@ -719,11 +778,15 @@ func (a *app) syncConflictEdits() {
 	view.Buffer.MarkSaved()
 }
 
-// writeConflictFileToDisk writes the resolved text of the open conflict over
-// its file in the working tree.
+// writeConflictFileToDisk writes the resolved text of the open local conflict
+// over its file in the working tree. SSH conflicts use startRemoteConflictWrite
+// so their POSIX path is never sent through this local filesystem seam.
 func (a *app) writeConflictFileToDisk() error {
 	if a.conflictState == nil {
 		return nil
+	}
+	if a.location.IsRemote() {
+		return errors.New("remote conflict files require an asynchronous SSH write")
 	}
 	return writeWorkingFile(a.workingFilePath(a.conflictState.path), []byte(a.conflictState.text()))
 }
@@ -735,11 +798,30 @@ func (a *app) resolveConflictSide(side conflictSide) {
 	if a.conflictState == nil || a.actionBusy {
 		return
 	}
-	if !a.conflictState.resolve(side) {
+	state := a.conflictState
+	if !state.resolve(side) {
+		return
+	}
+	if a.location.IsRemote() {
+		view := a.conflictView
+		lockRemoteConflictResolution(view)
+		started := a.startRemoteConflictWrite(state, state.text(), 0, func(err error) {
+			unlockRemoteConflictResolution(view)
+			if err != nil {
+				state.undoResolution()
+				a.notify("error", "Could not write the resolved file", safeError(err))
+				return
+			}
+			a.scrollToSelectedConflict()
+			a.refreshConflictViewer()
+		})
+		if !started {
+			unlockRemoteConflictResolution(view)
+		}
 		return
 	}
 	if err := a.writeConflictFileToDisk(); err != nil {
-		a.conflictState.undoResolution()
+		state.undoResolution()
 		a.notify("error", "Could not write the resolved file", safeError(err))
 		return
 	}
@@ -766,13 +848,33 @@ func (a *app) undoConflictResolution() {
 	if !state.undoResolution() {
 		return
 	}
-	if err := a.writeConflictFileToDisk(); err != nil {
+	writeFailed := func(err error) {
 		// The file still holds the resolved text, so the pane must keep
 		// showing it rather than the content the undo could not write.
 		state.lines = resolved
 		state.regions = findConflictRegions(resolved, state.markerSize)
 		state.clampSelection()
 		a.notify("error", "Could not write the resolved file", safeError(err))
+	}
+	if a.location.IsRemote() {
+		view := a.conflictView
+		lockRemoteConflictResolution(view)
+		started := a.startRemoteConflictWrite(state, state.text(), 0, func(err error) {
+			unlockRemoteConflictResolution(view)
+			if err != nil {
+				writeFailed(err)
+				return
+			}
+			a.scrollToSelectedConflict()
+			a.refreshConflictViewer()
+		})
+		if !started {
+			unlockRemoteConflictResolution(view)
+		}
+		return
+	}
+	if err := a.writeConflictFileToDisk(); err != nil {
+		writeFailed(err)
 		return
 	}
 	a.scrollToSelectedConflict()

@@ -42,6 +42,7 @@ func (a *app) requestQuietRefresh() {
 	// must not land after it and put the old data back.
 	generation := a.generation
 	sequence := a.snapshotSeq
+	remote := a.location.IsRemote()
 	a.refreshBusy = true
 	go func() {
 		defer a.recoverQuietRefresh(refreshToken)
@@ -65,11 +66,14 @@ func (a *app) requestQuietRefresh() {
 				// tries again.
 				return false
 			}
-			was, now := signSnapshot(a.snapshot), signSnapshot(snapshot)
+			was, now := signSnapshotForWorkspace(a.snapshot, remote), signSnapshotForWorkspace(snapshot, remote)
 			if was == now {
 				// Empty directories do not alter the Git signature. Their matching
 				// quiet snapshot still completes the operation's refresh cycle.
 				a.code.filesOperationRefresh = false
+				if remote {
+					return a.refreshRemoteQuietDetails()
+				}
 				return false
 			}
 			a.applyQuietSnapshot(snapshot, was, now)
@@ -138,10 +142,10 @@ func (a *app) quietRefreshAllowed() bool {
 		return false
 	}
 	// Text typed into the conflict editor is written at the top of the next
-	// frame, so a refresh landing before then would drop it. A resolved hunk,
-	// on the other hand, is written to the file at once: a change another app
-	// makes to a conflict can be taken while the pane is open, and the pane
-	// then reads the file as it now stands.
+	// frame, so a refresh landing before then would drop it. A local resolved
+	// hunk is written at once; a remote hunk holds actionBusy until its stamped
+	// save lands. A change another app makes to an otherwise idle conflict can
+	// therefore be taken while the pane is open.
 	if a.conflictView != nil && a.conflictView.Buffer != nil && a.conflictView.Buffer.Modified() {
 		return false
 	}
@@ -206,12 +210,18 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 			a.runCommitFilter(sectionGraph, selected.commit)
 		}
 	}
-	if filesChanged && (selected.path == "" || fileSignature(old, selected.path) != fileSignature(snapshot, selected.path)) {
-		// A file can be saved again without its status changing, and the
-		// diff on screen is then out of date: read the chosen one again. A
-		// change to another file leaves the pane, and any conflict being
-		// resolved in it, alone.
-		a.beginDiff()
+	if filesChanged {
+		if a.location.IsRemote() {
+			// Git reported a change, but only the remote service can read its new
+			// details; never fall back to fileSignature's host os.Stat here.
+			a.refreshRemoteQuietDetails()
+		} else if selected.path == "" || fileSignature(old, selected.path) != fileSignature(snapshot, selected.path) {
+			// A file can be saved again without its status changing, and the
+			// diff on screen is then out of date: read the chosen one again. A
+			// change to another file leaves the pane, and any conflict being
+			// resolved in it, alone.
+			a.beginDiff()
+		}
 	}
 }
 

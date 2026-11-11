@@ -47,6 +47,20 @@ func TestRememberRecentCapsTheListAndIgnoresEmptyPaths(t *testing.T) {
 	}
 }
 
+func TestRememberRecentSeparatesRemoteProfilesAndCanonicalizesRoots(t *testing.T) {
+	references := []recentRepository{{Path: "ssh://first/work/old/../project", LastOpened: 1, Name: "Remote"}}
+	references = rememberRecent(references, "ssh://first/work/project", 2)
+	references = rememberRecent(references, "ssh://first/work/./project/../project", 3)
+	if len(references) != 1 || references[0].Path != "ssh://first/work/project" ||
+		references[0].LastOpened != 3 || references[0].Name != "Remote" {
+		t.Fatalf("canonical remote reopen created incorrect history: %+v", references)
+	}
+	references = rememberRecent(references, "ssh://second/work/project", 4)
+	if len(references) != 2 {
+		t.Fatalf("identical roots on different SSH profiles were deduplicated: %+v", references)
+	}
+}
+
 func TestRecentStoreRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	want := []recentRepository{{Path: "/w/a", LastOpened: 42}, {Path: "/w/b", LastOpened: 7}}

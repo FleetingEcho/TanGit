@@ -2,11 +2,13 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -16,6 +18,8 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"lazygitapp/internal/repository"
+	"lazygitapp/internal/sshworkspace"
+	"lazygitapp/internal/workspace"
 )
 
 type openState uint8
@@ -69,7 +73,10 @@ type app struct {
 	// can use the same clipboard and browser services as pointer actions.
 	services ui.Services
 
-	path       string
+	path string
+	// location is the stable local/SSH identity used by tabs and recents.
+	// snapshot.Root remains the native root used by repository operations.
+	location   workspace.Location
 	state      openState
 	snapshot   repository.Snapshot
 	session    repository.Session
@@ -116,6 +123,12 @@ type app struct {
 	// term owns the bottom panel's shells, tabs, splits and restored height.
 	term terminalState
 
+	// remoteTransfers owns this page's lazy transfer manager and all of its
+	// callbacks. The shell closes it before replacing or shutting down a page.
+	remoteTransfers remoteTransferUIState
+	// localTransfers tracks independent cancellable native-drop imports.
+	localTransfers localTransferUIState
+
 	// pathUserData caches the per-user directory the history is stored in,
 	// "" until a window exists to resolve it from.
 	pathUserData       string
@@ -141,6 +154,30 @@ type app struct {
 	settingsLoaded bool
 	settingsOpen   bool
 	settingsPage   int
+	// SSH profiles persist in settings, but their credentials never do. The
+	// form's sensitive drafts are cleared on save/close; session secrets shadow
+	// older keychain values when the system credential store is unavailable.
+	sshWorkspaceOpen          bool
+	sshWorkspaceProfileID     string
+	sshWorkspaceRoot          string
+	sshWorkspaceError         string
+	sshWorkspaceResolving     bool
+	sshWorkspaceResolveSeq    uint64
+	sshWorkspaceResolveCancel context.CancelFunc
+	sshProfileFormOpen        bool
+	sshProfileDraft           sshProfileDraft
+	sshProfileFormError       string
+	sshProfileFormNotice      string
+	sshSecretBackend          sshKeychain
+	sshSessionSecrets         map[string]string
+	sshSecretsMu              sync.RWMutex
+	sshTestConnection         func(context.Context, sshworkspace.Profile, sshProfileSecrets) error
+	sshProfileTestBusy        bool
+	sshProfileTestSeq         uint64
+	sshProfileTestCancel      context.CancelFunc
+	// A handshake owns this prompt only until it receives the user's trust
+	// decision or its open/test context is cancelled.
+	sshHostKeyPrompt *sshHostKeyPrompt
 	// customEditorForm drafts a persistent external-editor preset in Settings.
 	customEditorFormOpen    bool
 	customEditorFormName    string
@@ -745,7 +782,9 @@ func newApp(opener repositoryOpener) *app {
 		mergeAuto: true,
 		// The settings modal starts at the stored values, defaults until the
 		// settings file is read.
-		settings: defaultSettings(),
+		settings:          defaultSettings(),
+		sshSecretBackend:  mygo.Secrets,
+		sshSessionSecrets: map[string]string{},
 		// The file history drawer is wide enough for its three columns.
 		fileHistoryWidth:         80,
 		fileHistoryCommitPercent: 30,
@@ -757,6 +796,10 @@ func newApp(opener repositoryOpener) *app {
 			listWidth: 280,
 		},
 	}
+	if prepared, ok := opener.(interface{ forApp(*app) repositoryOpener }); ok {
+		a.opener = prepared.forApp(a)
+	}
+	a.sshTestConnection = a.testSSHConnection
 	a.code.paneWidth = 300
 	a.code.markdownPreviewPercent = 50
 	a.code.selectedRow, a.code.selectedSource = -1, -1
@@ -1038,6 +1081,11 @@ func launchPath(args []string) string {
 		if arg == "" || strings.HasPrefix(arg, "-") {
 			continue
 		}
+		// SSH references are already absolute workspace identities. Resolving
+		// them as native paths would turn ssh:// into a local ssh:/ path.
+		if remote, ok := canonicalRemoteReference(arg); ok {
+			return remote
+		}
 		// Resolve a terminal path while the caller's working directory is
 		// unambiguous. The initial tab, errors, and recent list then all use
 		// the same repository name, including when the argument contains spaces.
@@ -1064,14 +1112,21 @@ func Main() {
 	// The window reads the history and settings once it exists: the data
 	// directory is resolved from the application, so a first frame already
 	// has the chosen theme and the recent repositories.
-	opener := repository.Opener{}
+	opener := newSSHWorkspaceOpener(repository.Opener{})
 	path := launchPath(os.Args[1:])
 	mygo.App.WhenReady(func() {
 		openAppWindow(opener, path)
 		setupTray()
 	})
-	if err := mygo.App.Run(); err != nil {
-		log.Fatal(err)
+	runErr := mygo.App.Run()
+	// OnClosed has already cancelled every page's queue. Let their SFTP
+	// cleanup finish before the opener closes the clients those queues use.
+	waitForRemoteTransferClose()
+	if err := opener.Close(); err != nil {
+		runErr = errors.Join(runErr, err)
+	}
+	if runErr != nil {
+		log.Fatal(runErr)
 	}
 }
 
@@ -1096,25 +1151,29 @@ func openAppWindow(opener repositoryOpener, path string) {
 			allowClose = false
 			return
 		}
-		dirty := false
-		for _, page := range s.tabs {
-			dirty = dirty || len(page.app.dirtyCodePaths()) > 0
-		}
-		if !dirty {
-			return
-		}
 		e.PreventDefault()
 		wasQuitting := quitting
 		quitting = false
-		win.Show()
-		win.Focus()
-		s.confirmCodeTabs(append([]*tab(nil), s.tabs...), func() {
-			allowClose = true
-			if wasQuitting {
-				mygo.App.Quit()
-			} else {
-				win.Close()
-			}
+		closing := append([]*tab(nil), s.tabs...)
+		dirty := false
+		for _, page := range closing {
+			dirty = dirty || len(page.app.dirtyCodePaths()) > 0
+		}
+		if dirty {
+			win.Show()
+			win.Focus()
+		}
+		s.confirmCodeTabs(closing, func() {
+			// OnClosed is too late to flush remote Changes edits: the window and
+			// its event loop may already be gone. Prepare first, then close for real.
+			s.prepareTabsShutdown(closing, func() {
+				allowClose = true
+				if wasQuitting {
+					mygo.App.Quit()
+				} else {
+					win.Close()
+				}
+			})
 		})
 	})
 	win.OnClosed(s.shutdown)

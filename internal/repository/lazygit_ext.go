@@ -50,9 +50,9 @@ func (s *gitSession) recentCommits(limit int) ([]*models.Commit, error) {
 	if !s.headHasCommit() {
 		return nil, nil
 	}
-	return s.git.Loaders.CommitLoader.GetCommits(git_commands.GetCommitsOptions{
+	commits, err := s.git.Loaders.CommitLoader.GetCommits(git_commands.GetCommitsOptions{
 		Limit:                limit,
-		IncludeRebaseCommits: true,
+		IncludeRebaseCommits: s.sshClient == nil,
 		// Internal recovery objects are reachable from refs, but are not user
 		// history. Git's exclusion applies together with --all below.
 		RefName:      "--exclude=refs/tangit/*",
@@ -60,6 +60,14 @@ func (s *gitSession) recentCommits(limit int) ([]*models.Commit, error) {
 		MainBranches: s.commitMainBranches,
 		HashPool:     s.hashPool,
 	})
+	if err != nil || s.sshClient == nil {
+		return commits, err
+	}
+	pending, err := s.remoteRebaseCommits()
+	if err != nil {
+		return nil, err
+	}
+	return append(pending, commits...), nil
 }
 
 // headHasCommit reports whether HEAD names a commit. A repository Git has

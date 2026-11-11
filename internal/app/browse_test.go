@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo"
+
+	"lazygitapp/internal/workspace"
 )
 
 func holdRepositoryFolderDialog(t *testing.T) (chan mygo.OpenDialogOptions, chan []string) {
@@ -77,6 +79,19 @@ func TestBrowseEmptySelectionDoesNotRepaint(t *testing.T) {
 		t.Fatalf("an empty selection changed state: path=%q state=%v error=%q",
 			a.path, a.state, a.errMessage)
 	}
+}
+
+func TestBrowseSSHWorkspaceUsesLocalDialogDefault(t *testing.T) {
+	a := newApp(fakeOpener{})
+	observeBrowseRepaints(a)
+	a.location = workspace.Location{Kind: workspace.SSH, ProfileID: "test", Root: "/srv/repo"}
+	a.path = "ssh://test/srv/repo"
+	started, release := holdRepositoryFolderDialog(t)
+	a.browse()
+	if options := <-started; options.DefaultPath != "" {
+		t.Fatalf("native folder dialog received remote default %q", options.DefaultPath)
+	}
+	release <- nil
 }
 
 func TestBrowseCurrentSelectionUsesCapturedOptionsAndOpens(t *testing.T) {

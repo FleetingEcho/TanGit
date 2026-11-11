@@ -15,6 +15,159 @@ func (o fixtureOpener) Open(context.Context, string) (repository.Session, error)
 }
 func (fixtureOpener) Init(context.Context, string) error { return nil }
 
+type closeTrackingSession struct {
+	fakeSession
+	closeCalls int
+}
+
+func (s *closeTrackingSession) Close() error {
+	s.closeCalls++
+	return nil
+}
+
+func TestShutdownClosesAnInstalledSessionOnlyOnce(t *testing.T) {
+	session := &closeTrackingSession{fakeSession: fakeSession{snapshot: repository.Snapshot{
+		Root: "/work/closable", Branch: "main",
+	}}}
+	a := newApp(fixtureOpener{session: session})
+	a.path = session.snapshot.Root
+	updated := newUpdates()
+	a.update = updated.update
+	a.beginOpen()
+	updated.waitForUpdate(t)
+	if a.session != session || a.state != stateReady {
+		t.Fatalf("closable session was not installed: state=%v", a.state)
+	}
+
+	a.shutdown()
+	a.shutdown()
+	if session.closeCalls != 1 {
+		t.Fatalf("Close called %d times, want once", session.closeCalls)
+	}
+}
+
+type blockedCoreCloseSession struct {
+	closeTrackingSession
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *blockedCoreCloseSession) CoreSnapshot(context.Context) (repository.Snapshot, error) {
+	close(s.started)
+	<-s.release
+	return s.snapshot, nil
+}
+
+func (s *blockedCoreCloseSession) DetailsSnapshot(context.Context) (repository.Snapshot, error) {
+	return repository.Snapshot{}, nil
+}
+
+func TestOpenClosesASessionWhoseCoreArrivesAfterShutdown(t *testing.T) {
+	session := &blockedCoreCloseSession{
+		closeTrackingSession: closeTrackingSession{fakeSession: fakeSession{snapshot: repository.Snapshot{
+			Root: "/work/late", Branch: "main",
+		}}},
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	a := newApp(fixtureOpener{session: session})
+	a.path = session.snapshot.Root
+	updated := newUpdates()
+	a.update = updated.update
+	a.beginOpen()
+	<-session.started
+	a.shutdown()
+	close(session.release)
+	updated.waitForUpdate(t)
+
+	if session.closeCalls != 1 {
+		t.Fatalf("late core session Close called %d times, want once", session.closeCalls)
+	}
+	if a.session != nil || a.state != stateEmpty {
+		t.Fatalf("late core reopened a closed workspace: state=%v session=%T", a.state, a.session)
+	}
+}
+
+type panickingSnapshotCloseSession struct{ closeTrackingSession }
+
+func (s *panickingSnapshotCloseSession) Snapshot(context.Context) (repository.Snapshot, error) {
+	panic("snapshot failed")
+}
+
+type panickingProgressiveCloseSession struct {
+	closeTrackingSession
+	panicCore    bool
+	panicDetails bool
+}
+
+func (s *panickingProgressiveCloseSession) CoreSnapshot(context.Context) (repository.Snapshot, error) {
+	if s.panicCore {
+		panic("core failed")
+	}
+	return s.snapshot, nil
+}
+
+func (s *panickingProgressiveCloseSession) DetailsSnapshot(context.Context) (repository.Snapshot, error) {
+	if s.panicDetails {
+		panic("details failed")
+	}
+	return repository.Snapshot{}, nil
+}
+
+func TestPreInstallPanicsCloseTheirSessions(t *testing.T) {
+	for _, name := range []string{"snapshot", "core"} {
+		t.Run(name, func(t *testing.T) {
+			var session repository.Session
+			var closer *closeTrackingSession
+			if name == "snapshot" {
+				owned := &panickingSnapshotCloseSession{}
+				owned.snapshot.Root = "/work/panicking"
+				closer = &owned.closeTrackingSession
+				session = owned
+			} else {
+				owned := &panickingProgressiveCloseSession{panicCore: true}
+				owned.snapshot.Root = "/work/panicking"
+				closer = &owned.closeTrackingSession
+				session = owned
+			}
+			a := newApp(fixtureOpener{session: session})
+			a.path = "/work/panicking"
+			updated := newUpdates()
+			a.update = updated.update
+			a.beginOpen()
+			updated.waitForUpdate(t)
+			if closer.closeCalls != 1 {
+				t.Fatalf("Close called %d times after panic, want once", closer.closeCalls)
+			}
+			if a.state != stateError || a.session != nil {
+				t.Fatalf("panicking open installed a session: state=%v session=%T", a.state, a.session)
+			}
+		})
+	}
+}
+
+func TestInstalledDetailsPanicLeavesShutdownAsOwner(t *testing.T) {
+	session := &panickingProgressiveCloseSession{panicDetails: true}
+	session.snapshot = repository.Snapshot{Root: "/work/details", Branch: "main"}
+	a := newApp(fixtureOpener{session: session})
+	a.path = session.snapshot.Root
+	updated := newUpdates()
+	a.update = updated.update
+	a.beginOpen()
+	updated.waitForUpdate(t) // Install the core.
+	updated.waitForUpdate(t) // Recover the details panic.
+	if session.closeCalls != 0 {
+		t.Fatalf("details panic closed the installed session %d times", session.closeCalls)
+	}
+	if a.session != session || a.state != stateReady {
+		t.Fatalf("details panic discarded the installed core: state=%v", a.state)
+	}
+	a.shutdown()
+	if session.closeCalls != 1 {
+		t.Fatalf("shutdown Close calls = %d, want one", session.closeCalls)
+	}
+}
+
 type blockedProgressiveSession struct {
 	fakeSession
 	core           repository.Snapshot

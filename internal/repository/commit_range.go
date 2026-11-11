@@ -29,7 +29,7 @@ func (s *gitSession) CherryPickCommits(ctx context.Context, selected []Commit) e
 	if len(selected) == 0 {
 		return fmt.Errorf("select commits first")
 	}
-	if state := s.git.Status.WorkingTreeState(); state.Any() {
+	if state := s.workingTreeState(); state.Any() {
 		return fmt.Errorf("finish or abort the %s in progress first", state.Effective().CommandName())
 	}
 	commits := make([]*models.Commit, 0, len(selected))
@@ -93,9 +93,9 @@ func (s *gitSession) EditCommitRange(ctx context.Context, selected []Commit, act
 			cmd = todo.Fixup
 		}
 		// Retain the oldest selected commit, folding only its selected successors.
-		return s.git.Rebase.InteractiveRebase(commits, first, last-1, cmd, "")
+		return s.interactiveRebase(commits, first, last-1, cmd, "")
 	case RangeDrop:
-		return s.git.Rebase.InteractiveRebase(commits, first, last, todo.Drop, "")
+		return s.interactiveRebase(commits, first, last, todo.Drop, "")
 	case RangeMoveNewer:
 		if first == 0 {
 			return fmt.Errorf("selection is already at HEAD")
@@ -103,7 +103,7 @@ func (s *gitSession) EditCommitRange(ctx context.Context, selected []Commit, act
 		if commits[first-1].IsMerge() {
 			return fmt.Errorf("cannot move across a merge commit")
 		}
-		return s.git.Rebase.MoveCommitsUp(commits, first, last)
+		return s.moveCommits(commits, first, last, -1)
 	case RangeMoveOlder:
 		if last == len(commits)-1 {
 			return fmt.Errorf("selection includes the root commit")
@@ -111,7 +111,7 @@ func (s *gitSession) EditCommitRange(ctx context.Context, selected []Commit, act
 		if commits[last+1].IsMerge() {
 			return fmt.Errorf("cannot move across a merge commit")
 		}
-		return s.git.Rebase.MoveCommitsDown(commits, first, last)
+		return s.moveCommits(commits, first, last, 1)
 	default:
 		return fmt.Errorf("unknown range action %q", action)
 	}

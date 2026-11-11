@@ -85,6 +85,10 @@ func (a *app) requestFileEdit() {
 		return
 	}
 	path := file.Path
+	if a.location.IsRemote() {
+		a.requestRemoteFileEdit(path)
+		return
+	}
 	onDisk := a.workingFilePath(path)
 	a.fileEditToken++
 	token := a.fileEditToken
@@ -147,6 +151,10 @@ func (a *app) requestFileEdit() {
 // loses the last keys. A failed write is kept on screen and tried again when
 // the text changes.
 func (a *app) saveFileEdits() {
+	if a.location.IsRemote() {
+		a.saveRemoteFileEdits(nil)
+		return
+	}
 	state := a.fileEditState
 	if state == nil || state.Buffer == nil || !state.Buffer.Modified() {
 		return
@@ -176,6 +184,10 @@ func (a *app) closeFileEdit() {
 	if !a.fileEditing {
 		return
 	}
+	if a.location.IsRemote() {
+		a.closeRemoteFileEdit()
+		return
+	}
 	a.saveFileEdits()
 	a.resetFileEdit()
 	a.resetFileDiff()
@@ -183,6 +195,10 @@ func (a *app) closeFileEdit() {
 
 // resetFileEdit drops the pane's file editor and anything reading one.
 func (a *app) resetFileEdit() {
+	a.code.remoteFileEdit.save.invalidate()
+	a.code.remoteFileEdit.client = nil
+	a.code.remoteFileEdit.stampKnown = false
+	a.code.remoteFileEdit.closing = false
 	a.fileEditing = false
 	a.fileEditKey = ""
 	a.fileEditState = nil
@@ -212,6 +228,19 @@ func (a *app) syncFileEdit(file repository.File) {
 		return
 	}
 	if a.fileEditKey == file.Path && file.Unstaged && !file.Deleted {
+		return
+	}
+	if a.location.IsRemote() {
+		if a.code.remoteFileEdit.closing {
+			return
+		}
+		a.code.remoteFileEdit.closing = true
+		a.saveRemoteFileEdits(func(ok bool) {
+			a.code.remoteFileEdit.closing = false
+			if ok {
+				a.resetFileEdit()
+			}
+		})
 		return
 	}
 	a.saveFileEdits()

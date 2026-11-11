@@ -4,6 +4,7 @@ package app
 // the original monolithic catalogs. Git diagnostics themselves remain intact.
 var cloneTranslations = map[string]map[string]string{
 	"zh-Hans": {
+		"Open SSH": "打开 SSH", "Clone": "克隆",
 		"Clone remote repository…": "克隆远程仓库…", "Clone remote repository": "克隆远程仓库",
 		"Clone an HTTPS or SSH repository and open it (C)": "克隆 HTTPS 或 SSH 仓库并打开 (C)",
 		"Clone a remote repository":                        "克隆远程仓库", "Clone and open": "克隆并打开",
@@ -36,6 +37,7 @@ var cloneTranslations = map[string]map[string]string{
 		"repository URL contains credentials or a token; use a Git credential helper or SSH agent instead": "仓库 URL 包含凭据或令牌；请改用 Git 凭据助手或 SSH 代理",
 	},
 	"zh-Hant": {
+		"Open SSH": "開啟 SSH", "Clone": "複製",
 		"Clone remote repository…": "複製遠端儲存庫…", "Clone remote repository": "複製遠端儲存庫",
 		"Clone an HTTPS or SSH repository and open it (C)": "複製 HTTPS 或 SSH 儲存庫並開啟 (C)",
 		"Clone a remote repository":                        "複製遠端儲存庫", "Clone and open": "複製並開啟",
@@ -68,6 +70,7 @@ var cloneTranslations = map[string]map[string]string{
 		"repository URL contains credentials or a token; use a Git credential helper or SSH agent instead": "儲存庫 URL 含有憑證或權杖；請改用 Git 憑證協助程式或 SSH 代理程式",
 	},
 	"ja": {
+		"Open SSH": "SSH を開く", "Clone": "クローン",
 		"Clone remote repository…": "リモートリポジトリをクローン…", "Clone remote repository": "リモートリポジトリをクローン",
 		"Clone an HTTPS or SSH repository and open it (C)": "HTTPS または SSH リポジトリをクローンして開く (C)",
 		"Clone a remote repository":                        "リモートリポジトリをクローン", "Clone and open": "クローンして開く",
@@ -100,6 +103,7 @@ var cloneTranslations = map[string]map[string]string{
 		"repository URL contains credentials or a token; use a Git credential helper or SSH agent instead": "リポジトリ URL に認証情報またはトークンが含まれています。Git 認証情報ヘルパーまたは SSH エージェントを使用してください",
 	},
 	"es": {
+		"Open SSH": "Abrir SSH", "Clone": "Clonar",
 		"Clone remote repository…": "Clonar repositorio remoto…", "Clone remote repository": "Clonar repositorio remoto",
 		"Clone an HTTPS or SSH repository and open it (C)": "Clonar un repositorio HTTPS o SSH y abrirlo (C)",
 		"Clone a remote repository":                        "Clonar un repositorio remoto", "Clone and open": "Clonar y abrir",
@@ -132,6 +136,7 @@ var cloneTranslations = map[string]map[string]string{
 		"repository URL contains credentials or a token; use a Git credential helper or SSH agent instead": "la URL del repositorio contiene credenciales o un token; usa un asistente de credenciales de Git o un agente SSH",
 	},
 	"fr": {
+		"Open SSH": "Ouvrir SSH", "Clone": "Cloner",
 		"Clone remote repository…": "Cloner un dépôt distant…", "Clone remote repository": "Cloner un dépôt distant",
 		"Clone an HTTPS or SSH repository and open it (C)": "Cloner un dépôt HTTPS ou SSH et l’ouvrir (C)",
 		"Clone a remote repository":                        "Cloner un dépôt distant", "Clone and open": "Cloner et ouvrir",

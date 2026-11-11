@@ -4,13 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+
+	"lazygitapp/internal/sshworkspace"
+	"lazygitapp/internal/workspace"
 
 	"github.com/jesseduffield/lazygit/pkg/commands"
 	"github.com/jesseduffield/lazygit/pkg/commands/git_commands"
@@ -549,8 +554,17 @@ type gitSession struct {
 	mainBranches       *git_commands.MainBranches
 	commitMainBranches *git_commands.MainBranches
 	hashPool           *utils.StringPool
-	// reviewMu keeps a read-modify-write of the local review file together.
+	// reviewMu keeps a read-modify-write of the repository's review file together.
 	reviewMu sync.Mutex
+	// Remote identity is optional for ordinary local sessions. owner is the
+	// session's pool lease (or another lifecycle owner), not necessarily client.
+	sshClient *sshworkspace.Client
+	remote    *sshCmdObjRunner
+	location  workspace.Location
+	files     sessionFiles
+	owner     io.Closer
+	closeOnce sync.Once
+	closeErr  error
 	// Keep numstat's rename detection identical to the commit file loader's.
 	renameSimilarityThreshold int
 }
@@ -579,11 +593,33 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 
-	branchInfo, err := s.git.Branch.CurrentBranchInfo()
+	var branchInfo git_commands.BranchInfo
+	var err error
+	if s.sshClient != nil {
+		// Avoid Lazygit's cached host-side branch discovery entirely. Resolving
+		// HEAD is one small remote Git read and also covers detached rebases.
+		var stdout, stderr string
+		stdout, stderr, err = s.cmd.New([]string{"git", "symbolic-ref", "--quiet", "--short", "HEAD"}).RunWithOutputs()
+		if err == nil {
+			branchInfo.RefName = strings.TrimSpace(stdout)
+			branchInfo.DisplayName = branchInfo.RefName
+		} else if code, ok := commandExitCode(err); ok && code == 1 {
+			stdout, stderr, err = s.cmd.New([]string{"git", "rev-parse", "--verify", "HEAD"}).RunWithOutputs()
+			if err == nil {
+				branchInfo.RefName = strings.TrimSpace(stdout)
+				branchInfo.DisplayName = branchInfo.RefName
+				branchInfo.DetachedHead = true
+			}
+		} else if strings.TrimSpace(stderr) != "" {
+			err = fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr))
+		}
+	} else {
+		branchInfo, err = s.git.Branch.CurrentBranchInfo()
+	}
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("read current branch: %w", err)
 	}
-	workingTreeState := s.git.Status.WorkingTreeState()
+	workingTreeState := s.workingTreeState()
 	operation := ""
 	if workingTreeState.Any() {
 		operation = workingTreeState.Effective().CommandName()
@@ -592,7 +628,10 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 	// Snapshots run unattended and the filesystem watcher observes .git. Keep
 	// optional locks disabled so status does not refresh the index through an
 	// index.lock file and mistake its own housekeeping for an external change.
-	modelFiles := s.git.Loaders.FileLoader.GetStatusFiles(git_commands.GetStatusFileOptions{Background: true})
+	modelFiles, err := s.statusFiles(git_commands.GetStatusFileOptions{Background: true})
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("load working-tree status: %w", err)
+	}
 	// Lazygit's status loader leaves line counts at zero. One batch numstat
 	// from HEAD to the working tree counts the final content accurately even
 	// when staged and unstaged edits overlap; adding the two diffs separately
@@ -722,7 +761,7 @@ func (s *gitSession) DetailsSnapshot(ctx context.Context) (Snapshot, error) {
 	for _, tag := range modelTags {
 		tags = append(tags, Tag{Name: tag.Name, Message: tag.Message})
 	}
-	modelWorktrees, err := s.git.Loaders.Worktrees.GetWorktrees()
+	modelWorktrees, err := s.sessionWorktrees()
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("load worktrees: %w", err)
 	}
@@ -739,7 +778,7 @@ func (s *gitSession) DetailsSnapshot(ctx context.Context) (Snapshot, error) {
 			OperationLive: worktree.IsRebasingOrBisecting,
 		})
 	}
-	modelSubmodules, err := s.git.Submodule.GetConfigs(nil)
+	modelSubmodules, err := s.submoduleConfigs(nil)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("load submodules: %w", err)
 	}
@@ -839,11 +878,10 @@ func (s *gitSession) Diff(ctx context.Context, file File, options DiffOptions) (
 		args := append([]string{"git", "diff", "--no-index", "--no-color", "--no-ext-diff"}, optionArgs...)
 		args = append(args, "--", "/dev/null")
 		args = append(args, paths...)
-		outputBytes, commandErr := backgroundExec(s.cmd.New(args)).CombinedOutput()
+		outputBytes, commandErr := s.combinedOutput(s.cmd.New(args))
 		if commandErr != nil {
-			var exitError *exec.ExitError
 			// Git uses status 1 to report that the two sides differ.
-			if !errors.As(commandErr, &exitError) || exitError.ExitCode() != 1 {
+			if exitCode, ok := commandExitCode(commandErr); !ok || exitCode != 1 {
 				return Diff{}, fmt.Errorf("load untracked file diff: %w: %s", commandErr, outputBytes)
 			}
 		}
@@ -854,7 +892,7 @@ func (s *gitSession) Diff(ctx context.Context, file File, options DiffOptions) (
 		// An empty file has nothing for git to report, and a directory has no
 		// content to show; reading the path tells the two apart as the pane
 		// always has.
-		content, err := os.ReadFile(filepath.Join(s.git.RepoPaths.WorktreePath(), file.Path))
+		content, err := s.fileService().ReadFile(s.joinPath(s.git.RepoPaths.WorktreePath(), file.Path))
 		if err != nil {
 			return Diff{}, fmt.Errorf("read untracked file: %w", err)
 		}
@@ -943,14 +981,13 @@ func (s *gitSession) diffLineStats(cached bool, base string) (map[string]commitL
 // the two sides differ; that is the expected result, not a failed statistics
 // read. An empty file produces no numstat record.
 func (s *gitSession) untrackedLineStats(path string) (commitLineStats, error) {
-	command := backgroundExec(s.cmd.New([]string{
+	command := s.cmd.New([]string{
 		"git", "diff", "--no-index", "--no-ext-diff", "--numstat", "-z",
 		"/dev/null", "--", path,
-	}))
-	outputBytes, err := command.CombinedOutput()
+	})
+	outputBytes, err := s.combinedOutput(command)
 	if err != nil {
-		var exitError *exec.ExitError
-		if !errors.As(err, &exitError) || exitError.ExitCode() != 1 {
+		if exitCode, ok := commandExitCode(err); !ok || exitCode != 1 {
 			return commitLineStats{}, fmt.Errorf("%w: %s", err, outputBytes)
 		}
 	}
@@ -999,19 +1036,11 @@ func (s *gitSession) ApplyCachedPatch(ctx context.Context, patchText string, rev
 	// Git reads the patch from a file of the app's own, which is absolute:
 	// the command runs in the worktree, so a relative path would resolve
 	// against it rather than against the process' temporary folder.
-	file, err := os.CreateTemp("", "tangit-line-stage-*.patch")
+	name, cleanup, err := s.temporaryFile("tangit-line-stage-*.patch", []byte(patchText), 0o600)
 	if err != nil {
 		return fmt.Errorf("write the patch: %w", err)
 	}
-	name := file.Name()
-	defer os.Remove(name)
-	if _, err := file.WriteString(patchText); err != nil {
-		file.Close()
-		return fmt.Errorf("write the patch: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("write the patch: %w", err)
-	}
+	defer cleanup()
 	args := []string{"git", "apply", "--cached"}
 	if reverse {
 		args = append(args, "--reverse")
@@ -1057,19 +1086,11 @@ func (s *gitSession) applyWorkingTreePatch(ctx context.Context, patchText string
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	file, err := os.CreateTemp("", "tangit-worktree-*.patch")
+	name, cleanup, err := s.temporaryFile("tangit-worktree-*.patch", []byte(patchText), 0o600)
 	if err != nil {
 		return fmt.Errorf("write the patch: %w", err)
 	}
-	name := file.Name()
-	defer os.Remove(name)
-	if _, err := file.WriteString(patchText); err != nil {
-		file.Close()
-		return fmt.Errorf("write the patch: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("write the patch: %w", err)
-	}
+	defer cleanup()
 	args := []string{"git", "apply", "--recount"}
 	if reverse {
 		args = append(args, "--reverse")
@@ -1142,11 +1163,11 @@ func (s *gitSession) discardFile(ctx context.Context, file File) error {
 				return err
 			}
 		}
-		path, err := worktreeFilePath(s.git.RepoPaths.WorktreePath(), file.Path)
+		path, err := s.worktreeFilePath(s.git.RepoPaths.WorktreePath(), file.Path)
 		if err != nil {
 			return err
 		}
-		if err := os.RemoveAll(path); err != nil {
+		if err := s.fileService().RemoveAll(path); err != nil {
 			return fmt.Errorf("remove untracked file: %w", err)
 		}
 		return nil
@@ -1728,27 +1749,20 @@ func (s *gitSession) StashPatch(ctx context.Context, message, patchText, removal
 	if err != nil {
 		return fmt.Errorf("stash selected lines: HEAD is required")
 	}
-	patchFile, err := os.CreateTemp("", "tangit-stash-*.patch")
+	patchName, removePatch, err := s.temporaryFile("tangit-stash-*.patch", []byte(patchText), 0o600)
 	if err != nil {
 		return err
 	}
-	patchName := patchFile.Name()
-	defer os.Remove(patchName)
-	if _, err := patchFile.WriteString(patchText); err != nil {
-		patchFile.Close()
-		return err
-	}
-	if err := patchFile.Close(); err != nil {
-		return err
-	}
-	scratch, err := os.CreateTemp("", "tangit-stash-index-")
+	defer removePatch()
+	indexName, removeIndex, err := s.temporaryFile("tangit-stash-index-", nil, 0o600)
 	if err != nil {
 		return err
 	}
-	indexName := scratch.Name()
-	scratch.Close()
-	os.Remove(indexName)
-	defer os.Remove(indexName)
+	defer removeIndex()
+	// Git creates the temporary index itself.
+	if err := s.fileService().Remove(indexName); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	env := []string{"GIT_INDEX_FILE=" + indexName}
 	if output, err := s.cmd.New([]string{"git", "read-tree", base}).AddEnvVars(env...).RunWithOutput(); err != nil {
 		return fmt.Errorf("stash selected lines: prepare temporary index: %w: %s", err, strings.TrimSpace(output))
@@ -1793,7 +1807,7 @@ func (s *gitSession) StashStagedChanges(ctx context.Context, message string) err
 	if message == "" {
 		message = "Desktop stash"
 	}
-	if err := s.git.Stash.SaveStagedChanges(message); err != nil {
+	if err := s.saveStagedChanges(message); err != nil {
 		return fmt.Errorf("stash staged changes: %w", err)
 	}
 	return nil
@@ -2000,14 +2014,15 @@ func (s *gitSession) treeEntry(tree, name string) (string, string, bool, error) 
 // it. The index it works through is a scratch file, so the repository's own
 // index never moves.
 func (s *gitSession) treeWithout(names []string, tree, base string) (string, error) {
-	scratch, err := os.CreateTemp("", "tan-git-stash-index-")
+	index, removeIndex, err := s.temporaryFile("tan-git-stash-index-", nil, 0o600)
 	if err != nil {
 		return "", err
 	}
-	index := scratch.Name()
-	scratch.Close()
-	os.Remove(index) // git insists on making the index itself
-	defer os.Remove(index)
+	defer removeIndex()
+	// Git insists on making the index itself.
+	if err := s.fileService().Remove(index); err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
 	env := []string{"GIT_INDEX_FILE=" + index}
 	if err := s.cmd.New([]string{"git", "read-tree", tree}).AddEnvVars(env...).Run(); err != nil {
 		return "", err
@@ -2154,8 +2169,11 @@ func (s *gitSession) dropWorktreeFile(name string) error {
 	}
 	// The name comes from git's own listing; the join keeps it within the
 	// working tree all the same.
-	target := filepath.Join(root, filepath.Clean("/"+name))
-	if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
+	target, err := s.worktreeFilePath(root, name)
+	if err != nil {
+		return err
+	}
+	if err := s.fileService().Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	return nil
@@ -2455,7 +2473,7 @@ func (s *gitSession) finishOperation(ctx context.Context, action string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	state := s.git.Status.WorkingTreeState()
+	state := s.workingTreeState()
 	if state.None() {
 		return fmt.Errorf("no merge, rebase, cherry-pick, or revert is in progress")
 	}
@@ -2525,13 +2543,13 @@ func (s *gitSession) DeleteSubmodule(ctx context.Context, path string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	configs, err := s.git.Submodule.GetConfigs(nil)
+	configs, err := s.submoduleConfigs(nil)
 	if err != nil {
 		return fmt.Errorf("load submodule: %w", err)
 	}
 	for _, config := range configs {
 		if config.FullPath() == path {
-			if err := s.git.Submodule.Delete(config); err != nil {
+			if err := s.deleteSubmodule(config); err != nil {
 				return fmt.Errorf("delete submodule: %w", err)
 			}
 			return nil
@@ -2559,27 +2577,25 @@ func ignoreRule(path string) string {
 // appendIgnoreRule writes beside the repository, never relative to TanGit's
 // process working directory. Lazygit's high-level Ignore helper uses the
 // latter, which is correct in its terminal process but not in this desktop one.
-func appendIgnoreRule(filename, path string) error {
-	file, err := os.OpenFile(filename, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0o600)
+func (s *gitSession) appendIgnoreRule(filename, filePath string) error {
+	content, err := s.fileService().ReadFile(filename)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	file, err := s.fileService().OpenAppend(filename, 0o600)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
-	if info, err := file.Stat(); err != nil {
-		return err
-	} else if info.Size() > 0 {
-		last := []byte{0}
-		if _, err := file.ReadAt(last, info.Size()-1); err != nil {
-			return err
-		}
-		if last[0] != '\n' {
-			if _, err := file.WriteString("\n"); err != nil {
-				return err
-			}
-		}
+	text := ignoreRule(filePath) + "\n"
+	if len(content) > 0 && content[len(content)-1] != '\n' {
+		text = "\n" + text
 	}
-	_, err = file.WriteString(ignoreRule(path) + "\n")
-	return err
+	_, writeErr := io.WriteString(file, text)
+	closeErr := file.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	return closeErr
 }
 
 func (s *gitSession) IgnoreFile(ctx context.Context, file File) error {
@@ -2589,8 +2605,8 @@ func (s *gitSession) IgnoreFile(ctx context.Context, file File) error {
 	if file.Tracked || file.Staged {
 		return fmt.Errorf("ignore untracked, unstaged file: %s is tracked or staged", file.Path)
 	}
-	filename := filepath.Join(s.git.RepoPaths.WorktreePath(), ".gitignore")
-	if err := appendIgnoreRule(filename, file.Path); err != nil {
+	filename := s.joinPath(s.git.RepoPaths.WorktreePath(), ".gitignore")
+	if err := s.appendIgnoreRule(filename, file.Path); err != nil {
 		return fmt.Errorf("ignore file: %w", err)
 	}
 	return nil
@@ -2603,11 +2619,11 @@ func (s *gitSession) ExcludeFile(ctx context.Context, file File) error {
 	if file.Tracked || file.Staged {
 		return fmt.Errorf("exclude untracked, unstaged file: %s is tracked or staged", file.Path)
 	}
-	infoDir := filepath.Join(s.git.RepoPaths.RepoGitDirPath(), "info")
-	if err := os.MkdirAll(infoDir, 0o755); err != nil {
+	infoDir := s.joinPath(s.git.RepoPaths.RepoGitDirPath(), "info")
+	if err := s.fileService().MkdirAll(infoDir, 0o755); err != nil {
 		return fmt.Errorf("exclude file: %w", err)
 	}
-	if err := appendIgnoreRule(filepath.Join(infoDir, "exclude"), file.Path); err != nil {
+	if err := s.appendIgnoreRule(s.joinPath(infoDir, "exclude"), file.Path); err != nil {
 		return fmt.Errorf("exclude file: %w", err)
 	}
 	return nil
@@ -3061,10 +3077,17 @@ func (s *gitSession) FileCommits(ctx context.Context, path string, limit, skip i
 	return commits, nil
 }
 
-func worktreeFilePath(root string, path string) (string, error) {
-	cleanPath := filepath.Clean(path)
+func (s *gitSession) worktreeFilePath(root string, filePath string) (string, error) {
+	if s.sshClient != nil {
+		cleanPath := pathpkg.Clean(filePath)
+		if cleanPath == "." || pathpkg.IsAbs(cleanPath) || cleanPath == ".." || strings.HasPrefix(cleanPath, "../") {
+			return "", fmt.Errorf("invalid repository path %q", filePath)
+		}
+		return pathpkg.Join(root, cleanPath), nil
+	}
+	cleanPath := filepath.Clean(filePath)
 	if cleanPath == "." || filepath.IsAbs(cleanPath) || cleanPath == ".." || strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("invalid repository path %q", path)
+		return "", fmt.Errorf("invalid repository path %q", filePath)
 	}
 	return filepath.Join(root, cleanPath), nil
 }

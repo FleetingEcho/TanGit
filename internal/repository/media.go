@@ -104,11 +104,11 @@ func (s *gitSession) workingTreeMedia(file File) (MediaPair, error) {
 	if err != nil {
 		return MediaPair{}, fmt.Errorf("locate working tree for media: %w", err)
 	}
-	path, err := worktreeFilePath(root, file.Path)
+	path, err := s.worktreeFilePath(root, file.Path)
 	if err != nil {
 		return MediaPair{}, err
 	}
-	pair.New, err = readLocalMedia(path)
+	pair.New, err = s.readMedia(path)
 	if err != nil {
 		return MediaPair{}, err
 	}
@@ -173,25 +173,26 @@ func (s *gitSession) stashMedia(index int, file CommitFile) (MediaPair, error) {
 // parents and paths are ordinary addition/deletion states; damaged revisions
 // and other Git failures remain errors instead of being rendered as absence.
 func (s *gitSession) gitBlobMedia(spec string) (MediaBlob, error) {
-	output, err := s.cmd.New([]string{"git", "cat-file", "-s", spec}).RunWithOutput()
+	output, stderr, err := s.output(s.cmd.New([]string{"git", "cat-file", "-s", spec}))
+	sizeOutput := strings.TrimSpace(string(output))
 	if err != nil {
-		if missingGitMediaObject(output) {
+		if missingGitMediaObject(string(stderr)) {
 			return MediaBlob{}, nil
 		}
-		return MediaBlob{}, fmt.Errorf("read media object: %w: %s", err, strings.TrimSpace(output))
+		return MediaBlob{}, fmt.Errorf("read media object: %w: %s", err, strings.TrimSpace(string(stderr)))
 	}
-	size, err := strconv.ParseInt(strings.TrimSpace(output), 10, 64)
+	size, err := strconv.ParseInt(sizeOutput, 10, 64)
 	if err != nil || size < 0 {
-		return MediaBlob{}, fmt.Errorf("read media object size: %q", strings.TrimSpace(output))
+		return MediaBlob{}, fmt.Errorf("read media object size: %q", sizeOutput)
 	}
 	if size > maxMediaSize {
 		return MediaBlob{Present: true, Unavailable: "Image is larger than 10 MiB"}, nil
 	}
-	data, err := s.cmd.New([]string{"git", "cat-file", "blob", spec}).RunWithOutput()
+	data, stderr, err := s.output(s.cmd.New([]string{"git", "cat-file", "blob", spec}))
 	if err != nil {
-		return MediaBlob{}, fmt.Errorf("read media object: %w: %s", err, strings.TrimSpace(data))
+		return MediaBlob{}, fmt.Errorf("read media object: %w: %s", err, strings.TrimSpace(string(stderr)))
 	}
-	return s.resolveLocalLFS(MediaBlob{Present: true, Data: []byte(data)})
+	return s.resolveLocalLFS(MediaBlob{Present: true, Data: data})
 }
 
 func missingGitMediaObject(output string) bool {
@@ -207,8 +208,8 @@ func missingGitMediaObject(output string) bool {
 	return false
 }
 
-func readLocalMedia(path string) (MediaBlob, error) {
-	file, err := os.Open(path)
+func (s *gitSession) readMedia(path string) (MediaBlob, error) {
+	file, err := s.fileService().Open(path)
 	if os.IsNotExist(err) {
 		return MediaBlob{}, nil
 	}
@@ -278,19 +279,23 @@ func (s *gitSession) resolveLocalLFS(blob MediaBlob) (MediaBlob, error) {
 	if pointer.size > maxMediaSize {
 		return MediaBlob{Present: true, Unavailable: "Image is larger than 10 MiB"}, nil
 	}
-	relative := filepath.Join("lfs", "objects", pointer.oid[:2], pointer.oid[2:4], pointer.oid)
-	path, err := s.gitText("rev-parse", "--git-path", filepath.ToSlash(relative))
+	relative := s.joinPath("lfs", "objects", pointer.oid[:2], pointer.oid[2:4], pointer.oid)
+	path, err := s.gitText("rev-parse", "--git-path", relative)
 	if err != nil {
 		return MediaBlob{}, fmt.Errorf("locate local Git LFS object: %w", err)
 	}
-	if !filepath.IsAbs(path) {
+	isAbsolute := filepath.IsAbs(path)
+	if s.sshClient != nil {
+		isAbsolute = strings.HasPrefix(path, "/")
+	}
+	if !isAbsolute {
 		root, rootErr := s.gitText("rev-parse", "--show-toplevel")
 		if rootErr != nil {
 			return MediaBlob{}, fmt.Errorf("locate local Git LFS object: %w", rootErr)
 		}
-		path = filepath.Join(root, path)
+		path = s.joinPath(root, path)
 	}
-	local, err := readLocalMedia(path)
+	local, err := s.readMedia(path)
 	if os.IsNotExist(err) || !local.Present {
 		return MediaBlob{Present: true, Unavailable: "Git LFS object is not available locally"}, nil
 	}

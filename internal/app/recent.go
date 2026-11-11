@@ -118,14 +118,15 @@ func saveRecentRepositories(dir string, repositories []recentRepository) error {
 // rather than to one opening of it. It copies, so the caller's slice is never
 // shared with the app's.
 func rememberRecent(repositories []recentRepository, path string, now int64) []recentRepository {
-	path = filepath.Clean(strings.TrimSpace(path))
+	path = cleanRecentPath(path)
 	if path == "" || path == "." {
 		return repositories
 	}
+	_, remote := canonicalRemoteReference(path)
 	out := make([]recentRepository, 0, len(repositories)+1)
 	out = append(out, recentRepository{Path: path, LastOpened: now})
 	for _, r := range repositories {
-		if r.Path == path {
+		if r.Path == path || remote && cleanRecentPath(r.Path) == path {
 			out[0].Name = r.Name
 			continue
 		}
@@ -194,6 +195,9 @@ func (a *app) recentNameFor(path string) string {
 // cleanRecentPath compares two ways of writing the same folder, without
 // touching the file system: the entry keeps the path it was stored with.
 func cleanRecentPath(path string) string {
+	if remote, ok := canonicalRemoteReference(path); ok {
+		return remote
+	}
 	return filepath.Clean(strings.TrimSpace(path))
 }
 

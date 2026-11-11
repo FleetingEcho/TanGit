@@ -1,17 +1,42 @@
 package app
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
 	"path"
 	"strings"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
+
+	"lazygitapp/internal/sshworkspace"
 )
 
 // codeExplorerDrag stays repository-relative and carries no row index. Virtual
 // rows can appear or disappear during a drag without changing its target.
 type codeExplorerDrag struct {
 	path string
+}
+
+// revealCodeItemInFolder is local-only. SSH paths are launched by Narwhal on
+// the remote host and never cross the host operating system's path boundary.
+var revealCodeItemInFolder = func(filename string) {
+	mygo.Shell.ShowItemInFolder(filename)
+}
+
+type remoteExplorerEnvironmentClient interface {
+	RunWithEnv(context.Context, string, map[string]string, string, ...string) (sshworkspace.ExecResult, error)
+}
+
+var runRemoteCodeItemInExplorer = func(ctx context.Context, client remoteWorkspaceClient, root, filename string) (sshworkspace.ExecResult, error) {
+	runner, ok := client.(remoteExplorerEnvironmentClient)
+	if !ok {
+		return sshworkspace.ExecResult{ExitCode: -1}, errors.New("SSH client cannot set the remote Explorer environment")
+	}
+	return runner.RunWithEnv(ctx, root, map[string]string{"DISPLAY": ":0"}, "Narwhal", filename)
 }
 
 func (a *app) applyPendingCodeActions() {
@@ -103,6 +128,9 @@ func (a *app) codeExplorerMenu(m *ui.Menu, item fileTreeRow, services ui.Service
 	if m.Item(tr("New Folder…")).Disabled(a.code.fileOperationBusy).Chosen() {
 		a.openCodeFileForm(codeFileFormNewFolder, directory, "")
 	}
+	if m.Item(tr("Open in explorer")).Chosen() {
+		a.openCodeItemInExplorer(item)
+	}
 	m.Separator()
 	if !item.isDirectory() && m.Item(tr("View File History…")).Chosen() {
 		a.openFileHistory(item.path)
@@ -115,6 +143,57 @@ func (a *app) codeExplorerMenu(m *ui.Menu, item fileTreeRow, services ui.Service
 	}
 	m.Separator()
 	a.codeCopyPathItems(m, item.path, services)
+}
+
+// openCodeItemInExplorer opens local items with the host file manager. SSH
+// items launch Narwhal on the remote desktop with their absolute POSIX path;
+// the process and its working directory never cross onto the local host.
+func (a *app) openCodeItemInExplorer(item fileTreeRow) {
+	if item.path == "" || !validCodeManagedPath(item.path) {
+		return
+	}
+	if a.location.IsRemote() {
+		a.openRemoteCodeItemInExplorer(item.path)
+		return
+	}
+	revealCodeItemInFolder(a.repositoryPath(item.path))
+}
+
+func (a *app) openRemoteCodeItemInExplorer(relative string) {
+	client, err := a.remoteWorkspaceClient()
+	if err != nil {
+		a.notify("error", "Could not open remote Explorer", safeError(err))
+		return
+	}
+	root := a.snapshot.Root
+	filename, err := remoteWorkspacePath(root, relative)
+	if err != nil {
+		a.notify("error", "Could not open remote Explorer", safeError(err))
+		return
+	}
+	generation := a.generation
+	go func() {
+		defer a.recoverBackground()
+		result, runErr := runRemoteCodeItemInExplorer(context.Background(), client, root, filename)
+		if runErr == nil {
+			return
+		}
+		if result.Output = bytes.TrimSpace(result.Output); len(result.Output) > 0 {
+			runErr = fmt.Errorf("%w: %s", runErr, result.Output)
+		}
+		a.update(func() {
+			a.reportRemoteCodeItemInExplorerError(generation, runErr)
+		})
+	}()
+}
+
+func (a *app) reportRemoteCodeItemInExplorerError(generation uint64, err error) {
+	// Closing the workspace also closes its SSH client and commands. That
+	// expected teardown must not report a stale launch error.
+	if generation != a.generation || a.state != stateReady {
+		return
+	}
+	a.notify("error", "Could not open remote Explorer", safeError(err))
 }
 
 func (a *app) codeCopyPathItems(m *ui.Menu, path string, services ui.Services) {
@@ -231,6 +310,24 @@ func (a *app) beginCodeFileOperation(kind codeFileOperationKind, source, destina
 	}
 	if source != "" {
 		if a.fileEditing && codePathWithin(a.fileEditKey, source) {
+			if a.location.IsRemote() {
+				if a.code.remoteFileEdit.closing {
+					return
+				}
+				a.code.remoteFileEdit.closing = true
+				a.saveRemoteFileEdits(func(ok bool) {
+					a.code.remoteFileEdit.closing = false
+					if !ok {
+						a.notify("error", "Could not save", tr("Save the open file before changing its path."))
+						return
+					}
+					a.closeRemoteFileEdit()
+					if !a.fileEditing {
+						a.beginCodeFileOperation(kind, source, destination)
+					}
+				})
+				return
+			}
 			a.saveFileEdits()
 			if a.fileEditSaveError != "" {
 				a.notify("error", "Could not save", tr("Save the open file before changing its path."))
@@ -238,6 +335,12 @@ func (a *app) beginCodeFileOperation(kind codeFileOperationKind, source, destina
 			}
 			a.closeFileEdit()
 		}
+	}
+	remote := a.location.IsRemote()
+	var remoteClient remoteWorkspaceClient
+	var remoteErr error
+	if remote {
+		remoteClient, remoteErr = a.remoteWorkspaceClient()
 	}
 	a.code.fileOperationDirectory = false
 	for _, item := range a.code.rows {
@@ -252,7 +355,12 @@ func (a *app) beginCodeFileOperation(kind codeFileOperationKind, source, destina
 	a.code.fileFormError = ""
 	go func() {
 		defer a.recoverBackground()
-		err := performCodeFileOperation(root, kind, source, destination)
+		err := remoteErr
+		if remote && err == nil {
+			err = performRemoteCodeFileOperation(context.Background(), remoteClient, root, kind, source, destination)
+		} else if !remote {
+			err = performCodeFileOperation(root, kind, source, destination)
+		}
 		a.update(func() {
 			if sequence != a.code.fileOperationSeq || generation != a.generation || a.snapshot.Root != root {
 				return
@@ -360,6 +468,7 @@ func (a *app) rekeyCodeDocument(source, destination string) {
 	a.closeCodeBlameDetailsFor(document)
 	document.path = destination
 	document.generation++
+	document.remoteSave.invalidate()
 	invalidateCodeBlame(document)
 	document.saveError = ""
 	if document.state != nil {
