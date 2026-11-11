@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
@@ -305,7 +306,7 @@ func (a *app) startTerminalAt(index int) {
 						return false
 					}
 					current.searchStatus = status
-					return true
+					return a.terminalVisible()
 				})
 			},
 			OpenLink: func(link string) bool {
@@ -321,13 +322,14 @@ func (a *app) startTerminalAt(index int) {
 				return true
 			},
 			OnTitle: func(title string) {
+				title = strings.TrimSpace(title)
 				a.updateChanged(func() bool {
 					_, current := a.terminalSessionByID(sessionID)
 					if generation != a.generation || current == nil || attempt != current.attempt || current.title == title {
 						return false
 					}
 					current.title = title
-					return true
+					return a.terminalVisible()
 				})
 			},
 			OnExit: func(int) {
@@ -336,8 +338,9 @@ func (a *app) startTerminalAt(index int) {
 					if generation != a.generation || current == nil || attempt != current.attempt {
 						return false
 					}
+					visible := a.terminalVisible()
 					a.closeTerminalAt(currentIndex)
-					return true
+					return visible
 				})
 			},
 		})
@@ -352,10 +355,10 @@ func (a *app) startTerminalAt(index int) {
 			current.loading = false
 			if err != nil {
 				current.err = safeError(err)
-				return true
+				return a.terminalVisible()
 			}
 			current.pane = pane
-			return true
+			return a.terminalVisible()
 		})
 	}()
 }

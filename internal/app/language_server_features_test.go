@@ -380,6 +380,27 @@ func TestGoLanguageServerPublishesDiagnostics(t *testing.T) {
 	if !repaint || len(document.state.Diagnostics()) != 0 {
 		t.Fatalf("clearing diagnostics repaint = %v, diagnostics = %#v", repaint, document.state.Diagnostics())
 	}
+
+	// Diagnostics remain current while another workspace is visible, but must
+	// not repaint a window that does not render this editor.
+	h.app.workspaceTab = sectionChanges
+	repaint = true
+	h.app.handleGoLanguageServerNotification(h.app.goLanguageServerSeq, "textDocument/publishDiagnostics", params)
+	h.updates.waitForUpdate(t)
+	if repaint || len(document.state.Diagnostics()) != 1 {
+		t.Fatalf("hidden diagnostics repaint = %v, diagnostics = %#v", repaint, document.state.Diagnostics())
+	}
+
+	h.app.workspaceTab = sectionCode
+	h.app.code.active = ""
+	document.languageDiagnostics[goLanguageServerID] = nil
+	document.state.SetDiagnostics(version, nil)
+	repaint = true
+	h.app.handleGoLanguageServerNotification(h.app.goLanguageServerSeq, "textDocument/publishDiagnostics", params)
+	h.updates.waitForUpdate(t)
+	if repaint || len(document.state.Diagnostics()) != 1 {
+		t.Fatalf("background-document diagnostics repaint = %v, diagnostics = %#v", repaint, document.state.Diagnostics())
+	}
 }
 
 func TestGoLanguageServerReportsWorkspaceErrors(t *testing.T) {

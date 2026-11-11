@@ -214,9 +214,18 @@ func TestGoLanguageServerUsesConfiguredProgramAndRejectsStaleStartup(t *testing.
 	if launch.Program != "C:/tools/gopls.exe" || !reflect.DeepEqual(launch.Arguments, []string{"-remote=auto"}) {
 		t.Fatalf("configured launch = %#v", launch)
 	}
+	h.updates = newUpdates()
+	h.app.update = h.updates.update
+	repaint := true
+	h.app.updateChanged = func(fn func() bool) {
+		h.app.update(func() { repaint = fn() })
+	}
 	h.app.resetCode()
 	close(release)
 	h.updates.waitForUpdate(t)
+	if repaint {
+		t.Fatal("a stale language-server startup repainted the window")
+	}
 	h.tester.Frame()
 	h.waitFor(t, "the stale connection shutdown", connection.isClosed)
 	if h.app.goLanguageServer != nil {

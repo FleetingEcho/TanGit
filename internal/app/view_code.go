@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -486,6 +487,13 @@ func (a *app) codeLanguageServerStatuses() []codeLanguageServerStatus {
 		}
 	}
 	return statuses
+}
+
+// codeLanguageServerPresentationChanged compares the status data used by the
+// Code toolbar and its popover. Internal progress details that leave that
+// presentation unchanged do not need a whole-window frame.
+func (a *app) codeLanguageServerPresentationChanged(before []codeLanguageServerStatus) bool {
+	return a.workspaceTab == sectionCode && !slices.Equal(before, a.codeLanguageServerStatuses())
 }
 
 // codeLanguageServersButton keeps the document path readable. The persistent

@@ -351,15 +351,15 @@ func (a *app) requestCodeFiles() {
 		if err == nil {
 			emptyDirectories = listCodeEmptyDirectories(root)
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if token != a.code.filesToken {
-				return
+				return false
 			}
 			a.code.filesLoading = false
 			a.code.filesLoaded = true
 			if err != nil {
 				a.code.filesError = safeError(err)
-				return
+				return a.workspaceTab == sectionCode
 			}
 			a.code.files = paths
 			for _, directory := range emptyDirectories {
@@ -375,6 +375,7 @@ func (a *app) requestCodeFiles() {
 				a.code.searchAfterFiles = false
 				a.beginCodeSearch()
 			}
+			return a.workspaceTab == sectionCode
 		})
 	}()
 }
@@ -708,26 +709,27 @@ func (a *app) requestCodeDocument(document *codeDocument) {
 				}
 			}
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			current := a.code.documents[path]
 			if current != document || token != document.generation {
-				return
+				return false
 			}
 			document.loading = false
 			if err != nil {
 				document.loadError = safeError(err)
-				return
+				return a.workspaceTab == sectionCode && a.activeCodeDocument() == document
 			}
 			if binary {
 				document.binary = true
 				document.imagePreview = preview
-				return
+				return a.workspaceTab == sectionCode && a.activeCodeDocument() == document
 			}
 			document.state = state
 			a.configureGoLanguageDocument(document)
 			a.configureCodeBlame(document)
 			a.revealCodeLine(document)
 			a.requestCodeBlame(document)
+			return a.workspaceTab == sectionCode && a.activeCodeDocument() == document
 		})
 	}()
 }
@@ -1013,10 +1015,12 @@ func (a *app) codeSearchQueryChanged() {
 	a.code.searchDebounceSeq++
 	sequence := a.code.searchDebounceSeq
 	scheduleCodeSearch(codeSearchDebounceDelay, func() {
-		a.update(func() {
-			if sequence == a.code.searchDebounceSeq {
-				a.beginCodeSearch()
+		a.updateChanged(func() bool {
+			if sequence != a.code.searchDebounceSeq {
+				return false
 			}
+			a.beginCodeSearch()
+			return a.workspaceTab == sectionCode
 		})
 	})
 }
@@ -1117,9 +1121,9 @@ func (a *app) startCodeSearch(limit int, loadingMore bool) {
 		if ctx.Err() == nil {
 			matches = rankWorkspaceSearchMatches(matches, options)
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if token != a.code.searchToken {
-				return
+				return false
 			}
 			a.code.searchRunning = false
 			a.code.searchLoadingMore = false
@@ -1136,6 +1140,7 @@ func (a *app) startCodeSearch(limit int, loadingMore bool) {
 			if loadingMore {
 				a.scrollToFirstNewCodeSearchFile(previousResults)
 			}
+			return a.workspaceTab == sectionCode
 		})
 	}()
 }

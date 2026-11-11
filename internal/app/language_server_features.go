@@ -588,15 +588,17 @@ func (a *app) handleGoLanguageServerNotification(sequence uint64, method string,
 		if json.Unmarshal(raw, &message) != nil || !languageServerWorkspaceError(message.Type, message.Message) {
 			return
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if sequence != a.goLanguageServerSeq {
-				return
+				return false
 			}
 			detail := strings.TrimSpace(message.Message)
 			if strings.Contains(strings.ToLower(detail), "invalid go version") {
 				detail += ". Update gopls or select a newer gopls executable in Settings."
 			}
+			previous := a.goLanguageServerError
 			a.reportGoLanguageServerError(detail)
+			return previous != a.goLanguageServerError
 		})
 		return
 	}
@@ -655,7 +657,7 @@ func (a *app) handleLanguageServerDiagnostics(serverID string, raw json.RawMessa
 			combined = append(combined, serverDiagnostics...)
 		}
 		document.state.SetDiagnostics(version, combined)
-		return true
+		return a.workspaceTab == sectionCode && a.activeCodeDocument() == document
 	})
 }
 

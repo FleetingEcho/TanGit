@@ -154,21 +154,23 @@ func (a *app) startManagedLanguageServer(server *managedLanguageServer) {
 			launch.InitializationOptions = rustLanguageServerInitializationOptions(launch.Root, workspaceFiles, openFiles)
 		}
 		connection, err := connectLanguageServerCandidates(launch, programs)
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence || a.snapshot.Root != launch.Root {
 				if connection != nil {
 					go connection.Close()
 				}
-				return
+				return false
 			}
+			before := a.codeLanguageServerStatuses()
 			server.starting = false
 			if err != nil {
 				server.error = safeError(err)
-				return
+				return a.codeLanguageServerPresentationChanged(before)
 			}
 			server.connection = connection
 			server.documents = make(map[string]uint64)
 			a.watchManagedLanguageServer(server, connection, sequence)
+			return a.codeLanguageServerPresentationChanged(before)
 		})
 	}()
 }
@@ -242,10 +244,11 @@ func (a *app) watchManagedLanguageServer(server *managedLanguageServer, connecti
 		if !ok {
 			err = nil
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence || server.connection != connection {
-				return
+				return false
 			}
+			before := a.codeLanguageServerStatuses()
 			server.connection = nil
 			server.documents = nil
 			server.analyzing = false
@@ -258,6 +261,7 @@ func (a *app) watchManagedLanguageServer(server *managedLanguageServer, connecti
 			} else {
 				server.error = "language server stopped unexpectedly"
 			}
+			return a.codeLanguageServerPresentationChanged(before)
 		})
 	}()
 }
@@ -434,6 +438,7 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence {
 				return false
 			}
+			before := a.codeLanguageServerStatuses()
 			key := string(progress.Token)
 			if progress.Value.Kind == "end" {
 				if _, exists := server.progress[key]; !exists {
@@ -454,7 +459,7 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 				server.progress[key] = detail
 			}
 			server.updateAnalysisStatus()
-			return true
+			return a.codeLanguageServerPresentationChanged(before)
 		})
 		return
 	}
@@ -471,8 +476,7 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence {
 				return false
 			}
-			busy, detail := server.statusBusy, server.statusDetail
-			statusError, serverError, analyzing := server.statusError, server.error, server.analyzing
+			before := a.codeLanguageServerStatuses()
 			server.statusBusy = !status.Quiescent
 			server.statusDetail = strings.TrimSpace(status.Message)
 			if status.Health == "warning" || status.Health == "error" {
@@ -488,8 +492,7 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 				server.statusError = false
 			}
 			server.updateAnalysisStatus()
-			return busy != server.statusBusy || detail != server.statusDetail ||
-				statusError != server.statusError || serverError != server.error || analyzing != server.analyzing
+			return a.codeLanguageServerPresentationChanged(before)
 		})
 		return
 	}
@@ -501,16 +504,17 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 		if json.Unmarshal(raw, &message) != nil || !languageServerWorkspaceError(message.Type, message.Message) {
 			return
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence {
-				return
+				return false
 			}
 			detail := strings.TrimSpace(message.Message)
 			if detail == server.error {
-				return
+				return false
 			}
 			server.error = detail
 			a.notify("error", server.profile.Name+" cannot analyze this workspace", server.error)
+			return true
 		})
 		return
 	}
