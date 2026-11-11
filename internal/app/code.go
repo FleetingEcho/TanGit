@@ -73,6 +73,17 @@ type codeDocument struct {
 	definitionSeq       uint64
 	completionSeq       uint64
 	languageDiagnostics map[string][]editor.Diagnostic
+	blameEnabled        bool
+	blameLoading        bool
+	blameLoaded         bool
+	blameError          string
+	blameToken          uint64
+	blameVersion        uint64
+	blameLines          []repository.BlameLine
+	blameInlays         []editor.Inlay
+	blameOffsets        map[int]int
+	blameActiveLine     int
+	blameAnnotationSet  bool
 	markdownPreviewOpen bool
 }
 
@@ -196,7 +207,9 @@ func (a *app) resetCode() {
 	a.code.searchDebounceSeq++
 	for _, document := range a.code.documents {
 		document.generation++
+		invalidateCodeBlame(document)
 	}
+	a.closeCodeBlameDetails()
 	a.code.files = nil
 	a.code.visiblePaths = nil
 	a.code.rows = nil
@@ -266,6 +279,7 @@ func (a *app) refreshCodeAfterCheckout(old, current repository.Snapshot) bool {
 		return false
 	}
 
+	a.closeCodeBlameDetails()
 	reloadFiles := a.code.filesLoaded || a.code.filesLoading || a.workspaceTab == sectionCode || len(a.code.documents) > 0
 	a.code.filesToken++
 	a.code.filesLoading, a.code.filesLoaded = false, false
@@ -293,6 +307,7 @@ func (a *app) refreshCodeAfterCheckout(old, current repository.Snapshot) bool {
 		if document == nil || document.readOnly {
 			continue
 		}
+		invalidateCodeBlame(document)
 		if codeDocumentModified(document) {
 			document.branchNotice = tr("Unsaved changes kept from previous branch")
 			document.generation++
@@ -597,11 +612,13 @@ func (a *app) openCodeDocumentLocation(path, diskPath string, readOnly bool, lin
 	}
 	document := a.code.documents[path]
 	if document == nil {
-		document = &codeDocument{path: path, diskPath: diskPath, readOnly: readOnly}
+		document = &codeDocument{path: path, diskPath: diskPath, readOnly: readOnly, blameEnabled: !readOnly}
 		a.code.documents[path] = document
 		if a.code.preview != "" {
 			previewPath := a.code.preview
 			if previewDocument := a.code.documents[previewPath]; previewDocument != nil {
+				a.closeCodeBlameDetailsFor(previewDocument)
+				invalidateCodeBlame(previewDocument)
 				previewDocument.generation++
 			}
 			delete(a.code.documents, previewPath)
@@ -652,6 +669,7 @@ func (a *app) requestCodeDocument(document *codeDocument) {
 	if document == nil || document.loading || a.snapshot.Root == "" {
 		return
 	}
+	invalidateCodeBlame(document)
 	root := a.snapshot.Root
 	path := document.path
 	onDisk := document.diskPath
@@ -707,7 +725,9 @@ func (a *app) requestCodeDocument(document *codeDocument) {
 			}
 			document.state = state
 			a.configureGoLanguageDocument(document)
+			a.configureCodeBlame(document)
 			a.revealCodeLine(document)
+			a.requestCodeBlame(document)
 		})
 	}()
 }
@@ -757,6 +777,7 @@ func (a *app) saveCodeDocument(document *codeDocument) {
 		a.syncManagedLanguageServerDocument(server, document.path, document)
 		server.connection.DidSave(languageServerFileURI(a.workingFilePath(document.path)))
 	}
+	a.requestCodeBlame(document)
 }
 
 func (a *app) saveCodeEdits() {
@@ -848,6 +869,8 @@ func (a *app) removeCodeDocument(path string) {
 		return
 	}
 	document.generation++
+	a.closeCodeBlameDetailsFor(document)
+	invalidateCodeBlame(document)
 	delete(a.code.documents, path)
 	if a.code.preview == path {
 		a.code.preview = ""

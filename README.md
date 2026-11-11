@@ -61,9 +61,9 @@ undo/redo operations, and reflog recovery help you manage changes deliberately.
 
 | | What you can do |
 | --- | --- |
-| **Changes & diffs** | Stage files or selected lines; review unified, side-by-side, image, and media diffs; export patches. |
-| **History & graph** | Filter commits, inspect file history, cherry-pick batches, reword, squash, and reorder commits. Collect whole files, hunks, or lines into a Custom Patch, then safely apply or export it. |
-| **Branches & recovery** | Manage remotes, tags, stashes, worktrees, and submodules; inspect the reflog and undo eligible operations. |
+| **Changes & diffs** | Stage files or selected lines; review unified, side-by-side, image, and media diffs; export patches. Use Change Courier to preview and copy files, hunks, or lines to another worktree as unstaged changes. |
+| **History & graph** | Filter commits, inspect file history, cherry-pick batches, reword, squash, and reorder commits. Collect whole files, hunks, or lines into a Custom Patch, then safely apply, export, or send it to another worktree. |
+| **Branches & recovery** | Manage remotes, tags, stashes, worktrees, and submodules; inspect the reflog and undo eligible operations. Safety Journal retains durable, revalidated recovery for destructive actions and patch applications. |
 | **Conflict resolution** | Review base, current, and incoming versions; choose hunks, edit the result, and stage the resolution. |
 | **Editor workspace** | Edit with syntax highlighting and language-server assistance; manage files and tabs; use fzf Quick Open, advanced content search, and Markdown preview. |
 | **Your workspace** | Repository tabs, directory trees, resizable panels, expanded branch/diff views, a terminal, and external editors. |

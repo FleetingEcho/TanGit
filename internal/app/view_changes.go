@@ -684,7 +684,7 @@ func (a *app) changesHeader(c *ui.Context) {
 				a.fileTreeMode = !a.fileTreeMode
 			})
 			flatIconButton(c, "Refresh", "F5", refreshIcon, 15, 5, a.actionBusy, a.beginRefresh)
-			flatIconButton(c, "Apply patch…", "Preview and apply a patch or diff file (Ctrl+I)", downloadIcon, 15, 5,
+			flatIconButton(c, "Apply patch…", "Preview and apply a patch or diff file (Ctrl+I)", patchImportIcon, 15, 5,
 				a.actionBusy || a.session == nil, a.beginPatchImport)
 			flatIconButton(c, "Stash changes…", "Stash the working tree", stashIcon, 15, 5,
 				a.actionBusy || len(a.snapshot.Files) == 0, a.openStashForm)
@@ -779,8 +779,32 @@ func (a *app) changesFilter(c *ui.Context) {
 			Placeholder(tr("Search files")).
 			Grow(1)
 		a.searchNavigationButtons(c, strings.TrimSpace(a.fileSearch) != "")
-		ui.Checkbox(c, &a.ignoreUntracked, tr("Untracked")).
-			Tooltip(tr("Leave untracked files out of the changes"))
+		a.changesFilterPopover(c)
+	})
+}
+
+// changesFilterPopover keeps the quick filters close to their icon without
+// hiding the results behind a modal. Changes apply immediately while the
+// popover stays open, and its trigger retains the active-filter indication.
+func (a *app) changesFilterPopover(c *ui.Context) {
+	anchor := flatToggleIconButton(c, "File filters", "Show file filters", filterIcon, 14, 5,
+		a.ignoreUntracked, func() {
+			a.changesFiltersOpen = !a.changesFiltersOpen
+		})
+	anchor.HasPopup(ui.PopupDialog).Expanded(a.changesFiltersOpen)
+	ui.Popover(c, anchor, &a.changesFiltersOpen, func() {
+		ui.Column(c).Width(240).Gap(10).Padding(8).Children(func() {
+			ui.Text(c, tr("File filters")).Bold()
+			ui.Checkbox(c, &a.ignoreUntracked, tr("Ignore untracked files")).
+				Tooltip(tr("Leave untracked files out of the changes"))
+			ui.Row(c).Justify(ui.End).Children(func() {
+				clear := compactTextButton(ui.Button(c, tr("Clear filters"))).
+					Disabled(!a.ignoreUntracked)
+				if clear.Clicked() {
+					a.ignoreUntracked = false
+				}
+			})
+		})
 	})
 }
 
@@ -1033,14 +1057,26 @@ func (a *app) beginStageFile(file repository.File, stage bool) {
 // iconButton is a compact panel button showing icon, with label for
 // accessibility and tooltip for the pointer.
 func iconButton(c *ui.Context, label, tooltip string, icon *ui.SVG, disabled bool, run func()) {
-	button := compactIconButton(ui.Button(c, ""))
-	clicked := button.Label(tr(label)).Tooltip(tr(tooltip)).Disabled(disabled).Clicked()
-	button.Children(func() {
-		ui.Icon(c, icon).FontSize(14)
-	})
-	if clicked {
-		run()
+	render := func() {
+		button := compactIconButton(ui.Button(c, ""))
+		if !disabled {
+			button.Tooltip(tr(tooltip))
+		}
+		clicked := button.Label(tr(label)).Disabled(disabled).Clicked()
+		button.Children(func() {
+			ui.Icon(c, icon).FontSize(14)
+		})
+		if clicked {
+			run()
+		}
 	}
+	if disabled {
+		// Disabled buttons do not receive pointer hover, so the wrapper owns
+		// the tooltip that explains why the action is unavailable.
+		ui.Row(c).Tooltip(tr(tooltip)).Children(render)
+		return
+	}
+	render()
 }
 
 // rowIconButton is the small flat icon button of a file row. Its padding and

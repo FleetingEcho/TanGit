@@ -136,7 +136,7 @@ func (a *app) patchPreviewModal(c *ui.Context) {
 					ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
 						ui.Box(c).Size(34, 34).Radius(9).Center().
 							Background(theme.Accent.Alpha(0.14)).Children(func() {
-							ui.Icon(c, downloadIcon).FontSize(18).TextColor(theme.Accent)
+							ui.Icon(c, patchImportIcon).FontSize(18).TextColor(theme.Accent)
 						})
 						ui.Column(c).Gap(2).Grow(1).Children(func() {
 							ui.Text(c, tr("Apply Patch/Diff")).FontSize(18).Bold()

@@ -357,8 +357,10 @@ func (a *app) rekeyCodeDocument(source, destination string) {
 	if a.code.preview == source {
 		a.code.preview = destination
 	}
+	a.closeCodeBlameDetailsFor(document)
 	document.path = destination
 	document.generation++
+	invalidateCodeBlame(document)
 	document.saveError = ""
 	if document.state != nil {
 		document.state.Label = destination
@@ -372,6 +374,8 @@ func (a *app) rekeyCodeDocument(source, destination string) {
 	a.code.documents[destination] = document
 	if document.state == nil {
 		a.requestCodeDocument(document)
+	} else {
+		a.requestCodeBlame(document)
 	}
 	for index, candidate := range a.code.tabs {
 		if candidate == source {

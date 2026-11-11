@@ -203,6 +203,9 @@ func (a *app) saveCustomLanguageServer(c *ui.Context) {
 		// editor callbacks on already-open documents as well as future loads.
 		for _, document := range a.code.documents {
 			a.configureGoLanguageDocument(document)
+			// Language-server setup replaces OnHover; keep blame and its
+			// preserved language hover installed around the new callback.
+			a.configureCodeBlame(document)
 		}
 		a.settingsChanged(c)
 	}

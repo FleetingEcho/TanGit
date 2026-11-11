@@ -254,8 +254,9 @@ type app struct {
 	changesSelected int
 	// fileSearch filters the Changes list by file path, and ignoreUntracked
 	// leaves untracked files out of it.
-	fileSearch      string
-	ignoreUntracked bool
+	fileSearch         string
+	ignoreUntracked    bool
+	changesFiltersOpen bool
 	// reviewedFiles is the content-current review state read from the local
 	// repository. The sequence/token guards reject obsolete asynchronous reads.
 	reviewedFiles      map[string]bool
@@ -380,6 +381,7 @@ type app struct {
 	selectedRemoteBranchRow  int
 	selectedRemoteBranch     int
 	stashList                ui.ListState
+	savedWorkPanel           int
 	workSnapshotList         ui.ListState
 	selectedWorkSnapshotRow  int
 	stashFilter              string
@@ -504,6 +506,9 @@ type app struct {
 	// customPatch is a session-local basket of canonical historical patches.
 	// Its previews use the same immutable, repository-bound workflow as imports.
 	customPatch customPatchState
+	// courier copies frozen canonical patch bytes to another worktree. Its
+	// preview and target session always belong to the chosen destination.
+	courier changeCourierState
 	// repositoryDetailsLoading is the deferred history/ancillary read of a
 	// progressive open. refreshBusy is a quiet refresh reading the repository
 	// in the background; there is one at a time, and refreshToken rejects an
@@ -594,6 +599,7 @@ type app struct {
 	blameLoading         bool
 	blameError           string
 	blameGeneration      uint64
+	codeBlameHover       codeBlameHoverState
 
 	commitFiles           []repository.CommitFile
 	commitFileRows        []fileTreeRow

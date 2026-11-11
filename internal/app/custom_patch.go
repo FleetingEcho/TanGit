@@ -127,6 +127,31 @@ func mergeCustomPatchEntries(existing, added []customPatchEntry, nextOrder uint6
 	return merged, nextOrder, nil
 }
 
+// patchTextForIdentities keeps exactly the selected changes in one canonical
+// file patch. Covering every change promotes it to the complete file patch,
+// which is required for whole-file additions and deletions.
+func patchTextForIdentities(sourcePatch, path string, lines []patch.LineIdentity) (string, error) {
+	if !customPatchSourceSupportsPartial(sourcePatch) {
+		return "", fmt.Errorf("%s contains mode or type changes and must be sent as a whole file", path)
+	}
+	filePatch := patch.Parse(sourcePatch)
+	indices := patch.ChangeLineIndicesForLines(filePatch, lines)
+	sort.Ints(indices)
+	unique := indices[:0]
+	for _, index := range indices {
+		if len(unique) == 0 || unique[len(unique)-1] != index {
+			unique = append(unique, index)
+		}
+	}
+	if len(unique) == 0 {
+		return "", fmt.Errorf("the selection for %s contains no changed lines", path)
+	}
+	if len(unique) >= changeLineCount(filePatch) {
+		return sourcePatch, nil
+	}
+	return filePatch.Transform(patch.TransformOpts{IncludedLineIndices: unique}).FormatPlain(), nil
+}
+
 // customPatchText assembles an immutable copy in insertion order. A partial
 // selection that covers every change is promoted to the complete file patch,
 // which is required for whole-file additions and deletions.
@@ -137,24 +162,11 @@ func customPatchText(entries []customPatchEntry) (string, error) {
 	for _, entry := range ordered {
 		text := entry.sourcePatch
 		if !entry.whole {
-			if !customPatchSourceSupportsPartial(entry.sourcePatch) {
-				return "", fmt.Errorf("%s contains mode or type changes and must be added as a whole file", entry.file.Path)
+			partial, err := patchTextForIdentities(entry.sourcePatch, entry.file.Path, entry.lines)
+			if err != nil {
+				return "", err
 			}
-			filePatch := patch.Parse(entry.sourcePatch)
-			indices := patch.ChangeLineIndicesForLines(filePatch, entry.lines)
-			sort.Ints(indices)
-			unique := indices[:0]
-			for _, index := range indices {
-				if len(unique) == 0 || unique[len(unique)-1] != index {
-					unique = append(unique, index)
-				}
-			}
-			if len(unique) == 0 {
-				return "", fmt.Errorf("the selection for %s contains no changed lines", entry.file.Path)
-			}
-			if len(unique) < changeLineCount(filePatch) {
-				text = filePatch.Transform(patch.TransformOpts{IncludedLineIndices: unique}).FormatPlain()
-			}
+			text = partial
 		}
 		text = strings.TrimSuffix(text, "\n")
 		if text != "" {
@@ -665,6 +677,9 @@ func (a *app) customPatchEntriesFooter(c *ui.Context) {
 		if ui.Button(c, tr("Clear Builder")).Disabled(a.actionBusy).Clicked() {
 			a.clearCustomPatch()
 		}
+		if ui.Button(c, tr("Send to worktree…")).Disabled(a.actionBusy || len(a.customPatch.entries) == 0 || len(courierDestinations(a.snapshot)) == 0).Clicked() {
+			a.beginCustomPatchCourier()
+		}
 		if ui.PrimaryButton(c, tr("Preview Custom Patch")).Disabled(a.actionBusy || len(a.customPatch.entries) == 0).Clicked() {
 			a.beginCustomPatchPreview()
 		}
@@ -721,6 +736,9 @@ func (a *app) customPatchPreviewFooter(c *ui.Context) {
 	ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
 		if ui.Button(c, tr("Back to Builder")).Disabled(a.actionBusy).Clicked() {
 			a.backToCustomPatchBuilder()
+		}
+		if ui.Button(c, tr("Send to worktree…")).Disabled(a.actionBusy || a.customPatch.previewLoad || a.customPatch.preview == nil || len(courierDestinations(a.snapshot)) == 0).Clicked() {
+			a.beginCustomPatchPreviewCourier()
 		}
 		if ui.Button(c, tr("Export .patch…")).Disabled(a.actionBusy || a.customPatch.previewLoad || a.customPatch.preview == nil).Clicked() {
 			a.exportCustomPatch()

@@ -9,8 +9,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/jesseduffield/lazygit/pkg/commands/models"
 )
 
 const patchPreviewTextLimit = 256 * 1024
@@ -475,14 +478,83 @@ func decodeGitPatchPath(path string) string {
 }
 
 func (s *gitSession) patchRepositoryState() (string, error) {
-	output, stderr, err := s.cmd.New([]string{
+	status, stderr, err := s.cmd.New([]string{
 		"git", "--no-optional-locks", "status", "--porcelain=v2", "--branch", "-z",
 		"--untracked-files=all", "--",
 	}).RunWithOutputs()
 	if err != nil {
-		return "", fmt.Errorf("read repository state: %w: %s", err, strings.TrimSpace(output+stderr))
+		return "", fmt.Errorf("read repository state: %w: %s", err, strings.TrimSpace(status+stderr))
 	}
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(output))), nil
+
+	// Porcelain names statuses, not contents. Include exact index/worktree diffs
+	// and the bytes of every changed or untracked file so an edit that leaves the
+	// same " M" or "??" status still invalidates patch previews and journal Undo.
+	base := "HEAD"
+	if err := s.cmd.New([]string{"git", "rev-parse", "--verify", "--quiet", "HEAD"}).Run(); err != nil {
+		if symbolicErr := s.cmd.New([]string{"git", "symbolic-ref", "--quiet", "HEAD"}).Run(); symbolicErr != nil {
+			return "", fmt.Errorf("read repository state: read HEAD: %w", err)
+		}
+		base = models.EmptyTreeCommitHash
+	}
+	hash := sha256.New()
+	fmt.Fprintf(hash, "status\x00%d\x00", len(status))
+	hash.Write([]byte(status))
+	for _, args := range [][]string{
+		{"git", "diff", "--no-color", "--no-ext-diff", "--no-textconv", "--binary", "--full-index", "--submodule=diff", "--cached", base, "--"},
+		{"git", "diff", "--no-color", "--no-ext-diff", "--no-textconv", "--binary", "--full-index", "--submodule=diff", "--"},
+	} {
+		output, stderr, err := s.cmd.New(args).RunWithOutputs()
+		if err != nil {
+			return "", fmt.Errorf("read repository content state: %w: %s", err, strings.TrimSpace(output+stderr))
+		}
+		fmt.Fprintf(hash, "diff\x00%d\x00", len(output))
+		hash.Write([]byte(output))
+	}
+
+	listing, err := s.cmd.New([]string{
+		"git", "ls-files", "--modified", "--others", "--exclude-standard", "-z", "--",
+	}).RunWithOutput()
+	if err != nil {
+		return "", fmt.Errorf("list repository content state: %w: %s", err, strings.TrimSpace(listing))
+	}
+	paths := strings.Split(strings.TrimSuffix(listing, "\x00"), "\x00")
+	if listing == "" {
+		paths = nil
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		name, err := worktreeFilePath(s.git.RepoPaths.WorktreePath(), path)
+		if err != nil {
+			return "", fmt.Errorf("read repository content state: %w", err)
+		}
+		fmt.Fprintf(hash, "path\x00%s\x00", path)
+		info, err := os.Lstat(name)
+		if os.IsNotExist(err) {
+			hash.Write([]byte("missing\x00"))
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("read repository content state: %w", err)
+		}
+		fmt.Fprintf(hash, "%s\x00", info.Mode())
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
+			target, err := os.Readlink(name)
+			if err != nil {
+				return "", fmt.Errorf("read repository content state: %w", err)
+			}
+			fmt.Fprintf(hash, "link\x00%d\x00%s\x00", len(target), target)
+		case info.Mode().IsRegular():
+			content, err := os.ReadFile(name)
+			if err != nil {
+				return "", fmt.Errorf("read repository content state: %w", err)
+			}
+			fmt.Fprintf(hash, "file\x00%d\x00", len(content))
+			hash.Write(content)
+			hash.Write([]byte{0})
+		}
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
 func (s *gitSession) patchOperationDiagnostic() (string, error) {
@@ -564,10 +636,10 @@ func (s *gitSession) ApplyPatch(ctx context.Context, preview PatchPreview) error
 		return fmt.Errorf("apply patch: %s", diagnostic)
 	}
 
-	// Serialize imports through this session so two copies of one clean
-	// preview cannot both pass their checks before either writes.
-	s.patchImportMu.Lock()
-	defer s.patchImportMu.Unlock()
+	// Serialize validation through mutation across every session for this
+	// worktree, including Change Courier's independently opened destination.
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
 
 	var source patchSource
 	var err error
@@ -588,6 +660,46 @@ func (s *gitSession) ApplyPatch(ctx context.Context, preview PatchPreview) error
 	}
 	if err := s.validateImportedPatch(preview, source); err != nil {
 		return fmt.Errorf("apply patch: %w", err)
+	}
+
+	record, err := s.beginOperation(OperationPatchApply, "Apply patch", UndoReversePatch, nil)
+	if err != nil {
+		return fmt.Errorf("apply patch: %w", err)
+	}
+	patchName := filepath.Join(s.journalDir(), record.ID+".patch")
+	if err := os.MkdirAll(filepath.Dir(patchName), 0o700); err != nil {
+		return fmt.Errorf("apply patch: save recovery patch: %w", err)
+	}
+	data, err := os.ReadFile(source.temporary)
+	if err != nil {
+		return fmt.Errorf("apply patch: save recovery patch: %w", err)
+	}
+	temporary, err := os.CreateTemp(s.journalDir(), "recovery-*.patch")
+	if err != nil {
+		return fmt.Errorf("apply patch: save recovery patch: %w", err)
+	}
+	temporaryName := temporary.Name()
+	defer os.Remove(temporaryName)
+	if err := temporary.Chmod(0o600); err != nil {
+		temporary.Close()
+		return fmt.Errorf("apply patch: save recovery patch: %w", err)
+	}
+	if _, err := temporary.Write(data); err != nil {
+		temporary.Close()
+		return fmt.Errorf("apply patch: save recovery patch: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		return fmt.Errorf("apply patch: save recovery patch: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("apply patch: save recovery patch: %w", err)
+	}
+	if err := os.Rename(temporaryName, patchName); err != nil {
+		return fmt.Errorf("apply patch: save recovery patch: %w", err)
+	}
+	if err := syncDirectory(s.journalDir()); err != nil {
+		return fmt.Errorf("apply patch: save recovery patch: %w", err)
 	}
 
 	hasWork, err := s.repositoryHasWork()
@@ -618,7 +730,10 @@ func (s *gitSession) ApplyPatch(ctx context.Context, preview PatchPreview) error
 		"git", "--no-optional-locks", "apply", source.temporary,
 	}).RunWithOutput()
 	if err != nil {
-		return fmt.Errorf("apply patch: %w: %s", err, strings.TrimSpace(RedactSecrets(output)))
+		return s.failJournalOperation(record, fmt.Errorf("apply patch: %w: %s", err, strings.TrimSpace(RedactSecrets(output))))
+	}
+	if err := s.completeJournalOperation(record, nil); err != nil {
+		return err
 	}
 	if captured {
 		if err := s.pruneRecovery(ctx); err != nil {

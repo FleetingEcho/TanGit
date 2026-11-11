@@ -246,6 +246,10 @@ func (s screenshotSession) RestoreWorkSnapshot(context.Context, repository.WorkS
 func (s screenshotSession) DeleteWorkSnapshot(context.Context, repository.WorkSnapshot) error {
 	return nil
 }
+func (s screenshotSession) Operations(context.Context) ([]repository.OperationRecord, error) {
+	return nil, nil
+}
+func (s screenshotSession) UndoOperation(context.Context, string) error        { return nil }
 func (s screenshotSession) StageAll(context.Context) error                     { return nil }
 func (s screenshotSession) UnstageAll(context.Context) error                   { return nil }
 func (s screenshotSession) Commit(context.Context, string, string, bool) error { return nil }
@@ -356,6 +360,10 @@ func (s screenshotSession) AddSubmodule(context.Context, string, string, string)
 }
 func (s screenshotSession) UpdateSubmodule(context.Context, string) error { return nil }
 func (s screenshotSession) DeleteSubmodule(context.Context, string) error { return nil }
+func (s screenshotSession) BlameWorkingTreeFile(ctx context.Context, path string) ([]repository.BlameLine, error) {
+	return s.BlameFile(ctx, repository.File{Path: path, Tracked: true})
+}
+
 func (s screenshotSession) BlameFile(context.Context, repository.File) ([]repository.BlameLine, error) {
 	return []repository.BlameLine{
 		{Hash: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", Author: "Ada Lovelace", Date: "2026-01-01", Text: "package main"},
@@ -380,6 +388,9 @@ func (s screenshotSession) RestoreCommitFile(context.Context, repository.Commit,
 
 func (s screenshotSession) CommitFileDiff(context.Context, repository.Commit, repository.CommitFile, repository.DiffOptions) (repository.Diff, error) {
 	return repository.Diff{Patch: screenshotPatch, Kind: "Commit"}, nil
+}
+func (s screenshotSession) WorkingTreeFilePatch(context.Context, repository.File) (string, error) {
+	return fakeWorkingTreePatch, nil
 }
 func (s screenshotSession) CommitFilePatch(context.Context, repository.Commit, repository.CommitFile) (string, error) {
 	return screenshotPatch, nil
@@ -597,6 +608,14 @@ func TestScreenshot(t *testing.T) {
 		a.reviewedFiles["ui/appevents.go"] = true
 		tt.Frame()
 		saveScreenshot(t, dir, "03-changes-dark", tt)
+	})
+
+	t.Run("changes-filters-dark", func(t *testing.T) {
+		a, tt := newScreenshotApp(t, true)
+		a.ignoreUntracked = true
+		a.changesFiltersOpen = true
+		tt.Frame()
+		saveScreenshot(t, dir, "03b-changes-filters-dark", tt)
 	})
 
 	t.Run("blame-dark", func(t *testing.T) {
@@ -1172,6 +1191,29 @@ func TestScreenshot(t *testing.T) {
 			return !a.stashFilesLoading && a.stashDiffState != nil
 		})
 		saveScreenshot(t, dir, "08-stash-light", tt)
+	})
+
+	t.Run("safety-journal-light", func(t *testing.T) {
+		a, tt := newScreenshotApp(t, false)
+		a.workspaceTab = sectionStash
+		a.savedWorkPanel = 1
+		a.snapshot.Operations = []repository.OperationRecord{
+			{ID: "d14b529ee5b54fc98e4d1c18aa3d2f67", Kind: repository.OperationReset, Summary: "hard reset to 8f24c10", Status: repository.OperationSucceeded, CreatedAt: time.Date(2026, 11, 10, 9, 42, 0, 0, time.Local).Unix(), HeadBefore: "8f24c10a1b2c3d4e", HeadAfter: "51c93a7f1e2d3c4b", UndoKind: repository.UndoResetHead, Snapshot: &repository.WorkSnapshot{ID: "snapshot"}},
+			{ID: "b8f763ad1c224edcb29a18e06a441f5d", Kind: repository.OperationPatchApply, Summary: "Apply patch", Status: repository.OperationSucceeded, CreatedAt: time.Date(2026, 11, 10, 9, 36, 0, 0, time.Local).Unix(), UndoKind: repository.UndoReversePatch},
+			{ID: "324437c49c9848d8b7ce52aa2ab19e2f", Kind: repository.OperationRebase, Summary: "Rebase onto upstream/main", Status: repository.OperationInterrupted, CreatedAt: time.Date(2026, 11, 10, 9, 28, 0, 0, time.Local).Unix()},
+		}
+		saveScreenshot(t, dir, "80-safety-journal-light", tt)
+	})
+
+	t.Run("change-courier-light", func(t *testing.T) {
+		a, tt := newScreenshotApp(t, false)
+		a.courier.open = true
+		a.courier.source = "Custom Patch · 2 files"
+		a.courier.patchText = screenshotPatch
+		a.courier.destinations = []repository.Worktree{{Path: "/work/review", Name: "review", Branch: "review/docs"}}
+		a.courier.destination = "/work/review"
+		a.courier.preview = &repository.PatchPreview{Clean: true, Text: screenshotPatch, Files: []repository.PatchFile{{Path: "one.txt", Additions: 2, Deletions: 1}, {Path: "docs/guide.md", Additions: 8, Deletions: 2}}, Additions: 10, Deletions: 3}
+		saveScreenshot(t, dir, "81-change-courier-light", tt)
 	})
 
 	// The same page in the palette the app ships with.

@@ -49,6 +49,63 @@ func TestBlameReadsAllHEADLinesDespiteWorkingTreeChanges(t *testing.T) {
 		lines[2].Hash != second || lines[2].Text != "third" {
 		t.Fatalf("unexpected latest attribution: %#v", lines)
 	}
+
+	workingTree, err := session.BlameWorkingTreeFile(context.Background(), "file.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(workingTree) != 5 || workingTree[0].Hash != first || workingTree[1].Hash != second ||
+		workingTree[2].Hash != second || workingTree[3].Text != "uncommitted fourth" ||
+		workingTree[4].Text != "uncommitted fifth" {
+		t.Fatalf("working-tree attribution = %#v", workingTree)
+	}
+	if workingTree[0].Subject != "initial" || workingTree[1].Subject != "more" ||
+		workingTree[0].AuthorEmail != "first@example.com" || workingTree[0].UnixTimestamp <= 0 ||
+		!workingTree[0].Current || !workingTree[1].Current {
+		t.Fatalf("working-tree commit metadata = %#v", workingTree[:2])
+	}
+	for _, line := range workingTree[3:] {
+		if strings.Trim(line.Hash, "0") != "" || line.Author != "Not Committed Yet" {
+			t.Fatalf("uncommitted line has committed identity: %#v", line)
+		}
+	}
+}
+
+func TestBlameWorkingTreeFileAttributesUntrackedAndUnbornFiles(t *testing.T) {
+	for _, committedHead := range []bool{false, true} {
+		t.Run(map[bool]string{false: "unborn", true: "untracked"}[committedHead], func(t *testing.T) {
+			dir := t.TempDir()
+			runGit(t, dir, "init", "--initial-branch=main")
+			runGit(t, dir, "config", "user.name", "Author")
+			runGit(t, dir, "config", "user.email", "author@example.com")
+			if committedHead {
+				if err := os.WriteFile(filepath.Join(dir, "tracked.txt"), []byte("committed\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				runGit(t, dir, "add", "tracked.txt")
+				runGit(t, dir, "commit", "-m", "initial")
+			}
+			if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("first\r\nsecond\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			session, err := (Opener{}).Open(context.Background(), dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lines, err := session.BlameWorkingTreeFile(context.Background(), "new.txt")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(lines) < 2 || lines[0].Text != "first" || lines[1].Text != "second" {
+				t.Fatalf("uncommitted lines = %#v", lines)
+			}
+			for _, line := range lines[:2] {
+				if strings.Trim(line.Hash, "0") != "" || line.Author != "Not Committed Yet" {
+					t.Fatalf("new line has committed identity: %#v", line)
+				}
+			}
+		})
+	}
 }
 
 func TestParseBlamePorcelainPreservesContentAndAuthorDay(t *testing.T) {

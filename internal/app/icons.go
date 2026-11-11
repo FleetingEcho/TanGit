@@ -106,6 +106,9 @@ var (
 	// downloadIcon saves a diff to a file: an arrow into the tray a
 	// download lands in.
 	downloadIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.6v7.2"/><path d="m4.8 6.7 3.2 3.1 3.2-3.1"/><path d="M2.9 11.4v1.3c0 .6.5 1.1 1.1 1.1h8c.6 0 1.1-.5 1.1-1.1v-1.3"/></svg>`))
+	// patchImportIcon brings an external file into the working tree: an arrow
+	// entering a folder, deliberately distinct from the export/download tray.
+	patchImportIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h3.75c.55 0 1 .45 1 1v9c0 .55-.45 1-1 1H9.5"/><path d="M1.75 8h9.5"/><path d="m8 4.75 3.25 3.25L8 11.25"/></svg>`))
 	// updateIcon heads the settings' Updates group: an arrow rising in a
 	// circle, kept apart from downloadIcon, which saves a diff to a file.
 	updateIcon    = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.9"/><path d="M8 11.2V5"/><path d="m5.5 7.5 2.5-2.5 2.5 2.5"/></svg>`))

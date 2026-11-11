@@ -80,6 +80,7 @@ type Snapshot struct {
 	Remotes       []Remote
 	Stashes       []Stash
 	WorkSnapshots []WorkSnapshot
+	Operations    []OperationRecord
 	Tags          []Tag
 	Operation     string
 	Worktrees     []Worktree
@@ -212,6 +213,7 @@ func (s Snapshot) WithDetails(details Snapshot) Snapshot {
 	s.Remotes = details.Remotes
 	s.Stashes = details.Stashes
 	s.WorkSnapshots = details.WorkSnapshots
+	s.Operations = details.Operations
 	s.Tags = details.Tags
 	s.Worktrees = details.Worktrees
 	s.Submodules = details.Submodules
@@ -332,6 +334,8 @@ type Session interface {
 	CreateCheckpoint(context.Context, string) (WorkSnapshot, error)
 	RestoreWorkSnapshot(context.Context, WorkSnapshot) error
 	DeleteWorkSnapshot(context.Context, WorkSnapshot) error
+	Operations(context.Context) ([]OperationRecord, error)
+	UndoOperation(context.Context, string) error
 	StashChanges(context.Context, string, bool) error
 	// StashSelectedFiles saves and removes only the chosen paths.
 	StashSelectedFiles(context.Context, string, []File, bool) error
@@ -376,11 +380,17 @@ type Session interface {
 	UpdateSubmodule(context.Context, string) error
 	DeleteSubmodule(context.Context, string) error
 	BlameFile(context.Context, File) ([]BlameLine, error)
+	// BlameWorkingTreeFile attributes saved working-tree lines, including new
+	// or changed lines that have no commit identity yet.
+	BlameWorkingTreeFile(context.Context, string) ([]BlameLine, error)
 	CommitFiles(context.Context, Commit) ([]CommitFile, error)
 	CommitFileDiff(context.Context, Commit, CommitFile, DiffOptions) (Diff, error)
 	// CommitFilePatch reads one canonical, apply-ready patch with fixed three-line
 	// context, binary literals and full object IDs, independent of display options.
 	CommitFilePatch(context.Context, Commit, CommitFile) (string, error)
+	// WorkingTreeFilePatch reads the selected file side as an apply-ready patch.
+	// A file with both sides is compared from HEAD to its final worktree state.
+	WorkingTreeFilePatch(context.Context, File) (string, error)
 	// RestoreCommitFile replaces working-tree content with the commit's
 	// version without changing the index or creating a commit.
 	RestoreCommitFile(context.Context, Commit, CommitFile) error
@@ -541,9 +551,6 @@ type gitSession struct {
 	hashPool           *utils.StringPool
 	// reviewMu keeps a read-modify-write of the local review file together.
 	reviewMu sync.Mutex
-	// patchImportMu prevents concurrent imports through this session from both
-	// passing clean-repository preflights before either one writes.
-	patchImportMu sync.Mutex
 	// Keep numstat's rename detection identical to the commit file loader's.
 	renameSimilarityThreshold int
 }
@@ -744,6 +751,10 @@ func (s *gitSession) DetailsSnapshot(ctx context.Context) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("load recovery: %w", err)
 	}
+	operations, err := s.Operations(ctx)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("load safety journal: %w", err)
+	}
 	modelReflog, err := s.recentReflog(SnapshotCommitLimit)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("load reflog: %w", err)
@@ -759,6 +770,7 @@ func (s *gitSession) DetailsSnapshot(ctx context.Context) (Snapshot, error) {
 		Remotes:       remotes,
 		Stashes:       stashes,
 		WorkSnapshots: workSnapshots,
+		Operations:    operations,
 		Tags:          tags,
 		Worktrees:     worktrees,
 		Submodules:    submodules,
@@ -1019,18 +1031,26 @@ func (s *gitSession) ApplyWorkingTreePatch(ctx context.Context, patchText string
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if reverse {
-		if _, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Discard a hunk"); err != nil {
-			return err
-		}
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
+	if !reverse {
+		return s.applyWorkingTreePatch(ctx, patchText, false)
 	}
-	if err := s.applyWorkingTreePatch(ctx, patchText, reverse); err != nil {
+	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Discard a hunk")
+	if err != nil {
 		return err
 	}
-	if reverse {
-		return s.pruneRecovery(ctx)
+	record, err := s.beginOperation(OperationDiscard, "Discard a hunk", UndoRestoreWork, &snapshot)
+	if err != nil {
+		return err
 	}
-	return nil
+	if err := s.applyWorkingTreePatch(ctx, patchText, true); err != nil {
+		return s.failJournalOperation(record, err)
+	}
+	if err := s.completeJournalOperation(record, nil); err != nil {
+		return err
+	}
+	return s.pruneRecovery(ctx)
 }
 
 func (s *gitSession) applyWorkingTreePatch(ctx context.Context, patchText string, reverse bool) error {
@@ -1141,13 +1161,23 @@ func (s *gitSession) Discard(ctx context.Context, file File) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
 	if file.HasMergeConflicts {
 		return fmt.Errorf("resolve merge conflicts before discarding %s", file.Path)
 	}
-	if _, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Discard "+file.Path); err != nil {
+	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Discard "+file.Path)
+	if err != nil {
+		return err
+	}
+	record, err := s.beginOperation(OperationDiscard, "Discard "+file.Path, UndoRestoreWork, &snapshot)
+	if err != nil {
 		return err
 	}
 	if err := s.discardFile(ctx, file); err != nil {
+		return s.failJournalOperation(record, err)
+	}
+	if err := s.completeJournalOperation(record, nil); err != nil {
 		return err
 	}
 	return s.pruneRecovery(ctx)
@@ -1157,6 +1187,8 @@ func (s *gitSession) DiscardFiles(ctx context.Context, files []File) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
 	if len(files) == 0 {
 		return nil
 	}
@@ -1165,13 +1197,22 @@ func (s *gitSession) DiscardFiles(ctx context.Context, files []File) error {
 			return fmt.Errorf("resolve merge conflicts before discarding %s", file.Path)
 		}
 	}
-	if _, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, fmt.Sprintf("Discard %d changes", len(files))); err != nil {
+	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, fmt.Sprintf("Discard %d changes", len(files)))
+	if err != nil {
 		return err
 	}
-	for _, file := range files {
+	record, err := s.beginOperation(OperationDiscard, fmt.Sprintf("Discard %d changes", len(files)), UndoRestoreWork, &snapshot)
+	if err != nil {
+		return err
+	}
+	for index, file := range files {
 		if err := s.discardFile(ctx, file); err != nil {
-			return err
+			record.Partial = index > 0
+			return s.failJournalOperation(record, err)
 		}
+	}
+	if err := s.completeJournalOperation(record, nil); err != nil {
+		return err
 	}
 	return s.pruneRecovery(ctx)
 }
@@ -1206,10 +1247,24 @@ func (s *gitSession) DeleteBranch(ctx context.Context, name string, force bool) 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := s.git.Branch.LocalDelete([]string{name}, force); err != nil {
-		return fmt.Errorf("delete branch: %w", err)
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
+	tip, err := s.gitText("rev-parse", "--verify", "refs/heads/"+name)
+	if err != nil {
+		return fmt.Errorf("delete branch: read its tip: %w", err)
 	}
-	return nil
+	record, err := s.beginOperation(OperationBranchDelete, "Delete branch "+name, UndoRecreateBranch, nil)
+	if err != nil {
+		return err
+	}
+	record.Branch, record.ObjectID = name, strings.TrimSpace(tip)
+	if record, err = s.pinOperationBefore(record); err != nil {
+		return err
+	}
+	if err := s.deleteBranchAtTip(name, strings.TrimSpace(tip), force); err != nil {
+		return s.failJournalOperation(record, fmt.Errorf("delete branch: %w", err))
+	}
+	return s.completeJournalOperation(record, nil)
 }
 
 func (s *gitSession) RenameBranch(ctx context.Context, oldName string, newName string) error {
@@ -1418,6 +1473,8 @@ func (s *gitSession) RebaseOntoBranch(ctx context.Context, name string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
 	current, err := s.currentBranch()
 	if err != nil {
 		return err
@@ -1425,15 +1482,34 @@ func (s *gitSession) RebaseOntoBranch(ctx context.Context, name string) error {
 	if current.Name == name {
 		return fmt.Errorf("rebase: cannot rebase %s onto itself", name)
 	}
+	var snapshot *WorkSnapshot
+	hasWork, err := s.repositoryHasWork()
+	if err != nil {
+		return err
+	}
+	if hasWork {
+		captured, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Before rebase onto "+name)
+		if err != nil {
+			return err
+		}
+		snapshot = &captured
+	}
+	record, err := s.beginOperation(OperationRebase, "Rebase onto "+name, UndoResetHead, snapshot)
+	if err != nil {
+		return err
+	}
+	if record, err = s.pinOperationBefore(record); err != nil {
+		return err
+	}
 	// The library's rebase runs this program as Git's sequence editor, which
 	// a GUI cannot answer; a plain rebase with no editor replays the commits
 	// as they are, which is what "rebase current onto this" means.
 	cmd := s.cmd.New([]string{"git", "rebase", "--autostash", name})
 	cmd.AddEnvVars("GIT_EDITOR=:", "GIT_SEQUENCE_EDITOR=:")
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("rebase onto %s: %w", name, err)
+		return s.failJournalOperation(record, fmt.Errorf("rebase onto %s: %w", name, err))
 	}
-	return nil
+	return s.completeJournalOperation(record, nil)
 }
 
 func (s *gitSession) SetUpstream(ctx context.Context, remote string, remoteBranch string, localBranch string) error {
@@ -1756,10 +1832,44 @@ func (s *gitSession) DropStash(ctx context.Context, index int) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := s.git.Stash.Drop(index); err != nil {
-		return fmt.Errorf("drop stash: %w", err)
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
+	ref := fmt.Sprintf("refs/stash@{%d}", index)
+	hash, err := s.gitText("rev-parse", "--verify", ref)
+	if err != nil {
+		return fmt.Errorf("drop stash: read its commit: %w", err)
 	}
-	return nil
+	message, _ := s.gitText("log", "-1", "--format=%s", ref)
+	record, err := s.beginOperation(OperationStashDrop, "Drop stash "+strings.TrimSpace(message), UndoRestoreStash, nil)
+	if err != nil {
+		return err
+	}
+	record.ObjectID, record.Message = strings.TrimSpace(hash), strings.TrimSpace(message)
+	if record, err = s.pinOperationBefore(record); err != nil {
+		return err
+	}
+	current, err := s.gitText("rev-parse", "--verify", ref)
+	if err != nil || strings.TrimSpace(current) != record.ObjectID {
+		return s.failJournalOperation(record, fmt.Errorf("drop stash: the selected stash changed before it could be dropped"))
+	}
+	output, err := s.cmd.New([]string{"git", "reflog", "delete", "--updateref", ref}).RunWithOutput()
+	if err != nil {
+		return s.failJournalOperation(record, fmt.Errorf("drop stash: %w: %s", err, strings.TrimSpace(output)))
+	}
+	remaining, err := s.stashOperationState()
+	if err != nil {
+		return s.failJournalOperation(record, err)
+	}
+	if remaining == "" {
+		// Deleting the only reflog entry leaves a ref with an empty reflog.
+		// Native stash drop removes it too, and doing so lets stash store create
+		// the restored entry on Undo instead of treating the same tip as a no-op.
+		output, err = s.cmd.New([]string{"git", "update-ref", "-d", "refs/stash", record.ObjectID}).RunWithOutput()
+		if err != nil {
+			return s.failJournalOperation(record, fmt.Errorf("drop empty stash ref: %w: %s", err, strings.TrimSpace(output)))
+		}
+	}
+	return s.completeJournalOperation(record, nil)
 }
 
 func (s *gitSession) StashFiles(ctx context.Context, index int) ([]CommitFile, error) {
@@ -2240,15 +2350,36 @@ func (s *gitSession) ResetToCommit(ctx context.Context, commit Commit, mode Rese
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
 	switch mode {
 	case ResetSoft, ResetMixed, ResetHard:
 	default:
 		return fmt.Errorf("reset to %s: invalid mode %q", commit.ShortHash, mode)
 	}
-	if err := s.git.Commit.ResetToCommit(commit.Hash, string(mode), nil); err != nil {
-		return fmt.Errorf("%s reset to %s: %w", mode, commit.ShortHash, err)
+	var snapshot *WorkSnapshot
+	hasWork, err := s.repositoryHasWork()
+	if err != nil {
+		return err
 	}
-	return nil
+	if hasWork {
+		captured, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Before "+string(mode)+" reset")
+		if err != nil {
+			return err
+		}
+		snapshot = &captured
+	}
+	record, err := s.beginOperation(OperationReset, fmt.Sprintf("%s reset to %s", mode, commit.ShortHash), UndoResetHead, snapshot)
+	if err != nil {
+		return err
+	}
+	if record, err = s.pinOperationBefore(record); err != nil {
+		return err
+	}
+	if err := s.git.Commit.ResetToCommit(commit.Hash, string(mode), nil); err != nil {
+		return s.failJournalOperation(record, fmt.Errorf("%s reset to %s: %w", mode, commit.ShortHash, err))
+	}
+	return s.completeJournalOperation(record, nil)
 }
 
 // CheckoutCommit checks out commit without moving or creating a branch.

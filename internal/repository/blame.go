@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -12,10 +14,14 @@ import (
 // BlameLine is one source line and the commit that last changed it at HEAD.
 // Date preserves the author's calendar day in the timezone recorded by Git.
 type BlameLine struct {
-	Hash   string
-	Author string
-	Date   string
-	Text   string
+	Hash          string
+	Author        string
+	AuthorEmail   string
+	Date          string
+	UnixTimestamp int64
+	Subject       string
+	Current       bool
+	Text          string
 }
 
 // BlameFile reads HEAD rather than sizing the request from a modified working
@@ -28,8 +34,69 @@ func (s *gitSession) BlameFile(ctx context.Context, file File) ([]BlameLine, err
 	if !file.Tracked || file.Deleted {
 		return nil, fmt.Errorf("blame requires a tracked file present at HEAD")
 	}
-	output, err := s.cmd.New([]string{"git", "blame", "--line-porcelain", "HEAD", "--", file.Path}).DontLog().RunWithOutput()
+	lines, err := s.blameFile(ctx, file.Path, true)
 	if err != nil {
+		return nil, err
+	}
+	return lines, nil
+}
+
+// BlameWorkingTreeFile attributes the saved working-tree lines to their last
+// commits. New or changed lines retain Git's all-zero, uncommitted identity.
+func (s *gitSession) BlameWorkingTreeFile(ctx context.Context, path string) ([]BlameLine, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	lines, err := s.blameFile(ctx, path, false)
+	if err == nil {
+		// A matching configured email is Git's own identity, displayed as
+		// "You" in the active-line annotation. Missing config is harmless.
+		if output, configErr := s.cmd.New([]string{"git", "config", "user.email"}).DontLog().RunWithOutput(); configErr == nil {
+			email := strings.TrimSpace(output)
+			for index := range lines {
+				lines[index].Current = email != "" && strings.EqualFold(lines[index].AuthorEmail, email)
+			}
+		}
+		return lines, nil
+	}
+	// Git refuses a path absent from HEAD, including every path in an unborn
+	// repository. Those saved lines are new work, not an unusable blame view.
+	if _, headErr := s.cmd.New([]string{"git", "cat-file", "-e", "HEAD:" + path}).DontLog().RunWithOutput(); headErr == nil {
+		return nil, err
+	}
+	filename, pathErr := worktreeFilePath(s.git.RepoPaths.WorktreePath(), filepath.FromSlash(path))
+	if pathErr != nil {
+		return nil, pathErr
+	}
+	content, readErr := os.ReadFile(filename)
+	if readErr != nil {
+		return nil, err
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	text := strings.ReplaceAll(string(content), "\r\n", "\n")
+	textLines := strings.Split(text, "\n")
+	uncommitted := make([]BlameLine, 0, len(textLines))
+	for _, line := range textLines {
+		uncommitted = append(uncommitted, BlameLine{
+			Hash: strings.Repeat("0", 40), Author: "Not Committed Yet", Text: line,
+		})
+	}
+	return uncommitted, nil
+}
+
+func (s *gitSession) blameFile(ctx context.Context, path string, head bool) ([]BlameLine, error) {
+	args := []string{"git", "blame", "--line-porcelain"}
+	if head {
+		args = append(args, "HEAD")
+	}
+	args = append(args, "--", path)
+	output, err := s.cmd.New(args).DontLog().RunWithOutput()
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, fmt.Errorf("blame file: %w", err)
 	}
 	lines, err := parseBlamePorcelain(output)
@@ -40,8 +107,11 @@ func (s *gitSession) BlameFile(ctx context.Context, file File) ([]BlameLine, err
 }
 
 type blameCommit struct {
-	author string
-	date   string
+	author      string
+	authorEmail string
+	date        string
+	unix        int64
+	subject     string
 }
 
 func parseBlamePorcelain(output string) ([]BlameLine, error) {
@@ -86,6 +156,8 @@ func parseBlamePorcelain(output string) ([]BlameLine, error) {
 			switch key {
 			case "author":
 				commit.author = value
+			case "author-mail":
+				commit.authorEmail = strings.Trim(value, "<>")
 			case "author-time":
 				parsed, err := strconv.ParseInt(value, 10, 64)
 				if err != nil {
@@ -94,16 +166,22 @@ func parseBlamePorcelain(output string) ([]BlameLine, error) {
 				unix = parsed
 			case "author-tz":
 				timezone = value
+			case "summary":
+				commit.subject = value
 			}
 		}
 		if !foundContent {
 			return nil, fmt.Errorf("blame for %s has no source line", hash)
 		}
+		commit.unix = unix
 		if timezone != "" {
 			commit.date = blameAuthorDate(unix, timezone)
 		}
 		commits[hash] = commit
-		result = append(result, BlameLine{Hash: hash, Author: commit.author, Date: commit.date, Text: content})
+		result = append(result, BlameLine{
+			Hash: hash, Author: commit.author, AuthorEmail: commit.authorEmail, Date: commit.date,
+			UnixTimestamp: commit.unix, Subject: commit.subject, Text: content,
+		})
 	}
 	return result, nil
 }
