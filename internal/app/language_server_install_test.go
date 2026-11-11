@@ -452,8 +452,14 @@ func TestLanguageServerCatalogAddsAndTogglesCustomTy(t *testing.T) {
 	if !found {
 		t.Fatal("language server results are missing")
 	}
-	h.tester.Scroll(results.X+results.W/2, results.Y+results.H/2, 0, 1800)
-	h.tester.Frame()
+	for range 40 {
+		if disable, found := h.tester.Find("Disable My ty"); found && disable.W > 0 && disable.H > 0 &&
+			disable.Y >= results.Y && disable.Y+disable.H <= results.Y+results.H {
+			break
+		}
+		h.tester.Scroll(results.X+results.W/2, results.Y+results.H/2, 0, 600)
+		h.tester.Frame()
+	}
 	if !h.tester.HasText("My ty") || !h.tester.HasText("CUSTOM — User defined") || !h.tester.HasText("Open download source: My ty") {
 		t.Fatalf("custom ty card or source is missing: %q", h.texts())
 	}
@@ -558,34 +564,38 @@ func TestPythonLanguageServerInstallersUseManagedEnvironment(t *testing.T) {
 	original := runLanguageServerInstallCommand
 	t.Cleanup(func() { runLanguageServerInstallCommand = original })
 	dataDir := t.TempDir()
-	venvBin := filepath.Join(dataDir, "tools", "python", "bin")
-	if runtime.GOOS == "windows" {
-		venvBin = filepath.Join(dataDir, "tools", "python", "Scripts")
-	}
-	if err := os.MkdirAll(venvBin, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	venvPython := filepath.Join(venvBin, executableName("python"))
-	if err := os.WriteFile(venvPython, nil, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	for _, id := range []string{"ty", "ruff"} {
 		t.Run(id, func(t *testing.T) {
 			calls := 0
+			var installedPath, installedPython string
 			runLanguageServerInstallCommand = func(_ context.Context, program string, arguments, _ []string) ([]byte, error) {
 				calls++
-				if program != venvPython || !reflect.DeepEqual(arguments, []string{"-m", "pip", "install", "--upgrade", id}) {
-					t.Errorf("installer = %q %q, want managed Python installing %s", program, arguments, id)
+				if len(arguments) >= 3 && arguments[0] == "-m" && arguments[1] == "venv" {
+					venvBin := filepath.Join(arguments[2], "bin")
+					if runtime.GOOS == "windows" {
+						venvBin = filepath.Join(arguments[2], "Scripts")
+					}
+					if err := os.MkdirAll(venvBin, 0o755); err != nil {
+						return nil, err
+					}
+					return nil, os.WriteFile(filepath.Join(venvBin, executableName("python")), nil, 0o755)
 				}
-				return nil, os.WriteFile(filepath.Join(venvBin, executableName(id)), nil, 0o755)
+				if !reflect.DeepEqual(arguments, []string{"-m", "pip", "install", "--upgrade", id}) ||
+					!pathWithin(filepath.Join(dataDir, "tools", "lsp"), program) {
+					t.Errorf("installer = %q %q, want isolated managed Python installing %s", program, arguments, id)
+				}
+				installedPython = program
+				installedPath = filepath.Join(filepath.Dir(program), executableName(id))
+				return nil, os.WriteFile(installedPath, nil, 0o755)
 			}
 			profile, _ := languageServerProfileByID(id)
 			got, err := installLanguageServerTool(profile, dataDir)
-			want := languageServerInstallation{
-				Path: filepath.Join(venvBin, executableName(id)), Arguments: []string{"server"}, ProbeArguments: []string{"--version"},
-			}
-			if err != nil || !reflect.DeepEqual(got, want) || calls != 1 {
-				t.Fatalf("managed %s = %#v, %v (%d commands); want %#v", id, got, err, calls, want)
+			launcher := filepath.Join(got.OwnedRoot, "launch.py")
+			if err != nil || calls != 2 || got.Path != installedPython || !reflect.DeepEqual(got.Arguments, []string{launcher, "server"}) ||
+				!reflect.DeepEqual(got.ProbeArguments, []string{launcher, "--version"}) || !got.ProbeRequired ||
+				got.ManagedRoot != managedLanguageServerRoot(dataDir, id) || !validManagedLanguageServerStaging(id, got.OwnedRoot) ||
+				!pathWithin(got.OwnedRoot, got.Path) {
+				t.Fatalf("managed %s = %#v, %v (%d commands); installed path %q", id, got, err, calls, installedPath)
 			}
 		})
 	}
@@ -702,11 +712,15 @@ func TestTypeScriptInstallerPinsNativeVersionSevenAndChecksItsExecutable(t *test
 	for _, withServer := range []bool{false, true} {
 		t.Run(fmt.Sprint("native-lsp=", withServer), func(t *testing.T) {
 			dataDir := t.TempDir()
-			prefix := filepath.Join(dataDir, "tools", "node")
 			runLanguageServerInstallCommand = func(_ context.Context, _ string, arguments, _ []string) ([]byte, error) {
-				want := []string{"install", "--no-audit", "--no-fund", "--prefix", prefix, "typescript@7"}
-				if !reflect.DeepEqual(arguments, want) {
-					t.Errorf("npm arguments = %q, want %q", arguments, want)
+				if len(arguments) != 6 || !reflect.DeepEqual(arguments[:4], []string{"install", "--no-audit", "--no-fund", "--prefix"}) ||
+					arguments[5] != "typescript@7" {
+					t.Errorf("npm arguments = %q, want an isolated TypeScript 7 prefix", arguments)
+					return nil, errors.New("invalid npm arguments")
+				}
+				prefix := arguments[4]
+				if !validManagedLanguageServerStaging("typescript", filepath.Dir(prefix)) {
+					t.Errorf("npm prefix is not isolated: %q", prefix)
 				}
 				serverDir := filepath.Join(prefix, "node_modules", "typescript")
 				if err := os.MkdirAll(serverDir, 0o755); err != nil {

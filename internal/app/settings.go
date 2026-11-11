@@ -110,9 +110,18 @@ type languageServerSettings struct {
 	Path           string   `json:"path,omitempty"`
 	Arguments      []string `json:"arguments,omitempty"`
 	ProbeArguments []string `json:"probeArguments,omitempty"`
+	// Managed identifies an isolated copy installed and owned by TanGit. It is
+	// deliberately explicit: a path under the tools directory alone never
+	// grants permission to remove user files.
+	Managed *managedLanguageServerSettings `json:"managed,omitempty"`
 	// Custom is present only for user-defined servers. Keeping the definition
 	// with its launch settings preserves the profile while it is disabled.
 	Custom *customLanguageServerDefinition `json:"custom,omitempty"`
+}
+
+type managedLanguageServerSettings struct {
+	Root    string `json:"root"`
+	Version string `json:"version,omitempty"`
 }
 
 // settingsFile is the name of the settings inside MyGo's user data directory,
@@ -268,6 +277,7 @@ func normalizeLanguageServerSettings(servers map[string]languageServerSettings) 
 			}
 		}
 		profile, knownProfile := languageServerProfileByID(language)
+		server.Managed = normalizeManagedLanguageServerSettings(language, profile, knownProfile, server)
 		if server.Custom == nil && !server.Disabled && server.Path == "" && len(server.Arguments) == 0 &&
 			(!knownProfile || profile.EnabledByDefault) {
 			continue
@@ -278,6 +288,49 @@ func normalizeLanguageServerSettings(servers map[string]languageServerSettings) 
 		return nil
 	}
 	return normalized
+}
+
+func normalizeManagedLanguageServerSettings(id string, profile languageServerProfile, known bool,
+	server languageServerSettings) *managedLanguageServerSettings {
+	if server.Managed == nil {
+		return nil
+	}
+	managed := *server.Managed
+	managed.Root = strings.TrimSpace(managed.Root)
+	managed.Version = shorten(strings.TrimSpace(managed.Version), 160)
+	// Invalid or forged ownership is treated as an external launch setting.
+	// Keeping the executable configuration is safer than discarding it, and
+	// crucially gives the uninstall worker no deletion authority.
+	if !known || profile.Custom || id == "rust" || server.Custom != nil || !validManagedLanguageServerRoot(id, managed.Root) ||
+		!languageServerSettingsReferenceRoot(server, managed.Root) {
+		return nil
+	}
+	return &managed
+}
+
+func validManagedLanguageServerRoot(id, root string) bool {
+	if root == "" || !filepath.IsAbs(root) || filepath.Clean(root) != root {
+		return false
+	}
+	return filepath.Base(root) == id && filepath.Base(filepath.Dir(root)) == "lsp" &&
+		filepath.Base(filepath.Dir(filepath.Dir(root))) == "tools"
+}
+
+func languageServerSettingsReferenceRoot(server languageServerSettings, root string) bool {
+	programs := languageServerExecutableCandidates(server.Path, "")
+	for _, program := range programs {
+		if program != "" && pathWithin(root, program) {
+			return true
+		}
+	}
+	for _, arguments := range [][]string{server.Arguments, server.ProbeArguments} {
+		for _, argument := range arguments {
+			if pathWithin(root, argument) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // normalizeHomeBackgroundOpacity accepts only useful visible strengths. Zero

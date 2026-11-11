@@ -44,6 +44,9 @@ func (a *app) languageServerCatalog(c *ui.Context) {
 }
 
 func (a *app) toggleLanguageServerProfile(c *ui.Context, profile languageServerProfile, enabled bool) {
+	if a.languageServerInstalling[profile.ID] || a.languageServerUninstalling[profile.ID] {
+		return
+	}
 	a.invalidateLanguageServerTest()
 	if enabled && !profile.Custom && !a.languageServerExecutableAvailable(profile) {
 		// Expanded checkboxes are bound to their draft and have already changed
@@ -151,16 +154,21 @@ func (a *app) languageServerCatalogRow(c *ui.Context, profile languageServerProf
 	theme := c.Theme()
 	enabled := a.languageServerCatalogProfileEnabled(profile)
 	installing := a.languageServerInstalling[profile.ID]
+	uninstalling := a.languageServerUninstalling[profile.ID]
+	busy := installing || uninstalling
+	owned := a.ownedManagedLanguageServer(profile.ID)
 	selected := a.languageServerCatalogSelected == profile.ID
 	ui.Column(c.Key("lsp-catalog-"+profile.ID)).Border(1, theme.Border).Radius(theme.Radius).
 		Padding(10).Gap(8).Margin(0, 0, 10, 0).MaxWidth(600).Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(10).Wrap().Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 					ui.Text(c, profile.Name).Bold()
 					status := tr("Not configured")
 					color := theme.TextMuted
-					if installing {
+					if uninstalling {
+						status, color = tr("Removing…"), theme.Warning
+					} else if installing {
 						status, color = tr("Installing…"), theme.Warning
 					} else if enabled {
 						status, color = tr("Enabled"), theme.Success
@@ -183,7 +191,9 @@ func (a *app) languageServerCatalogRow(c *ui.Context, profile languageServerProf
 				ui.Text(c, strings.TrimSpace(profile.Program+" "+strings.Join(profile.Arguments, " "))).
 					Font("monospace").FontSize(theme.FontSize - 2).TextColor(theme.TextMuted)
 			})
-			if installing {
+			if uninstalling {
+				ui.Spinner(c).Label(trf("Removing %s", profile.Name))
+			} else if installing {
 				ui.Spinner(c).Label(trf("Installing %s", profile.Name))
 			}
 			toggleLabel, toggleIcon := trf("Enable %s", profile.Name), switchIcon
@@ -199,10 +209,13 @@ func (a *app) languageServerCatalogRow(c *ui.Context, profile languageServerProf
 					installLabel, installIcon = "Update", updateIcon
 				}
 				flatIconButton(c, installLabel+" "+profile.Name, installLabel+" "+profile.Name, installIcon, 14, 6,
-					installing, func() { a.installLanguageServer(profile.ID) })
+					busy, func() { a.installLanguageServer(profile.ID) })
 			}
+			removeLabel := trf("Remove managed %s", profile.Name)
+			flatIconButton(c, removeLabel, removeLabel, trashIcon, 14, 6,
+				busy || !owned, func() { a.removeManagedLanguageServer(profile.ID) })
 			flatIconButton(c, "Configure "+profile.Name, "Configure "+profile.Name, settingsIcon, 14, 6,
-				false, func() {
+				busy, func() {
 					if selected {
 						a.languageServerCatalogSelected = ""
 					} else {
@@ -217,6 +230,9 @@ func (a *app) languageServerCatalogRow(c *ui.Context, profile languageServerProf
 }
 
 func (a *app) languageServerCatalogConfiguration(c *ui.Context, profile languageServerProfile) {
+	if a.languageServerInstalling[profile.ID] || a.languageServerUninstalling[profile.ID] {
+		return
+	}
 	if profile.Custom {
 		ui.Row(c).Gap(8).Children(func() {
 			iconTextButtonState(c, "Edit custom definition", "Edit custom definition", editIcon, false, false, func() {

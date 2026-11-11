@@ -13,6 +13,10 @@ type languageServerProfile struct {
 	Program          string
 	Arguments        []string
 	VersionArguments []string
+	// ProtocolProbe is for servers whose published CLI has no version flag.
+	// Their Test action performs a bounded real LSP initialize instead.
+	ProtocolProbe    bool
+	PullDiagnostics  bool
 	Extensions       map[string]string
 	Filenames        map[string]string
 	EnabledByDefault bool
@@ -42,6 +46,16 @@ var languageServerDownloadURLs = map[string]string{
 	"bash":         "https://www.npmjs.com/package/bash-language-server",
 	"docker":       "https://www.npmjs.com/package/dockerfile-language-server-nodejs",
 	"marksman":     "https://github.com/artempyanykh/marksman/releases/latest",
+	"clangd":       "https://github.com/clangd/clangd/releases/latest",
+	"lua":          "https://github.com/LuaLS/lua-language-server/releases/latest",
+	"zls":          "https://github.com/zigtools/zls/releases/latest",
+	"tombi":        "https://github.com/tombi-toml/tombi/releases/latest",
+	"neocmake":     "https://github.com/neocmakelsp/neocmakelsp/releases/latest",
+	"terraform":    "https://github.com/hashicorp/terraform-ls",
+	"intelephense": "https://www.npmjs.com/package/intelephense",
+	"prisma":       "https://www.npmjs.com/package/@prisma/language-server",
+	"ruby":         "https://rubygems.org/gems/ruby-lsp",
+	"csharp":       "https://www.nuget.org/packages/csharp-ls",
 }
 
 var languageServerProfiles = []languageServerProfile{
@@ -78,6 +92,18 @@ var languageServerProfiles = []languageServerProfile{
 	{ID: "bash", Name: "Bash Language Server", Category: "optional", Description: "Bash and shell script intelligence", Program: "bash-language-server", Arguments: []string{"start"}, VersionArguments: []string{"--version"}, Extensions: map[string]string{".sh": "shellscript", ".bash": "shellscript", ".zsh": "shellscript"}},
 	{ID: "docker", Name: "Dockerfile Language Server", Category: "optional", Description: "Dockerfile completion and validation", Program: "docker-langserver", Arguments: []string{"--stdio"}, VersionArguments: []string{"--version"}, Filenames: map[string]string{"dockerfile": "dockerfile", "containerfile": "dockerfile"}},
 	{ID: "marksman", Name: "Marksman", Category: "optional", Description: "Markdown links, symbols, and navigation", Program: "marksman", VersionArguments: []string{"--version"}, Extensions: map[string]string{".md": "markdown", ".markdown": "markdown"}},
+	{ID: "clangd", Name: "clangd", Category: "core", Description: "C and C++ completion, navigation, and diagnostics", Program: "clangd", VersionArguments: []string{"--version"}, Extensions: map[string]string{
+		".c": "c", ".h": "c", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".c++": "cpp", ".hh": "cpp", ".hpp": "cpp", ".hxx": "cpp", ".h++": "cpp", ".m": "objective-c", ".mm": "objective-cpp", ".cu": "cuda-cpp",
+	}},
+	{ID: "lua", Name: "Lua Language Server", Category: "core", Description: "Lua completion, hover, diagnostics, and workspace symbols", Program: "lua-language-server", VersionArguments: []string{"--version"}, Extensions: map[string]string{".lua": "lua"}},
+	{ID: "zls", Name: "Zig Language Server", Category: "optional", Description: "Zig completion, navigation, and diagnostics", Program: "zls", VersionArguments: []string{"--version"}, Extensions: map[string]string{".zig": "zig", ".zon": "zig"}},
+	{ID: "tombi", Name: "Tombi", Category: "core", Description: "TOML schemas, completion, hover, and validation", Program: "tombi", Arguments: []string{"lsp"}, VersionArguments: []string{"--version"}, Extensions: map[string]string{".toml": "toml"}},
+	{ID: "neocmake", Name: "NeoCMakeLSP", Category: "optional", Description: "CMake completion, hover, and diagnostics", Program: "neocmakelsp", Arguments: []string{"stdio"}, VersionArguments: []string{"--version"}, PullDiagnostics: true, Extensions: map[string]string{".cmake": "cmake"}, Filenames: map[string]string{"cmakelists.txt": "cmake"}},
+	{ID: "terraform", Name: "Terraform Language Server", Category: "optional", Description: "Terraform completion, hover, and validation", Program: "terraform-ls", Arguments: []string{"serve"}, VersionArguments: []string{"-v"}, Extensions: map[string]string{".tf": "terraform", ".tfvars": "terraform-vars"}},
+	{ID: "intelephense", Name: "Intelephense", Category: "core", Description: "PHP completion, navigation, and diagnostics; some features require a license", Program: "intelephense", Arguments: []string{"--stdio"}, ProtocolProbe: true, Extensions: map[string]string{".php": "php", ".phtml": "php"}},
+	{ID: "prisma", Name: "Prisma Language Server", Category: "optional", Description: "Prisma schema completion, hover, formatting, and diagnostics", Program: "prisma-language-server", Arguments: []string{"--stdio"}, ProtocolProbe: true, Extensions: map[string]string{".prisma": "prisma"}},
+	{ID: "ruby", Name: "Ruby LSP", Category: "optional", Description: "Ruby navigation, completion, diagnostics, and inline hints", Program: "ruby-lsp", VersionArguments: []string{"--version"}, Extensions: map[string]string{".rb": "ruby", ".rake": "ruby", ".gemspec": "ruby", ".ru": "ruby"}, Filenames: map[string]string{"gemfile": "ruby", "rakefile": "ruby", "guardfile": "ruby", "vagrantfile": "ruby"}},
+	{ID: "csharp", Name: "C# Language Server", Category: "optional", Description: "C# project navigation, completion, and diagnostics; requires .NET", Program: "csharp-ls", VersionArguments: []string{"--version"}, Extensions: map[string]string{".cs": "csharp", ".csx": "csharp"}},
 }
 
 // languageServerProfileDescription is the presentation boundary for catalog

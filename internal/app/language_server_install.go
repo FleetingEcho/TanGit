@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,12 @@ type languageServerInstallation struct {
 	Path           string
 	Arguments      []string
 	ProbeArguments []string
+	// OwnedRoot is the staging directory returned by a real managed installer;
+	// ManagedRoot is its final per-server destination. Both are empty for Rust
+	// and for legacy test installers, whose configuration-only seam is retained.
+	OwnedRoot     string
+	ManagedRoot   string
+	ProbeRequired bool
 }
 
 var performLanguageServerInstall = installLanguageServerTool
@@ -67,7 +74,7 @@ func (a *app) offerLanguageServerInstall(path string) {
 
 func (a *app) installLanguageServer(id string) {
 	profile, ok := languageServerProfileByID(id)
-	if !ok || a.languageServerInstalling[id] {
+	if !ok || profile.Custom || a.languageServerInstalling[id] || a.languageServerUninstalling[id] {
 		return
 	}
 	dataDir := a.dataDir()
@@ -79,49 +86,71 @@ func (a *app) installLanguageServer(id string) {
 		a.languageServerInstalling = make(map[string]bool)
 	}
 	a.languageServerInstalling[id] = true
+	connection := a.stopLanguageServerForLifecycle(id)
 	a.notifyTranslated("info", trf("Installing %s", profile.Name), "Downloading to TanGit's managed tools directory…")
 	go func() {
 		defer a.recoverBackground()
+		waitForLanguageServerClose(connection)
 		var installation languageServerInstallation
+		var version string
 		var err error
 		func() {
 			languageServerInstallMu.Lock()
 			defer languageServerInstallMu.Unlock()
 			installation, err = performLanguageServerInstall(profile, dataDir)
+			if err == nil {
+				installation, version, err = prepareLanguageServerInstallation(profile, dataDir, installation)
+			}
 		}()
 		a.update(func() {
 			delete(a.languageServerInstalling, id)
 			if err != nil {
+				// The previous executable settings were never changed. Resume them
+				// so a failed replacement does not disable working user software.
+				a.syncGoLanguageServer()
 				a.notify("error", trf("Could not install %s", profile.Name), safeError(err))
 				return
 			}
 			if a.settings.LanguageServers == nil {
 				a.settings.LanguageServers = make(map[string]languageServerSettings)
 			}
-			a.settings.LanguageServers[id] = languageServerSettings{
+			server := languageServerSettings{
 				Path: installation.Path, Arguments: append([]string(nil), installation.Arguments...),
 				ProbeArguments: append([]string(nil), installation.ProbeArguments...),
 			}
-			if id == goLanguageServerID {
-				a.stopGoLanguageServer()
-			} else if server := a.additionalLanguageServers[id]; server != nil {
-				a.stopManagedLanguageServer(server)
-				delete(a.additionalLanguageServers, id)
+			if installation.ManagedRoot != "" {
+				server.Managed = &managedLanguageServerSettings{Root: installation.ManagedRoot, Version: version}
 			}
+			a.settings.LanguageServers[id] = server
 			a.saveSettings()
 			a.loadGoLanguageServerDraft()
 			a.notifyTranslated("success", trf("%s installed", profile.Name), "Code intelligence is now enabled for matching files.")
+			a.syncGoLanguageServer()
 		})
 	}()
 }
 
-func installLanguageServerTool(profile languageServerProfile, dataDir string) (languageServerInstallation, error) {
-	toolsDir := filepath.Join(dataDir, "tools")
-	if err := os.MkdirAll(toolsDir, 0o755); err != nil {
-		return languageServerInstallation{}, err
-	}
+func installLanguageServerTool(profile languageServerProfile, dataDir string) (installation languageServerInstallation, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
+	if profile.ID == "rust" {
+		return installRustLanguageServer(ctx, profile)
+	}
+	ownedRoot, managedRoot, err := newManagedLanguageServerStaging(dataDir, profile.ID)
+	if err != nil {
+		return languageServerInstallation{}, err
+	}
+	defer func() {
+		if err != nil {
+			cleanupManagedLanguageServerStaging(profile.ID, ownedRoot)
+			installation = languageServerInstallation{}
+			return
+		}
+		installation.OwnedRoot = ownedRoot
+		installation.ManagedRoot = managedRoot
+		installation.ProbeRequired = true
+	}()
+	toolsDir := ownedRoot
 	switch profile.ID {
 	case goLanguageServerID:
 		goTool, err := languageServerLookPath("go")
@@ -136,19 +165,6 @@ func installLanguageServerTool(profile languageServerProfile, dataDir string) (l
 			return languageServerInstallation{}, err
 		}
 		return languageServerInstallation{Path: filepath.Join(binDir, executableName("gopls")), ProbeArguments: append([]string(nil), profile.VersionArguments...)}, nil
-	case "rust":
-		rustup, err := languageServerLookPath("rustup")
-		if err != nil {
-			return languageServerInstallation{}, errors.New("rustup is required to install rust-analyzer")
-		}
-		if err := runLanguageServerInstaller(ctx, rustup, []string{"component", "add", "rust-analyzer"}, nil); err != nil {
-			return languageServerInstallation{}, err
-		}
-		path, err := languageServerLookPath("rust-analyzer")
-		if err != nil {
-			return languageServerInstallation{}, errors.New("rust-analyzer was installed but is not available on PATH")
-		}
-		return languageServerInstallation{Path: path, ProbeArguments: append([]string(nil), profile.VersionArguments...)}, nil
 	case "typescript":
 		return installNodeLanguageServer(ctx, toolsDir, profile, "typescript")
 	case "html", "css", "json", "eslint":
@@ -175,9 +191,36 @@ func installLanguageServerTool(profile languageServerProfile, dataDir string) (l
 		return installPythonLanguageServer(ctx, toolsDir, profile, profile.ID)
 	case "marksman":
 		return installMarksman(ctx, toolsDir)
+	case "clangd", "lua", "zls", "tombi", "neocmake", "terraform":
+		return installCatalogLanguageServerRelease(ctx, toolsDir, profile)
+	case "intelephense":
+		return installNodeLanguageServer(ctx, toolsDir, profile, "intelephense")
+	case "prisma":
+		return installNodeLanguageServer(ctx, toolsDir, profile, "@prisma/language-server")
+	case "ruby":
+		return installRubyLanguageServer(ctx, toolsDir, profile)
+	case "csharp":
+		return installCSharpLanguageServer(ctx, toolsDir, profile)
 	default:
 		return languageServerInstallation{}, fmt.Errorf("no managed installer for %s", profile.Name)
 	}
+}
+
+func installRustLanguageServer(ctx context.Context, profile languageServerProfile) (languageServerInstallation, error) {
+	rustup, err := languageServerLookPath("rustup")
+	if err != nil {
+		return languageServerInstallation{}, errors.New("rustup is required to install rust-analyzer")
+	}
+	if err := runLanguageServerInstaller(ctx, rustup, []string{"component", "add", "rust-analyzer"}, nil); err != nil {
+		return languageServerInstallation{}, err
+	}
+	path, err := languageServerLookPath("rust-analyzer")
+	if err != nil {
+		return languageServerInstallation{}, errors.New("rust-analyzer was installed but is not available on PATH")
+	}
+	return languageServerInstallation{
+		Path: path, ProbeArguments: append([]string(nil), profile.VersionArguments...), ProbeRequired: true,
+	}, nil
 }
 
 func installPythonLanguageServer(ctx context.Context, toolsDir string, profile languageServerProfile, packageName string) (languageServerInstallation, error) {
@@ -203,9 +246,26 @@ func installPythonLanguageServer(ctx context.Context, toolsDir string, profile l
 	if _, err := os.Stat(venvProgram); err != nil {
 		return languageServerInstallation{}, fmt.Errorf("find installed %s executable: %w", packageName, err)
 	}
+	// pip's console scripts embed the staging interpreter in their shebang.
+	// Resolve the same entry point through the interpreter instead, so staging
+	// can be renamed without leaving a launcher that names the deleted path.
+	launcher := filepath.Join(toolsDir, "launch.py")
+	source := fmt.Sprintf(`import importlib.metadata
+import sys
+
+entry = next(
+    point for point in importlib.metadata.distribution(%s).entry_points
+    if point.group == "console_scripts" and point.name == %s
+)
+sys.argv[0] = entry.name
+raise SystemExit(entry.load()())
+`, strconv.Quote(packageName), strconv.Quote(profile.Program))
+	if err := os.WriteFile(launcher, []byte(source), 0o644); err != nil {
+		return languageServerInstallation{}, err
+	}
 	return languageServerInstallation{
-		Path: venvProgram, Arguments: append([]string(nil), profile.Arguments...),
-		ProbeArguments: append([]string(nil), profile.VersionArguments...),
+		Path: venvPython, Arguments: append([]string{launcher}, profile.Arguments...),
+		ProbeArguments: append([]string{launcher}, profile.VersionArguments...),
 	}, nil
 }
 
@@ -323,6 +383,27 @@ func installNodeLanguageServer(ctx context.Context, toolsDir string, profile lan
 	if err != nil {
 		return languageServerInstallation{}, errors.New("Node.js is required to run this language server")
 	}
+	minimumNode := 0
+	for _, packageName := range packages {
+		switch packageName {
+		case "@prisma/language-server":
+			minimumNode = max(minimumNode, 20)
+		case "@t1ckbase/vscode-langservers-extracted":
+			minimumNode = max(minimumNode, 22)
+		}
+	}
+	if minimumNode > 0 {
+		output, err := runLanguageServerVersionArguments(node, nil, []string{"--version"})
+		version := strings.TrimSpace(output)
+		majorText := strings.SplitN(strings.TrimPrefix(version, "v"), ".", 2)[0]
+		major, parseErr := strconv.Atoi(majorText)
+		if err != nil || parseErr != nil {
+			return languageServerInstallation{}, errors.New("could not verify the Node.js version required by this language server")
+		}
+		if major < minimumNode {
+			return languageServerInstallation{}, fmt.Errorf("Node.js %d or newer is required; found %s", minimumNode, strings.TrimSpace(output))
+		}
+	}
 	prefix := filepath.Join(toolsDir, "node")
 	arguments := []string{"install", "--no-audit", "--no-fund", "--prefix", prefix}
 	for _, name := range packages {
@@ -341,9 +422,20 @@ func installNodeLanguageServer(ctx context.Context, toolsDir string, profile lan
 	if err != nil {
 		return languageServerInstallation{}, err
 	}
+	probeArguments := append([]string{binPath}, profile.VersionArguments...)
+	if profile.ProtocolProbe {
+		// Neither Intelephense nor Prisma publishes a version-flag contract.
+		// Probe Node, the exact installed package manifest, and bin entry without
+		// pretending a transport flag is a version query.
+		manifestPath := filepath.Join(prefix, "node_modules", filepath.FromSlash(packages[0]), "package.json")
+		script := "const fs=require('fs');const manifest=" + strconv.Quote(manifestPath) + ",bin=" + strconv.Quote(binPath) + ";" +
+			"if(!fs.statSync(bin).isFile())throw new Error('missing language-server entry point');" +
+			"process.stdout.write(require(manifest).version);"
+		probeArguments = []string{"-e", script}
+	}
 	return languageServerInstallation{
 		Path: node, Arguments: append([]string{binPath}, profile.Arguments...),
-		ProbeArguments: append([]string{binPath}, profile.VersionArguments...),
+		ProbeArguments: probeArguments,
 	}, nil
 }
 
