@@ -453,6 +453,10 @@ func (a *app) closeSSHWorkspacePicker() {
 }
 
 func (a *app) selectSSHWorkspaceProfile(profileID string) {
+	a.selectSSHWorkspaceProfileAndBrowse(profileID, true)
+}
+
+func (a *app) selectSSHWorkspaceProfileAndBrowse(profileID string, browse bool) {
 	a.cancelSSHWorkspaceResolve()
 	for _, profile := range a.settings.SSHProfiles {
 		if profile.ID == profileID {
@@ -460,7 +464,9 @@ func (a *app) selectSSHWorkspaceProfile(profileID string) {
 			a.sshWorkspaceProfileID = profileID
 			a.sshWorkspaceRoot = "/home"
 			a.sshWorkspaceError = ""
-			a.refreshSSHBrowserOnSelection()
+			if browse {
+				a.refreshSSHBrowserOnSelection()
+			}
 			return
 		}
 	}

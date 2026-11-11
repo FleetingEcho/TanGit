@@ -84,6 +84,10 @@ func TestSSHBrowserOpenInitializesOnlyWithOptIn(t *testing.T) {
 
 func TestSSHBrowserNavigationAndStaleResults(t *testing.T) {
 	a, updates := sshBrowserTestApp(t)
+	repaints := make(chan bool, 4)
+	a.updateChanged = func(fn func() bool) {
+		updates <- func() { repaints <- fn() }
+	}
 	requests := make(chan string, 4)
 	release := make(chan struct{})
 	a.sshBrowseFolder = func(_ context.Context, _ sshworkspace.Profile, root string, _ bool) (sshFolderListing, error) {
@@ -98,8 +102,14 @@ func TestSSHBrowserNavigationAndStaleResults(t *testing.T) {
 	a.loadSSHFolder("/new", false, false)
 	<-requests
 	applySSHBrowserUpdate(t, updates)
+	if !<-repaints {
+		t.Fatal("current listing did not request its one repaint")
+	}
 	close(release)
 	applySSHBrowserUpdate(t, updates)
+	if <-repaints {
+		t.Fatal("stale listing requested a repaint")
+	}
 	if a.sshBrowser.Listing.Root != "/new" {
 		t.Fatal("stale listing replaced current folder")
 	}
@@ -107,6 +117,9 @@ func TestSSHBrowserNavigationAndStaleResults(t *testing.T) {
 	<-requests
 	a.closeSSHWorkspacePicker()
 	applySSHBrowserUpdate(t, updates)
+	if <-repaints {
+		t.Fatal("closed browser completion requested a repaint")
+	}
 	if a.sshWorkspaceOpen || a.sshWorkspaceResolving {
 		t.Fatal("closed browser reopened from background result")
 	}
@@ -122,6 +135,50 @@ func TestSSHNotRepositoryReturnsToBrowser(t *testing.T) {
 	applySSHBrowserUpdate(t, updates)
 	if !a.sshWorkspaceOpen || a.sshBrowser.Listing.Root != "/root" || a.offerInitPath != "" || a.sshBrowser.AllowInit {
 		t.Fatal("plain SSH folder did not return to safe browser")
+	}
+}
+
+func TestSSHNotRepositoryRecoveryReadsOnlyRequestedRoot(t *testing.T) {
+	a, updates := sshBrowserTestApp(t)
+	a.opener = appSSHRepositoryOpener{}
+	requests := make(chan string, 2)
+	a.sshBrowseFolder = func(_ context.Context, _ sshworkspace.Profile, root string, _ bool) (sshFolderListing, error) {
+		requests <- root
+		return sshFolderListing{Root: root}, nil
+	}
+	a.setOpenError("ssh://server/custom/repository", a.generation, repository.ErrNotRepository)
+	applySSHBrowserUpdate(t, updates)
+	if got := <-requests; got != "/custom/repository" {
+		t.Fatalf("recovery requested %q before or instead of its repository", got)
+	}
+	select {
+	case root := <-requests:
+		t.Fatalf("recovery made a redundant %q read", root)
+	default:
+	}
+	if !a.sshWorkspaceOpen || a.sshBrowser.Listing.Root != "/custom/repository" {
+		t.Fatal("recovery did not leave the requested repository in the browser")
+	}
+}
+
+func TestSSHBrowserVirtualizesLargeFolder(t *testing.T) {
+	a, _ := sshBrowserTestApp(t)
+	entries := make([]os.FileInfo, 5000)
+	for index := range entries {
+		entries[index] = remoteTestFileInfo{name: fmt.Sprintf("entry-%04d", index), mode: os.ModeDir}
+	}
+	a.sshWorkspaceRoot = "/large"
+	a.sshBrowser.Listing = sshFolderListing{Root: "/large", Entries: entries}
+	tester := ui.NewTester(a.view, 1280, 900)
+	tester.Frame()
+	if tester.HasText("entry-4999") {
+		t.Fatal("large folder built an entry thousands of rows outside its viewport")
+	}
+	tester.Frame()
+	a.sshBrowser.List.ScrollTo(len(entries), ui.End)
+	tester.Frame()
+	if !tester.HasText("entry-4999") {
+		t.Fatal("virtualized folder cannot scroll to its last entry")
 	}
 }
 

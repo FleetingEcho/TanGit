@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo/ui"
+
 	"lazygitapp/internal/repository"
 	"lazygitapp/internal/sshworkspace"
 	"lazygitapp/internal/workspace"
@@ -23,6 +25,7 @@ type sshFolderListing struct {
 
 type sshBrowserState struct {
 	Listing         sshFolderListing
+	List            ui.ListState
 	AllowInit       bool
 	CreateOpen      bool
 	CreateDirectory bool
@@ -84,6 +87,7 @@ func (a *app) loadSSHFolder(root string, open, initialize bool) {
 
 func (a *app) editSSHFolderPath() {
 	a.sshBrowser.Listing = sshFolderListing{}
+	a.sshBrowser.List = ui.ListState{}
 	a.sshBrowser.CreateOpen = false
 	a.startSSHFolderJob(a.sshWorkspaceRoot, false, false, 350*time.Millisecond, nil)
 }
@@ -102,6 +106,7 @@ func (a *app) startSSHFolderJob(root string, open, initialize bool, delay time.D
 	a.sshWorkspaceRoot = root
 	if a.sshBrowser.Listing.Root != root {
 		a.sshBrowser.Listing = sshFolderListing{}
+		a.sshBrowser.List = ui.ListState{}
 	}
 	a.sshBrowser.CreateOpen = false
 	a.sshWorkspaceError = ""
@@ -136,9 +141,9 @@ func (a *app) startSSHFolderJob(root string, open, initialize bool, delay time.D
 			}
 		}
 		listing, err := read(ctx, profile, root, initialize)
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if sequence != a.sshWorkspaceResolveSeq || !a.sshWorkspaceOpen {
-				return
+				return false
 			}
 			a.sshWorkspaceResolveCancel = nil
 			a.sshWorkspaceResolving = false
@@ -148,11 +153,11 @@ func (a *app) startSSHFolderJob(root string, open, initialize bool, delay time.D
 				} else {
 					a.sshWorkspaceError = statusErrorLine(repository.RedactSecrets(err.Error()))
 				}
-				return
+				return true
 			}
 			if !path.IsAbs(listing.Root) {
 				a.sshWorkspaceError = tr("The server returned an invalid remote folder.")
-				return
+				return true
 			}
 			a.sshBrowser.Listing = listing
 			a.sshWorkspaceRoot = listing.Root
@@ -164,6 +169,7 @@ func (a *app) startSSHFolderJob(root string, open, initialize bool, delay time.D
 				a.closeSSHWorkspacePicker()
 				a.beginOpen()
 			}
+			return true
 		})
 	}()
 }

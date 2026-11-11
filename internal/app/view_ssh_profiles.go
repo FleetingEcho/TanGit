@@ -277,37 +277,65 @@ func (a *app) sshFolderBrowser(c *ui.Context) {
 	}
 	listing := a.sshBrowser.Listing
 	ui.Text(c, a.sshWorkspaceRoot).SingleLine().Tooltip(a.sshWorkspaceRoot).Bold()
-	ui.Scroll(c).Label(tr("Remote folder contents")).Height(180).FillWidth().Border(1, c.Theme().Border).Radius(c.Theme().Radius).PopoverMenu(a.sshBrowserContextMenu).Children(func() {
-		ui.Column(c).FillWidth().Gap(2).Padding(6).Children(func() {
-			if busy || listing.Root == "" {
-				ui.Row(c).FillWidth().MinHeight(166).Center().Gap(8).Children(func() {
-					if busy {
-						ui.Spinner(c).Label(tr("Loading remote folder…"))
-						ui.Text(c, tr("Loading remote folder…")).TextColor(c.Theme().TextMuted)
-					} else {
-						ui.Text(c, tr("No folder loaded")).TextColor(c.Theme().TextMuted)
-					}
-				})
+	virtual := !busy && listing.Root != "" && len(listing.Entries) > 0
+	parentRows := 0
+	if virtual && listing.Root != "/" {
+		parentRows = 1
+	}
+	browser := ui.Scroll(c)
+	if virtual {
+		// Only visible directory entries are built. Large remote folders must
+		// not turn hover and unrelated updates into thousands of new widgets.
+		a.sshBrowser.List.Key = func(row int) any {
+			if parentRows == 1 && row == 0 {
+				return "ssh-browser-parent"
+			}
+			return "ssh-browser:" + listing.Entries[row-parentRows].Name()
+		}
+		a.sshBrowser.List.Label = func(row int) string {
+			if parentRows == 1 && row == 0 {
+				return tr("Parent folder")
+			}
+			return listing.Entries[row-parentRows].Name()
+		}
+		browser = ui.List(c, &a.sshBrowser.List, len(listing.Entries)+parentRows).Padding(6)
+	}
+	browser.Label(tr("Remote folder contents")).Height(180).FillWidth().Border(1, c.Theme().Border).Radius(c.Theme().Radius).PopoverMenu(a.sshBrowserContextMenu)
+	if virtual {
+		browser.Rows(func(row ui.ListRow) {
+			if parentRows == 1 && row.Index == 0 {
+				a.sshBrowserFolderRow(row.Context, "..", tr("Parent folder"), path.Dir(listing.Root), busy)
 				return
 			}
-			if listing.Root != "/" {
-				c.Key("ssh-browser-parent")
-				a.sshBrowserFolderRow(c, "..", tr("Parent folder"), path.Dir(listing.Root), busy)
-			}
-			if len(listing.Entries) == 0 {
-				ui.Text(c, tr("This folder is empty")).TextColor(c.Theme().TextMuted)
-			}
-			for _, entry := range listing.Entries {
-				entry := entry
-				c.Key("ssh-browser:" + entry.Name())
-				if entry.IsDir() || entry.Mode()&os.ModeSymlink != 0 {
-					a.sshBrowserFolderRow(c, entry.Name(), trf("Browse remote folder %s", entry.Name()), path.Join(listing.Root, entry.Name()), busy)
-				} else {
-					ui.Text(c, entry.Name()).SingleLine().Tooltip(entry.Name()).TextColor(c.Theme().TextMuted)
-				}
+			entry := listing.Entries[row.Index-parentRows]
+			if entry.IsDir() || entry.Mode()&os.ModeSymlink != 0 {
+				a.sshBrowserFolderRow(row.Context, entry.Name(), trf("Browse remote folder %s", entry.Name()), path.Join(listing.Root, entry.Name()), busy)
+			} else {
+				ui.Text(row.Context, entry.Name()).SingleLine().Tooltip(entry.Name()).TextColor(c.Theme().TextMuted).Padding(6, 8)
 			}
 		})
-	})
+	} else {
+		browser.Children(func() {
+			ui.Column(c).FillWidth().Gap(2).Padding(6).Children(func() {
+				if busy || listing.Root == "" {
+					ui.Row(c).FillWidth().MinHeight(166).Center().Gap(8).Children(func() {
+						if busy {
+							ui.Spinner(c).Label(tr("Loading remote folder…"))
+							ui.Text(c, tr("Loading remote folder…")).TextColor(c.Theme().TextMuted)
+						} else {
+							ui.Text(c, tr("No folder loaded")).TextColor(c.Theme().TextMuted)
+						}
+					})
+					return
+				}
+				if listing.Root != "/" {
+					c.Key("ssh-browser-parent")
+					a.sshBrowserFolderRow(c, "..", tr("Parent folder"), path.Dir(listing.Root), busy)
+				}
+				ui.Text(c, tr("This folder is empty")).TextColor(c.Theme().TextMuted)
+			})
+		})
+	}
 	if busy || listing.Root == "" {
 		return
 	}

@@ -161,7 +161,9 @@ func (a *app) setOpenError(path string, generation uint64, err error) {
 			a.errMessage = ""
 			a.offerInitPath = ""
 			a.openSSHWorkspacePicker()
-			a.selectSSHWorkspaceProfile(location.ProfileID)
+			// Recovery already knows its folder: select the identity without
+			// starting /home only to cancel it for the repository read below.
+			a.selectSSHWorkspaceProfileAndBrowse(location.ProfileID, false)
 			a.sshWorkspaceRoot = location.Root
 			a.loadSSHFolder(location.Root, false, false)
 			return
