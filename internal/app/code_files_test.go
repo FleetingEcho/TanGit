@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -113,5 +114,52 @@ func TestListCodeFilesUsesWorkingTreeAndGitIgnore(t *testing.T) {
 	want := []string{".gitignore", "docs/guide.md", "nested/empty.txt", "tracked.go", "untracked.go"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("listCodeFiles() = %v, want %v", got, want)
+	}
+}
+
+func TestListPlainCodeFilesIncludesRegularFilesAndEmptyDirectories(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"z-last.txt", "README.md", "nested/file.txt", ".git/config", "git-file-parent/.git"} {
+		filename := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(filename), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filename, []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"empty", "nested/empty-child", "nested/.git"} {
+		if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "outside.txt"), []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "linked-directory")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "outside.txt"), filepath.Join(root, "linked-file.txt")); err != nil {
+		t.Fatal(err)
+	}
+
+	files, empty, err := listPlainCodeFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"README.md", "nested/file.txt", "z-last.txt"}; !reflect.DeepEqual(files, want) {
+		t.Fatalf("plain files = %v, want %v", files, want)
+	}
+	if want := []string{"empty", "nested/empty-child"}; !reflect.DeepEqual(empty, want) {
+		t.Fatalf("plain empty directories = %v, want %v", empty, want)
+	}
+}
+
+func TestListPlainCodeFilesReportsTraversalErrors(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing")
+	_, _, err := listPlainCodeFiles(missing)
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("listPlainCodeFiles(%q) error = %v, want os.ErrNotExist", missing, err)
 	}
 }

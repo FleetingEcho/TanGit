@@ -411,6 +411,7 @@ func (a *app) requestCodeFiles() {
 	a.code.filesLoading = true
 	a.code.filesError = ""
 	remote := a.location.IsRemote()
+	plain := a.editorOnlyWorkspace() && !remote
 	var remoteClient remoteWorkspaceClient
 	var remoteErr error
 	if remote {
@@ -428,6 +429,8 @@ func (a *app) requestCodeFiles() {
 					emptyDirectories = listRemoteCodeEmptyDirectories(context.Background(), remoteClient, root)
 				}
 			}
+		} else if plain {
+			paths, emptyDirectories, err = listPlainCodeFiles(root)
 		} else {
 			paths, err = listCodeFiles(root)
 			if err == nil {

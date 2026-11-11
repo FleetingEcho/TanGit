@@ -93,6 +93,10 @@ type appSettings struct {
 	// TerminalDock is the default edge for a new terminal dock. Toolbar moves
 	// remain local to their repository tab and do not rewrite this preference.
 	TerminalDock string `json:"terminalDock"`
+	// HiddenHeaderActions and HiddenStatusActions hide individual global
+	// buttons. Nil, including in older settings files, shows every action.
+	HiddenHeaderActions []string `json:"hiddenHeaderActions,omitempty"`
+	HiddenStatusActions []string `json:"hiddenStatusActions,omitempty"`
 	// RemoteWebURLs stores browser-page overrides by repository root and then
 	// remote name, allowing origin, upstream, and arbitrary hosts to differ.
 	RemoteWebURLs map[string]map[string]string `json:"remoteWebUrls,omitempty"`
@@ -209,6 +213,8 @@ func normalizeSettings(s appSettings) appSettings {
 	s.VisibleSections = normalizeVisibleSections(s.VisibleSections)
 	s.SectionOrder = normalizeSectionOrder(s.SectionOrder)
 	s.TerminalDock = normalizeTerminalDock(s.TerminalDock)
+	s.HiddenHeaderActions = normalizeHiddenToolbarActions(s.HiddenHeaderActions, headerToolbarActions)
+	s.HiddenStatusActions = normalizeHiddenToolbarActions(s.HiddenStatusActions, statusToolbarActions)
 	s.RemoteWebURLs = normalizeRemoteWebURLs(s.RemoteWebURLs)
 	s.SSHProfiles = normalizeSSHProfiles(s.SSHProfiles)
 	return s
