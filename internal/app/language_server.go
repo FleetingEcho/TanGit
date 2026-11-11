@@ -128,7 +128,9 @@ func (a *app) syncGoLanguageServer() {
 	}
 	documents := make(map[string]*codeDocument)
 	for path, document := range a.code.documents {
-		if strings.EqualFold(filepath.Ext(path), ".go") && document != nil && document.state != nil && document.state.Buffer != nil {
+		if strings.EqualFold(filepath.Ext(path), ".go") && document != nil {
+			// Loading previews still need their server retained. Otherwise each
+			// replacement briefly looks like the workspace's last Go document.
 			documents[path] = document
 		}
 	}
@@ -147,14 +149,26 @@ func (a *app) syncGoLanguageServer() {
 		}
 		return
 	}
+	ready := false
+	for _, document := range documents {
+		if document.state != nil && document.state.Buffer != nil {
+			ready = true
+			break
+		}
+	}
+	if !ready && len(a.goLanguageServerDocs) > 0 {
+		return
+	}
+	// As with the additional servers, open the replacement before closing
+	// its predecessor so gopls never sees a hollow preview-switching gap.
+	for path, document := range documents {
+		a.syncGoLanguageServerDocument(path, document)
+	}
 	for path := range a.goLanguageServerDocs {
 		if documents[path] == nil {
 			a.goLanguageServer.DidClose(languageServerFileURI(a.workingFilePath(path)))
 			delete(a.goLanguageServerDocs, path)
 		}
-	}
-	for path, document := range documents {
-		a.syncGoLanguageServerDocument(path, document)
 	}
 }
 

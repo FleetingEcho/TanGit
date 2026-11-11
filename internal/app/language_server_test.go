@@ -150,6 +150,43 @@ func TestGoLanguageServerSynchronizesOpenChangeAndClose(t *testing.T) {
 	}
 }
 
+// Go has its own server lifecycle, but preview replacement must preserve the
+// same warm workspace as the shared additional-server path.
+func TestGoLanguageServerSurvivesPreviewReplacement(t *testing.T) {
+	connection := newFakeLanguageServerConnection()
+	launches := make(chan languageServerLaunch, 2)
+	stubLanguageServerConnection(t, func(launch languageServerLaunch) (languageServerConnection, error) {
+		launches <- launch
+		return connection, nil
+	})
+	stubCodeWorkspace(t, map[string]string{
+		"first.go":  "package first\n",
+		"second.go": "package second\n",
+	})
+	h := menuTestApp(t)
+	openCodePageForTest(t, h, 2)
+	h.app.openCodeFile("first.go", 0)
+	waitForCodeDocument(t, h, "first.go")
+	h.waitFor(t, "the first Go document", func() bool {
+		return len(connection.snapshot()) == 1
+	})
+
+	h.app.openCodeFile("second.go", 0)
+	waitForCodeDocument(t, h, "second.go")
+	h.tester.Frame()
+	events := connection.snapshot()
+	if len(events) != 3 {
+		t.Fatalf("Go preview replacement emitted %#v, want two opens and one close", events)
+	}
+	if events[1].kind != "open" || !strings.HasSuffix(events[1].uri, "/second.go") ||
+		events[2].kind != "close" || !strings.HasSuffix(events[2].uri, "/first.go") {
+		t.Fatalf("Go preview replacement events = %#v, want open second before close first", events)
+	}
+	if got := len(launches); got != 1 {
+		t.Fatalf("gopls launches = %d, want one server retained across preview replacement", got)
+	}
+}
+
 func TestGoLanguageServerUsesConfiguredProgramAndRejectsStaleStartup(t *testing.T) {
 	connection := newFakeLanguageServerConnection()
 	started := make(chan languageServerLaunch, 1)
