@@ -729,6 +729,17 @@ func (a *app) commitRefreshButton(c *ui.Context) {
 	flatIconButton(c, "Refresh commits", "Reload the commit list", refreshIcon, 14, 4, a.actionBusy, a.beginRefresh)
 }
 
+// loadingPane centers one spinner and its message in the pane's remaining
+// space. Inline progress in toolbars, forms, and footers deliberately stays
+// compact instead of using this full-pane placeholder.
+func loadingPane(c *ui.Context, label, message string) {
+	ui.Column(c).Grow(1).Center().Gap(8).Children(func() {
+		ui.Spinner(c).Label(tr(label))
+		ui.Text(c, tr(message)).TextColor(c.Theme().TextMuted).
+			TextAlign(ui.Center).AlignSelf(ui.Center)
+	})
+}
+
 // paneTitle is a section column's heading: its icon and its name.
 func paneTitle(c *ui.Context, icon *ui.SVG, title string) {
 	theme := c.Theme()

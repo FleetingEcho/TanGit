@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+
+	"lazygitapp/internal/repository"
 )
 
 func branchPageHarness(t *testing.T) *harness {
@@ -30,6 +32,32 @@ func TestBranchHeaderOmitsMaximizeButKeepsRename(t *testing.T) {
 	h.tester.Frame()
 	if !h.app.showRenameForm || !h.tester.HasText("New branch name") {
 		t.Fatal("removing maximize also disturbed the rename form")
+	}
+}
+
+func TestBranchHistoryLoadingIsCentered(t *testing.T) {
+	a := newApp(fakeOpener{})
+	a.branchCommitsLoading = true
+	tester := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Fill().Children(func() {
+			a.branchCommitsView(c, repository.Branch{Name: "main", Head: true})
+		})
+	}, 400, 420)
+	tester.Frame()
+	spinner, spinnerOK := tester.Find("Loading commits")
+	message, messageOK := tester.Find("Reading the branch's history…")
+	if !spinnerOK || !messageOK {
+		t.Fatalf("missing centered loading presentation: %q", tester.Texts())
+	}
+	centerX, centerY := float32(200), float32(210)
+	groupMidY := (spinner.Y + message.Y + message.H) / 2
+	if spinner.X+spinner.W/2 < centerX-45 || spinner.X+spinner.W/2 > centerX+45 ||
+		message.X+message.W/2 < centerX-45 || message.X+message.W/2 > centerX+45 ||
+		groupMidY < centerY-55 || groupMidY > centerY+55 {
+		t.Fatalf("loading is not centered in its pane: spinner=%+v message=%+v", spinner, message)
+	}
+	if spinner.Y >= message.Y {
+		t.Fatalf("history loading icon and text should read top-to-bottom: spinner=%+v message=%+v", spinner, message)
 	}
 }
 

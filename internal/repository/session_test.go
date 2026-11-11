@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	gitCommands "github.com/jesseduffield/lazygit/pkg/commands/git_commands"
 )
 
 func TestOpenRepository(t *testing.T) {
@@ -52,9 +55,11 @@ func TestUntrackedLineStatisticsHandleTextEmptyAndBinaryFiles(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
 	files := map[string][]byte{
-		"text.txt":   []byte(strings.Repeat("added\n", 154)),
-		"empty.txt":  {},
-		"binary.dat": {0, 1, 2},
+		"text.txt":       []byte(strings.Repeat("added\n", 154)),
+		"no-newline.txt": []byte("first\nsecond"),
+		"crlf.txt":       []byte("first\r\nsecond\r\n"),
+		"empty.txt":      {},
+		"binary.dat":     {0, 1, 2},
 	}
 	for path, content := range files {
 		if err := os.WriteFile(filepath.Join(dir, path), content, 0o600); err != nil {
@@ -73,10 +78,9 @@ func TestUntrackedLineStatisticsHandleTextEmptyAndBinaryFiles(t *testing.T) {
 		t.Fatalf("snapshot has %d files, want %d: %#v", len(snapshot.Files), len(files), snapshot.Files)
 	}
 	for _, file := range snapshot.Files {
-		want := 0
-		if file.Path == "text.txt" {
-			want = 154
-		}
+		want := map[string]int{
+			"text.txt": 154, "no-newline.txt": 2, "crlf.txt": 2,
+		}[file.Path]
 		if file.LinesAdded != want || file.LinesDeleted != 0 {
 			t.Errorf("%s line stats = +%d -%d, want +%d -0",
 				file.Path, file.LinesAdded, file.LinesDeleted, want)
@@ -229,6 +233,140 @@ func TestTrackedLineStatisticsSurviveStageAndUnstageAll(t *testing.T) {
 	assertStats("after unstage all", 1, 1)
 }
 
+func TestUntrackedLineStatisticsSkipNonRegularFiles(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	session, err := (Opener{}).Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	working := session.(*gitSession)
+	if err := os.MkdirAll(filepath.Join(dir, "nested", "lib"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"nested", filepath.Join("nested", "lib")} {
+		stat, err := working.untrackedLineStats(path)
+		if err != nil || stat.added != 0 || stat.deleted != 0 {
+			t.Fatalf("directory %q stats = %+v, %v; want a harmless empty result", path, stat, err)
+		}
+	}
+
+	link := filepath.Join(dir, "lib64")
+	if err := os.Symlink(filepath.Join(dir, "nested"), link); err != nil {
+		t.Skipf("cannot create a directory symlink on this platform: %v", err)
+	}
+	stat, err := working.untrackedLineStats("lib64")
+	if err != nil || stat.added != 0 || stat.deleted != 0 {
+		t.Fatalf("directory symlink stats = %+v, %v; want a harmless empty result", stat, err)
+	}
+}
+
+type errorInjectedSessionFiles struct {
+	localSessionFiles
+	statErr, openErr, readErr error
+}
+
+func (f errorInjectedSessionFiles) Stat(name string) (os.FileInfo, error) {
+	if f.statErr != nil {
+		return nil, f.statErr
+	}
+	return f.localSessionFiles.Stat(name)
+}
+
+func (f errorInjectedSessionFiles) Open(name string) (io.ReadCloser, error) {
+	if f.openErr != nil {
+		return nil, f.openErr
+	}
+	if f.readErr != nil {
+		return io.NopCloser(errorReader{err: f.readErr}), nil
+	}
+	return f.localSessionFiles.Open(name)
+}
+
+type errorReader struct{ err error }
+
+func (r errorReader) Read([]byte) (int, error) { return 0, r.err }
+
+func TestUntrackedLineStatisticsAreBestEffort(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	session, err := (Opener{}).Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	working := session.(*gitSession)
+	if err := os.WriteFile(filepath.Join(dir, "one.txt"), []byte("one\ntwo\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name  string
+		path  string
+		files sessionFiles
+	}{
+		{name: "stat error", path: "one.txt", files: errorInjectedSessionFiles{statErr: errors.New("stat unavailable")}},
+		{name: "disappeared between stat and open", path: "one.txt", files: errorInjectedSessionFiles{openErr: os.ErrNotExist}},
+		{name: "permission denied", path: "one.txt", files: errorInjectedSessionFiles{openErr: os.ErrPermission}},
+		{name: "read error", path: "one.txt", files: errorInjectedSessionFiles{readErr: errors.New("read interrupted")}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			working.files = test.files
+			stat, err := working.untrackedLineStats(test.path)
+			if err != nil || stat.added != 0 || stat.deleted != 0 {
+				t.Fatalf("optional statistics failed the open boundary: stats=%+v err=%v", stat, err)
+			}
+		})
+	}
+
+	if err := os.Symlink("missing-target", filepath.Join(dir, "broken-link")); err != nil {
+		t.Skipf("cannot create a broken symlink on this platform: %v", err)
+	}
+	working.files = localSessionFiles{}
+	stat, err := working.untrackedLineStats("broken-link")
+	if err != nil || stat.added != 0 || stat.deleted != 0 {
+		t.Fatalf("broken symlink stats = %+v, %v; want a harmless empty result", stat, err)
+	}
+}
+
+func TestSnapshotIgnoresUnavailableOptionalFilters(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	runGit(t, dir, "config", "user.name", "Desktop Test")
+	runGit(t, dir, "config", "user.email", "desktop@example.com")
+	for path, content := range map[string]string{
+		".gitattributes": "*.custom filter=brokenCustom\n",
+		"tracked.custom": "one\ntwo\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, path), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+	if err := os.WriteFile(filepath.Join(dir, "tracked.custom"), []byte("one\nTWO\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	missing := "tangit-test-missing-custom-filter"
+	runGit(t, dir, "config", "filter.brokenCustom.required", "true")
+	runGit(t, dir, "config", "filter.brokenCustom.process", missing+" filter-process")
+	runGit(t, dir, "config", "filter.brokenCustom.clean", missing+" clean -- %f")
+	runGit(t, dir, "config", "filter.brokenCustom.smudge", missing+" smudge -- %f")
+
+	session, err := (Opener{}).Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := session.Snapshot(context.Background()); err != nil {
+		t.Fatalf("an optional custom filter blocked repository opening: %v", err)
+	}
+	files, err := session.(*gitSession).remoteStatusFiles(gitCommands.GetStatusFileOptions{Background: true})
+	if err != nil {
+		t.Fatalf("the status command itself was blocked by a custom filter: %v", err)
+	}
+	if len(files) != 1 || files[0].Path != "tracked.custom" {
+		t.Fatalf("status after its safe retry lost the tracked file: %+v", files)
+	}
+}
+
 func TestTrackedLineStatisticsDoNotMaskAnUnreadableHead(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
@@ -262,6 +400,63 @@ func TestTrackedLineStatisticsDoNotMaskAnUnreadableHead(t *testing.T) {
 	if _, err := session.Snapshot(context.Background()); err == nil ||
 		!strings.Contains(err.Error(), "load tracked line statistics") {
 		t.Fatalf("an unreadable HEAD was hidden by the empty-tree fallback: %v", err)
+	}
+}
+
+func TestSnapshotDoesNotRequireGitLFSExecutable(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	runGit(t, dir, "config", "user.name", "Desktop Test")
+	runGit(t, dir, "config", "user.email", "desktop@example.com")
+	for path, content := range map[string]string{
+		".gitattributes": "*.tar.xz filter=lfs diff=lfs merge=lfs -text\n",
+		"tracked.txt":    "one\ntwo\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, path), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runGit(t, dir, "add", ".gitattributes", "tracked.txt")
+	runGit(t, dir, "commit", "-m", "initial")
+	if err := os.WriteFile(filepath.Join(dir, "tracked.txt"), []byte("one\nTWO\nthree\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Keep an LFS pointer in an untracked, LFS-attributed path. Repository
+	// opening needs its statistics but must not need the optional executable.
+	lfsPath := filepath.Join(dir, "object.tar.xz")
+	pointer := "version https://git-lfs.github.com/spec/v1\noid sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\nsize 12345\n"
+	if err := os.WriteFile(lfsPath, []byte(pointer), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	missing := "tangit-test-git-lfs-that-is-not-installed"
+	runGit(t, dir, "config", "filter.lfs.required", "true")
+	runGit(t, dir, "config", "filter.lfs.process", missing+" filter-process")
+	runGit(t, dir, "config", "filter.lfs.clean", missing+" clean -- %f")
+	runGit(t, dir, "config", "filter.lfs.smudge", missing+" smudge -- %f")
+
+	session, err := (Opener{}).Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := session.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("open with an unavailable Git LFS executable: %v", err)
+	}
+	var untracked *File
+	for index := range snapshot.Files {
+		if snapshot.Files[index].Path == "object.tar.xz" {
+			untracked = &snapshot.Files[index]
+		}
+		if snapshot.Files[index].Path == "tracked.txt" &&
+			(snapshot.Files[index].LinesAdded != 2 || snapshot.Files[index].LinesDeleted != 1) {
+			t.Fatalf("ordinary tracked statistics changed: %+v", snapshot.Files[index])
+		}
+	}
+	if untracked != nil && (untracked.LinesAdded != 0 || untracked.LinesDeleted != 0) {
+		t.Fatalf("LFS-attributed binary pointer has textual statistics: %+v", untracked)
+	}
+	if untracked == nil || untracked.Tracked || untracked.Staged {
+		t.Fatalf("LFS pointer is not the expected untracked file: snapshot=%+v untracked=%+v", snapshot.Files, untracked)
 	}
 }
 

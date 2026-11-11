@@ -406,10 +406,7 @@ func (a *app) fileHistoryCommitsView(c *ui.Context) {
 		})
 		switch {
 		case a.fileHistoryLoading:
-			ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
-				ui.Spinner(c).Label(tr("Loading file history"))
-				ui.Text(c, tr("Reading the file's history…")).TextColor(theme.TextMuted)
-			})
+			loadingPane(c, "Loading file history", "Reading the file's history…")
 		case a.fileHistoryError != "":
 			ui.Column(c).Grow(1).Gap(8).Children(func() {
 				ui.Text(c, a.fileHistoryError).TextColor(theme.Danger)
@@ -456,7 +453,7 @@ func (a *app) fileHistoryCommitsView(c *ui.Context) {
 			}
 			switch {
 			case a.fileHistoryLoadingMore:
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 					ui.Spinner(c).Label(tr("Loading older commits"))
 					ui.Text(c, tr("Loading older commits…")).TextColor(theme.TextMuted).
 						FontSize(theme.FontSize - 1)
@@ -497,10 +494,7 @@ func (a *app) fileHistoryFilesView(c *ui.Context) {
 		})
 		switch {
 		case a.fileHistoryFilesLoading:
-			ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
-				ui.Spinner(c).Label(tr("Loading commit files"))
-				ui.Text(c, tr("Reading the commit's files…")).TextColor(theme.TextMuted)
-			})
+			loadingPane(c, "Loading commit files", "Reading the commit's files…")
 		case a.fileHistoryFilesError != "":
 			ui.Column(c).Grow(1).Gap(8).Children(func() {
 				ui.Text(c, a.fileHistoryFilesError).TextColor(theme.Danger)
@@ -565,10 +559,7 @@ func (a *app) fileHistoryDiffView(c *ui.Context) {
 		})
 		switch {
 		case a.fileHistoryDiffLoading:
-			ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
-				ui.Spinner(c).Label(tr("Loading file diff"))
-				ui.Text(c, tr("Reading the file's diff…")).TextColor(theme.TextMuted)
-			})
+			loadingPane(c, "Loading file diff", "Reading the file's diff…")
 		case a.fileHistoryDiffError != "":
 			ui.Column(c).Grow(1).Gap(8).Children(func() {
 				ui.Text(c, a.fileHistoryDiffError).TextColor(theme.Danger)

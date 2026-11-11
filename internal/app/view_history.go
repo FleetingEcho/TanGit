@@ -306,7 +306,7 @@ func (a *app) commitListFooter(c *ui.Context) {
 	}
 	switch {
 	case a.commitsLoading:
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 			ui.Spinner(c).Label(tr("Loading older commits"))
 			ui.Text(c, tr("Loading older commits…")).TextColor(theme.TextMuted).
 				FontSize(theme.FontSize - 1)
@@ -336,7 +336,7 @@ func (a *app) commitListFooter(c *ui.Context) {
 func (a *app) filteredCommitFooter(c *ui.Context, theme *ui.Theme, target int, query *commitQuery) {
 	switch {
 	case query.loading:
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 			ui.Spinner(c).Label(tr("Loading older matches"))
 			ui.Text(c, tr("Loading older matches…")).TextColor(theme.TextMuted).
 				FontSize(theme.FontSize - 1)
@@ -403,9 +403,6 @@ func (a *app) historyView(c *ui.Context) {
 						a.commitRowMenu(m, commit, services)
 					})
 				})
-				if a.commitList.AtEnd() {
-					a.requestMoreCommits()
-				}
 				a.commitListFooter(c)
 			})
 		}, func() {
@@ -456,14 +453,17 @@ func (a *app) historyListHeader(c *ui.Context) {
 // names the page, History or the Graph, so the clear and retry controls act on
 // the filter that emptied it.
 func (a *app) commitEmptyView(c *ui.Context, theme *ui.Theme, target int) {
+	if a.repositoryDetailsLoading {
+		// A progressive core has no commits until its deferred history lands.
+		// That is a loading state, not an empty repository.
+		loadingPane(c, "Loading commits", "Reading the branch's history…")
+		return
+	}
 	query := a.commitQueryFor(target)
 	filtered := query.narrows()
 	switch {
 	case filtered && query.loading:
-		ui.Column(c).Grow(1).Center().Gap(8).Children(func() {
-			ui.Spinner(c).Label(tr("Searching commits"))
-			ui.Text(c, tr("Searching commits…")).TextColor(theme.TextMuted)
-		})
+		loadingPane(c, "Searching commits", "Searching commits…")
 	case filtered && query.err != "":
 		ui.Column(c).Grow(1).Center().Gap(8).Padding(24).Children(func() {
 			ui.Icon(c, filterIcon).FontSize(24).TextColor(theme.Danger)
@@ -712,10 +712,7 @@ func (a *app) commitDetailBody(c *ui.Context, commit *repository.Commit, emptyLa
 	}
 	state.requestDetails(*commit)
 	if *state.filesLoading {
-		ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
-			ui.Spinner(c).Label(tr("Loading commit details"))
-			ui.Text(c, tr("Loading commit details…")).TextColor(theme.TextMuted)
-		})
+		loadingPane(c, "Loading commit details", "Loading commit details…")
 		return
 	}
 	if *state.filesError != "" {
@@ -785,10 +782,7 @@ func (a *app) commitDetailBody(c *ui.Context, commit *repository.Commit, emptyLa
 			}
 			switch {
 			case *state.diffLoading:
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Spinner(c).Label(tr("Loading diff"))
-					ui.Text(c, tr("Loading diff…")).TextColor(theme.TextMuted)
-				})
+				loadingPane(c, "Loading diff", "Loading diff…")
 			case *state.diffError != "":
 				ui.Text(c, *state.diffError).TextColor(theme.Danger)
 			case *state.diffState != nil:

@@ -184,6 +184,37 @@ func TestCommitFileRowsCarryTheirChangeCounts(t *testing.T) {
 	}
 }
 
+func TestCommitDiffStatBlocksUseTheCountsPalette(t *testing.T) {
+	var success ui.Color
+	tester := ui.NewTester(func(c *ui.Context) {
+		success = c.Theme().Success
+		commitDiffStatBlocks(c, "f0aca5c", 2, 0)
+	}, 100, 40)
+	tester.SetDark(true)
+	tester.Frame()
+	want := success.SRGB()
+	ink := color.RGBA{R: want.R, G: want.G, B: want.B, A: 255}
+	image := tester.Image()
+	found := false
+	for y := 0; y < image.Bounds().Dy() && !found; y++ {
+		for x := 0; x < image.Bounds().Dx() && !found; x++ {
+			got := color.RGBAModel.Convert(image.At(x, y)).(color.RGBA)
+			found = colorChannelDelta(got.R, ink.R) <= 48 &&
+				colorChannelDelta(got.G, ink.G) <= 48 && colorChannelDelta(got.B, ink.B) <= 48
+		}
+	}
+	if !found {
+		seen := map[color.RGBA]bool{}
+		for y := 0; y < image.Bounds().Dy() && len(seen) < 8; y++ {
+			for x := 0; x < image.Bounds().Dx() && len(seen) < 8; x++ {
+				seen[color.RGBAModel.Convert(image.At(x, y)).(color.RGBA)] = true
+			}
+		}
+		t.Logf("want palette color %v, got image colors %v", ink, seen)
+		t.Fatal("a +2/-0 commit rendered muted blocks instead of the additions palette")
+	}
+}
+
 func rectHasColor(tester *ui.Tester, label string, want ui.Color) bool {
 	rect, ok := tester.Find(label)
 	if !ok {

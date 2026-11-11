@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -25,7 +26,15 @@ func (s *gitSession) remoteStatusFiles(options git_commands.GetStatusFileOptions
 	} else {
 		args = append(args, fmt.Sprintf("--find-renames=%d%%", s.renameSimilarityThreshold))
 	}
-	stdout, stderr, err := s.cmd.New(args).RunWithOutputs()
+	stdout, stderr, err := s.cmd.New(withoutLFSFilters(args)).RunWithOutputs()
+	if isOptionalFilterStatsError(err) {
+		configured, configErr := s.filterDisablingArgs()
+		if configErr == nil {
+			retryArgs := append([]string{args[0]}, configured...)
+			retryArgs = append(retryArgs, args[1:]...)
+			stdout, stderr, err = s.cmd.New(retryArgs).RunWithOutputs()
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read remote status: %w: %s", err, strings.TrimSpace(stdout+stderr))
 	}
@@ -39,6 +48,46 @@ func (s *gitSession) remoteStatusFiles(options git_commands.GetStatusFileOptions
 		}
 	}
 	return files, nil
+}
+
+// filterDisablingArgs overrides every configured process/clean/smudge filter
+// only for the child Git command that reads optional metadata. It does not
+// write repository or user configuration. Keys are sorted for deterministic
+// command lines and existing filters are disabled as required=false as well.
+func (s *gitSession) filterDisablingArgs() ([]string, error) {
+	output, err := s.cmd.New([]string{"git", "config", "--get-regexp", `^filter\..*\.(process|clean|smudge|required)$`}).RunWithOutput()
+	if err != nil {
+		if code, ok := commandExitCode(err); !ok || code != 1 {
+			return nil, err
+		}
+	}
+	drivers := map[string]bool{}
+	for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
+		key, _, ok := strings.Cut(line, " ")
+		if !ok || key == "" {
+			continue
+		}
+		name := strings.TrimPrefix(key, "filter.")
+		end := strings.LastIndex(name, ".")
+		if end > 0 {
+			drivers["filter."+name[:end]] = true
+		}
+	}
+	names := make([]string, 0, len(drivers))
+	for name := range drivers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	args := make([]string, 0, len(names)*6)
+	for _, name := range names {
+		args = append(args,
+			"-c", name+".required=false",
+			"-c", name+".process=",
+			"-c", name+".clean=",
+			"-c", name+".smudge=",
+		)
+	}
+	return args, nil
 }
 
 func parseRemoteStatusFiles(output string) ([]*models.File, error) {

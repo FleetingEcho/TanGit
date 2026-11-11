@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/egoist/mygo/ui"
+
 	"lazygitapp/internal/repository"
 )
 
@@ -241,6 +243,29 @@ func TestProgressiveOpenShowsCoreBeforeDetailsFinish(t *testing.T) {
 	selected, ok := a.selectedChange()
 	if !ok || selected.file.Path != "live.txt" {
 		t.Fatalf("the working-tree selection was not preserved: %+v ok=%v", selected, ok)
+	}
+}
+
+func TestProgressiveOpenShowsHistoryLoadingInsteadOfEmpty(t *testing.T) {
+	for _, target := range []int{sectionHistory, sectionGraph} {
+		t.Run(workspaceSections[target], func(t *testing.T) {
+			a, updated, session := progressiveOpenFixture(t, nil)
+			a.workspaceTab = target
+			tester := ui.NewTester(a.view, 1280, 800)
+			tester.Frame()
+			if !tester.HasText("Reading the branch's history…") || tester.HasText("No commits yet") {
+				t.Fatalf("deferred history does not look like loading: %q", tester.Texts())
+			}
+
+			close(session.detailsRelease)
+			updated.waitForUpdate(t)
+			updated.waitForUpdate(t)
+			updated.waitForUpdate(t)
+			tester.Frame()
+			if tester.HasText("Reading the branch's history…") || !tester.HasText("Deferred history") {
+				t.Fatalf("loaded history did not replace loading state: %q", tester.Texts())
+			}
+		})
 	}
 }
 
