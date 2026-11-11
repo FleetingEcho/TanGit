@@ -37,13 +37,28 @@ func newShellTester(t *testing.T, snapshot repository.Snapshot) (*shell, *ui.Tes
 	s.start("")
 	tt := ui.NewTester(s.view, 1280, 800)
 	tt.Frame()
+	if a := s.activeApp(); a != nil && a.historyLoading {
+		updated.waitForUpdate(t)
+	}
 	return s, tt, updated
+}
+
+// newSettledShellTab constructs a test page without the unrelated asynchronous
+// stored-history read. Tests that exercise history use the real newTab path.
+func newSettledShellTab(s *shell, root string) *tab {
+	dataDir := s.pathUserData
+	s.pathUserData = ""
+	t := s.newTab(root)
+	s.pathUserData = dataDir
+	t.app.pathUserData = dataDir
+	t.app.historyLoaded = true
+	return t
 }
 
 // readyShellTab adds a page already reading a repository, without a read on a
 // goroutine: a test that is not about opening starts from a settled window.
 func readyShellTab(s *shell, root string) *tab {
-	t := s.newTab(root)
+	t := newSettledShellTab(s, root)
 	t.app.state = stateReady
 	t.app.path = root
 	t.app.snapshot = repository.Snapshot{Root: root, Branch: "main"}
@@ -388,6 +403,10 @@ func TestShellTabMenuRenamesTheRepository(t *testing.T) {
 	}
 	tt.Frame()
 	picker := s.activeTab()
+	if !updated.flushPending() && picker.app.historyLoading {
+		updated.waitForUpdate(t)
+	}
+	tt.Frame()
 
 	if err := tt.RightClick("project"); err != nil {
 		t.Fatal(err)
@@ -448,6 +467,10 @@ func TestShellCardRenameReachesTheTab(t *testing.T) {
 	repo := s.activeTab()
 	if err := tt.Click("New tab"); err != nil {
 		t.Fatal(err)
+	}
+	tt.Frame()
+	if !updated.flushPending() && s.activeTab().app.historyLoading {
+		updated.waitForUpdate(t)
 	}
 	tt.Frame()
 

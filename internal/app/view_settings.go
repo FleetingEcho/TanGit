@@ -685,7 +685,7 @@ func (a *app) updatesSettings(c *ui.Context) {
 			updateIcon, info.AvailableVersion != "", a.checkForUpdates)
 		iconTextButton(c, "Open GitHub releases",
 			"Release notes and downloads, opened in your browser",
-			downloadIcon, false, func() {
+			externalLinkIcon, false, func() {
 				c.Services().OpenURL(releasesPage)
 			})
 	})

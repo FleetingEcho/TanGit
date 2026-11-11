@@ -245,52 +245,108 @@ func TestCodeWorkspaceSearchOpensTheMatchedLine(t *testing.T) {
 	if got := document.state.CursorPos().Line; got != 2 {
 		t.Fatalf("search opened line %d, want zero-based line 2", got)
 	}
-	if got := document.state.CursorPos().Col; got != 3 {
-		t.Fatalf("search opened byte column %d, want zero-based column 3", got)
+	if got := document.state.CursorPos().Col; got != 9 {
+		t.Fatalf("search opened byte column %d, want the match end at zero-based column 9", got)
+	}
+	selection := document.state.Selection()
+	if got := document.state.SelectedText(); got != "needle" {
+		t.Fatalf("search selected %q, want the complete match", got)
+	}
+	if selection.Head-selection.Anchor != len("needle") || selection.Head != document.state.Cursor() {
+		t.Fatalf("search selection = %+v, cursor = %d, want a forward match selection with its caret at the end", selection, document.state.Cursor())
 	}
 	if h.app.code.active != "internal/app/edit.go" {
 		t.Fatalf("search opened %q", h.app.code.active)
 	}
 }
 
-func TestCodeSearchEmptyStateOffersExternalWorkspace(t *testing.T) {
+func TestCodeWorkspaceSearchSelectsTheRequestedRepeatedMatch(t *testing.T) {
 	h := menuTestApp(t)
-	root := useRealCodeWorkspace(t, h, map[string]string{"nested/workspace/main.go": "package main\n"})
+	useRealCodeWorkspace(t, h, map[string]string{"source.txt": "needle and needle\n"})
+	h.app.code.searchNativeOnly = true
+	h.app.code.searchQuery = "needle"
+	h.app.focusCodeSearch()
+	h.app.beginCodeSearch()
+	h.waitFor(t, "both same-line matches", func() bool {
+		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 2
+	})
+	h.tester.Frame()
+
+	if err := h.tester.Click("Open source.txt:1:12: needle and needle"); err != nil {
+		t.Fatalf("click the second same-line match: %v; texts=%q", err, h.texts())
+	}
+	document := waitForCodeDocument(t, h, "source.txt")
+	if got := document.state.SelectedText(); got != "needle" {
+		t.Fatalf("second match selected %q", got)
+	}
+	if got := document.state.CursorPos(); got.Line != 0 || got.Col != len("needle and needle") {
+		t.Fatalf("second match cursor = %+v, want the second match's end", got)
+	}
+	if start := document.state.Selection().Anchor; start != len("needle and ") {
+		t.Fatalf("second match starts at byte %d, want %d", start, len("needle and "))
+	}
+
+	if err := h.tester.Click("Open source.txt:1:1: needle and needle"); err != nil {
+		t.Fatalf("click the first same-line match: %v; texts=%q", err, h.texts())
+	}
+	if got := document.state.SelectedText(); got != "needle" {
+		t.Fatalf("first match selected %q", got)
+	}
+	selection := document.state.Selection()
+	if selection.Anchor != 0 || selection.Head != len("needle") || document.state.CursorPos().Col != len("needle") {
+		t.Fatalf("first match selection = %+v, cursor = %+v", selection, document.state.CursorPos())
+	}
+}
+
+func TestCodeSearchEmptyStateShowsHelpfulGuidance(t *testing.T) {
+	h := menuTestApp(t)
+	useRealCodeWorkspace(t, h, map[string]string{"nested/workspace/main.go": "package main\n"})
 	if !h.app.openCodeWorkspaceFolder("nested/workspace") {
 		t.Fatal("the workspace folder was rejected")
 	}
 	h.app.code.sidebar = codeSidebarSearch
-	opened := stubEditor(t, nil)
 	h.tester.Frame()
 
 	for _, text := range []string{
-		"Search project files",
-		"Large repository? Search may be slow. Use an external editor instead.",
+		"Search your workspace",
+		"Type to find text across files. Use the options above to refine your search.",
 	} {
 		if !h.tester.HasText(text) {
-			t.Fatalf("the concise search guidance is missing %q: %q", text, h.texts())
+			t.Fatalf("the search empty state is missing guidance %q: %q", text, h.texts())
 		}
 	}
-	if err := h.tester.Click("External"); err != nil {
-		t.Fatalf("the search empty state has no External action: %v; texts=%q", err, h.texts())
-	}
-	h.tester.Frame()
-	h.requireMenuLabels(t, "VS Code", "Zed", "Customize editor…")
-	h.chooseMenuItem(t, "Zed")
-	want := []launchedEditor{{command: editorPresets[2].Command, path: filepath.Join(root, "nested", "workspace")}}
-	if !slices.Equal(*opened, want) {
-		t.Fatalf("search External opened %+v, want %+v", *opened, want)
+	if _, found := h.tester.Find("External"); found {
+		t.Fatal("the search empty state still shows the External action")
 	}
 }
 
-func TestCodeSearchBadgeReportsTheActualBackend(t *testing.T) {
+// The search backend is an implementation detail: the UI must not badge it,
+// even when the backend changes mid-session. The state is still tracked so a
+// fresh search never inherits a stale backend.
+func TestCodeSearchBackendStaysInternalAndSurfacesNoBadges(t *testing.T) {
 	if _, err := exec.LookPath("rg"); err != nil {
 		t.Skip("ripgrep is not installed")
 	}
 	originalLookPath := workspaceSearchLookPath
 	t.Cleanup(func() { workspaceSearchLookPath = originalLookPath })
 
+	badgeTexts := []string{
+		"ripgrep", "Zoekt", "Go scanner", "Build index", "Update index",
+		"Search powered by", "Use ripgrep", "Search index", "at a time",
+	}
 	h := menuTestApp(t)
+	assertNoBadges := func(stage string) {
+		t.Helper()
+		for _, text := range badgeTexts {
+			if _, found := h.tester.Find(text); found {
+				t.Fatalf("%s exposed the backend detail %q", stage, text)
+			}
+			if h.tester.HasText(text) {
+				t.Fatalf("%s exposed the backend detail %q in %q", stage, text, h.texts())
+			}
+		}
+	}
+
 	useRealCodeWorkspace(t, h, map[string]string{"source.txt": "needle\n"})
 	h.app.code.sidebar = codeSidebarSearch
 	h.app.code.searchQuery = "needle"
@@ -300,29 +356,19 @@ func TestCodeSearchBadgeReportsTheActualBackend(t *testing.T) {
 	if h.app.code.searchBackend != workspaceSearchBackendRipgrep {
 		t.Fatalf("search backend = %v, want ripgrep", h.app.code.searchBackend)
 	}
-	if !h.tester.HasText("ripgrep") {
-		t.Fatalf("ripgrep badge is missing: %q", h.texts())
-	}
-	if _, found := h.tester.Find("Search powered by ripgrep"); !found {
-		t.Fatal("the ripgrep badge has no accessible label")
-	}
+	assertNoBadges("the ripgrep-backed search")
 
 	workspaceSearchLookPath = func(string) (string, error) { return "", exec.ErrNotFound }
 	h.app.beginCodeSearch()
 	if h.app.code.searchBackend != workspaceSearchBackendNone {
-		t.Fatal("a new search retained the previous search's backend badge")
+		t.Fatal("a new search retained the previous search's backend")
 	}
 	h.waitFor(t, "the native fallback search", func() bool { return !h.app.code.searchRunning })
 	h.tester.Frame()
 	if h.app.code.searchBackend != workspaceSearchBackendGo {
 		t.Fatalf("fallback backend = %v, want Go", h.app.code.searchBackend)
 	}
-	if _, found := h.tester.Find("Search powered by ripgrep"); found {
-		t.Fatal("the native fallback incorrectly displays the ripgrep backend badge")
-	}
-	if _, found := h.tester.Find("Search powered by the internal Go scanner"); !found {
-		t.Fatal("the native fallback does not display the Go backend badge")
-	}
+	assertNoBadges("the native fallback search")
 
 	h.app.code.searchQuery = ""
 	h.app.beginCodeSearch()
@@ -330,14 +376,7 @@ func TestCodeSearchBadgeReportsTheActualBackend(t *testing.T) {
 	if h.app.code.searchBackend != workspaceSearchBackendNone {
 		t.Fatal("clearing the query retained the backend state")
 	}
-	for _, label := range []string{"Search powered by ripgrep", "Search powered by the internal Go scanner"} {
-		if _, found := h.tester.Find(label); found {
-			t.Fatalf("clearing the query retained the %q badge", label)
-		}
-	}
-	if _, found := h.tester.Find("Use ripgrep"); !found {
-		t.Fatal("clearing the query hid the independent backend switch")
-	}
+	assertNoBadges("the cleared search")
 }
 
 func TestCodeSearchDebouncesTypingAndClearsOptionsWhenEmptied(t *testing.T) {
@@ -409,97 +448,137 @@ func TestCodeSearchDebouncesTypingAndClearsOptionsWhenEmptied(t *testing.T) {
 	}
 }
 
-func TestCodeSearchBackendSwitchVisibilityFollowsRipgrepAvailability(t *testing.T) {
-	originalLookPath := workspaceSearchLookPath
-	t.Cleanup(func() { workspaceSearchLookPath = originalLookPath })
-	for _, available := range []bool{true, false} {
-		t.Run(fmt.Sprintf("available-%v", available), func(t *testing.T) {
-			workspaceSearchLookPath = func(string) (string, error) {
-				if available {
-					return "rg", nil
+func TestCodeSearchHidesBackendsAndExposesVSCodeReplaceControls(t *testing.T) {
+	h := menuTestApp(t)
+	useRealCodeWorkspace(t, h, map[string]string{"match.txt": "Needle needle\n"})
+	h.tester.Key(ui.Cmd|ui.Shift, ui.KeyF)
+	h.tester.Frame()
+	for _, implementationDetail := range []string{"Use ripgrep", "Build index", "Update index", "Delete search index", "500 at a time", "Zoekt"} {
+		if _, found := h.tester.Find(implementationDetail); found || h.tester.HasText(implementationDetail) {
+			t.Fatalf("search exposes implementation detail %q: %q", implementationDetail, h.texts())
+		}
+	}
+	if _, found := h.tester.Find("Replace All"); found {
+		t.Fatal("replace controls are visible before the user expands them")
+	}
+	h.app.code.searchFiltersOpen = true
+	h.tester.Key(ui.Cmd|ui.Shift, ui.KeyH)
+	h.tester.Frame()
+	if !h.app.code.searchReplaceOpen {
+		t.Fatal("the replace shortcut did not expand replacement")
+	}
+	if _, found := h.tester.Find("Replace in files"); !found {
+		t.Fatal("the replace input is missing")
+	}
+	searchBox, searchOK := h.tester.Find("Search in files")
+	includeBox, includeOK := h.tester.Find("Files to include")
+	excludeBox, excludeOK := h.tester.Find("Files to exclude")
+	replaceBox, replaceOK := h.tester.Find("Replace in files")
+	replaceAll, replaceAllOK := h.tester.Find("Replace All")
+	if !searchOK || !includeOK || !excludeOK || !replaceOK || !replaceAllOK {
+		t.Fatal("the expanded search, filter, and replace controls are incomplete")
+	}
+	if includeBox.Y < searchBox.Y+searchBox.H || excludeBox.Y < includeBox.Y+includeBox.H ||
+		replaceBox.Y < excludeBox.Y+excludeBox.H {
+		t.Fatalf("search inputs are not ordered Search, include, exclude, replace: search=%+v include=%+v exclude=%+v replace=%+v",
+			searchBox, includeBox, excludeBox, replaceBox)
+	}
+	if replaceBox.X <= searchBox.X {
+		t.Fatalf("the replace field has no leading action icon: search=%+v replace=%+v", searchBox, replaceBox)
+	}
+	if replaceBox.Y < searchBox.Y+searchBox.H {
+		t.Fatalf("replace overlaps the search row: search=%+v replace=%+v", searchBox, replaceBox)
+	}
+	if replaceAll.W > 34 || replaceAll.H > 26 {
+		t.Fatalf("Replace All is still a variable-width text button: %+v", replaceAll)
+	}
+	if _, found := h.tester.Find("Run search"); found {
+		t.Fatal("expanding replacement restored the removed find button")
+	}
+	if _, found := h.tester.Find("Preserve case"); !found {
+		t.Fatal("preserve case is missing")
+	}
+	if err := h.tester.Click("Preserve case"); err != nil {
+		t.Fatal(err)
+	}
+	if !h.app.code.searchPreserveCase {
+		t.Fatal("preserve case did not toggle")
+	}
+}
+
+func TestCodeSearchIconButtonsExplanatoryTooltips(t *testing.T) {
+	h := menuTestApp(t)
+	useRealCodeWorkspace(t, h, map[string]string{"source.txt": "needle\n"})
+	h.app.code.searchQuery = "needle"
+	h.app.beginCodeSearch()
+	h.waitFor(t, "the search before tooltip checks", func() bool { return !h.app.code.searchRunning })
+	h.app.focusCodeReplace()
+	h.tester.Frame()
+
+	assertTooltip := func(t *testing.T, label, tooltip string) {
+		t.Helper()
+		// Removing the previous hover also hides its tooltip, making the
+		// before/after comparison specific to this control.
+		h.tester.Move(0, 0)
+		h.tester.Frame()
+		target, found := h.tester.Find(label)
+		if !found {
+			t.Fatalf("missing search control %q", label)
+		}
+		countTip := func() int {
+			count := 0
+			for _, text := range h.texts() {
+				if text == tooltip {
+					count++
 				}
-				return "", exec.ErrNotFound
 			}
-			h := menuTestApp(t)
-			useRealCodeWorkspace(t, h, map[string]string{"match.txt": "needle\n"})
-			h.tester.Key(ui.Cmd|ui.Shift, ui.KeyF)
-			h.tester.Frame()
-			bounds, found := h.tester.Find("Use ripgrep")
-			if found != available {
-				t.Fatalf("before any search, Use ripgrep visibility = %v, want %v", found, available)
-			}
-			if available && (bounds.W > 30 || bounds.H > 16) {
-				t.Fatalf("the compact backend switch is %.0fx%.0f DIP, want at most 30x16", bounds.W, bounds.H)
-			}
-			badge, badgeFound := h.tester.Find("Search may be slow in huge repositories. Each page is limited to 500 matches, and files larger than 8 MiB are skipped.")
-			if !badgeFound || !h.tester.HasText("500 per page") {
-				t.Fatal("the page-limit badge is not visible before a search")
-			}
-			if available && bounds.X > badge.X {
-				t.Fatal("the backend switch is not to the left of the page-limit badge")
-			}
-			if !h.app.code.searchRipgrepKnown || h.app.code.searchRipgrepAvailable != available {
-				t.Fatalf("cached availability: known=%v available=%v, want true/%v",
-					h.app.code.searchRipgrepKnown, h.app.code.searchRipgrepAvailable, available)
-			}
+			return count
+		}
+		before := countTip()
+		h.tester.Move(target.X+target.W/2, target.Y+target.H/2)
+		h.tester.Advance(650 * time.Millisecond)
+		h.tester.Frame()
+		if after := countTip(); after <= before {
+			t.Fatalf("%q did not reveal tooltip %q: %q", label, tooltip, h.texts())
+		}
+	}
+
+	for _, control := range []struct {
+		label, tooltip string
+	}{
+		{"Toggle replace", "Show or hide replace"},
+		{"Match case", "Match case"},
+		{"Match whole word", "Match whole word"},
+		{"Use regular expression", "Use regular expression"},
+		{"File filters", "Show or hide include and exclude globs"},
+		{"Preserve case", "Preserve case"},
+		{"Replace All", "Replace all matches in the selected files"},
+		{"Clear", "Clear"},
+	} {
+		t.Run(control.label, func(t *testing.T) {
+			assertTooltip(t, control.label, control.tooltip)
 		})
 	}
-}
 
-func TestCodeSearchBackendSwitchSelectsNativeOrRipgrep(t *testing.T) {
-	originalRun, originalLookPath := runCodeSearch, workspaceSearchLookPath
-	t.Cleanup(func() {
-		runCodeSearch = originalRun
-		workspaceSearchLookPath = originalLookPath
-	})
-	workspaceSearchLookPath = func(string) (string, error) { return "rg", nil }
-	preferences := make(chan bool, 3)
-	runCodeSearch = func(_ context.Context, _ string, _ []string, options workspaceSearchOptions, _ int) ([]workspaceSearchMatch, workspaceSearchBackend, error) {
-		preferences <- options.PreferNative
-		backend := workspaceSearchBackendRipgrep
-		if options.PreferNative {
-			backend = workspaceSearchBackendGo
+	t.Run("Replace All while disabled", func(t *testing.T) {
+		// An edited query no longer matches the submitted search, which
+		// disables Replace All until the query is submitted again.
+		h.tester.Click("Search in files")
+		h.tester.Type(" later edit")
+		h.tester.Frame()
+		if h.app.code.searchQuery == h.app.code.searchSubmitted {
+			t.Fatal("the test did not put Replace All into its disabled state")
 		}
-		return []workspaceSearchMatch{{Path: "match.txt", Line: 1, Column: 1, Text: "needle"}}, backend, nil
-	}
-
-	h := menuTestApp(t)
-	useRealCodeWorkspace(t, h, map[string]string{"match.txt": "needle\n"})
-	h.tester.Key(ui.Cmd|ui.Shift, ui.KeyF)
-	h.tester.Type("needle")
-	h.tester.Key(0, ui.KeyEnter)
-	h.waitFor(t, "the initial ripgrep search", func() bool {
-		return !h.app.code.searchRunning && h.app.code.searchBackend == workspaceSearchBackendRipgrep
+		assertTooltip(t, "Replace All", "Replace all matches in the selected files")
+		_ = h.tester.Click("Replace All")
+		h.tester.Frame()
+		if h.app.confirm != nil || h.app.code.searchReplaceRunning {
+			t.Fatal("showing the disabled tooltip enabled replacement")
+		}
 	})
-	if preferNative := <-preferences; preferNative {
-		t.Fatal("the default search did not allow ripgrep")
-	}
-
-	if err := h.tester.Click("Use ripgrep"); err != nil {
-		t.Fatal(err)
-	}
-	h.waitFor(t, "the native-only search", func() bool {
-		return !h.app.code.searchRunning && h.app.code.searchBackend == workspaceSearchBackendGo
-	})
-	if preferNative := <-preferences; !preferNative || !h.app.code.searchSubmittedOptions.PreferNative {
-		t.Fatal("turning off ripgrep did not capture the native-only search option")
-	}
-	if _, found := h.tester.Find("Search powered by the internal Go scanner"); !found {
-		t.Fatal("the result header does not identify the internal Go backend")
-	}
-
-	if err := h.tester.Click("Use ripgrep"); err != nil {
-		t.Fatal(err)
-	}
-	h.waitFor(t, "the re-enabled ripgrep search", func() bool {
-		return !h.app.code.searchRunning && h.app.code.searchBackend == workspaceSearchBackendRipgrep
-	})
-	if preferNative := <-preferences; preferNative || h.app.code.searchSubmittedOptions.PreferNative {
-		t.Fatal("re-enabling ripgrep retained the native-only search option")
-	}
 }
 
-func TestCodeSearchLoadMoreRaisesLimitAndHidesWhenExhausted(t *testing.T) {
+func TestCodeSearchLoadsMoreAutomaticallyNearEndAndStopsWhenExhausted(t *testing.T) {
 	originalRun := runCodeSearch
 	t.Cleanup(func() { runCodeSearch = originalRun })
 	limits := make(chan int, 2)
@@ -524,22 +603,24 @@ func TestCodeSearchLoadMoreRaisesLimitAndHidesWhenExhausted(t *testing.T) {
 	if got := <-limits; got != codeSearchPageSize {
 		t.Fatalf("initial result limit = %d, want %d", got, codeSearchPageSize)
 	}
-	if !h.tester.HasText("500 per page") {
-		t.Fatal("the result header does not show the search page limit")
+	if !h.app.code.searchHasMore {
+		t.Fatal("a full first batch does not allow lazy loading")
 	}
-	if _, found := h.tester.Find("Search may be slow in huge repositories. Each page is limited to 500 matches, and files larger than 8 MiB are skipped."); !found {
-		t.Fatal("the search page-limit badge has no explanatory label")
+	if _, found := h.tester.Find("Load more matches"); found {
+		t.Fatal("lazy loading still requires a Load more control")
 	}
-	if _, found := h.tester.Find("Load more matches"); !found || !h.app.code.searchHasMore {
-		t.Fatal("a full first page does not offer Load more")
+	select {
+	case got := <-limits:
+		t.Fatalf("search fetched another batch before scrolling, with limit %d", got)
+	default:
 	}
 	h.app.code.searchSelected = 42
 	h.app.code.searchCollapsed = map[string]bool{"file-0001.txt": true}
 
-	if err := h.tester.Click("Load more matches"); err != nil {
-		t.Fatal(err)
-	}
-	h.waitFor(t, "the second search page", func() bool {
+	// Approaching the end, rather than clicking a button, requests the next batch.
+	h.app.code.searchList.ScrollTo(len(h.app.code.searchRows)-codeSearchPrefetchRows, ui.Start)
+	h.tester.Frame()
+	h.waitFor(t, "the automatic second search batch", func() bool {
 		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 750
 	})
 	if got := <-limits; got != 2*codeSearchPageSize {
@@ -553,7 +634,7 @@ func TestCodeSearchLoadMoreRaisesLimitAndHidesWhenExhausted(t *testing.T) {
 	}
 }
 
-func TestCodeSearchLoadMoreReachesFilesBeyondMatchHeavyFiles(t *testing.T) {
+func TestCodeSearchLazyLoadingReachesFilesBeyondMatchHeavyFiles(t *testing.T) {
 	h := menuTestApp(t)
 	useRealCodeWorkspace(t, h, map[string]string{
 		"a-heavy.txt": strings.Repeat("needle\n", 1000),
@@ -565,10 +646,9 @@ func TestCodeSearchLoadMoreReachesFilesBeyondMatchHeavyFiles(t *testing.T) {
 	h.waitFor(t, "the first search page", func() bool {
 		return !h.app.code.searchRunning && len(h.app.code.searchResults) == codeSearchPageSize
 	})
-	if err := h.tester.Click("Load more matches"); err != nil {
-		t.Fatal(err)
-	}
-	h.waitFor(t, "the second search page", func() bool {
+	h.app.code.searchList.ScrollToEnd()
+	h.tester.Frame()
+	h.waitFor(t, "the automatic second search batch", func() bool {
 		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 2*codeSearchPageSize
 	})
 	paths := make(map[string]bool)
@@ -578,12 +658,16 @@ func TestCodeSearchLoadMoreReachesFilesBeyondMatchHeavyFiles(t *testing.T) {
 	if !paths["z-light.txt"] {
 		t.Fatalf("loading more returned %d matches but still omitted the later matching file; paths = %v", len(h.app.code.searchResults), paths)
 	}
-	if !h.tester.HasText("z-light.txt") {
-		t.Fatal("the refreshed result list does not show the newly discovered file")
+	foundRow := false
+	for _, row := range h.app.code.searchRows {
+		foundRow = foundRow || row.path == "z-light.txt"
+	}
+	if !foundRow {
+		t.Fatal("the refreshed result list does not include the newly discovered file")
 	}
 }
 
-func TestCodeSearchLoadMoreKeepsResultsAndClearCancelsReload(t *testing.T) {
+func TestCodeSearchLazyLoadingKeepsResultsAndClearCancelsReload(t *testing.T) {
 	originalRun := runCodeSearch
 	t.Cleanup(func() { runCodeSearch = originalRun })
 	started := make(chan struct{})
@@ -610,9 +694,8 @@ func TestCodeSearchLoadMoreKeepsResultsAndClearCancelsReload(t *testing.T) {
 	h.waitFor(t, "the first search page", func() bool {
 		return !h.app.code.searchRunning && len(h.app.code.searchResults) == codeSearchPageSize
 	})
-	if err := h.tester.Click("Load more matches"); err != nil {
-		t.Fatal(err)
-	}
+	h.app.code.searchList.ScrollToEnd()
+	h.tester.Frame()
 	select {
 	case <-started:
 	case <-time.After(2 * time.Second):
@@ -785,14 +868,18 @@ func TestCodeSearchOptionButtonsResubmitWithImmutableOptions(t *testing.T) {
 	h.tester.Type("needle")
 	h.tester.Key(0, ui.KeyEnter)
 	h.waitFor(t, "the initial case-insensitive search", func() bool {
-		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 2
+		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 3
 	})
+	h.tester.Frame()
+	if !h.tester.HasText("3 matches in 2 files") {
+		t.Fatalf("search summary does not include its distinct file count: %q", h.texts())
+	}
 
 	if err := h.tester.Click("Match case"); err != nil {
 		t.Fatal(err)
 	}
 	h.waitFor(t, "the case-sensitive search", func() bool {
-		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 1
+		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 2
 	})
 	if !h.app.code.searchCaseSensitive || !h.app.code.searchSubmittedOptions.CaseSensitive {
 		t.Fatal("Match case did not become part of the submitted search options")
@@ -819,6 +906,12 @@ func TestCodeSearchOptionButtonsResubmitWithImmutableOptions(t *testing.T) {
 	if len(spans) != 3 || spans[1].Text != "ra_playbook" || spans[1].Background.A == 0 {
 		t.Fatalf("variable-length regex highlighting = %+v", spans)
 	}
+	repeated := codeSearchMatchHighlightSpansAt("needle and needle", workspaceSearchOptions{
+		Query: "needle", CaseSensitive: true,
+	}, theme, len("needle and "))
+	if len(repeated) != 2 || repeated[0].Text != "needle and " || repeated[1].Text != "needle" || repeated[1].Background.A == 0 {
+		t.Fatalf("the second same-line occurrence is not highlighted independently: %+v", repeated)
+	}
 }
 
 func TestCodeSearchCompactScopeAndDisclosedFilters(t *testing.T) {
@@ -830,43 +923,62 @@ func TestCodeSearchCompactScopeAndDisclosedFilters(t *testing.T) {
 	})
 	h.tester.Key(ui.Cmd|ui.Shift, ui.KeyF)
 	h.tester.Type("needle")
-	scope, scopeOK := h.tester.Find("Workspace folder")
+	scope, scopeOK := h.tester.Find("Change workspace folder")
+	more, moreOK := h.tester.Find("More actions")
 	tabs, tabsOK := h.tester.Find("Code sidebar")
-	if !scopeOK || !tabsOK || scope.Y+scope.H > tabs.Y {
-		t.Fatalf("the folder selector is not above Files / Search: scope=%+v tabs=%+v", scope, tabs)
+	if !scopeOK || !moreOK || !tabsOK || scope.Y+scope.H > tabs.Y {
+		t.Fatalf("the compact workspace header is not above Files / Search: scope=%+v more=%+v tabs=%+v", scope, more, tabs)
 	}
-	if !slices.Contains(h.texts(), root) {
-		t.Fatalf("the root scope does not show the absolute repository path %q: %q", root, h.texts())
+	if more.Y+more.H/2 != scope.Y+scope.H/2 || more.X < scope.X+scope.W {
+		t.Fatalf("the workspace overflow is not aligned beside its name: scope=%+v more=%+v", scope, more)
+	}
+	for _, label := range []string{"Open repository in external editor", "Refresh files", "Collapse file explorer"} {
+		control, found := h.tester.Find(label)
+		if !found || control.Y+control.H/2 != scope.Y+scope.H/2 {
+			t.Fatalf("%s is not pinned to the workspace header: scope=%+v control=%+v found=%v", label, scope, control, found)
+		}
+	}
+	if !slices.Contains(h.texts(), filepath.Base(root)) {
+		t.Fatalf("the compact workspace header does not show the repository name %q: %q", filepath.Base(root), h.texts())
 	}
 	query, queryOK := h.tester.Find("Search in files")
 	matchCase, matchCaseOK := h.tester.Find("Match case")
 	filters, filtersOK := h.tester.Find("File filters")
-	run, runOK := h.tester.Find("Run search")
-	if !queryOK || !matchCaseOK || !filtersOK || !runOK {
+	if !queryOK || !matchCaseOK || !filtersOK {
 		t.Fatal("the compact search row is missing a control")
 	}
-	for name, box := range map[string]ui.Rect{"Match case": matchCase, "File filters": filters, "Run search": run} {
-		if box.Y >= query.Y+query.H || box.Y+box.H <= query.Y {
-			t.Fatalf("%s is on a separate row from the query: query=%+v control=%+v", name, query, box)
-		}
+	if _, found := h.tester.Find("Run search"); found {
+		t.Fatal("the redundant search icon button is still present")
 	}
-	if matchCase.W > 24 || matchCase.H > 24 || run.W > 26 || run.H > 26 {
-		t.Fatalf("search buttons did not shrink: match=%+v run=%+v", matchCase, run)
+	if matchCase.X != query.X {
+		t.Fatalf("the search options are not aligned with the query: query=%+v match=%+v", query, matchCase)
+	}
+	if matchCase.Y < query.Y+query.H {
+		t.Fatalf("the search options overlap the query: query=%+v match=%+v", query, matchCase)
+	}
+	if filters.Y+filters.H/2 != matchCase.Y+matchCase.H/2 {
+		t.Fatalf("the search options are not on one aligned toolbar: match=%+v filters=%+v", matchCase, filters)
+	}
+	if matchCase.W > 24 || matchCase.H > 24 {
+		t.Fatalf("search option buttons did not shrink: match=%+v", matchCase)
 	}
 	if _, found := h.tester.Find("Files to include"); found {
 		t.Fatal("advanced file filters consume space before they are requested")
 	}
-	// The icon-only Search action has the same accessible name and behavior as
-	// the former wide text button.
-	if err := h.tester.Click("Run search"); err != nil {
-		t.Fatal(err)
-	}
+	// Enter explicitly runs the query; typing retains its debounced automatic
+	// search, so no separate find button is needed.
+	h.tester.Key(0, ui.KeyEnter)
+	h.tester.Frame()
 	h.waitFor(t, "the initial repository search", func() bool {
 		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 3
 	})
 	h.tester.Frame()
-	if err := h.tester.Click("Workspace folder"); err != nil {
+	if err := h.tester.Click("Change workspace folder"); err != nil {
 		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if _, found := h.tester.Find("Workspace folder"); !found || !h.app.code.workspaceFormOpen {
+		t.Fatal("clicking the workspace path did not open its editor dialog")
 	}
 	h.tester.Type("nested/deep/")
 	h.tester.Frame()
@@ -880,6 +992,9 @@ func TestCodeSearchCompactScopeAndDisclosedFilters(t *testing.T) {
 	})
 	if got := h.app.code.searchFolder; got != "nested/deep" {
 		t.Fatalf("normalized search folder = %q", got)
+	}
+	if h.app.code.workspaceFormOpen {
+		t.Fatal("the workspace dialog stayed open after a valid submission")
 	}
 	if got := h.app.code.searchResults[0].Path; got != "nested/deep/inside.go" {
 		t.Fatalf("deep-folder search returned %q", got)
@@ -896,9 +1011,13 @@ func TestCodeSearchCompactScopeAndDisclosedFilters(t *testing.T) {
 		}
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Open entire repository"); err != nil {
+	if err := h.tester.Click("Change workspace folder"); err != nil {
 		t.Fatal(err)
 	}
+	h.tester.Frame()
+	h.tester.Key(ui.Cmd, ui.KeyA)
+	h.tester.Key(0, ui.KeyBackspace)
+	h.tester.Key(0, ui.KeyEnter)
 	h.waitFor(t, "the restored repository search", func() bool {
 		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 3
 	})
@@ -911,16 +1030,25 @@ func TestCodeSearchCompactScopeAndDisclosedFilters(t *testing.T) {
 		t.Fatal("the filter disclosure did not reveal Files to include")
 	}
 	if _, found := h.tester.Find("Replace All"); found {
-		t.Fatal("the Editor still exposes Replace All")
+		t.Fatal("replace exposed itself without the user's disclosure")
 	}
 
-	h.tester.Click("Workspace folder")
+	h.tester.Click("Change workspace folder")
+	h.tester.Frame()
 	h.tester.Type("../outside")
 	h.tester.Key(0, ui.KeyEnter)
 	h.tester.Frame()
 	if h.app.code.searchRunning || h.app.code.searchError == "" || h.app.code.searchFolder != "" || len(h.app.code.searchResults) != 3 {
 		t.Fatalf("an outside-folder draft was not rejected: running=%v error=%q folder=%q results=%d",
 			h.app.code.searchRunning, h.app.code.searchError, h.app.code.searchFolder, len(h.app.code.searchResults))
+	}
+	if !h.app.code.workspaceFormOpen || !h.tester.HasText("Workspace folder must stay inside the repository") {
+		t.Fatal("the workspace dialog did not preserve and explain the invalid draft")
+	}
+	h.tester.Key(0, ui.KeyEscape)
+	h.tester.Frame()
+	if h.app.code.workspaceFormOpen || h.app.code.searchFolderDraft != h.app.code.searchFolder {
+		t.Fatal("Escape did not close the dialog and restore the committed workspace")
 	}
 }
 

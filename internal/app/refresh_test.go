@@ -127,6 +127,9 @@ func newLiveShell(t *testing.T, opener repositoryOpener) (*shell, *ui.Tester, *u
 	s.start("")
 	tt := ui.NewTester(s.view, 1280, 800)
 	tt.Frame()
+	if a := s.activeApp(); a != nil && a.historyLoading {
+		updated.waitForUpdate(t)
+	}
 	return s, tt, updated
 }
 
@@ -149,7 +152,7 @@ func openLiveRepo(t *testing.T, s *shell, updated *updates, path string) *app {
 // readyTab adds a settled page reading through session, whose snapshot it
 // already holds, so a test can count or break the reads a refresh asks for.
 func readyTab(s *shell, root string, session repository.Session) *tab {
-	t := s.newTab(root)
+	t := newSettledShellTab(s, root)
 	t.app.state = stateReady
 	t.app.workspaceTab = sectionChanges
 	t.app.path = root
@@ -787,13 +790,24 @@ func TestTheAutoRefreshTimerFollowsWindowFocus(t *testing.T) {
 		t.Fatalf("a visible, focused window was read %d times, want 1", got)
 	}
 
+	// The index shares the same visible/focused/activity gate.
+	if !tab.app.codeSearchIndexActiveNow() {
+		t.Fatal("the visible active workspace is not eligible for index refreshes")
+	}
+
 	// In the background the timer stands aside, and taking focus back reads.
 	s.handleWindowBlurred()
+	if tab.app.codeSearchIndexActiveNow() {
+		t.Fatal("a blurred window still allows background index polling")
+	}
 	s.autoRefreshTick()
 	if tab.app.refreshBusy {
 		t.Fatal("a background window started a read from the timer")
 	}
 	s.handleWindowFocused()
+	if !tab.app.codeSearchIndexActiveNow() {
+		t.Fatal("taking focus did not restore index activity")
+	}
 	drainRefresh(t, updated, 1)
 	if got := atomic.LoadInt32(&hits); got != 2 {
 		t.Fatalf("taking focus read the page %d times, want 2", got)

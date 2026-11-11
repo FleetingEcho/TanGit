@@ -14,6 +14,7 @@ import (
 func (a *app) codeView(c *ui.Context) {
 	a.applyPendingCodeActions()
 	a.ensureCodeFiles()
+	a.ensureCodeSearchIndex()
 	a.syncGoLanguageServer()
 	if a.code.filter != a.code.appliedFilter || a.code.treeDirty {
 		a.syncCodeTree()
@@ -29,25 +30,23 @@ func (a *app) codeView(c *ui.Context) {
 }
 
 func (a *app) codeSidebar(c *ui.Context) {
-	theme := c.Theme()
 	islandCard(c, ui.Column(c).Grow(1).Gap(8).Padding(10)).Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
-			ui.Icon(c, fileCodeIcon).FontSize(15).TextColor(theme.Accent)
-			ui.Text(c, tr("Editor")).Bold().Grow(1)
+		ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
+			a.codeWorkspaceFolderButton(c)
+			if a.code.searchFolder != "" {
+				flatIconButton(c, "Open entire repository", "Clear the workspace folder scope", arrowUpIcon, 14, 4, false, func() {
+					a.openCodeWorkspaceFolderInExplorer("")
+				})
+			}
 			a.repositoryExternalEditorButton(c)
-			flatIconButton(c, "New File…", "Create a file in the selected folder", newFileIcon, 14, 4, a.code.fileOperationBusy, func() {
-				a.openCodeFileForm(codeFileFormNewFile, a.selectedCodeDirectory(), "")
-			})
-			flatIconButton(c, "New Folder…", "Create a folder in the selected folder", newFolderIcon, 14, 4, a.code.fileOperationBusy, func() {
-				a.openCodeFileForm(codeFileFormNewFolder, a.selectedCodeDirectory(), "")
-			})
-			flatIconButton(c, "Refresh files", "Reload the repository file list", refreshIcon, 14, 4, a.code.filesLoading || a.code.fileOperationBusy, func() {
-				a.code.filesLoaded = false
-				a.requestCodeFiles()
-			})
+			flatIconButton(c, "Refresh files", "Reload the repository file list", refreshIcon, 14, 4,
+				a.code.filesLoading || a.code.fileOperationBusy, func() {
+					a.code.filesLoaded = false
+					a.requestCodeFiles()
+				})
 			paneCollapseButton(c, &a.workspacePaneCollapsed[sectionCode], "Collapse file explorer")
+			a.codeEditorActionsButton(c)
 		})
-		a.codeSearchFolderSelector(c)
 		ui.Segmented(c, &a.code.sidebar, tr("Files"), tr("Search")).Label(tr("Code sidebar"))
 		if a.code.sidebar == codeSidebarSearch {
 			a.codeSearchSidebar(c)
@@ -198,61 +197,79 @@ func (a *app) codeRepositoryRootRow(c *ui.Context, theme *ui.Theme) {
 	a.workspaceTransferDropTarget(root, folder, theme.Accent.Alpha(0.16))
 }
 
-// codeSearchFolderSelector keeps the workspace root visible above either
-// sidebar tab. The field is a draft until Enter, while the folder and clear
-// buttons commit their new root immediately and rerun any active search.
-func (a *app) codeSearchFolderSelector(c *ui.Context) {
-	ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
-		folder := ui.TextInput(c, &a.code.searchFolderDraft).Label(tr("Workspace folder")).
-			Placeholder(a.snapshot.Root).Grow(1)
-		if folder.Submitted() && a.openCodeWorkspaceFolder(a.code.searchFolderDraft) {
-			if strings.TrimSpace(a.code.searchQuery) != "" {
-				a.beginCodeSearch()
-			}
+// codeWorkspaceFolderButton keeps the current workspace in the compact header.
+// Editing lives in a dialog so navigation cannot change the path accidentally.
+func (a *app) codeWorkspaceFolderButton(c *ui.Context) {
+	theme := c.Theme()
+	workspacePath := a.snapshot.Root
+	if folder, ok := normalizedCodeSearchFolder(a.code.searchFolder); ok && folder != "" {
+		workspacePath = filepath.Join(workspacePath, filepath.FromSlash(folder))
+	}
+	button := ui.ButtonBase(c).Grow(1).MinWidth(0).Gap(7).Padding(4).Radius(theme.Radius).
+		Label(tr("Change workspace folder")).Tooltip(workspacePath)
+	button.Children(func() {
+		ui.Icon(c, folderOpenIcon).FontSize(15).TextColor(theme.TextMuted)
+		ui.Text(c, filepath.Base(filepath.Clean(workspacePath))).Bold().Grow(1).SingleLine().Ellipsis("…")
+	})
+	if button.Hovered() {
+		button.Background(theme.SurfaceHover)
+	}
+	if button.Clicked() {
+		a.openCodeWorkspaceFolderForm()
+	}
+}
+
+func (a *app) codeEditorActionsButton(c *ui.Context) {
+	theme := c.Theme()
+	button := ui.ButtonBase(c).Padding(4).Radius(theme.Radius).
+		Label(tr("More actions")).Tooltip(tr("More actions"))
+	button.Children(func() {
+		ui.Icon(c, moreIcon).FontSize(15).TextColor(theme.TextMuted)
+	})
+	if button.Hovered() {
+		button.Background(theme.SurfaceHover)
+	}
+	button.PopoverMenuButton(func(m *ui.Menu) {
+		if m.Item(tr("New File…")).Disabled(a.code.fileOperationBusy).Chosen() {
+			a.openCodeFileForm(codeFileFormNewFile, a.selectedCodeDirectory(), "")
 		}
-		flatIconButton(c, "Choose workspace folder", "Open a folder as the Editor workspace root", folderOpenIcon, 14, 4,
-			false, a.browseCodeSearchFolder)
-		if a.code.searchFolder != "" {
-			flatIconButton(c, "Open entire repository", "Clear the workspace folder scope", closeIcon, 13, 4,
-				false, func() {
-					if a.openCodeWorkspaceFolder("") && strings.TrimSpace(a.code.searchQuery) != "" {
-						a.beginCodeSearch()
-					}
-				})
+		if m.Item(tr("New Folder…")).Disabled(a.code.fileOperationBusy).Chosen() {
+			a.openCodeFileForm(codeFileFormNewFolder, a.selectedCodeDirectory(), "")
 		}
 	})
 }
 
 func (a *app) codeSearchSidebar(c *ui.Context) {
 	theme := c.Theme()
-	ui.Row(c).AlignItems(ui.Center).Gap(3).Children(func() {
+	ui.Row(c).AlignItems(ui.Center).Children(func() {
 		input := ui.SearchField(c, &a.code.searchQuery).Bind(&a.code.searchFocus).
-			Label(tr("Search in files")).Placeholder(tr("Search repository content")).Grow(1)
+			Label(tr("Search in files")).Placeholder(tr("Search in files…")).Grow(1)
 		if input.Changed() {
 			a.codeSearchQueryChanged()
 		}
 		if input.Submitted() {
 			a.beginCodeSearch()
 		}
+	})
+	// Match options stay left-aligned; disclosure and filters form a quiet
+	// toolbar on the right, following the familiar editor-search layout.
+	ui.Row(c).AlignItems(ui.Center).Gap(3).Children(func() {
 		a.codeSearchOptionButton(c, "Aa", "Match case", &a.code.searchCaseSensitive)
 		a.codeSearchOptionButton(c, "ab", "Match whole word", &a.code.searchWholeWord)
 		a.codeSearchOptionButton(c, ".*", "Use regular expression", &a.code.searchRegularExpr)
+		ui.Spacer(c)
 		hasFilters := strings.TrimSpace(a.code.searchInclude) != "" || strings.TrimSpace(a.code.searchExclude) != ""
 		flatToggleIconButton(c, "File filters", "Show or hide include and exclude globs", filterIcon, 12, 3,
 			a.code.searchFiltersOpen || hasFilters, func() {
 				a.code.searchFiltersOpen = !a.code.searchFiltersOpen
 			})
-		run := compactIconButton(ui.PrimaryButton(c, "")).Width(26)
-		run.Label(tr("Run search")).Tooltip(tr("Search repository content")).
-			Disabled(a.code.filesLoading || strings.TrimSpace(a.code.searchQuery) == "")
-		run.Children(func() {
-			ui.Icon(c, searchIcon).FontSize(12)
-		})
-		if run.Clicked() {
-			a.beginCodeSearch()
-		}
+		flatToggleIconButton(c, "Toggle replace", "Show or hide replace", chevronDownIcon, 12, 3,
+			a.code.searchReplaceOpen, func() {
+				a.code.searchReplaceOpen = !a.code.searchReplaceOpen
+				a.code.searchReplaceError = ""
+				a.code.searchReplaceStatus = ""
+			})
 	})
-	a.codeSearchBackendControls(c)
 	if a.code.searchFiltersOpen {
 		include := ui.TextInput(c, &a.code.searchInclude).Label(tr("Files to include")).Placeholder(tr("files to include"))
 		if include.Submitted() {
@@ -262,6 +279,40 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 		if exclude.Submitted() {
 			a.beginCodeSearch()
 		}
+	}
+	// Replacement is the final input row, below both optional file filters.
+	if a.code.searchReplaceOpen {
+		ui.Box(c).Height(1).Background(theme.Border).Margin(2, 0)
+		ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
+			ui.Icon(c, replaceAllIcon).FontSize(14).TextColor(theme.TextMuted)
+			input := ui.TextInput(c, &a.code.searchReplaceQuery).Bind(&a.code.searchReplaceFocus).
+				Label(tr("Replace in files")).Placeholder(tr("Replace with…")).Grow(1)
+			if input.Submitted() {
+				a.requestCodeSearchReplaceAll()
+			}
+			if a.code.searchReplaceRunning {
+				ui.Spinner(c).Label(tr("Replacing matches"))
+			}
+			a.codeSearchToggleButton(c, "AB", "Preserve case", &a.code.searchPreserveCase, false)
+			disabled := a.code.searchReplaceRunning || a.code.searchRunning || a.code.filesLoading ||
+				a.code.searchSubmitted == "" || a.code.searchSubmitted != strings.TrimSpace(a.code.searchQuery)
+			tooltip := tr("Replace all matches in the selected files")
+			// A disabled MyGo anchor suppresses its own tooltip. The enabled,
+			// non-interactive wrapper preserves the explanation without
+			// making the replacement action itself clickable.
+			ui.Row(c).Tooltip(tooltip).Children(func() {
+				primaryIconButton(c, "Replace All", "Replace all matches in the selected files", replaceAllIcon,
+					disabled, a.requestCodeSearchReplaceAll)
+			})
+		})
+	}
+	if a.code.searchReplaceError != "" {
+		ui.Text(c, a.code.searchReplaceError).TextColor(theme.Danger).FontSize(theme.FontSize - 1).
+			SingleLine().Ellipsis("…").Tooltip(a.code.searchReplaceError)
+	}
+	if a.code.searchReplaceStatus != "" {
+		ui.Text(c, a.code.searchReplaceStatus).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).
+			SingleLine().Ellipsis("…").Tooltip(a.code.searchReplaceStatus)
 	}
 	if a.code.searchError != "" {
 		ui.Text(c, a.code.searchError).TextColor(theme.Danger).FontSize(theme.FontSize - 1).SingleLine().Ellipsis("…").Tooltip(a.code.searchError)
@@ -278,32 +329,24 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 		return
 	}
 	if a.code.searchSubmitted == "" {
-		ui.Column(c).Grow(1).Center().Gap(8).Padding(12).Children(func() {
-			ui.Icon(c, searchIcon).FontSize(22).TextColor(theme.TextMuted)
-			ui.Text(c, tr("Search project files")).TextColor(theme.TextMuted).TextAlign(ui.Center)
-			ui.Text(c, tr("Large repository? Search may be slow. Use an external editor instead.")).
-				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).TextAlign(ui.Center)
-			a.repositoryExternalEditorButtonWithText(c, "External")
+		ui.Column(c).Grow(1).Center().Gap(8).Padding(24).Children(func() {
+			ui.Icon(c, searchIcon).FontSize(28).TextColor(theme.TextMuted)
+			ui.Text(c, tr("Search your workspace")).Bold()
+			ui.Text(c, tr("Type to find text across files. Use the options above to refine your search.")).
+				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).TextAlign(ui.Center).MaxWidth(300)
 		})
 		return
 	}
 	if len(a.code.searchResults) == 0 {
-		if a.code.searchBackend == workspaceSearchBackendRipgrep {
-			ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
-				ui.Spacer(c)
-				a.codeSearchBackendBadge(c)
-			})
-		}
 		listSearchEmpty(c, "No matches found")
 		return
 	}
 	ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
-		ui.Text(c, trf("%d matches", len(a.code.searchResults))).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1)
-		if a.code.searchHasMore {
-			flatIconButton(c, "Load more matches", "Load 500 more matches",
-				loadMoreIcon, 14, 3, a.code.searchLoadingMore, a.loadMoreCodeSearch)
+		ui.Text(c, trf("%d matches in %d files", len(a.code.searchResults), codeSearchResultFileCount(a.code.searchResults))).
+			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1)
+		if a.code.searchLoadingMore {
+			ui.Spinner(c).Label(tr("Loading more matches"))
 		}
-		a.codeSearchBackendBadge(c)
 	})
 	list := a.keyboardList(c, &a.code.searchList, len(a.code.searchRows)).Grow(1).Rows(func(row ui.ListRow) {
 		if row.Index < 0 || row.Index >= len(a.code.searchRows) {
@@ -324,54 +367,19 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 	if a.keyboardListChanged(&a.code.searchList, list) {
 		a.selectCodeSearchRow(a.code.searchSelectedRow)
 	}
-}
-
-// codeSearchHasRipgrep caches executable discovery per workspace. Avoiding a
-// LookPath on every frame keeps the always-visible switch inexpensive.
-func (a *app) codeSearchHasRipgrep() bool {
-	if !a.code.searchRipgrepKnown {
-		_, err := workspaceSearchLookPath("rg")
-		a.code.searchRipgrepAvailable = err == nil
-		a.code.searchRipgrepKnown = true
+	// Visible reports the previous committed frame. Prefetch shortly before the
+	// end, without discarding the viewport or jumping to newly discovered files.
+	if _, last := a.code.searchList.Visible(); last >= 0 &&
+		last >= len(a.code.searchRows)-1-codeSearchPrefetchRows {
+		a.loadMoreCodeSearch()
 	}
-	return a.code.searchRipgrepAvailable
-}
-
-func (a *app) codeSearchBackendControls(c *ui.Context) {
-	ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
-		if a.codeSearchHasRipgrep() {
-			useRipgrep := !a.code.searchNativeOnly
-			toggle := ui.Switch(c, &useRipgrep).
-				Size(c.Theme().Space(7), c.Theme().Space(3.5)).Radius(c.Theme().Space(1.75)).
-				Label(tr("Use ripgrep")).Tooltip(tr("Use ripgrep when available; turn off to use the internal Go search"))
-			ui.Text(c, "ripgrep").FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().TextMuted)
-			if toggle.Changed() {
-				a.code.searchNativeOnly = !useRipgrep
-				if a.code.searchSubmitted != "" {
-					a.beginCodeSearch()
-				}
-			}
-		}
-		ui.Spacer(c)
-		pageLimit := trf("Search may be slow in huge repositories. Each page is limited to %d matches, and files larger than 8 MiB are skipped.", codeSearchPageSize)
-		ui.Badge(c, trf("%d per page", codeSearchPageSize)).Label(pageLimit).Tooltip(pageLimit)
-	})
-}
-
-func (a *app) codeSearchBackendBadge(c *ui.Context) {
-	var name, label string
-	switch a.code.searchBackend {
-	case workspaceSearchBackendGo:
-		name, label = "Go", tr("Search powered by the internal Go scanner")
-	case workspaceSearchBackendRipgrep:
-		name, label = "ripgrep", tr("Search powered by ripgrep")
-	default:
-		return
-	}
-	ui.Badge(c, name).Label(label).Tooltip(label)
 }
 
 func (a *app) codeSearchOptionButton(c *ui.Context, text, label string, active *bool) {
+	a.codeSearchToggleButton(c, text, label, active, true)
+}
+
+func (a *app) codeSearchToggleButton(c *ui.Context, text, label string, active *bool, rerun bool) {
 	theme := c.Theme()
 	button := compactIconButton(ui.ButtonBase(c)).Size(24, 24).Label(tr(label)).Tooltip(tr(label)).Checked(*active)
 	if *active {
@@ -388,10 +396,18 @@ func (a *app) codeSearchOptionButton(c *ui.Context, text, label string, active *
 	})
 	if button.Clicked() {
 		*active = !*active
-		if a.code.searchSubmitted != "" {
+		if rerun && a.code.searchSubmitted != "" {
 			a.beginCodeSearch()
 		}
 	}
+}
+
+func codeSearchResultFileCount(matches []workspaceSearchMatch) int {
+	files := make(map[string]struct{})
+	for _, match := range matches {
+		files[match.Path] = struct{}{}
+	}
+	return len(files)
 }
 
 func (a *app) codeSearchFileRow(row ui.ListRow, item codeSearchRow) {
@@ -419,18 +435,20 @@ func (a *app) codeSearchFileRow(row ui.ListRow, item codeSearchRow) {
 func (a *app) codeSearchMatchRow(row ui.ListRow, match workspaceSearchMatch) {
 	theme := row.Context.Theme()
 	text := strings.TrimSpace(match.Text)
+	matchColumn := match.Column - 1
+	matchColumn -= len(match.Text) - len(strings.TrimLeft(match.Text, " \t\r\n"))
 	label := fmt.Sprintf("%s:%d:%d: %s", match.Path, match.Line, match.Column, text)
 	button := ui.ButtonBase(row.Context).Grow(1).Gap(8).Padding(4, 7, 4, 26).
 		Label(tr("Open") + " " + label)
 	button.Children(func() {
 		ui.Textf(row.Context, "%d", match.Line).Width(30).TextAlign(ui.End).
 			TextColor(secondaryRowColor(theme, row)).FontSize(theme.FontSize - 1)
-		ui.RichText(row.Context, codeSearchMatchHighlightSpans(text, a.code.searchSubmittedOptions, theme)...).
+		ui.RichText(row.Context, codeSearchMatchHighlightSpansAt(text, a.code.searchSubmittedOptions, theme, matchColumn)...).
 			Grow(1).SingleLine().Ellipsis("…")
 	})
 	if button.DoubleClicked() {
 		a.selectCodeSearchRow(row.Index)
-		a.openCodeLocationMode(match.Path, match.Line, match.Column-1, true)
+		a.openCodeSearchMatchMode(match, true)
 	} else if button.Clicked() {
 		a.selectCodeSearchRow(row.Index)
 		a.openCodeSearchMatch(match)
@@ -442,7 +460,24 @@ func codeSearchHighlightSpans(text, query string, caseSensitive bool, theme *ui.
 }
 
 func codeSearchMatchHighlightSpans(text string, options workspaceSearchOptions, theme *ui.Theme) []ui.Span {
-	start, end := workspaceSearchRangeWithOptions(text, options)
+	return codeSearchMatchHighlightSpansAt(text, options, theme, -1)
+}
+
+// codeSearchMatchHighlightSpansAt distinguishes repeated matches on one line.
+// The fallback retains highlighting for synthetic rows and truncated snippets
+// whose original source column cannot be mapped directly into the display text.
+func codeSearchMatchHighlightSpansAt(text string, options workspaceSearchOptions, theme *ui.Theme, column int) []ui.Span {
+	start, end := -1, -1
+	if column >= 0 && column <= len(text) {
+		start, end = workspaceSearchRangeWithOptions(text[column:], options)
+		if start >= 0 {
+			start += column
+			end += column
+		}
+	}
+	if start < 0 {
+		start, end = workspaceSearchRangeWithOptions(text, options)
+	}
 	if start < 0 {
 		return []ui.Span{{Text: text}}
 	}
@@ -816,4 +851,10 @@ func (a *app) focusCodeSearch() {
 	a.code.sidebar = codeSidebarSearch
 	a.workspacePaneCollapsed[sectionCode] = false
 	a.code.searchFocus.Focus()
+}
+
+func (a *app) focusCodeReplace() {
+	a.focusCodeSearch()
+	a.code.searchReplaceOpen = true
+	a.code.searchReplaceFocus.Focus()
 }

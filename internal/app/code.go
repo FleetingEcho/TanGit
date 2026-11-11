@@ -23,6 +23,7 @@ const (
 
 	codeSearchDebounceDelay = 300 * time.Millisecond
 	codeSearchPageSize      = 500
+	codeSearchPrefetchRows  = 20
 )
 
 // scheduleCodeSearch is a seam for proving that rapid edits collapse into one
@@ -53,41 +54,43 @@ const (
 )
 
 type codeDocument struct {
-	path                string
-	diskPath            string
-	readOnly            bool
-	state               *editor.State
-	generation          uint64
-	loading             bool
-	binary              bool
-	imagePreview        *mediaPreview
-	loadError           string
-	saveError           string
-	branchNotice        string
-	pendingLine         int
-	pendingColumn       int
-	pendingUTF16        bool
-	hoverSeq            uint64
-	hoverState          *editor.State
-	hoverScroll         ui.ScrollState
-	definitionSeq       uint64
-	completionSeq       uint64
-	languageDiagnostics map[string][]editor.Diagnostic
-	blameEnabled        bool
-	blameLoading        bool
-	blameLoaded         bool
-	blameError          string
-	blameToken          uint64
-	blameVersion        uint64
-	blameLines          []repository.BlameLine
-	blameInlays         []editor.Inlay
-	blameOffsets        map[int]int
-	blameActiveLine     int
-	blameAnnotationSet  bool
-	markdownPreviewOpen bool
-	remoteStamp         remoteFileStamp
-	remoteStampKnown    bool
-	remoteSave          remoteSaveState
+	path                 string
+	diskPath             string
+	readOnly             bool
+	state                *editor.State
+	generation           uint64
+	loading              bool
+	binary               bool
+	imagePreview         *mediaPreview
+	loadError            string
+	saveError            string
+	branchNotice         string
+	pendingLine          int
+	pendingColumn        int
+	pendingUTF16         bool
+	pendingSelection     bool
+	pendingSearchOptions workspaceSearchOptions
+	hoverSeq             uint64
+	hoverState           *editor.State
+	hoverScroll          ui.ScrollState
+	definitionSeq        uint64
+	completionSeq        uint64
+	languageDiagnostics  map[string][]editor.Diagnostic
+	blameEnabled         bool
+	blameLoading         bool
+	blameLoaded          bool
+	blameError           string
+	blameToken           uint64
+	blameVersion         uint64
+	blameLines           []repository.BlameLine
+	blameInlays          []editor.Inlay
+	blameOffsets         map[int]int
+	blameActiveLine      int
+	blameAnnotationSet   bool
+	markdownPreviewOpen  bool
+	remoteStamp          remoteFileStamp
+	remoteStampKnown     bool
+	remoteSave           remoteSaveState
 }
 
 type codeNavigationLocation struct {
@@ -171,19 +174,38 @@ type codeState struct {
 	searchCollapsed        map[string]bool
 	searchQuery            string
 	searchSubmitted        string
+	searchReplaceOpen      bool
+	searchReplaceQuery     string
+	searchPreserveCase     bool
+	searchReplaceFocus     ui.Handle
+	searchReplaceRunning   bool
+	searchReplaceStatus    string
+	searchReplaceError     string
+	searchReplaceToken     uint64
+	searchReplaceCancel    context.CancelFunc
 	searchSubmittedOptions workspaceSearchOptions
 	searchCaseSensitive    bool
 	searchWholeWord        bool
 	searchRegularExpr      bool
 	searchNativeOnly       bool
+	searchIndex            codeSearchIndexState
+	// searchIndexActive is installed by the shell. Nil means a standalone
+	// window is active; otherwise it checks visibility, focus and tab identity.
+	searchIndexActive      func() bool
 	searchRipgrepKnown     bool
 	searchRipgrepAvailable bool
 	searchInclude          string
 	searchExclude          string
+	// searchScopeFolder/File preserve literal context-menu scopes while the
+	// include field shows the selected path. Editing that field clears them.
+	searchScopeFolder string
+	searchScopeFile   string
 	// searchFolder is the opened workspace folder. searchFolderDraft is only
 	// the editable field until the user submits or picks a different folder.
 	searchFolder                string
 	searchFolderDraft           string
+	workspaceFormOpen           bool
+	workspaceFormError          string
 	searchFiltersOpen           bool
 	searchFolderSelectionSeq    uint64
 	searchError                 string
@@ -224,6 +246,7 @@ func (a *app) resetCode() {
 	if a.code.searchCancel != nil {
 		a.code.searchCancel()
 	}
+	a.resetCodeSearchIndex()
 	a.code.filesToken++
 	a.code.searchToken++
 	a.code.searchDebounceSeq++
@@ -262,6 +285,17 @@ func (a *app) resetCode() {
 	a.code.sidebar = codeSidebarFiles
 	a.code.searchSelected, a.code.searchSelectedRow = -1, -1
 	a.code.searchQuery, a.code.searchSubmitted = "", ""
+	if a.code.searchReplaceCancel != nil {
+		a.code.searchReplaceCancel()
+	}
+	a.code.searchReplaceOpen = false
+	a.code.searchReplaceQuery = ""
+	a.code.searchPreserveCase = false
+	a.code.searchReplaceRunning = false
+	a.code.searchReplaceStatus = ""
+	a.code.searchReplaceError = ""
+	a.code.searchReplaceToken++
+	a.code.searchReplaceCancel = nil
 	a.code.searchSubmittedOptions = workspaceSearchOptions{}
 	a.code.searchCaseSensitive = false
 	a.code.searchWholeWord = false
@@ -270,6 +304,7 @@ func (a *app) resetCode() {
 	a.code.searchRipgrepKnown = false
 	a.code.searchRipgrepAvailable = false
 	a.code.searchInclude, a.code.searchExclude = "", ""
+	a.code.searchScopeFolder, a.code.searchScopeFile = "", ""
 	a.code.searchFolder = ""
 	a.code.searchFolderDraft = ""
 	a.code.searchFiltersOpen = false
@@ -303,6 +338,14 @@ func (a *app) refreshCodeAfterCheckout(old, current repository.Snapshot) bool {
 	}
 
 	a.closeCodeBlameDetails()
+	if a.code.searchReplaceCancel != nil {
+		a.code.searchReplaceCancel()
+	}
+	a.code.searchReplaceToken++
+	a.code.searchReplaceCancel = nil
+	a.code.searchReplaceRunning = false
+	a.code.searchReplaceError = ""
+	a.code.searchReplaceStatus = ""
 	reloadFiles := a.code.filesLoaded || a.code.filesLoading || a.workspaceTab == sectionCode || len(a.code.documents) > 0
 	a.code.filesToken++
 	a.code.filesLoading, a.code.filesLoaded = false, false
@@ -687,6 +730,9 @@ func (a *app) openCodeDocumentLocation(path, diskPath string, readOnly bool, lin
 	} else if pinned && a.code.preview == path {
 		a.code.preview = ""
 	}
+	// A newer ordinary navigation supersedes any queued search selection.
+	document.pendingSelection = false
+	document.pendingSearchOptions = workspaceSearchOptions{}
 	a.code.active = path
 	for index, tab := range a.code.tabs {
 		if tab == path {
@@ -786,12 +832,26 @@ func (a *app) revealCodeLine(document *codeDocument) {
 	}
 	line := document.pendingLine - 1
 	column := document.pendingColumn
+	selectMatch := document.pendingSelection
+	searchOptions := document.pendingSearchOptions
 	document.pendingLine, document.pendingColumn = 0, 0
+	document.pendingSelection = false
+	document.pendingSearchOptions = workspaceSearchOptions{}
 	if document.pendingUTF16 {
 		column = languageServerUTF16ColumnToByte(document.state.Buffer.Line(line), column)
 	}
 	document.pendingUTF16 = false
 	document.state.GoTo(editor.Pos{Line: line, Col: column})
+	if selectMatch && line >= 0 && line < document.state.Buffer.LineCount() {
+		text := document.state.Buffer.Line(line)
+		if column >= 0 && column <= len(text) {
+			start, end := workspaceSearchRangeWithOptions(text[column:], searchOptions)
+			if start == 0 {
+				offset := document.state.Buffer.Offset(editor.Pos{Line: line, Col: column})
+				document.state.Select(offset, offset+end)
+			}
+		}
+	}
 	document.state.ScrollTo(line)
 }
 
@@ -830,6 +890,7 @@ func (a *app) saveCodeDocument(document *codeDocument) {
 		server.connection.DidSave(languageServerFileURI(a.workingFilePath(document.path)))
 	}
 	a.requestCodeBlame(document)
+	a.invalidateCodeSearchIndex()
 }
 
 func (a *app) saveCodeEdits() {
@@ -1085,14 +1146,19 @@ func (a *app) codeSearchQueryChanged() {
 }
 
 func (a *app) beginCodeSearch() {
+	// Query changes do not make repository contents dirty. Search itself
+	// verifies the index before and after consulting it; saves and filesystem
+	// changes invalidate it explicitly without another background stat pass.
+	a.ensureCodeSearchIndex()
 	a.code.searchLimit = codeSearchPageSize
 	a.code.searchHasMore = false
 	a.code.searchLoadingMore = false
 	a.startCodeSearch(codeSearchPageSize, false)
 }
 
-// loadMoreCodeSearch raises the match cap without discarding the visible page.
-// A changed query or option always starts again at the first page instead.
+// loadMoreCodeSearch raises the match cap without discarding loaded results.
+// Scrolling near the end requests the next batch; a changed query or option
+// always starts again at the first batch instead.
 func (a *app) loadMoreCodeSearch() {
 	if a.code.searchRunning || !a.code.searchHasMore || a.code.searchSubmitted == "" || a.code.filesLoading {
 		return
@@ -1129,15 +1195,27 @@ func (a *app) startCodeSearch(limit int, loadingMore bool) {
 	}
 	a.code.searchFolder = folder
 	a.code.searchFolderDraft = folder
+	if a.code.searchScopeFolder != "" && a.code.searchInclude != a.code.searchScopeFolder {
+		a.code.searchScopeFolder = ""
+	}
+	if a.code.searchScopeFile != "" && a.code.searchInclude != a.code.searchScopeFile {
+		a.code.searchScopeFile = ""
+	}
+	searchScopeFolder := a.code.searchScopeFolder
+	if searchScopeFolder == "" {
+		searchScopeFolder = folder
+	}
 	a.code.searchSubmittedOptions = workspaceSearchOptions{
 		Query:               query,
 		CaseSensitive:       a.code.searchCaseSensitive,
 		WholeWord:           a.code.searchWholeWord,
 		RegularExpr:         a.code.searchRegularExpr,
 		PreferNative:        a.code.searchNativeOnly,
+		IndexDirectory:      a.codeSearchIndexDirectory(),
 		Include:             a.code.searchInclude,
 		Exclude:             a.code.searchExclude,
-		Folder:              a.code.searchFolder,
+		Folder:              searchScopeFolder,
+		File:                a.code.searchScopeFile,
 		ExcludedDirectories: append([]string{}, a.settings.SearchExcludedDirectories...),
 	}
 	a.code.searchError = ""
@@ -1153,6 +1231,7 @@ func (a *app) startCodeSearch(limit int, loadingMore bool) {
 			a.code.searchWholeWord = false
 			a.code.searchRegularExpr = false
 			a.code.searchInclude, a.code.searchExclude = "", ""
+			a.code.searchScopeFolder, a.code.searchScopeFile = "", ""
 			a.code.searchFiltersOpen = false
 			// The already captured empty options remain the single source of
 			// truth for highlighting; no cleared option can leak into a later run.
@@ -1169,7 +1248,6 @@ func (a *app) startCodeSearch(limit int, loadingMore bool) {
 		paths = prioritizeNewCodeSearchFiles(paths, a.code.searchResults)
 	}
 	options := a.code.searchSubmittedOptions
-	previousResults := a.code.searchResults
 	ctx, cancel := context.WithCancel(context.Background())
 	a.code.searchCancel = cancel
 	a.code.searchRunning = true
@@ -1212,15 +1290,12 @@ func (a *app) startCodeSearch(limit int, loadingMore bool) {
 			}
 			a.code.searchSelectedRow = -1
 			a.rebuildCodeSearchRows()
-			if loadingMore {
-				a.scrollToFirstNewCodeSearchFile(previousResults)
-			}
 			return a.workspaceTab == sectionCode
 		})
 	}()
 }
 
-// prioritizeNewCodeSearchFiles lets each Load more click discover new file
+// prioritizeNewCodeSearchFiles lets each lazy-loaded batch discover new file
 // groups before a match-heavy file consumes the enlarged global match cap.
 // Both search backends scan paths in their supplied order; ranking still sorts
 // the combined results for display after the scan completes.
@@ -1246,24 +1321,24 @@ func prioritizeNewCodeSearchFiles(paths []string, existing []workspaceSearchMatc
 	return ordered
 }
 
-// scrollToFirstNewCodeSearchFile makes newly discovered groups visible even
-// when an existing file contributes hundreds of rows ahead of them. Loading a
-// page does not otherwise move the selection or change any folding choices.
-func (a *app) scrollToFirstNewCodeSearchFile(previous []workspaceSearchMatch) {
-	represented := make(map[string]bool, len(previous))
-	for _, match := range previous {
-		represented[match.Path] = true
-	}
-	for row, item := range a.code.searchRows {
-		if item.isFile() && !represented[item.path] {
-			a.code.searchList.ScrollIntoView(row)
-			return
-		}
-	}
+func (a *app) openCodeSearchMatch(match workspaceSearchMatch) {
+	a.openCodeSearchMatchMode(match, false)
 }
 
-func (a *app) openCodeSearchMatch(match workspaceSearchMatch) {
-	a.openCodeLocation(match.Path, match.Line, match.Column-1)
+func (a *app) openCodeSearchMatchMode(match workspaceSearchMatch, pinned bool) {
+	a.openCodeLocationMode(match.Path, match.Line, match.Column-1, pinned)
+	document := a.code.documents[match.Path]
+	if document == nil {
+		return
+	}
+	// Keep the submitted options with the pending location: asynchronous file
+	// loading must select this result even if another search starts meanwhile.
+	document.pendingLine = match.Line
+	document.pendingColumn = max(0, match.Column-1)
+	document.pendingUTF16 = false
+	document.pendingSelection = true
+	document.pendingSearchOptions = a.code.searchSubmittedOptions
+	a.revealCodeLine(document)
 }
 
 func (a *app) navigateCodeSearch(direction int) {

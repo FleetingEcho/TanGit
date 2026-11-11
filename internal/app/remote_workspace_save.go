@@ -209,6 +209,7 @@ func (a *app) saveRemoteCodeDocumentWithClient(client remoteWorkspaceClient, doc
 			document.saveError = ""
 			if unchanged {
 				a.requestCodeBlame(document)
+				a.invalidateCodeSearchIndex()
 			}
 			callbacks := document.remoteSave.callbacks
 			document.remoteSave.callbacks = nil

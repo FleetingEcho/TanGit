@@ -109,11 +109,14 @@ func (a *app) codeExplorerMenu(m *ui.Menu, item fileTreeRow, services ui.Service
 	}
 	a.selectCodeTreePath(item.path, item.isDirectory())
 	if item.isDirectory() && m.Item(tr("Open folder as workspace")).Chosen() {
-		a.openCodeWorkspaceFolder(item.path)
-		a.focusCodeSearch()
-		if strings.TrimSpace(a.code.searchQuery) != "" {
-			a.beginCodeSearch()
-		}
+		a.openCodeWorkspaceFolderInExplorer(item.path)
+	}
+	searchLabel := "Search in file"
+	if item.isDirectory() {
+		searchLabel = "Search in folder"
+	}
+	if m.Item(tr(searchLabel)).Chosen() {
+		a.searchCodeItem(item)
 	}
 	directory := item.path
 	if !item.isDirectory() {
@@ -143,6 +146,27 @@ func (a *app) codeExplorerMenu(m *ui.Menu, item fileTreeRow, services ui.Service
 	}
 	m.Separator()
 	a.codeCopyPathItems(m, item.path, services)
+}
+
+// searchCodeItem keeps literal folder/file scopes separate from the opened
+// workspace. The visible include draft remains editable; submitting a changed
+// value switches back to ordinary glob filtering.
+func (a *app) searchCodeItem(item fileTreeRow) {
+	if item.path == "" || !validCodeManagedPath(item.path) {
+		return
+	}
+	a.code.searchScopeFolder, a.code.searchScopeFile = "", ""
+	if item.isDirectory() {
+		a.code.searchScopeFolder = item.path
+	} else {
+		a.code.searchScopeFile = item.path
+	}
+	a.code.searchInclude = item.path
+	a.code.searchFiltersOpen = true
+	a.focusCodeSearch()
+	if strings.TrimSpace(a.code.searchQuery) != "" {
+		a.beginCodeSearch()
+	}
 }
 
 // openCodeItemInExplorer opens local items with the host file manager. SSH
@@ -304,7 +328,7 @@ func (a *app) confirmCodeDelete(item fileTreeRow) {
 
 func (a *app) beginCodeFileOperation(kind codeFileOperationKind, source, destination string) {
 	root := a.snapshot.Root
-	if root == "" || a.code.fileOperationBusy || !validCodeManagedPath(destination) ||
+	if root == "" || a.code.fileOperationBusy || a.code.searchReplaceRunning || !validCodeManagedPath(destination) ||
 		(kind != codeFileCreateFile && kind != codeFileCreateFolder && !validCodeManagedPath(source)) {
 		return
 	}

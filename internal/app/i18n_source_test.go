@@ -71,6 +71,7 @@ var i18nIdentityRawUIStrings = map[string]string{
 	"~/src/project":                 "path placeholder",
 	"Aa":                            "case-sensitive search glyph",
 	"ab":                            "whole-word search glyph",
+	"AB":                            "preserve-case search glyph",
 	"C":                             "keyboard shortcut glyph",
 	"Ctrl+,":                        "keyboard shortcut glyph",
 	"tangit <path>":                 "command-line usage hint",

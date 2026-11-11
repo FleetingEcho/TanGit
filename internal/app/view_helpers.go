@@ -538,6 +538,7 @@ func (a *app) closeAllForms() {
 	a.showRenameRecent = false
 	a.closeHomeWorktrees()
 	a.closeCodeFileForm()
+	a.closeCodeWorkspaceFolderForm()
 	a.closeTerminalRename()
 	a.cancelCloneOperation()
 	a.closeCloneForm()
@@ -591,6 +592,7 @@ func (a *app) anyFormOpen() bool {
 		a.sshProfileFormOpen ||
 		a.cloneOpen ||
 		a.code.fileForm != codeFileFormNone ||
+		a.code.workspaceFormOpen ||
 		a.term.renameID != 0 || a.term.renameGroup != 0 ||
 		a.customCommandFormOpen ||
 		a.commandPromptOpen ||
