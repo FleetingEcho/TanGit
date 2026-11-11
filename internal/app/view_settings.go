@@ -669,35 +669,37 @@ func (a *app) searchExclusionSettings(c *ui.Context) {
 		a.searchExcludedDirectoryDraft = ""
 		a.settingsChanged(c)
 	})
-	settingRow(c, "Excluded folders", "Applied before searching", func() {
-		if len(a.settings.SearchExcludedDirectories) == 0 {
-			ui.Text(c, tr("No excluded folders")).TextColor(theme.TextMuted)
-			return
-		}
-		for _, directory := range a.settings.SearchExcludedDirectories {
-			c.Key("search-exclusion:" + directory)
-			button := ui.ButtonBase(c).Height(28).Padding(3, 8).Gap(6).Radius(theme.Radius).
-				Background(theme.Surface).Border(1, theme.Border).
-				Label(trf("Remove excluded folder %s", directory)).
-				Tooltip(trf("Stop excluding %s from content search", directory))
-			button.Children(func() {
-				ui.Text(c, directory).SingleLine()
-				ui.Icon(c, closeIcon).FontSize(12).TextColor(theme.TextMuted)
-			})
-			if button.Hovered() {
-				button.Background(theme.SurfaceHover)
+	settingsChoiceCard(c, "Excluded folders", "Applied before searching", func() {
+		ui.Row(c).Gap(8).Wrap().Children(func() {
+			if len(a.settings.SearchExcludedDirectories) == 0 {
+				ui.Text(c, tr("No excluded folders")).TextColor(theme.TextMuted)
+				return
 			}
-			if button.Clicked() {
-				kept := make([]string, 0, len(a.settings.SearchExcludedDirectories)-1)
-				for _, candidate := range a.settings.SearchExcludedDirectories {
-					if candidate != directory {
-						kept = append(kept, candidate)
-					}
+			for _, directory := range a.settings.SearchExcludedDirectories {
+				c.Key("search-exclusion:" + directory)
+				button := ui.ButtonBase(c).Height(28).Padding(3, 8).Gap(6).Radius(theme.Radius).
+					Background(theme.Surface).Border(1, theme.Border).
+					Label(trf("Remove excluded folder %s", directory)).
+					Tooltip(trf("Stop excluding %s from content search", directory))
+				button.Children(func() {
+					ui.Text(c, directory).SingleLine()
+					ui.Icon(c, closeIcon).FontSize(12).TextColor(theme.TextMuted)
+				})
+				if button.Hovered() {
+					button.Background(theme.SurfaceHover)
 				}
-				a.settings.SearchExcludedDirectories = kept
-				a.settingsChanged(c)
+				if button.Clicked() {
+					kept := make([]string, 0, len(a.settings.SearchExcludedDirectories)-1)
+					for _, candidate := range a.settings.SearchExcludedDirectories {
+						if candidate != directory {
+							kept = append(kept, candidate)
+						}
+					}
+					a.settings.SearchExcludedDirectories = kept
+					a.settingsChanged(c)
+				}
 			}
-		}
+		})
 	})
 	ui.Row(c).Gap(8).Wrap().Children(func() {
 		if len(a.settings.SearchExcludedDirectories) > 0 {
@@ -735,9 +737,9 @@ func settingsChoiceChip(c *ui.Context, label, tooltip string, shown bool) ui.Ele
 	return chip
 }
 
-// workspaceChoiceCard gives each related group of toggle buttons its own
-// visual boundary and enough room to scan its heading independently.
-func workspaceChoiceCard(c *ui.Context, title, hint string, build func()) {
+// settingsChoiceCard gives each related group of choices its own visual
+// boundary and enough room to scan its heading independently.
+func settingsChoiceCard(c *ui.Context, title, hint string, build func()) {
 	theme := c.Theme()
 	ui.Column(c).FillWidth().Gap(12).Padding(14).
 		Background(theme.Surface.Alpha(0.55)).Border(1, theme.Border).Radius(theme.Radius + 4).
@@ -805,7 +807,7 @@ func toolbarActionIcon(id string) *ui.SVG {
 func (a *app) workspaceSettings(c *ui.Context) {
 	settingsSection(c, func() {
 		settingsGroup(c, worktreesIcon, "Workspace sections", "The tabs the sidebar lists")
-		workspaceChoiceCard(c, "Sidebar tabs", "Click to toggle; drag to reorder", func() {
+		settingsChoiceCard(c, "Sidebar tabs", "Click to toggle; drag to reorder", func() {
 			ui.Row(c).Gap(10).Wrap().Children(func() {
 				a.workspaceSectionChips(c)
 			})
@@ -815,12 +817,12 @@ func (a *app) workspaceSettings(c *ui.Context) {
 		ui.Divider(c)
 		settingsGroup(c, settingsIcon, "Toolbar buttons", "Choose which global actions stay visible")
 		ui.Column(c).FillWidth().Gap(16).Children(func() {
-			workspaceChoiceCard(c, "Header toolbar", "Repository, editor, and application actions", func() {
+			settingsChoiceCard(c, "Header toolbar", "Repository, editor, and application actions", func() {
 				a.toolbarActionChoices(c, headerToolbarActions, a.settings.HiddenHeaderActions, "Show %s in header", func(hidden []string) {
 					a.settings.HiddenHeaderActions = hidden
 				})
 			})
-			workspaceChoiceCard(c, "Status bar", "Command, pull request, terminal, and help actions", func() {
+			settingsChoiceCard(c, "Status bar", "Command, pull request, terminal, and help actions", func() {
 				a.toolbarActionChoices(c, statusToolbarActions, a.settings.HiddenStatusActions, "Show %s in status bar", func(hidden []string) {
 					a.settings.HiddenStatusActions = hidden
 				})
