@@ -584,7 +584,7 @@ func (s *gitSession) resetRepositoryState(before, after string) (string, error) 
 func (s *gitSession) patchOperationDiagnostic() (string, error) {
 	state := s.git.Status.WorkingTreeState()
 	if state.Any() {
-		return fmt.Sprintf("cannot import a patch while %s is in progress", state.CommandName()), nil
+		return fmt.Sprintf("cannot import a patch while %s is in progress", state.Effective().CommandName()), nil
 	}
 	output, stderr, err := s.cmd.New([]string{
 		"git", "--no-optional-locks", "ls-files", "--unmerged", "-z",

@@ -30,7 +30,7 @@ func (s *gitSession) CherryPickCommits(ctx context.Context, selected []Commit) e
 		return fmt.Errorf("select commits first")
 	}
 	if state := s.git.Status.WorkingTreeState(); state.Any() {
-		return fmt.Errorf("finish or abort the %s in progress first", state.CommandName())
+		return fmt.Errorf("finish or abort the %s in progress first", state.Effective().CommandName())
 	}
 	commits := make([]*models.Commit, 0, len(selected))
 	seen := map[string]bool{}
