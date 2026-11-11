@@ -248,9 +248,6 @@ func (a *app) sshWorkspaceProfiles(c *ui.Context) {
 			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 	})
 	a.sshFolderBrowser(c)
-	if a.sshWorkspaceResolving {
-		ui.Text(c, tr("Loading remote folder…")).TextColor(theme.TextMuted)
-	}
 	if a.sshWorkspaceError != "" {
 		ui.Text(c, a.sshWorkspaceError).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
 	}
@@ -262,7 +259,7 @@ func (a *app) sshWorkspaceProfiles(c *ui.Context) {
 		if ui.Button(c, tr("Cancel")).Label(tr("Cancel SSH workspace")).Clicked() {
 			a.closeSSHWorkspacePicker()
 		}
-		if ui.PrimaryButton(c, tr("Open")).Disabled(a.sshWorkspaceResolving).
+		if ui.PrimaryButton(c, tr("Open")).Disabled(a.sshWorkspaceResolving || a.sshWorkspaceProfileID == "").
 			Label(tr("Open selected SSH workspace")).Clicked() {
 			a.openSelectedSSHWorkspace()
 		}
@@ -279,12 +276,20 @@ func (a *app) sshFolderBrowser(c *ui.Context) {
 		ui.Text(c, tr("Open creates a Git repository here if needed.")).TextColor(c.Theme().TextMuted)
 	}
 	listing := a.sshBrowser.Listing
-	if listing.Root == "" {
-		return
-	}
-	ui.Text(c, listing.Root).SingleLine().Tooltip(listing.Root).Bold()
+	ui.Text(c, a.sshWorkspaceRoot).SingleLine().Tooltip(a.sshWorkspaceRoot).Bold()
 	ui.Scroll(c).Label(tr("Remote folder contents")).Height(180).FillWidth().Border(1, c.Theme().Border).Radius(c.Theme().Radius).PopoverMenu(a.sshBrowserContextMenu).Children(func() {
 		ui.Column(c).FillWidth().Gap(2).Padding(6).Children(func() {
+			if busy || listing.Root == "" {
+				ui.Row(c).FillWidth().MinHeight(166).Center().Gap(8).Children(func() {
+					if busy {
+						ui.Spinner(c).Label(tr("Loading remote folder…"))
+						ui.Text(c, tr("Loading remote folder…")).TextColor(c.Theme().TextMuted)
+					} else {
+						ui.Text(c, tr("No folder loaded")).TextColor(c.Theme().TextMuted)
+					}
+				})
+				return
+			}
 			if listing.Root != "/" {
 				c.Key("ssh-browser-parent")
 				a.sshBrowserFolderRow(c, "..", tr("Parent folder"), path.Dir(listing.Root), busy)
@@ -303,6 +308,9 @@ func (a *app) sshFolderBrowser(c *ui.Context) {
 			}
 		})
 	})
+	if busy || listing.Root == "" {
+		return
+	}
 	a.sshBrowserCreateForm(c)
 	if listing.Repository {
 		ui.Text(c, tr("This folder is managed by Git")).TextColor(c.Theme().Accent)
