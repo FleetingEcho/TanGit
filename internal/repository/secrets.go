@@ -13,7 +13,7 @@ var (
 	// Credentials in URL queries are less common than userinfo, but CI and
 	// forge URLs often carry tokens this way. Keep the surrounding URL useful
 	// while removing every value whose key says that it is a credential.
-	urlQuerySecretPattern       = regexp.MustCompile(`(?i)([?&](?:access[_-]?token|auth|api[_-]?key|client[_-]?secret|password|passwd|private[_-]?token|token)=)[^&#\s]*`)
+	urlQuerySecretPattern       = regexp.MustCompile(`(?i)([?&](?:access[_-]?token|auth|api[_-]?key|awsaccesskeyid|client[_-]?secret|password|passwd|private[_-]?token|sig|signature|token|x-amz-credential|x-amz-security-token|x-amz-signature|x-goog-credential|x-goog-signature)=)[^&#\s]*`)
 	credentialFlagPattern       = regexp.MustCompile(`(?i)(--(?:access[_-]?token|api[_-]?key|auth|client[_-]?secret|password|passphrase|private[_-]?token|token)\s+)(?:"[^"]*"|'[^']*'|[^\s]+)`)
 	credentialAssignmentPattern = regexp.MustCompile(`(?i)\b((?:access[_-]?token|api[_-]?key|client[_-]?secret|password|passwd|passphrase|private[_-]?key|private[_-]?token|secret|token)\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)`)
 	authorizationPattern        = regexp.MustCompile(`(?i)(authorization\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+(?:\s+[^\s,;]+)?)`)

@@ -92,6 +92,10 @@ func (a *app) exportCompareDiff() {
 // writePatch runs off the UI goroutine: both the desktop dialog and file write
 // may block. Canceling the dialog leaves no file and raises no notification.
 func (a *app) writePatch(opts mygo.SaveDialogOptions, patch string) {
+	a.writePatchBytes(opts, []byte(patch))
+}
+
+func (a *app) writePatchBytes(opts mygo.SaveDialogOptions, patch []byte) {
 	defer a.recoverBackground()
 	path, err := chooseSavePath(opts)
 	if err != nil {
@@ -103,7 +107,7 @@ func (a *app) writePatch(opts mygo.SaveDialogOptions, patch string) {
 	if path == "" {
 		return
 	}
-	if err := os.WriteFile(path, []byte(patch), 0o644); err != nil {
+	if err := os.WriteFile(path, patch, 0o644); err != nil {
 		a.update(func() {
 			a.notify("error", "Could not save the diff", safeError(err))
 		})

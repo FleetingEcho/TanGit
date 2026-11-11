@@ -251,6 +251,12 @@ type Session interface {
 	// ApplyWorkingTreePatch applies a canonical patch to files only, leaving
 	// the index untouched. Reverse is used to discard selected hunks.
 	ApplyWorkingTreePatch(context.Context, string, bool) error
+	// PreviewPatch checks an external patch without changing the repository.
+	// PreviewPatchText does the same for a patch already held in memory.
+	// ApplyPatch applies the exact approved bytes to the working tree only.
+	PreviewPatch(context.Context, string) (PatchPreview, error)
+	PreviewPatchText(context.Context, string) (PatchPreview, error)
+	ApplyPatch(context.Context, PatchPreview) error
 	StageAll(context.Context) error
 	UnstageAll(context.Context) error
 	Commit(context.Context, string, string, bool) error
@@ -372,6 +378,9 @@ type Session interface {
 	BlameFile(context.Context, File) ([]BlameLine, error)
 	CommitFiles(context.Context, Commit) ([]CommitFile, error)
 	CommitFileDiff(context.Context, Commit, CommitFile, DiffOptions) (Diff, error)
+	// CommitFilePatch reads one canonical, apply-ready patch with fixed three-line
+	// context, binary literals and full object IDs, independent of display options.
+	CommitFilePatch(context.Context, Commit, CommitFile) (string, error)
 	// RestoreCommitFile replaces working-tree content with the commit's
 	// version without changing the index or creating a commit.
 	RestoreCommitFile(context.Context, Commit, CommitFile) error
@@ -532,6 +541,9 @@ type gitSession struct {
 	hashPool           *utils.StringPool
 	// reviewMu keeps a read-modify-write of the local review file together.
 	reviewMu sync.Mutex
+	// patchImportMu prevents concurrent imports through this session from both
+	// passing clean-repository preflights before either one writes.
+	patchImportMu sync.Mutex
 	// Keep numstat's rename detection identical to the commit file loader's.
 	renameSimilarityThreshold int
 }
@@ -2560,7 +2572,7 @@ func (s *gitSession) CommitFileDiff(ctx context.Context, commit Commit, file Com
 		from = commit.Parents[0]
 	}
 	args := append([]string{
-		"git", "diff", "--no-color", "--no-ext-diff", "--submodule",
+		"git", "diff", "--no-color", "--no-ext-diff", "--no-textconv", "--submodule",
 		fmt.Sprintf("--find-renames=%d%%", s.renameSimilarityThreshold),
 	}, optionArgs...)
 	args = append(args, from, commit.Hash, "--", file.Path)

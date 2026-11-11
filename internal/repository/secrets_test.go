@@ -22,6 +22,11 @@ func TestRedactSecrets(t *testing.T) {
 			secrets: []string{"abc123"},
 		},
 		{
+			name:    "signed URL queries",
+			input:   "https://example.com/repo.git?AWSAccessKeyId=key-id&Signature=signed-secret&X-Amz-Signature=amz-secret&X-Goog-Signature=goog-secret&sig=azure-secret",
+			secrets: []string{"key-id", "signed-secret", "amz-secret", "goog-secret", "azure-secret"},
+		},
+		{
 			name:    "command options and assignments",
 			input:   "git -c password=hunter2 push --token gho_secret origin",
 			secrets: []string{"hunter2", "gho_secret"},

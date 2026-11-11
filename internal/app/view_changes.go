@@ -684,6 +684,8 @@ func (a *app) changesHeader(c *ui.Context) {
 				a.fileTreeMode = !a.fileTreeMode
 			})
 			flatIconButton(c, "Refresh", "F5", refreshIcon, 15, 5, a.actionBusy, a.beginRefresh)
+			flatIconButton(c, "Apply patch…", "Preview and apply a patch or diff file (Ctrl+I)", downloadIcon, 15, 5,
+				a.actionBusy || a.session == nil, a.beginPatchImport)
 			flatIconButton(c, "Stash changes…", "Stash the working tree", stashIcon, 15, 5,
 				a.actionBusy || len(a.snapshot.Files) == 0, a.openStashForm)
 			// The more button wears the dots itself: the toolbar widget's
@@ -694,6 +696,10 @@ func (a *app) changesHeader(c *ui.Context) {
 				ui.Text(c, "⋯").FontSize(16).TextColor(theme.TextMuted)
 			})
 			more.PopoverMenuButton(func(m *ui.Menu) {
+				if m.Item(tr("Apply patch…")).Disabled(a.actionBusy || a.session == nil).Chosen() {
+					a.beginPatchImport()
+				}
+				m.Separator()
 				if m.Item(tr("Commit with a description…")).Disabled(a.actionBusy || !hasStagedFiles(a.snapshot.Files)).Chosen() {
 					a.showCommitForm = true
 				}

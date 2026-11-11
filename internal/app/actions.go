@@ -259,6 +259,7 @@ func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 	a.resetBranchCommits()
 	a.resetCommitDetails()
 	a.resetComparison()
+	a.resetCustomPatch()
 }
 
 // resetCommitPaging starts the commit list at the page a snapshot carries:

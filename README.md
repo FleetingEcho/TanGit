@@ -62,7 +62,7 @@ undo/redo operations, and reflog recovery help you manage changes deliberately.
 | | What you can do |
 | --- | --- |
 | **Changes & diffs** | Stage files or selected lines; review unified, side-by-side, image, and media diffs; export patches. |
-| **History & graph** | Filter commits, inspect file history, cherry-pick batches, reword, squash, and reorder commits. |
+| **History & graph** | Filter commits, inspect file history, cherry-pick batches, reword, squash, and reorder commits. Collect whole files, hunks, or lines into a Custom Patch, then safely apply or export it. |
 | **Branches & recovery** | Manage remotes, tags, stashes, worktrees, and submodules; inspect the reflog and undo eligible operations. |
 | **Conflict resolution** | Review base, current, and incoming versions; choose hunks, edit the result, and stage the resolution. |
 | **Editor workspace** | Edit with syntax highlighting and language-server assistance; manage files and tabs; use fzf Quick Open, advanced content search, and Markdown preview. |
@@ -85,7 +85,7 @@ number to start multiple-line selection; Shift-click selects a range.
 
 1. Install [Git](https://git-scm.com/) and download a [TanGit release](https://github.com/FleetingEcho/TanGit/releases).
 2. Use the **DMG** on macOS, the **setup executable** on Windows, or the matching **`.deb` / archive** on Linux.
-3. Open a repository, review its changes, stage what you need, and commit.
+3. Open a local repository, or choose **Clone remote repository…** on Home to clone an HTTPS or SSH URL with real progress, optional branch selection, and automatic opening. Git uses your existing credential helpers or SSH agent; TanGit does not store credentials.
 
 Install [ripgrep](https://github.com/BurntSushi/ripgrep) for faster Editor content searches in large repositories. TanGit uses its built-in search when `rg` is unavailable and ranks Quick Open paths and content results with [fzf](https://github.com/junegunn/fzf).
 
@@ -116,6 +116,10 @@ quitting Neovim returns to the shell in the project or file's directory.
 | Arrows, `j` / `k` | Navigate the focused list |
 | `Space` | Stage or unstage in Changes, including selected diff lines |
 | `c` / `Ctrl+Enter` | Compose / submit a commit |
+| `Ctrl+I` | Preview and apply a patch or diff in Changes |
+| `C` | Clone a remote repository on Home |
+| `Ctrl+B` / `B` | Add the chosen commit or historical file / review Custom Patch |
+| `A` / `Space` in a historical diff | Add the current hunk / selected changed lines to Custom Patch |
 | `p` / `P` | Pull / push |
 | `r` | Reword a commit in History or Graph |
 | `z` / `Z` | Undo / redo eligible operations |
