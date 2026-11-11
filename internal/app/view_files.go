@@ -72,10 +72,14 @@ func (a *app) currentLineSelections() []editor.DiffLineRange {
 	if a.lineSelectMode && len(a.lineSelectRanges) > 0 {
 		return a.lineSelectRanges
 	}
-	if a.diffState == nil {
+	state := a.diffState
+	if a.customPatchLineSelectionAvailable() {
+		state = a.commitDiffState
+	}
+	if state == nil {
 		return nil
 	}
-	selection, ok := a.diffState.SelectedLines()
+	selection, ok := state.SelectedLines()
 	if !ok || selection.End < selection.Start {
 		return nil
 	}
@@ -113,13 +117,17 @@ func (a *app) clearMultipleLineSelection() {
 // Shift-click adds a contiguous range. It starts afresh, so the button never
 // adds to a selection the user has forgotten.
 func (a *app) startLineSelection() {
-	if !a.lineSelectionAvailable() {
+	if !a.lineSelectionAvailable() && !a.customPatchLineSelectionAvailable() {
 		return
 	}
 	a.lineSelectMode = true
 	a.clearMultipleLineSelection()
-	if a.diffState != nil {
-		a.diffState.SetSelectedLines(editor.DiffLineRange{}, false)
+	state := a.diffState
+	if a.customPatchLineSelectionAvailable() {
+		state = a.commitDiffState
+	}
+	if state != nil {
+		state.SetSelectedLines(editor.DiffLineRange{}, false)
 	}
 }
 
@@ -128,20 +136,28 @@ func (a *app) startLineSelection() {
 func (a *app) stopLineSelection() {
 	a.lineSelectMode = false
 	a.clearMultipleLineSelection()
-	if a.diffState != nil {
-		a.diffState.SetSelectedLines(editor.DiffLineRange{}, false)
+	state := a.diffState
+	if a.customPatchActive() && a.commitDiffState != nil {
+		state = a.commitDiffState
+	}
+	if state != nil {
+		state.SetSelectedLines(editor.DiffLineRange{}, false)
 	}
 }
 
 // syncLineSelection preserves independent selections across frames. The native
 // viewer range remains the Shift-click anchor, not a replacement for the model.
 func (a *app) syncLineSelection() {
-	if !a.lineSelectMode || a.diffState == nil {
+	state := a.diffState
+	if a.customPatchActive() && a.commitDiffState != nil {
+		state = a.commitDiffState
+	}
+	if !a.lineSelectMode || state == nil {
 		a.clearMultipleLineSelection()
 		return
 	}
 	if len(a.lineSelectRanges) == 0 {
-		if selection, ok := a.diffState.SelectedLines(); ok {
+		if selection, ok := state.SelectedLines(); ok {
 			a.lineSelectRanges = []editor.DiffLineRange{selection}
 			a.lineSelectRange, a.lineSelectHas = selection, true
 		}
@@ -183,7 +199,9 @@ func mergeLineSelections(ranges []editor.DiffLineRange) []editor.DiffLineRange {
 // click. A plain click adds just that line; only an actual Shift/drag range
 // adds the unchanged lines between its endpoints.
 func (a *app) extendLineSelection(state *editor.DiffState, clicked editor.DiffLineRange) {
-	if state == nil || state != a.diffState || !a.lineSelectionAvailable() || clicked.End < clicked.Start {
+	ordinary := state != nil && state == a.diffState && a.lineSelectionAvailable()
+	custom := state != nil && state == a.commitDiffState && a.customPatchLineSelectionAvailable()
+	if (!ordinary && !custom) || clicked.End < clicked.Start {
 		return
 	}
 	if !a.lineSelectMode {

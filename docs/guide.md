@@ -74,7 +74,10 @@ their package installer.
 
 | Task | Steps |
 | --- | --- |
+| Clone and open a repository | On Home, choose **Clone remote repository…** or press `C`. Enter an HTTPS, SSH, or scp-like URL, optionally choose a branch, and select a native destination parent. **Clone and open** shows Git's real progress and opens the completed repository. Escape cancels Git without deleting the destination. Credential-bearing URLs are rejected; authentication uses your configured Git credential helpers or SSH agent. |
 | Stage selected lines | Click diff line numbers, then **Stage**. Shift-click selects a range; Escape clears the selection. |
+| Build a Custom Patch | In History or Graph, use `Ctrl+B` on a commit or historical file to add canonical whole-file patches. In its diff, select changed lines and press `Space`, or press `A` for the current hunk. Press `B` to review the basket, preview the combined patch, then export it or apply it atomically to the working tree without staging. This never rewrites history. Different commits cannot contribute changes to the same old/new path; additions, deletions, renames, binary files, and mode-only changes require whole-file selection. |
+| Apply an external patch | In **Changes**, choose **Apply patch…** or press `Ctrl+I`, then select a `.patch` or `.diff` file. Review its files, diagnostics and text before applying. Clean patches apply atomically to the working tree and stay unstaged; conflicted patches cannot be applied. Cancel or Discard Patch changes neither the repository nor the source file. |
 | Edit files in TanGit | Open **Editor**, select or quick-open a file, and edit its persistent tab. Use Ctrl/Cmd+S to save; a dot marks unsaved tabs. Closing asks whether to save or discard changes. |
 | Manage editor tabs | Right-click a file tab to close it, other tabs, tabs to the right, or all tabs, or to copy its absolute or repository-relative path. |
 | Manage files and folders | Use **Editor → New File / New Folder**, or right-click an explorer row to create, rename, delete, view Git file history, or copy paths. Creation starts in the selected folder; deleting asks for confirmation. |
@@ -100,15 +103,16 @@ Commands follow the focused panel. Uppercase letters mean **Shift + letter**.
 | Controls / panels | `Tab` / `Shift+Tab`; `F6` / `Shift+F6`; `Enter` activates; `Escape` returns |
 | Lists / search | Arrows or `j` / `k`; `/` searches; `F3` / `Shift+F3` moves between matches; `Shift+F10` opens the row menu |
 | Repository tabs | `Cmd/Ctrl+T` new, `Cmd/Ctrl+W` close; `Ctrl+Tab` / `Ctrl+Shift+Tab` switch |
+| Home | `C` opens remote clone; `Escape` closes the form or cancels cloning |
 | Global Git actions | `p` pull, `P` push, `z` / `Z` undo / redo, `F5` refresh |
-| Changes | `Space` stage/unstage, `a` stage all, `c` compose, `A` amend, `s` stash, `d` discard, `b` blame |
+| Changes | `Space` stage/unstage, `a` stage all, `c` compose, `A` amend, `s` stash, `d` discard, `b` blame, `Ctrl+I` import patch |
 | Commit form | `Enter` submits the summary; `Ctrl+Enter` commits; `Escape` closes |
 | Editor | `Ctrl+P` quick open; `Ctrl+Shift+F` searches workspace content; `Ctrl+W` closes the editor tab |
-| History / Graph | `r` reword, `s` squash, `f` fixup, `d` drop, `t` revert; `Ctrl+J` / `Ctrl+K` reorder |
+| History / Graph | `r` reword, `s` squash, `f` fixup, `d` drop, `t` revert; `Ctrl+J` / `Ctrl+K` reorder; `Ctrl+B` adds the selected commit/file to Custom Patch; `B` reviews it |
 | Cherry-pick | `C` copies selected commits; `V` confirms applying them |
 | Branches | `Space` checkout, `n` create, `M` merge, `r` rebase, `u` unset upstream, `d` delete |
 | Stash / tags | Stash: `Space` apply, `g` pop, `d` drop. Tags: `n` create, `P` push, `d` delete |
-| Diff review | `[` / `]` changes hunk; `v` starts line selection; `Shift+Up/Down` extends it; `Space` stages/unstages |
+| Diff review | `[` / `]` changes hunk; `v` starts line selection; `Shift+Up/Down` extends it; `Space` stages/unstages in Changes or adds selected lines to a historical Custom Patch; `A` adds the current historical hunk |
 | Diff display | `W` compares refs; `Alt+W` toggles whitespace; `Alt+U` cycles context |
 | Conflicts | `F7` / `Shift+F7` moves; `Alt+1`–`Alt+4` selects current/ancestor/incoming/both; `Alt+Z` undoes a choice |
 | Terminal | ``Ctrl+` `` or `Ctrl+~` shows or hides the bottom panel from any workspace or form without changing sections; its tabs, splits, search and scrollback stay alive while hidden |

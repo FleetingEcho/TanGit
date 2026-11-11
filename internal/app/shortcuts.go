@@ -62,6 +62,20 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		c.OnShortcut(0, ui.KeyEscape, a.closeSettings)
 		return
 	}
+	if a.patchPreviewOpen {
+		c.OnShortcut(0, ui.KeyEscape, a.discardPatchPreview)
+		return
+	}
+	if a.customPatch.open {
+		c.OnShortcut(0, ui.KeyEscape, func() {
+			if a.customPatch.previewOpen {
+				a.backToCustomPatchBuilder()
+			} else {
+				a.closeCustomPatchBuilder()
+			}
+		})
+		return
+	}
 	if a.diffFullscreen {
 		c.OnShortcut(0, ui.KeyEscape, a.closeDiffFullscreen)
 		return
@@ -81,6 +95,20 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		if !a.settings.DisableShortcuts {
 			c.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
 			c.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })
+		}
+		return
+	}
+	if a.cloneOpen {
+		c.OnShortcut(0, ui.KeyEscape, a.closeCloneForm)
+		return
+	}
+	if a.state == stateCloning {
+		c.OnShortcut(0, ui.KeyEscape, a.cancelCloneOperation)
+		if !a.settings.DisableShortcuts {
+			c.OnShortcut(0, ui.KeyF1, a.openKeybindings)
+			if !c.FocusTakesText() {
+				c.OnShortcut(ui.Shift, ui.KeySlash, a.openCurrentKeybindings)
+			}
 		}
 		return
 	}
@@ -127,6 +155,9 @@ func (a *app) registerShortcuts(c *ui.Context) {
 	c.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
 	c.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })
 	c.OnShortcut(0, ui.KeyEscape, func() { a.keyboardBack(c) })
+	if (a.state == stateEmpty || a.state == stateError) && !c.FocusTakesText() {
+		c.OnShortcut(0, ui.KeyC, a.openCloneForm)
+	}
 	if a.state != stateReady {
 		return
 	}

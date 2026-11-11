@@ -31,6 +31,7 @@ func keyboardCommands() []keyboardCommand {
 			}
 		}},
 		{"Changes", "Ctrl+Enter", "Commit the staged changes", ui.Ctrl, ui.KeyEnter, (*app).beginCommit},
+		{"Changes", "Ctrl+I", "Preview and apply a patch or diff file", ui.Ctrl, ui.KeyI, (*app).beginPatchImport},
 		{"Changes", "A", "Amend the chosen commit with staged changes", ui.Shift, ui.KeyA, func(a *app) {
 			if hasStagedFiles(a.snapshot.Files) {
 				a.commitAmend = true
@@ -53,6 +54,8 @@ func keyboardCommands() []keyboardCommand {
 		{"Changes", "Alt+J", "Go to the next changed file", ui.Alt, ui.KeyJ, func(a *app) { a.changedFileNavigation(1) }},
 		{"Changes", "Alt+K", "Go to the previous changed file", ui.Alt, ui.KeyK, func(a *app) { a.changedFileNavigation(-1) }},
 		{"History and graph", "Ctrl+Space", "Toggle batch selection", ui.Ctrl, ui.KeySpace, (*app).toggleSelectedCommitForBatch},
+		{"History and graph", "Ctrl+B", "Add all files from the chosen commit to Custom Patch", ui.Ctrl, ui.KeyB, (*app).addSelectedCustomPatchCommit},
+		{"History and graph", "B", "Review Custom Patch", ui.Shift, ui.KeyB, (*app).openCustomPatchBuilder},
 		{"History and graph", "r", "Reword the chosen commit", 0, ui.KeyR, (*app).rewordSelectedCommit},
 		{"History and graph", "A", "Amend the chosen commit with staged changes", ui.Shift, ui.KeyA, (*app).confirmSelectedAmendCommit},
 		{"History and graph", "s", "Squash the chosen commit into its older neighbor", 0, ui.KeyS, func(a *app) { a.confirmSelectedCombineCommit(repository.CombineSquash) }},
@@ -121,6 +124,9 @@ func keyboardCommands() []keyboardCommand {
 			keyboardCommand{group, "Shift+R", "Restore the chosen historical file after confirmation", ui.Shift, ui.KeyR, (*app).confirmRestoreSelectedHistoricalFile},
 		)
 	}
+	commands = append(commands,
+		keyboardCommand{"Historical files", "Ctrl+B", "Add the chosen historical file to Custom Patch", ui.Ctrl, ui.KeyB, (*app).addSelectedCustomPatchFile},
+	)
 	return commands
 
 }

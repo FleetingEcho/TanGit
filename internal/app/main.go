@@ -28,6 +28,7 @@ const (
 	stateLoading
 	stateReady
 	stateError
+	stateCloning
 )
 
 type repositoryOpener interface {
@@ -75,6 +76,22 @@ type app struct {
 	errMessage string
 	generation uint64
 	cancelOpen context.CancelFunc
+	// clone fields belong to Home's remote-clone form and progress view. The
+	// generation invalidates native-picker, progress and completion callbacks.
+	cloneOpen              bool
+	cloneURL               string
+	cloneBranch            string
+	cloneDestination       string
+	cloneParent            string
+	cloneDestinationManual bool
+	cloneValidationShown   bool
+	cloneURLError          string
+	cloneBranchError       string
+	cloneDestinationError  string
+	cloneError             string
+	cloneProgress          repository.CloneProgress
+	cloneGeneration        uint64
+	cancelClone            context.CancelFunc
 	// offerInitPath is the folder the picker offers to initialize, because
 	// it holds no Git repository yet.
 	offerInitPath string
@@ -476,6 +493,17 @@ type app struct {
 	lineSelectRanges []editor.DiffLineRange
 	actionBusy       bool
 	actionError      string
+	// patchPreviewOpen owns the read-only patch import dialog. Its token
+	// invalidates a native pick or preview that finishes after cancellation or
+	// after another repository opens; the repository revalidates before apply.
+	patchPreviewOpen    bool
+	patchPreviewLoading bool
+	patchPreview        *repository.PatchPreview
+	patchPreviewError   string
+	patchPreviewToken   uint64
+	// customPatch is a session-local basket of canonical historical patches.
+	// Its previews use the same immutable, repository-bound workflow as imports.
+	customPatch customPatchState
 	// repositoryDetailsLoading is the deferred history/ancillary read of a
 	// progressive open. refreshBusy is a quiet refresh reading the repository
 	// in the background; there is one at a time, and refreshToken rejects an

@@ -1,0 +1,111 @@
+package app
+
+// Patch import has an additive catalog, like the other focused workflows.
+// Git's own diagnostics remain verbatim so their paths and hunk numbers stay
+// searchable, while every decision and safety explanation is localized.
+var patchImportTranslations = map[string]map[string]string{
+	"zh-Hans": {
+		"Open patch": "打开补丁", "Preview patch": "预览补丁", "Patch files": "补丁文件",
+		"Apply patch…": "应用补丁…", "Preview and apply a patch or diff file": "预览并应用补丁或 diff 文件",
+		"Preview and apply a patch or diff file (Ctrl+I)": "预览并应用补丁或 diff 文件 (Ctrl+I)",
+		"Apply Patch/Diff": "应用补丁/Diff", "Review every change before applying it to the working tree.": "应用更改到工作树前，请检查每一项更改。",
+		"Close patch preview": "关闭补丁预览", "Patch preview": "补丁预览",
+		"Checking patch without changing the repository…":                                    "正在检查补丁，不会更改仓库…",
+		"Git is validating the files and hunks. Your index and working tree stay untouched.": "Git 正在验证文件和补丁块，暂存区和工作树保持不变。",
+		"Could not preview patch": "无法预览补丁", "Patch applies cleanly": "补丁可以无冲突地应用",
+		"Apply changes the working tree only; nothing will be staged.": "应用仅更改工作树，不会暂存任何内容。",
+		"Patch cannot be applied":                                      "无法应用补丁",
+		"Resolve the reported conflicts or edit the source files, then preview the patch again. Nothing was changed.": "请解决报告的冲突或编辑源文件，然后重新预览补丁。当前没有任何更改。",
+		"%d files · +%d · −%d": "%d 个文件 · +%d · −%d", "Git diagnostics": "Git 诊断信息",
+		"Affected files": "受影响的文件", "Patch text": "补丁文本",
+		"Patch text is truncated here; Apply still validates and uses the complete file.": "此处的补丁文本已截断；应用时仍会验证并使用完整文件。",
+		"Discard Patch": "放弃补丁", "Close this preview without changing or deleting the patch file": "关闭此预览，不更改或删除补丁文件",
+		"Apply Patch": "应用补丁", "Apply all changes atomically to the working tree, leaving them unstaged": "以原子方式将所有更改应用到工作树，并保持未暂存状态",
+		"Applied patch to the working tree": "已将补丁应用到工作树",
+	},
+	"zh-Hant": {
+		"Open patch": "開啟修補程式", "Preview patch": "預覽修補程式", "Patch files": "修補程式檔案",
+		"Apply patch…": "套用修補程式…", "Preview and apply a patch or diff file": "預覽並套用修補程式或 diff 檔案",
+		"Preview and apply a patch or diff file (Ctrl+I)": "預覽並套用修補程式或 diff 檔案 (Ctrl+I)",
+		"Apply Patch/Diff": "套用修補程式/Diff", "Review every change before applying it to the working tree.": "套用至工作樹前，請檢閱每項變更。",
+		"Close patch preview": "關閉修補程式預覽", "Patch preview": "修補程式預覽",
+		"Checking patch without changing the repository…":                                    "正在檢查修補程式，不會變更儲存庫…",
+		"Git is validating the files and hunks. Your index and working tree stay untouched.": "Git 正在驗證檔案與修補區塊，索引與工作樹保持不變。",
+		"Could not preview patch": "無法預覽修補程式", "Patch applies cleanly": "修補程式可順利套用",
+		"Apply changes the working tree only; nothing will be staged.": "套用僅變更工作樹，不會暫存任何內容。",
+		"Patch cannot be applied":                                      "無法套用修補程式",
+		"Resolve the reported conflicts or edit the source files, then preview the patch again. Nothing was changed.": "請解決回報的衝突或編輯來源檔案，然後重新預覽修補程式。目前沒有任何變更。",
+		"%d files · +%d · −%d": "%d 個檔案 · +%d · −%d", "Git diagnostics": "Git 診斷資訊",
+		"Affected files": "受影響的檔案", "Patch text": "修補程式文字",
+		"Patch text is truncated here; Apply still validates and uses the complete file.": "此處的修補程式文字已截斷；套用時仍會驗證並使用完整檔案。",
+		"Discard Patch": "捨棄修補程式", "Close this preview without changing or deleting the patch file": "關閉此預覽，不變更或刪除修補程式檔案",
+		"Apply Patch": "套用修補程式", "Apply all changes atomically to the working tree, leaving them unstaged": "以不可部分完成的方式將所有變更套用至工作樹，並保持未暫存狀態",
+		"Applied patch to the working tree": "已將修補程式套用至工作樹",
+	},
+	"ja": {
+		"Open patch": "パッチを開く", "Preview patch": "パッチをプレビュー", "Patch files": "パッチファイル",
+		"Apply patch…": "パッチを適用…", "Preview and apply a patch or diff file": "パッチまたは diff ファイルをプレビューして適用",
+		"Preview and apply a patch or diff file (Ctrl+I)": "パッチまたは diff ファイルをプレビューして適用 (Ctrl+I)",
+		"Apply Patch/Diff": "パッチ/Diff を適用", "Review every change before applying it to the working tree.": "作業ツリーに適用する前に、すべての変更を確認してください。",
+		"Close patch preview": "パッチのプレビューを閉じる", "Patch preview": "パッチのプレビュー",
+		"Checking patch without changing the repository…":                                    "リポジトリを変更せずにパッチを確認しています…",
+		"Git is validating the files and hunks. Your index and working tree stay untouched.": "Git がファイルとハンクを検証しています。インデックスと作業ツリーは変更されません。",
+		"Could not preview patch": "パッチをプレビューできません", "Patch applies cleanly": "パッチは競合なく適用できます",
+		"Apply changes the working tree only; nothing will be staged.": "作業ツリーだけを変更し、ステージされるものはありません。",
+		"Patch cannot be applied":                                      "パッチを適用できません",
+		"Resolve the reported conflicts or edit the source files, then preview the patch again. Nothing was changed.": "報告された競合を解決するかソースファイルを編集してから、パッチを再プレビューしてください。何も変更されていません。",
+		"%d files · +%d · −%d": "%d ファイル · +%d · −%d", "Git diagnostics": "Git 診断",
+		"Affected files": "影響を受けるファイル", "Patch text": "パッチテキスト",
+		"Patch text is truncated here; Apply still validates and uses the complete file.": "ここではパッチテキストが省略されていますが、適用時には完全なファイルを検証して使用します。",
+		"Discard Patch": "パッチを破棄", "Close this preview without changing or deleting the patch file": "パッチファイルを変更または削除せずにこのプレビューを閉じる",
+		"Apply Patch": "パッチを適用", "Apply all changes atomically to the working tree, leaving them unstaged": "すべての変更を不可分に作業ツリーへ適用し、未ステージのままにします",
+		"Applied patch to the working tree": "パッチを作業ツリーに適用しました",
+	},
+	"es": {
+		"Open patch": "Abrir parche", "Preview patch": "Vista previa del parche", "Patch files": "Archivos de parche",
+		"Apply patch…": "Aplicar parche…", "Preview and apply a patch or diff file": "Previsualizar y aplicar un archivo de parche o diff",
+		"Preview and apply a patch or diff file (Ctrl+I)": "Previsualizar y aplicar un archivo de parche o diff (Ctrl+I)",
+		"Apply Patch/Diff": "Aplicar parche/diff", "Review every change before applying it to the working tree.": "Revisa cada cambio antes de aplicarlo al árbol de trabajo.",
+		"Close patch preview": "Cerrar vista previa del parche", "Patch preview": "Vista previa del parche",
+		"Checking patch without changing the repository…":                                    "Comprobando el parche sin cambiar el repositorio…",
+		"Git is validating the files and hunks. Your index and working tree stay untouched.": "Git está validando los archivos y bloques. El índice y el árbol de trabajo permanecen intactos.",
+		"Could not preview patch": "No se pudo previsualizar el parche", "Patch applies cleanly": "El parche se aplica sin conflictos",
+		"Apply changes the working tree only; nothing will be staged.": "Aplicar solo cambia el árbol de trabajo; nada quedará preparado.",
+		"Patch cannot be applied":                                      "El parche no se puede aplicar",
+		"Resolve the reported conflicts or edit the source files, then preview the patch again. Nothing was changed.": "Resuelve los conflictos indicados o edita los archivos de origen y vuelve a previsualizar el parche. No se cambió nada.",
+		"%d files · +%d · −%d": "%d archivos · +%d · −%d", "Git diagnostics": "Diagnósticos de Git",
+		"Affected files": "Archivos afectados", "Patch text": "Texto del parche",
+		"Patch text is truncated here; Apply still validates and uses the complete file.": "El texto del parche está truncado aquí; Aplicar sigue validando y usando el archivo completo.",
+		"Discard Patch": "Descartar parche", "Close this preview without changing or deleting the patch file": "Cerrar esta vista previa sin cambiar ni eliminar el archivo de parche",
+		"Apply Patch": "Aplicar parche", "Apply all changes atomically to the working tree, leaving them unstaged": "Aplicar todos los cambios de forma atómica al árbol de trabajo y dejarlos sin preparar",
+		"Applied patch to the working tree": "Parche aplicado al árbol de trabajo",
+	},
+	"fr": {
+		"Open patch": "Ouvrir un correctif", "Preview patch": "Prévisualiser le correctif", "Patch files": "Fichiers de correctif",
+		"Apply patch…": "Appliquer un correctif…", "Preview and apply a patch or diff file": "Prévisualiser et appliquer un fichier de correctif ou diff",
+		"Preview and apply a patch or diff file (Ctrl+I)": "Prévisualiser et appliquer un fichier de correctif ou diff (Ctrl+I)",
+		"Apply Patch/Diff": "Appliquer le correctif/diff", "Review every change before applying it to the working tree.": "Examinez chaque modification avant de l’appliquer à l’arbre de travail.",
+		"Close patch preview": "Fermer l’aperçu du correctif", "Patch preview": "Aperçu du correctif",
+		"Checking patch without changing the repository…":                                    "Vérification du correctif sans modifier le dépôt…",
+		"Git is validating the files and hunks. Your index and working tree stay untouched.": "Git vérifie les fichiers et les sections. L’index et l’arbre de travail restent intacts.",
+		"Could not preview patch": "Impossible de prévisualiser le correctif", "Patch applies cleanly": "Le correctif s’applique sans conflit",
+		"Apply changes the working tree only; nothing will be staged.": "L’application modifie uniquement l’arbre de travail ; rien ne sera indexé.",
+		"Patch cannot be applied":                                      "Le correctif ne peut pas être appliqué",
+		"Resolve the reported conflicts or edit the source files, then preview the patch again. Nothing was changed.": "Résolvez les conflits signalés ou modifiez les fichiers source, puis prévisualisez à nouveau le correctif. Rien n’a été modifié.",
+		"%d files · +%d · −%d": "%d fichiers · +%d · −%d", "Git diagnostics": "Diagnostics Git",
+		"Affected files": "Fichiers concernés", "Patch text": "Texte du correctif",
+		"Patch text is truncated here; Apply still validates and uses the complete file.": "Le texte du correctif est tronqué ici ; Appliquer valide et utilise toujours le fichier complet.",
+		"Discard Patch": "Abandonner le correctif", "Close this preview without changing or deleting the patch file": "Fermer cet aperçu sans modifier ni supprimer le fichier de correctif",
+		"Apply Patch": "Appliquer le correctif", "Apply all changes atomically to the working tree, leaving them unstaged": "Appliquer toutes les modifications de façon atomique à l’arbre de travail sans les indexer",
+		"Applied patch to the working tree": "Correctif appliqué à l’arbre de travail",
+	},
+}
+
+func init() {
+	for language, additions := range patchImportTranslations {
+		catalog := translations[language]
+		for english, translated := range additions {
+			catalog[english] = translated
+		}
+	}
+}

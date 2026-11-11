@@ -229,7 +229,11 @@ func (s screenshotSession) ApplyCachedPatch(context.Context, string, bool) error
 func (s screenshotSession) ApplyWorkingTreePatch(context.Context, string, bool) error {
 	return nil
 }
-func (s screenshotSession) DiscardFiles(context.Context, []repository.File) error { return nil }
+func (s screenshotSession) PreviewPatch(_ context.Context, path string) (repository.PatchPreview, error) {
+	return repository.PatchPreview{Path: path, Clean: true}, nil
+}
+func (s screenshotSession) ApplyPatch(context.Context, repository.PatchPreview) error { return nil }
+func (s screenshotSession) DiscardFiles(context.Context, []repository.File) error     { return nil }
 func (s screenshotSession) WorkSnapshots(context.Context) ([]repository.WorkSnapshot, error) {
 	return nil, nil
 }
@@ -376,6 +380,12 @@ func (s screenshotSession) RestoreCommitFile(context.Context, repository.Commit,
 
 func (s screenshotSession) CommitFileDiff(context.Context, repository.Commit, repository.CommitFile, repository.DiffOptions) (repository.Diff, error) {
 	return repository.Diff{Patch: screenshotPatch, Kind: "Commit"}, nil
+}
+func (s screenshotSession) CommitFilePatch(context.Context, repository.Commit, repository.CommitFile) (string, error) {
+	return screenshotPatch, nil
+}
+func (s screenshotSession) PreviewPatchText(_ context.Context, text string) (repository.PatchPreview, error) {
+	return repository.PatchPreview{Text: text, Clean: true}, nil
 }
 
 func (s screenshotSession) BranchCommits(context.Context, string, int) ([]repository.Commit, error) {

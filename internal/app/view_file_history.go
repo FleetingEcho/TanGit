@@ -25,6 +25,10 @@ func (a *app) commitFileMenu(m *ui.Menu, commit *repository.Commit, file reposit
 	if m.Item(tr("View file changes…")).Chosen() {
 		a.openFileHistory(file.Path)
 	}
+	if commit != nil && a.customPatchActive() && m.Item(tr("Add file to Custom Patch")).Shortcut(ui.Ctrl, ui.KeyB).
+		Disabled(a.actionBusy || a.session == nil).Chosen() {
+		a.beginAddCustomPatchFile(*commit, file, nil)
+	}
 	if commit != nil && m.Item(tr("Restore this historical file…")).Shortcut(ui.Shift, ui.KeyR).
 		Disabled(a.actionBusy || a.session == nil).Chosen() {
 		a.confirmRestoreCommitFile(*commit, file)
