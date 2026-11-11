@@ -157,6 +157,9 @@ type app struct {
 	// SSH profiles persist in settings, but their credentials never do. The
 	// form's sensitive drafts are cleared on save/close; session secrets shadow
 	// older keychain values when the system credential store is unavailable.
+	sshCreateEntry            func(context.Context, sshworkspace.Profile, string, string, bool) (sshFolderListing, error)
+	sshBrowser                sshBrowserState
+	sshBrowseFolder           func(context.Context, sshworkspace.Profile, string, bool) (sshFolderListing, error)
 	sshWorkspaceOpen          bool
 	sshWorkspaceProfileID     string
 	sshWorkspaceRoot          string

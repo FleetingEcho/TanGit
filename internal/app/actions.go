@@ -156,6 +156,16 @@ func (a *app) setOpenError(path string, generation uint64, err error) {
 	}
 	a.cancelOpen = nil
 	if errors.Is(err, repository.ErrNotRepository) {
+		if location, parseErr := workspace.Parse(path); parseErr == nil && location.IsRemote() {
+			a.state = stateEmpty
+			a.errMessage = ""
+			a.offerInitPath = ""
+			a.openSSHWorkspacePicker()
+			a.selectSSHWorkspaceProfile(location.ProfileID)
+			a.sshWorkspaceRoot = location.Root
+			a.loadSSHFolder(location.Root, false, false)
+			return
+		}
 		// The folder is plain: offer to make it a repository instead of
 		// showing Git's own message.
 		a.state = stateEmpty

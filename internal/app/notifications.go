@@ -147,33 +147,36 @@ func (a *app) toastViewport(c *ui.Context, topInset float32) {
 						ui.Text(c, toast.Description).TextColor(theme.TextMuted).
 							FontSize(theme.FontSize - 1).MaxWidth(320)
 					}
-					if toast.Action != "" {
-						action := ui.ButtonBase(c).Label(toast.Action).Padding(2, 0).Gap(4).
-							AlignSelf(ui.Start)
-						action.TextColor(color)
-						action.Children(func() {
-							ui.Text(c, toast.Action).FontSize(theme.FontSize - 1).Bold()
-						})
-						if action.Clicked() {
-							if toast.OnAction != nil {
-								toast.OnAction()
-							}
-							c.CloseToast(toast.ID)
-						}
-					}
-					if actions, ok := toast.Data.([]appToastAction); ok {
-						ui.Row(c).Gap(12).Children(func() {
-							for _, extra := range actions {
-								action := ui.ButtonBase(c).Label(extra.label).Padding(2, 0).AlignSelf(ui.Start)
+					extraActions, _ := toast.Data.([]appToastAction)
+					if toast.Action != "" || len(extraActions) > 0 {
+						ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+							if toast.Action != "" {
+								action := ui.ButtonBase(c).Label(toast.Action).Padding(2, 0).Gap(4).
+									AlignSelf(ui.Start)
 								action.TextColor(color)
 								action.Children(func() {
-									ui.Text(c, extra.label).FontSize(theme.FontSize - 1).Bold()
+									ui.Text(c, toast.Action).FontSize(theme.FontSize - 1).Bold()
 								})
 								if action.Clicked() {
-									if extra.onAction != nil {
-										extra.onAction()
+									if toast.OnAction != nil {
+										toast.OnAction()
 									}
 									c.CloseToast(toast.ID)
+								}
+							}
+							if actions, ok := toast.Data.([]appToastAction); ok {
+								for _, extra := range actions {
+									action := ui.ButtonBase(c).Label(extra.label).Padding(2, 0).AlignSelf(ui.Start)
+									action.TextColor(color)
+									action.Children(func() {
+										ui.Text(c, extra.label).FontSize(theme.FontSize - 1).Bold()
+									})
+									if action.Clicked() {
+										if extra.onAction != nil {
+											extra.onAction()
+										}
+										c.CloseToast(toast.ID)
+									}
 								}
 							}
 						})

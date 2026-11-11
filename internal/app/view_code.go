@@ -109,11 +109,16 @@ func (a *app) codeFileExplorer(c *ui.Context) {
 					// the one necessary rebuild until the next build pass.
 					a.code.treeDirty = true
 				}).Drag(codeExplorerDrag{path: item.path})
+				if a.remoteTransfersAvailable() {
+					directory.MinHeight(38)
+				}
 				directory.PopoverMenu(func(m *ui.Menu) {
 					a.codeExplorerMenu(m, item, row.Context.Services())
 					a.remoteTransferExplorerMenu(m, item)
 				})
-				a.remoteTransferExplorerHover(row.Context, directory, item)
+				directory.Children(func() {
+					a.remoteTransferExplorerHover(row.Context, directory, item)
+				})
 				if _, over := ui.DragOver[codeExplorerDrag](directory); over {
 					directory.Background(theme.Accent.Alpha(0.16))
 				}
@@ -131,6 +136,9 @@ func (a *app) codeFileExplorer(c *ui.Context) {
 					a.codeExplorerMenu(m, item, row.Context.Services())
 					a.remoteTransferExplorerMenu(m, item)
 				})
+			if a.remoteTransfersAvailable() {
+				button.MinHeight(38)
+			}
 			button.Children(func() {
 				fileTypeMark(row.Context, item.path, 13, row.Selected())
 				ui.Text(row.Context, item.name).Grow(1).SingleLine()
