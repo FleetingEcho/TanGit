@@ -326,6 +326,7 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 		HomeBackgroundOpacity:  0.42,
 		VisibleSections:        []string{"changes", "graph"},
 		SectionOrder:           normalizeSectionOrder([]string{"graph", "changes"}),
+		TerminalDock:           terminalDockRight,
 		RemoteWebURLs: map[string]map[string]string{
 			"/work/project": {"origin": "https://example.com/team/project"},
 		},
@@ -392,6 +393,50 @@ func TestSettingsStoreToleratesMissingAndDamagedFiles(t *testing.T) {
 	}
 	if err := saveAppSettings("", defaultSettings()); err != nil {
 		t.Fatalf("saving without a directory: %v", err)
+	}
+}
+
+func TestTerminalDockDefaultsNormalizeAndPersist(t *testing.T) {
+	if got := defaultSettings().TerminalDock; got != terminalDockBottom {
+		t.Fatalf("default terminal dock = %q, want bottom", got)
+	}
+	if got := normalizeSettings(appSettings{TerminalDock: "floating"}).TerminalDock; got != terminalDockBottom {
+		t.Fatalf("unknown terminal dock normalized to %q, want bottom", got)
+	}
+	a := newApp(fakeOpener{})
+	a.settings.TerminalDock = terminalDockRight
+	if got := a.terminalDock(); got != terminalDockRight {
+		t.Fatalf("an unused dock did not follow the default: %q", got)
+	}
+	a.setTerminalDock(terminalDockLeft)
+	a.settings.TerminalDock = terminalDockTop
+	if got := a.terminalDock(); got != terminalDockLeft {
+		t.Fatalf("changing the default moved a live dock to %q", got)
+	}
+}
+
+func TestSettingsChooseDefaultTerminalDockWithoutRelocatingExistingSessions(t *testing.T) {
+	h := menuTestApp(t)
+	// A live session is enough to make the current dock independent of the
+	// default; it stays hidden, so no shell needs to be started for this test.
+	h.app.term.sessions = []terminalSessionState{{id: 1}}
+	h.app.pathUserData = t.TempDir()
+	h.app.openSettings()
+	h.tester.Frame()
+	if err := h.tester.Click("Workspace settings"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Default terminal position: Right"); err != nil {
+		t.Fatalf("choose the right-side default: %v; texts=%q", err, h.texts())
+	}
+	h.tester.Frame()
+	if h.app.settings.TerminalDock != terminalDockRight || h.app.terminalDock() != terminalDockBottom {
+		t.Fatalf("default change relocated the existing dock: settings=%q live=%q",
+			h.app.settings.TerminalDock, h.app.terminalDock())
+	}
+	if got := loadAppSettings(h.app.pathUserData).TerminalDock; got != terminalDockRight {
+		t.Fatalf("persisted terminal dock = %q, want right", got)
 	}
 }
 

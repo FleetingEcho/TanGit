@@ -650,6 +650,28 @@ func (a *app) workspaceSettings(c *ui.Context) {
 		})
 		ui.Text(c, tr("Keep the tools you use close at hand. At least one section always stays visible.")).
 			TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).MaxWidth(480)
+		ui.Divider(c)
+		settingsGroup(c, terminalIcon, "Terminal", "Default layout for new terminal docks")
+		settingRow(c, "Default terminal position", "Where new terminal docks open", func() {
+			for _, dock := range terminalDockChoices {
+				dock := dock
+				var button ui.Element
+				if normalizeTerminalDock(a.settings.TerminalDock) == dock {
+					button = ui.PrimaryButton(c, terminalDockName(dock))
+				} else {
+					button = ui.Button(c, terminalDockName(dock))
+				}
+				if button.Label(tr("Default terminal position") + ": " + terminalDockName(dock)).Clicked() {
+					// A Settings default must not unexpectedly relocate an existing
+					// dock. Freeze that tab's current edge before saving the default.
+					if len(a.term.sessions) > 0 && a.term.dock == "" {
+						a.term.dock = a.terminalDock()
+					}
+					a.settings.TerminalDock = dock
+					a.settingsChanged(c)
+				}
+			}
+		})
 	})
 }
 

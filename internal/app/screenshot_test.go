@@ -951,6 +951,56 @@ func TestScreenshot(t *testing.T) {
 		tt.Frame()
 	})
 
+	t.Run("terminal-dock-directions-light", func(t *testing.T) {
+		stubCodeWorkspace(t, map[string]string{
+			"internal/app/code.go": "package app\n\nfunc editorWithTerminal() {\n\t// Keep editing while the same shell runs beside the source.\n}\n",
+		})
+		original := newTerminal
+		peers := make(chan monitoredTerminalPeer, 1)
+		newTerminal = func(options terminal.Options) (*terminal.Terminal, error) {
+			return newMonitoredTerminal(options, peers)
+		}
+		defer func() { newTerminal = original }()
+		a, tt, updated := newScreenshotHarness(t, false)
+		a.setWorkspaceTab(sectionCode)
+		settleShot(t, tt, updated, func() bool { return a.code.filesLoaded && !a.code.filesLoading })
+		a.openCodeFile("internal/app/code.go", 0)
+		settleShot(t, tt, updated, func() bool {
+			document := a.code.documents["internal/app/code.go"]
+			return document != nil && document.state != nil
+		})
+		a.openTerminal()
+		tt.Frame()
+		settleShot(t, tt, updated, func() bool { return a.term.sessions[0].pane != nil })
+		peer := <-peers
+		defer peer.Close()
+		if _, found := tt.Find("Dismiss notification"); found {
+			if err := tt.Click("Dismiss notification"); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+		}
+		for _, dock := range []string{terminalDockRight, terminalDockTop, terminalDockLeft, terminalDockBottom} {
+			a.setTerminalDock(dock)
+			tt.Advance(250 * time.Millisecond)
+			tt.Frame()
+			saveScreenshot(t, dir, "87-terminal-"+dock+"-editor-light", tt)
+		}
+		a.setTerminalDock(terminalDockRight)
+		tt.Advance(250 * time.Millisecond)
+		tt.Frame()
+		if err := tt.Click("Terminal position"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		saveScreenshot(t, dir, "88-terminal-position-menu-light", tt)
+		tt.Key(0, ui.KeyEscape)
+		tt.Frame()
+		a.openSettingsSection(settingsPageWorkspace)
+		tt.Frame()
+		saveScreenshot(t, dir, "89-terminal-position-settings-light", tt)
+	})
+
 	t.Run("terminal-split-dark", func(t *testing.T) {
 		original := newTerminal
 		peers := make(chan monitoredTerminalPeer, terminalSessionLimit)
@@ -977,7 +1027,7 @@ func TestScreenshot(t *testing.T) {
 		if _, err := second.Write([]byte("build finished: needle in scrollback\r\n")); err != nil {
 			t.Fatal(err)
 		}
-		if err := tt.Click("Search terminal"); err != nil {
+		if err := tt.Click("Search terminal 2"); err != nil {
 			t.Fatal(err)
 		}
 		tt.Frame()

@@ -124,7 +124,7 @@ type app struct {
 	// page the user can see. Nil means a standalone app refreshes directly.
 	externalRefresh func()
 
-	// term owns the bottom panel's shells, tabs, splits and restored height.
+	// term owns the shared dock's shells, tabs, splits, edge and restored size.
 	term terminalState
 	// agents links durable tasks to this repository family's worktrees.
 	agents           agentUIState
