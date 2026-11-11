@@ -422,12 +422,12 @@ func (a *app) commitFilterModal(c *ui.Context) {
 	theme := c.Theme()
 	draft := a.commitFilterDraft()
 	title := "Filter commits"
-	subtitle := "Narrow the History list by message, author and branch."
+	subtitle := "Narrow the History list by message, hash, author and branch."
 	switch a.filterTarget {
 	case sectionBranches:
-		subtitle = "Narrow this branch's commits by message and author."
+		subtitle = "Narrow this branch's commits by message, hash and author."
 	case sectionGraph:
-		subtitle = "Narrow the graph by message, author and branch."
+		subtitle = "Narrow the graph by message, hash, author and branch."
 	}
 	ui.Overlay(c, func() {
 		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
@@ -469,10 +469,10 @@ func (a *app) commitFilterBody(c *ui.Context, draft *repository.CommitFilter) {
 	theme := c.Theme()
 	ui.Column(c).FillWidth().Gap(16).Children(func() {
 		ui.Column(c).FillWidth().Gap(6).Children(func() {
-			ui.Text(c, tr("Message")).Bold().FontSize(theme.FontSize - 1)
+			ui.Text(c, tr("Message or hash")).Bold().FontSize(theme.FontSize - 1)
 			field := ui.SearchField(c, &draft.Query).
-				Placeholder(tr("Search commit messages")).
-				Label(tr("Search commit messages"))
+				Placeholder(tr("Search messages or commit hashes")).
+				Label(tr("Search messages or commit hashes"))
 			if field.Submitted() {
 				a.applyCommitFilter()
 			}
@@ -583,9 +583,9 @@ func (a *app) branchFilterOptions(c *ui.Context, selects ui.SelectParts[string],
 // filter that is applied.
 func (a *app) commitFilterStatus(c *ui.Context, draft *repository.CommitFilter) {
 	theme := c.Theme()
-	text := tr("Matches the commit message, author and branch.")
+	text := tr("Matches the commit message, hash, author and branch.")
 	if a.filterTargetBranches() {
-		text = tr("Matches the commit message and author.")
+		text = tr("Matches the commit message, hash and author.")
 	}
 	color := theme.TextMuted
 	query := a.commitQueryFor(a.filterTarget)

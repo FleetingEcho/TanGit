@@ -610,7 +610,10 @@ func (f fakeSession) SearchCommits(_ context.Context, filter repository.CommitFi
 	author := strings.ToLower(strings.TrimSpace(filter.Author))
 	commits := make([]repository.Commit, 0, len(f.snapshot.Commits))
 	for _, commit := range f.snapshot.Commits {
-		if query != "" && !strings.Contains(strings.ToLower(commit.Subject), query) {
+		if query != "" &&
+			!strings.Contains(strings.ToLower(commit.Subject), query) &&
+			!strings.Contains(strings.ToLower(commit.Hash), query) &&
+			!strings.Contains(strings.ToLower(commit.ShortHash), query) {
 			continue
 		}
 		if author != "" &&

@@ -99,9 +99,9 @@ type Commit struct {
 }
 
 // CommitFilter narrows the commits History and a branch's commit list show.
-// Query matches the commit message, Author the author's name or email, and
-// Branch the history read; an empty field does not narrow. Limit bounds the
-// result, which pages in as the list scrolls.
+// Query matches the commit message or hash, Author the author's name or email,
+// and Branch the history read; an empty field does not narrow. Limit bounds
+// the result, which pages in as the list scrolls.
 type CommitFilter struct {
 	Query  string
 	Author string
@@ -2708,8 +2708,17 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 	if filter.Limit <= 0 {
 		return nil, fmt.Errorf("search commits: no limit chosen")
 	}
+	query := strings.TrimSpace(filter.Query)
+	branch := strings.TrimSpace(filter.Branch)
+	if strings.HasPrefix(branch, "-") {
+		return nil, fmt.Errorf("search commits: invalid branch %q", branch)
+	}
+	if commits, hashQuery, err := s.searchCommitHash(filter, query, branch); hashQuery {
+		return commits, err
+	}
+
 	args := []string{"git", "log", fmt.Sprintf("--max-count=%d", filter.Limit), commitLogFormat}
-	if query := strings.TrimSpace(filter.Query); query != "" {
+	if query != "" {
 		// A commit message is prose, so the words are matched literally and
 		// without regard to case rather than as a regular expression.
 		args = append(args, "--grep", query, "--fixed-strings", "--regexp-ignore-case")
@@ -2717,11 +2726,7 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 	if author := strings.TrimSpace(filter.Author); author != "" {
 		args = append(args, "--author", author, "--regexp-ignore-case")
 	}
-	branch := strings.TrimSpace(filter.Branch)
 	if branch != "" {
-		if strings.HasPrefix(branch, "-") {
-			return nil, fmt.Errorf("search commits: invalid branch %q", branch)
-		}
 		args = append(args, branch)
 	} else {
 		// History is every branch's history, like the snapshot it shows.
@@ -2733,6 +2738,58 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 		return nil, fmt.Errorf("search commits: %w", err)
 	}
 	return parseCommitLog(output), nil
+}
+
+// searchCommitHash resolves a hexadecimal query to one commit. Git's --grep
+// only reads messages, so looking up the object separately also supports the
+// abbreviated hashes shown in the commit list. An unknown prefix falls back
+// to a message search: hexadecimal words can be prose too.
+func (s *gitSession) searchCommitHash(filter CommitFilter, query, branch string) (commits []Commit, hashQuery bool, err error) {
+	if len(query) < 4 || len(query) > 64 {
+		return nil, false, nil
+	}
+	for _, char := range query {
+		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f') || (char >= 'A' && char <= 'F')) {
+			return nil, false, nil
+		}
+	}
+
+	output, err := s.cmd.New([]string{"git", "rev-parse", "--verify", "--quiet", strings.ToLower(query) + "^{commit}"}).RunWithOutput()
+	if err != nil {
+		return nil, false, nil
+	}
+	hash := strings.TrimSpace(output)
+	if hash == "" {
+		return nil, true, nil
+	}
+
+	// An object can exist without belonging to the history being filtered.
+	// Excluding the selected refs leaves the commit itself in the count only
+	// when it is outside those refs.
+	args := []string{"git", "rev-list", "--count", hash, "--not"}
+	if branch != "" {
+		args = append(args, branch)
+	} else {
+		args = append(args, "--all")
+	}
+	output, err = s.cmd.New(args).RunWithOutput()
+	if err != nil {
+		return nil, true, fmt.Errorf("search commits: %w", err)
+	}
+	if strings.TrimSpace(output) != "0" {
+		return nil, true, nil
+	}
+
+	args = []string{"git", "show", "--no-patch", commitLogFormat}
+	if author := strings.TrimSpace(filter.Author); author != "" {
+		args = append(args, "--author", author, "--regexp-ignore-case")
+	}
+	args = append(args, hash, "--")
+	output, err = s.cmd.New(args).RunWithOutput()
+	if err != nil {
+		return nil, true, fmt.Errorf("search commits: %w", err)
+	}
+	return parseCommitLog(output), true, nil
 }
 
 // parseCommitLog reads the lines SearchCommits asked Git for.

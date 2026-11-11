@@ -205,6 +205,17 @@ func (s *shell) newTab(path string) *tab {
 	a := newApp(s.opener)
 	a.window = s.window
 	a.update = s.update
+	if s.window != nil {
+		// Window.Update always repaints, even when a quiet Git read found the
+		// same snapshot. Only changed reads should cost a whole-window frame.
+		a.updateChanged = func(fn func() bool) {
+			mygo.RunOnMain(func() {
+				if fn() {
+					s.invalidate()
+				}
+			})
+		}
+	}
 	a.pathUserData = s.pathUserData
 	a.path = path
 	a.checkForUpdates = func() { s.checkForUpdates() }
@@ -458,7 +469,9 @@ func (s *shell) startAutoRefresh() {
 			case <-stop:
 				return
 			case <-ticker.C:
-				s.update(s.autoRefreshTick)
+				// A tick starts an asynchronous read; it changes no pixels by
+				// itself, so it must not repaint the whole window either.
+				mygo.RunOnMain(s.autoRefreshTick)
 			}
 		}
 	}()

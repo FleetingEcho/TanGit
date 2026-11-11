@@ -9,16 +9,33 @@ import (
 	"lazygitapp/internal/repository"
 )
 
-// commitActionIcons is the action bar of a commit: copy its hash, reset the
-// branch to it, tag it, branch from it, or cherry-pick it. Every button has a
-// tooltip, so the glyphs are never a guess.
-func (a *app) commitActionIcons(c *ui.Context, commit repository.Commit, services ui.Services) {
-	a.commitActionIconsWithHistory(c, commit, services, true)
+// commitHashRow keeps the copy action beside the value it copies. The hash
+// yields the remaining width in a narrow pane rather than pushing the icon
+// out of reach.
+func (a *app) commitHashRow(c *ui.Context, commit repository.Commit, copyLabel string) {
+	muted := c.Theme().TextMuted
+	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(4).Children(func() {
+		ui.Text(c, commit.Hash).TextColor(muted).SingleLine().
+			Tooltip(commit.Hash).Selectable().Shrink(1).MinWidth(0)
+		control := ui.ButtonBase(c).Padding(3).Shrink(0).Label(tr(copyLabel)).
+			Tooltip(tr("Copy the full commit hash")).Disabled(a.actionBusy)
+		control.Children(func() { ui.Icon(c, copyIcon).FontSize(14).TextColor(muted) })
+		if control.Clicked() {
+			a.notifyCopied(c.Services(), "commit hash", commit.Hash)
+		}
+	})
+}
+
+// commitActionIcons is the action bar of a commit: reset the branch to it,
+// tag it, branch from it, or cherry-pick it. Every button has a tooltip, so
+// the glyphs are never a guess.
+func (a *app) commitActionIcons(c *ui.Context, commit repository.Commit) {
+	a.commitActionIconsWithHistory(c, commit, true)
 }
 
 // commitActionIconsWithHistory hides operations that move or rewrite the
 // checked-out branch while the detail pane browses a different branch.
-func (a *app) commitActionIconsWithHistory(c *ui.Context, commit repository.Commit, services ui.Services, historyEditable bool) {
+func (a *app) commitActionIconsWithHistory(c *ui.Context, commit repository.Commit, historyEditable bool) {
 	button := func(label, tooltip string, icon *ui.SVG, disabled bool, run func()) {
 		b := ui.ButtonBase(c).Padding(3)
 		clicked := b.Label(tr(label)).Tooltip(tr(tooltip)).Disabled(disabled || a.actionBusy).Clicked()
@@ -29,9 +46,6 @@ func (a *app) commitActionIconsWithHistory(c *ui.Context, commit repository.Comm
 			run()
 		}
 	}
-	button("Copy commit hash", "Copy the full commit hash", copyIcon, false, func() {
-		a.notifyCopied(services, "commit hash", commit.Hash)
-	})
 	if historyEditable {
 		button("Reword this commit", "Change this commit's message without adding staged changes",
 			editIcon, a.session == nil, func() {

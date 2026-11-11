@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+
+	"lazygitapp/internal/repository"
 )
 
 // The History list's filter icon opens a modal that narrows the list through
@@ -19,7 +21,7 @@ func TestHistoryFilterNarrowsTheCommitList(t *testing.T) {
 		t.Fatalf("open the commit filter: %v", err)
 	}
 	h.tester.Frame()
-	for _, want := range []string{"Filter commits", "Message", "Author", "Branch", "main (local)"} {
+	for _, want := range []string{"Filter commits", "Message or hash", "Author", "Branch", "main (local)"} {
 		if !slices.Contains(h.texts(), want) {
 			t.Fatalf("the filter modal is missing %q: %q", want, h.texts())
 		}
@@ -29,7 +31,7 @@ func TestHistoryFilterNarrowsTheCommitList(t *testing.T) {
 	if got := h.app.historyFilter.applied.Branch; got != "main" {
 		t.Fatalf("the filter reads %q, want the branch checked out", got)
 	}
-	if err := h.tester.Click("Search commit messages"); err != nil {
+	if err := h.tester.Click("Search messages or commit hashes"); err != nil {
 		t.Fatalf("focus the message search: %v", err)
 	}
 	h.tester.Type("Initial")
@@ -76,6 +78,76 @@ func TestHistoryFilterNarrowsTheCommitList(t *testing.T) {
 	}
 	if !slices.Contains(h.texts(), "Second commit") || !slices.Contains(h.texts(), "Initial commit") {
 		t.Fatalf("clearing the filter did not show every commit: %q", h.texts())
+	}
+}
+
+// Long branch names belong below the title rather than competing with its
+// count and compact controls for room on the first line.
+func TestHistoryFilterBranchUsesTheSecondHeaderLine(t *testing.T) {
+	a := newApp(fakeOpener{})
+	a.historyFilter.applied = repository.CommitFilter{Branch: "br_8-0_deceptor_campaign"}
+	tt := ui.NewTester(a.historyListHeader, 420, 100)
+	tt.Frame()
+	title, found := tt.Find("Commits")
+	if !found {
+		t.Fatal("the commit-list title is missing")
+	}
+	branch, found := tt.Find("br_8-0_deceptor_campaign")
+	if !found {
+		t.Fatal("the branch filter is missing")
+	}
+	if branch.Y < title.Y+title.H {
+		t.Fatalf("the branch begins at y=%.0f, within the title row ending at y=%.0f", branch.Y, title.Y+title.H)
+	}
+}
+
+// The Graph gives its branch filter the same second line as History.
+func TestGraphFilterBranchUsesTheSecondHeaderLine(t *testing.T) {
+	a := newApp(fakeOpener{})
+	a.workspaceTab = sectionGraph
+	a.graphFilter.applied = repository.CommitFilter{Branch: "br_8-0_deceptor_campaign"}
+	tt := ui.NewTester(a.graphView, 600, 240)
+	tt.Frame()
+	title, found := tt.Find("Commit graph")
+	if !found {
+		t.Fatal("the graph title is missing")
+	}
+	branch, found := tt.Find("br_8-0_deceptor_campaign")
+	if !found {
+		t.Fatal("the graph's branch filter is missing")
+	}
+	if branch.Y < title.Y+title.H {
+		t.Fatalf("the branch begins at y=%.0f, within the title row ending at y=%.0f", branch.Y, title.Y+title.H)
+	}
+}
+
+// The same query field finds the abbreviated hash shown in the commit list.
+func TestHistoryFilterFindsACommitByHash(t *testing.T) {
+	h := menuTestApp(t)
+	h.press(t, ui.Key3)
+	if err := h.tester.Click("Filter commits"); err != nil {
+		t.Fatalf("open the commit filter: %v", err)
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Search messages or commit hashes"); err != nil {
+		t.Fatalf("focus the message or hash search: %v", err)
+	}
+	h.tester.Type("c1c1c1c")
+	h.tester.Frame()
+	if err := h.tester.Click("Search commits"); err != nil {
+		t.Fatalf("apply the hash filter: %v", err)
+	}
+	h.tester.Frame()
+	h.settle(t)
+	h.waitFor(t, "the hash-filtered history", func() bool {
+		return !h.app.historyFilter.loading && len(h.app.historyFilter.matches) == 1
+	})
+	if got := h.app.historyFilter.matches[0].Hash; got != "c1c1c1c1" {
+		t.Fatalf("the hash filter selected %q, want c1c1c1c1", got)
+	}
+	h.tester.Frame()
+	if !slices.Contains(h.texts(), "Initial commit") || slices.Contains(h.texts(), "Second commit") {
+		t.Fatalf("the hash filter shows the wrong history: %q", h.texts())
 	}
 }
 
@@ -214,7 +286,7 @@ func TestBranchCommitsFilterHasNoBranchChoice(t *testing.T) {
 	if !slices.Contains(h.texts(), "Author") {
 		t.Fatalf("the branch commit filter has no author field: %q", h.texts())
 	}
-	if err := h.tester.Click("Search commit messages"); err != nil {
+	if err := h.tester.Click("Search messages or commit hashes"); err != nil {
 		t.Fatalf("focus the message search: %v", err)
 	}
 	h.tester.Type("Initial")
@@ -261,10 +333,10 @@ func TestGraphFilterNarrowsTheGraph(t *testing.T) {
 		t.Fatalf("open the graph filter: %v", err)
 	}
 	h.tester.Frame()
-	if !slices.Contains(h.texts(), "Narrow the graph by message, author and branch.") {
+	if !slices.Contains(h.texts(), "Narrow the graph by message, hash, author and branch.") {
 		t.Fatalf("the graph filter does not name the graph: %q", h.texts())
 	}
-	if err := h.tester.Click("Search commit messages"); err != nil {
+	if err := h.tester.Click("Search messages or commit hashes"); err != nil {
 		t.Fatalf("focus the message search: %v", err)
 	}
 	h.tester.Type("Initial")
@@ -318,7 +390,7 @@ func TestGraphEmptyFilterClearsOnlyTheGraph(t *testing.T) {
 		t.Fatalf("open the History filter: %v", err)
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Search commit messages"); err != nil {
+	if err := h.tester.Click("Search messages or commit hashes"); err != nil {
 		t.Fatalf("focus the message search: %v", err)
 	}
 	h.tester.Type("Initial")
@@ -338,7 +410,7 @@ func TestGraphEmptyFilterClearsOnlyTheGraph(t *testing.T) {
 		t.Fatalf("open the graph filter: %v", err)
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Search commit messages"); err != nil {
+	if err := h.tester.Click("Search messages or commit hashes"); err != nil {
 		t.Fatalf("focus the message search: %v", err)
 	}
 	h.tester.Type("nothing matches this")
@@ -441,7 +513,7 @@ func TestCommitHeaderClearsEveryFilter(t *testing.T) {
 		t.Fatalf("open the commit filter: %v", err)
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Search commit messages"); err != nil {
+	if err := h.tester.Click("Search messages or commit hashes"); err != nil {
 		t.Fatalf("focus the message search: %v", err)
 	}
 	h.tester.Type("Initial")

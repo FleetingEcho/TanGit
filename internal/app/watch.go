@@ -38,17 +38,20 @@ func (a *app) startRepositoryWatch(session repository.Session) {
 				if !ok {
 					return
 				}
-				a.update(func() {
+				a.updateChanged(func() bool {
 					if generation != a.generation {
-						return
+						return false
 					}
 					// A shell refreshes only its visible, focused page. The
 					// existing focus/tab hooks catch everything else up.
 					if a.externalRefresh != nil {
 						a.externalRefresh()
-						return
+						return false
 					}
 					a.requestQuietRefresh()
+					// The notification starts a read but changes no pixels. Its
+					// result repaints only if the repository actually changed.
+					return false
 				})
 			}
 		}

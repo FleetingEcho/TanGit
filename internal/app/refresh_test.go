@@ -280,9 +280,16 @@ func TestAQuietRefreshShowsChangesMadeByAnotherApp(t *testing.T) {
 			{Hash: "1111111", ShortHash: "1111111", Subject: "first"},
 		},
 	})
+	repaint := false
+	a.updateChanged = func(fn func() bool) {
+		a.update(func() { repaint = fn() })
+	}
 	a.requestQuietRefresh()
 	drainRefresh(t, updated, 1)
 	tt.Frame()
+	if !repaint {
+		t.Fatal("a changed repository did not request a frame")
+	}
 
 	seen := false
 	for _, file := range a.snapshot.Files {
@@ -725,11 +732,18 @@ func TestAQuietRefreshLeavesAnUnchangedRepositoryAlone(t *testing.T) {
 	a := s.activeApp()
 	tt.Frame()
 
+	repaint := true
+	a.updateChanged = func(fn func() bool) {
+		a.update(func() { repaint = fn() })
+	}
 	before := a.snapshotSeq
 	a.requestQuietRefresh()
 	drainRefresh(t, updated, 1)
 	if a.snapshotSeq != before {
 		t.Fatal("an unchanged repository rebuilt the snapshot")
+	}
+	if repaint {
+		t.Fatal("an unchanged repository repainted the whole window")
 	}
 }
 

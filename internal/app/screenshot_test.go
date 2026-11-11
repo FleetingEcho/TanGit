@@ -387,7 +387,10 @@ func (s screenshotSession) SearchCommits(_ context.Context, filter repository.Co
 	author := strings.ToLower(strings.TrimSpace(filter.Author))
 	commits := make([]repository.Commit, 0, len(s.snapshot.Commits))
 	for _, commit := range s.snapshot.Commits {
-		if query != "" && !strings.Contains(strings.ToLower(commit.Subject), query) {
+		if query != "" &&
+			!strings.Contains(strings.ToLower(commit.Subject), query) &&
+			!strings.Contains(strings.ToLower(commit.Hash), query) &&
+			!strings.Contains(strings.ToLower(commit.ShortHash), query) {
 			continue
 		}
 		if author != "" && !strings.Contains(strings.ToLower(commit.AuthorName), author) {
