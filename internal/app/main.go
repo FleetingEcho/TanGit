@@ -628,18 +628,19 @@ type app struct {
 	// Reword has its own modal because, unlike amending HEAD from Changes, it
 	// edits only the message of the selected historical commit. The token drops
 	// a slower message read after the form closes or switches to another commit.
-	showCommitRewordForm bool
-	commitRewordCommit   repository.Commit
-	commitRewordSummary  string
-	commitRewordBody     string
-	commitRewordLoading  bool
-	commitRewordError    string
-	commitRewordToken    uint64
-	blameState           *editor.State
-	blameLoading         bool
-	blameError           string
-	blameGeneration      uint64
-	codeBlameHover       codeBlameHoverState
+	showCommitRewordForm   bool
+	commitRewordCommit     repository.Commit
+	commitRewordSummary    string
+	commitRewordBody       string
+	commitRewordLoading    bool
+	commitRewordError      string
+	commitRewordToken      uint64
+	blameState             *editor.State
+	blameLoading           bool
+	blameError             string
+	blameGeneration        uint64
+	codeBlameHover         codeBlameHoverState
+	codeBlameHistoryTarget *codeBlameHistoryTarget
 
 	commitFiles           []repository.CommitFile
 	commitFileRows        []fileTreeRow

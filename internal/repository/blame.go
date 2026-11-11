@@ -13,7 +13,11 @@ import (
 // BlameLine is one source line and the commit that last changed it at HEAD.
 // Date preserves the author's calendar day in the timezone recorded by Git.
 type BlameLine struct {
-	Hash          string
+	Hash string
+	// CommitPath and CommitLine locate this source in its blamed revision,
+	// which can differ from the working tree after renames and later edits.
+	CommitPath    string
+	CommitLine    int
 	Author        string
 	AuthorEmail   string
 	Date          string
@@ -106,6 +110,7 @@ func (s *gitSession) blameFile(ctx context.Context, path string, head bool) ([]B
 }
 
 type blameCommit struct {
+	path        string
 	author      string
 	authorEmail string
 	date        string
@@ -132,7 +137,8 @@ func parseBlamePorcelain(output string) ([]BlameLine, error) {
 		if _, err := hex.DecodeString(hash); err != nil {
 			return nil, fmt.Errorf("malformed blame hash %q", fields[0])
 		}
-		if _, err := strconv.Atoi(fields[1]); err != nil {
+		sourceLine, err := strconv.Atoi(fields[1])
+		if err != nil || sourceLine < 1 {
 			return nil, fmt.Errorf("malformed blame source line %q", fields[1])
 		}
 		if _, err := strconv.Atoi(fields[2]); err != nil {
@@ -167,6 +173,8 @@ func parseBlamePorcelain(output string) ([]BlameLine, error) {
 				timezone = value
 			case "summary":
 				commit.subject = value
+			case "filename":
+				commit.path = value
 			}
 		}
 		if !foundContent {
@@ -178,7 +186,8 @@ func parseBlamePorcelain(output string) ([]BlameLine, error) {
 		}
 		commits[hash] = commit
 		result = append(result, BlameLine{
-			Hash: hash, Author: commit.author, AuthorEmail: commit.authorEmail, Date: commit.date,
+			Hash: hash, CommitPath: commit.path, CommitLine: sourceLine,
+			Author: commit.author, AuthorEmail: commit.authorEmail, Date: commit.date,
 			UnixTimestamp: commit.unix, Subject: commit.subject, Text: content,
 		})
 	}

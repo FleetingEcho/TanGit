@@ -324,30 +324,28 @@ func (a *app) fileTreeDirectoryRow(c *ui.Context, scope string, item fileTreeRow
 		arrow = "▸"
 		action = "Expand directory"
 	}
-	row := ui.Row(c).AlignItems(ui.Center).Padding(6, 8, 6, float32(8+16*item.depth))
+	row := ui.ButtonBase(c).Grow(1).Gap(7).AlignItems(ui.Center).
+		Padding(6, 8, 6, float32(8+16*item.depth)).
+		Label(tr(action) + " " + item.path).Tooltip(item.path)
 	row.Children(func() {
-		button := ui.ButtonBase(c).Grow(1).Gap(7).Padding(0)
-		clicked := button.Label(tr(action) + " " + item.path).Tooltip(item.path).Clicked()
-		button.Children(func() {
-			arrowColor := theme.TextMuted
-			folderColor := theme.Accent
-			if selected {
-				// The row's selected face is Accent, so Accent icons disappear
-				// into it. Match the contrasting text painted on that face.
-				arrowColor = theme.AccentText
-				folderColor = theme.AccentText
-			}
-			ui.Text(c, arrow).TextColor(arrowColor).Width(12)
-			ui.Icon(c, folderIcon).FontSize(13).TextColor(folderColor)
-			ui.Text(c, item.name).Grow(1).SingleLine().Tooltip(item.path)
-		})
-		if clicked {
-			// The fold button consumes the pointer event before the surrounding
-			// list can select its row. Select explicitly so a directory never
-			// leaves a stale file diff or action target behind.
-			selectRow()
-			a.toggleFileTreeDirectory(scope, item.path)
+		arrowColor := theme.TextMuted
+		folderColor := theme.Accent
+		if selected {
+			// The row's selected face is Accent, so Accent icons disappear
+			// into it. Match the contrasting text painted on that face.
+			arrowColor = theme.AccentText
+			folderColor = theme.AccentText
 		}
+		ui.Text(c, arrow).TextColor(arrowColor).Width(12)
+		ui.Icon(c, folderIcon).FontSize(13).TextColor(folderColor)
+		ui.Text(c, item.name).Grow(1).SingleLine().Tooltip(item.path)
 	})
+	if row.Clicked() {
+		// The fold button consumes the pointer event before the surrounding
+		// list can select its row. Select explicitly so a directory never
+		// leaves a stale file diff or action target behind.
+		selectRow()
+		a.toggleFileTreeDirectory(scope, item.path)
+	}
 	return row
 }

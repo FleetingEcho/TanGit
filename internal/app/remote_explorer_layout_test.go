@@ -31,8 +31,8 @@ func TestRemoteExplorerDownloadStaysOnDirectoryRow(t *testing.T) {
 	if math.Abs(float64(download.Y+download.H/2-hovered.Y-hovered.H/2)) > 1 {
 		t.Fatalf("download is on another line: directory=%+v download=%+v", hovered, download)
 	}
-	if download.X < hovered.X+hovered.W {
-		t.Fatalf("download is not after directory contents: directory=%+v download=%+v", hovered, download)
+	if download.X+download.W > hovered.X+hovered.W || download.X < hovered.X+hovered.W-50 {
+		t.Fatalf("download is not at the directory row end: directory=%+v download=%+v", hovered, download)
 	}
 	after, _ := tester.Find("Open linuxuser/.bashrc")
 	if after.Y != next.Y {

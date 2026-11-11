@@ -1,7 +1,10 @@
 package app
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	"image/draw"
 	"os"
 	"strings"
 	"testing"
@@ -11,6 +14,39 @@ import (
 
 	"lazygitapp/internal/repository"
 )
+
+func TestCommitActionButtonsUseDistinctIcons(t *testing.T) {
+	a := newApp(fakeOpener{})
+	commit := repository.Commit{Hash: strings.Repeat("a", 40), Parents: []string{strings.Repeat("b", 40)}}
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Row(c).Padding(8).Children(func() { a.commitActionIcons(c, commit) })
+	}, 500, 48)
+	tt.SetDark(true)
+	tt.Frame()
+	for _, pair := range [][2]string{
+		{"Soft reset to this commit", "Mixed reset to this commit"},
+		{"Compare commit with HEAD", "Compare parent with commit"},
+	} {
+		first, firstOK := tt.Find(pair[0])
+		second, secondOK := tt.Find(pair[1])
+		if !firstOK || !secondOK {
+			t.Fatalf("action buttons %q are missing", pair)
+		}
+		crop := func(r ui.Rect) *image.RGBA {
+			bounds := image.Rect(0, 0, int(r.W), int(r.H))
+			icon := image.NewRGBA(bounds)
+			draw.Draw(icon, bounds, tt.Image(), image.Point{X: int(r.X), Y: int(r.Y)}, draw.Src)
+			return icon
+		}
+		firstIcon, secondIcon := crop(first), crop(second)
+		if firstIcon.Bounds().Size() != secondIcon.Bounds().Size() {
+			t.Fatalf("action buttons %q have different sizes: %+v %+v", pair, first, second)
+		}
+		if bytes.Equal(firstIcon.Pix, secondIcon.Pix) {
+			t.Errorf("action buttons %q render the same icon", pair)
+		}
+	}
+}
 
 func TestCommitDetailToolbarsFitNarrowPanes(t *testing.T) {
 	for _, width := range []int{260, 320, 480} {

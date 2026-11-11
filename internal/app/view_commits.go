@@ -62,7 +62,7 @@ func (a *app) commitActionIconsWithHistory(c *ui.Context, commit repository.Comm
 				a.confirmResetCommit(commit, repository.ResetSoft)
 			})
 		button("Mixed reset to this commit", "Mixed reset: move the branch here, keep the changes unstaged",
-			softResetIcon, a.session == nil, func() {
+			mixedResetIcon, a.session == nil, func() {
 				a.confirmResetCommit(commit, repository.ResetMixed)
 			})
 		button("Hard reset to this commit", "Hard reset: move the branch here and discard every change",
@@ -84,7 +84,7 @@ func (a *app) commitActionIconsWithHistory(c *ui.Context, commit repository.Comm
 	button("Compare commit with HEAD", "H · Compare this commit with HEAD",
 		compareIcon, a.session == nil, func() { a.compareCommit(commit, false) })
 	button("Compare parent with commit", "Shift+H · Compare this commit's first parent with the commit",
-		compareIcon, a.session == nil || len(commit.Parents) == 0, func() { a.compareCommit(commit, true) })
+		compareParentIcon, a.session == nil || len(commit.Parents) == 0, func() { a.compareCommit(commit, true) })
 }
 
 // commitRowMenu adds the commit actions to a row's context menu, so they are

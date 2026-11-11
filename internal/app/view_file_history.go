@@ -37,6 +37,37 @@ func (a *app) commitFileMenu(m *ui.Menu, commit *repository.Commit, file reposit
 	a.copyPathItems(m, services, file.Path)
 }
 
+// findFileHistories opens the drawer only when Git has commits for path. A
+// working-tree file can be new or unknown to history, in which case the action
+// just reports that result instead of leaving an empty drawer open.
+func (a *app) findFileHistories(path string) {
+	session := a.session
+	if session == nil {
+		return
+	}
+	a.fileHistoryToken++
+	token := a.fileHistoryToken
+	go func() {
+		defer a.recoverBackground()
+		commits, err := session.FileCommits(context.Background(), path, fileHistoryPage, 0)
+		a.updateChanged(func() bool {
+			if token != a.fileHistoryToken {
+				return false
+			}
+			if err != nil {
+				a.notifyError(err)
+				return true
+			}
+			if len(commits) == 0 {
+				a.notify("", "No commits changed this file.", path)
+				return true
+			}
+			a.openFileHistory(path)
+			return true
+		})
+	}()
+}
+
 // openFileHistory opens the drawer that lists the commits that changed path,
 // read from the repository rather than from the commits on screen.
 func (a *app) openFileHistory(path string) {
@@ -218,7 +249,7 @@ func (a *app) loadFileHistoryCommit(commit repository.Commit, force bool) {
 					break
 				}
 			}
-			a.fileHistorySelectedFile = choice
+			a.fileHistoryFileList.Choose(choice)
 			a.loadFileHistoryDiff(commit, files[choice], true)
 			return true
 		})

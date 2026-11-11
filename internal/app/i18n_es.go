@@ -367,6 +367,7 @@ var spanish = map[string]string{
 	"No files here":                 "No hay archivos aquí",
 	"Line-by-line history (B)":      "Historial línea por línea (B)",
 	"Blame":                         "Blame",
+	"Find file histories":           "Buscar el historial del archivo",
 	"Blame at HEAD":                 "Blame en HEAD",
 	"Close blame":                   "Cerrar blame",
 	"Loading blame…":                "Cargando blame…",

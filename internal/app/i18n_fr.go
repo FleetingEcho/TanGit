@@ -367,6 +367,7 @@ var french = map[string]string{
 	"No files here":                 "Aucun fichier ici",
 	"Line-by-line history (B)":      "Historique ligne par ligne (B)",
 	"Blame":                         "Annoter",
+	"Find file histories":           "Rechercher l’historique du fichier",
 	"Blame at HEAD":                 "Annoter à HEAD",
 	"Close blame":                   "Fermer les annotations",
 	"Loading blame…":                "Chargement des annotations…",

@@ -537,6 +537,40 @@ func TestDiffFollowsTheChosenSide(t *testing.T) {
 	h.waitFor(t, "the working-tree diff", func() bool { return calls.has("diff:both.txt:unstaged") })
 }
 
+type selectiveFileHistorySession struct{ fakeSession }
+
+func (s selectiveFileHistorySession) FileCommits(ctx context.Context, path string, limit, skip int) ([]repository.Commit, error) {
+	if path == "two.txt" {
+		s.calls.record("file-commits:" + path)
+		return nil, nil
+	}
+	return s.fakeSession.FileCommits(ctx, path, limit, skip)
+}
+
+func TestFindFileHistoriesFromWorkingTreeMenu(t *testing.T) {
+	h, calls := menuTestAppWithCalls(t)
+	h.app.session = selectiveFileHistorySession{fakeSession: h.app.session.(fakeSession)}
+
+	h.rightClick(t, "one.txt")
+	h.chooseMenuItem(t, "Find file histories")
+	h.waitFor(t, "the tracked file's history", func() bool {
+		return h.app.fileHistoryOpen && len(h.app.fileHistoryCommits) > 0
+	})
+	h.press(t, ui.KeyEscape)
+
+	h.rightClick(t, "two.txt")
+	h.chooseMenuItem(t, "Find file histories")
+	h.waitFor(t, "the new file's notification", func() bool {
+		return h.tester.HasText("No commits changed this file.")
+	})
+	if h.app.fileHistoryOpen {
+		t.Fatal("a file without history opened the drawer")
+	}
+	if !calls.has("file-commits:two.txt") {
+		t.Fatalf("the new file's history was not checked: %v", calls.all())
+	}
+}
+
 func TestFileHistoryDrawer(t *testing.T) {
 	h := menuTestApp(t)
 	h.press(t, sectionKeys[sectionHistory])
@@ -588,6 +622,11 @@ func TestFileHistoryDrawerHasThreeLiveColumns(t *testing.T) {
 	h.waitFor(t, "the second commit's diff", func() bool {
 		return h.app.fileHistoryDiffHash == second.Hash
 	})
+	selected, ok := h.tester.AccessByRole(ui.RoleListItem, h.app.fileHistoryFiles[h.app.fileHistorySelectedFile].Path)
+	if !ok || !selected.Selected {
+		t.Fatalf("the chosen commit's file has no selected row: index=%d files=%+v access=%+v",
+			h.app.fileHistorySelectedFile, h.app.fileHistoryFiles, selected)
+	}
 }
 
 func openLoadedFileHistory(t *testing.T, h *harness) {
@@ -597,6 +636,39 @@ func openLoadedFileHistory(t *testing.T, h *harness) {
 	h.waitFor(t, "the file's commits", func() bool { return len(h.app.fileHistoryCommits) > 0 })
 	h.waitFor(t, "the chosen commit's files", func() bool { return len(h.app.fileHistoryFiles) > 0 })
 	h.waitFor(t, "the chosen file's diff", func() bool { return h.app.fileHistoryDiffState != nil })
+}
+
+type disjointFileHistorySession struct{ fakeSession }
+
+func (s disjointFileHistorySession) CommitFiles(ctx context.Context, commit repository.Commit) ([]repository.CommitFile, error) {
+	if commit.Hash == "c1c1c1c1" {
+		s.calls.record("commit-files:" + commit.Hash)
+		return []repository.CommitFile{{Path: "other.txt", Status: "A"}}, nil
+	}
+	return s.fakeSession.CommitFiles(ctx, commit)
+}
+
+func TestFileHistorySelectsDefaultFileWhenCommitsHaveDisjointFiles(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.session = disjointFileHistorySession{fakeSession: h.app.session.(fakeSession)}
+	openLoadedFileHistory(t, h)
+
+	second := h.app.fileHistoryCommits[1]
+	row, ok := h.tester.Find(second.Subject)
+	if !ok {
+		t.Fatalf("the second commit %q is not shown", second.Subject)
+	}
+	h.tester.ClickAt(row.X+row.W/2, row.Y+row.H/2)
+	h.waitFor(t, "files disjoint from the previous commit", func() bool {
+		return h.app.fileHistoryFilesHash == second.Hash && !h.app.fileHistoryFilesLoading &&
+			len(h.app.fileHistoryFiles) == 1 && h.app.fileHistoryFiles[0].Path == "other.txt"
+	})
+
+	selected, ok := h.tester.AccessByRole(ui.RoleListItem, "other.txt")
+	if !ok || h.app.fileHistorySelectedFile != 0 || !selected.Selected {
+		t.Fatalf("the new commit's default file is not selected: index=%d access=%+v",
+			h.app.fileHistorySelectedFile, selected)
+	}
 }
 
 func TestFileHistoryColumnsCollapseAndRestoreIndependently(t *testing.T) {
