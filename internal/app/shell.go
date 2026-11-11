@@ -1096,9 +1096,9 @@ func (s *shell) titleBarView(c *ui.Context) {
 }
 
 // updaterView is always a manual check button. After a background check finds
-// a release it gains an accent face and a notification dot, so the update is
-// visible without interrupting the user's work; clicking opens the updater's
-// release notes and install flow.
+// a release it gains an accent face and a dot over the icon's top-right corner,
+// so the update is visible without interrupting the user's work; clicking opens
+// the updater's release notes and install flow.
 func (s *shell) updaterView(c *ui.Context) {
 	theme := c.Theme()
 	version := strings.TrimSpace(s.availableUpdate)
@@ -1108,17 +1108,19 @@ func (s *shell) updaterView(c *ui.Context) {
 		label = tr("Update available")
 		tooltip = trf("Update %s is available — click to install", version)
 	}
-	button := ui.ButtonBase(c).Height(tabPillHeight).Padding(6).Gap(4).
+	button := ui.ButtonBase(c).Height(tabPillHeight).Padding(5).
 		Radius(pillRadius(theme)).Label(label).Tooltip(tooltip)
 	button.Children(func() {
 		color := theme.TextMuted
 		if version != "" {
 			color = theme.Accent
 		}
-		ui.Icon(c, updateIcon).FontSize(15).TextColor(color)
-		if version != "" {
-			ui.Box(c).Size(6, 6).Radius(3).Background(theme.Danger)
-		}
+		ui.Box(c).Size(18, 18).Children(func() {
+			ui.Icon(c, updateIcon).FontSize(15).TextColor(color)
+			if version != "" {
+				ui.Box(c).Absolute().Right(0).Top(0).Size(7, 7).Radius(4).Background(theme.Danger)
+			}
+		})
 	})
 	if version != "" {
 		button.Background(theme.Accent.Alpha(0.14))
