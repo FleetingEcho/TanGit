@@ -578,7 +578,36 @@ func TestCodeSearchIconButtonsExplanatoryTooltips(t *testing.T) {
 	})
 }
 
-func TestCodeSearchLoadsMoreAutomaticallyNearEndAndStopsWhenExhausted(t *testing.T) {
+func TestCodeSearchCompletesAllResultsWithoutScrolling(t *testing.T) {
+	originalRun := runCodeSearch
+	t.Cleanup(func() { runCodeSearch = originalRun })
+	runCodeSearch = func(_ context.Context, _ string, _ []string, _ workspaceSearchOptions, limit int) ([]workspaceSearchMatch, workspaceSearchBackend, error) {
+		count := min(750, limit)
+		matches := make([]workspaceSearchMatch, count)
+		for i := range matches {
+			matches[i] = workspaceSearchMatch{Path: fmt.Sprintf("file-%04d.txt", i), Line: 1, Column: 1, Text: "needle"}
+		}
+		return matches, workspaceSearchBackendGo, nil
+	}
+
+	h := menuTestApp(t)
+	useRealCodeWorkspace(t, h, map[string]string{"needle.txt": "needle\n"})
+	h.tester.Key(ui.Cmd|ui.Shift, ui.KeyF)
+	h.tester.Type("needle")
+	h.tester.Key(0, ui.KeyEnter)
+	h.waitFor(t, "the first search page", func() bool {
+		return len(h.app.code.searchResults) >= codeSearchPageSize
+	})
+	h.waitFor(t, "the complete search without scrolling", func() bool {
+		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 750
+	})
+	if h.app.code.searchHasMore || !h.tester.HasText("750 matches in 750 files") {
+		t.Fatalf("the completed search did not publish its full count: results=%d hasMore=%v texts=%v",
+			len(h.app.code.searchResults), h.app.code.searchHasMore, h.tester.Texts())
+	}
+}
+
+func TestCodeSearchCompletesInOneFollowUpScanAndPreservesVisibleState(t *testing.T) {
 	originalRun := runCodeSearch
 	t.Cleanup(func() { runCodeSearch = originalRun })
 	limits := make(chan int, 2)
@@ -597,44 +626,40 @@ func TestCodeSearchLoadsMoreAutomaticallyNearEndAndStopsWhenExhausted(t *testing
 	h.tester.Key(ui.Cmd|ui.Shift, ui.KeyF)
 	h.tester.Type("needle")
 	h.tester.Key(0, ui.KeyEnter)
-	h.waitFor(t, "the first search page", func() bool {
-		return !h.app.code.searchRunning && len(h.app.code.searchResults) == codeSearchPageSize
+	h.waitFor(t, "the visible first search page", func() bool {
+		return h.app.code.searchLoadingMore && len(h.app.code.searchResults) == codeSearchPageSize
 	})
 	if got := <-limits; got != codeSearchPageSize {
 		t.Fatalf("initial result limit = %d, want %d", got, codeSearchPageSize)
 	}
-	if !h.app.code.searchHasMore {
-		t.Fatal("a full first batch does not allow lazy loading")
-	}
-	if _, found := h.tester.Find("Load more matches"); found {
-		t.Fatal("lazy loading still requires a Load more control")
-	}
-	select {
-	case got := <-limits:
-		t.Fatalf("search fetched another batch before scrolling, with limit %d", got)
-	default:
+	if !h.tester.HasText("500+ matches in 500+ files") {
+		t.Fatalf("the partial counts are not identified as lower bounds: %v", h.tester.Texts())
 	}
 	h.app.code.searchSelected = 42
 	h.app.code.searchCollapsed = map[string]bool{"file-0001.txt": true}
 
-	// Approaching the end, rather than clicking a button, requests the next batch.
-	h.app.code.searchList.ScrollTo(len(h.app.code.searchRows)-codeSearchPrefetchRows, ui.Start)
-	h.tester.Frame()
-	h.waitFor(t, "the automatic second search batch", func() bool {
+	// Completion requires no scrolling and performs one full scan, not a third
+	// scan at a still larger page cap.
+	h.waitFor(t, "the completed search", func() bool {
 		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 750
 	})
-	if got := <-limits; got != 2*codeSearchPageSize {
-		t.Fatalf("second-page result limit = %d, want %d", got, 2*codeSearchPageSize)
+	if got := <-limits; got != codeSearchAllResults {
+		t.Fatalf("follow-up result limit = %d, want %d", got, codeSearchAllResults)
+	}
+	select {
+	case got := <-limits:
+		t.Fatalf("completion unexpectedly triggered another scan with limit %d", got)
+	default:
 	}
 	if h.app.code.searchSelected != 42 || !h.app.code.searchCollapsed["file-0001.txt"] {
-		t.Fatal("loading another page reset the visible selection or folding")
+		t.Fatal("completing the search reset the visible selection or folding")
 	}
-	if _, found := h.tester.Find("Load more matches"); found || h.app.code.searchHasMore {
-		t.Fatal("an exhausted search still offers Load more")
+	if h.app.code.searchHasMore || !h.tester.HasText("750 matches in 750 files") {
+		t.Fatal("the completed search did not publish its exact full count")
 	}
 }
 
-func TestCodeSearchLazyLoadingReachesFilesBeyondMatchHeavyFiles(t *testing.T) {
+func TestCodeSearchCompletionReachesFilesBeyondMatchHeavyFiles(t *testing.T) {
 	h := menuTestApp(t)
 	useRealCodeWorkspace(t, h, map[string]string{
 		"a-heavy.txt": strings.Repeat("needle\n", 1000),
@@ -643,13 +668,8 @@ func TestCodeSearchLazyLoadingReachesFilesBeyondMatchHeavyFiles(t *testing.T) {
 	h.tester.Key(ui.Cmd|ui.Shift, ui.KeyF)
 	h.tester.Type("needle")
 	h.tester.Key(0, ui.KeyEnter)
-	h.waitFor(t, "the first search page", func() bool {
-		return !h.app.code.searchRunning && len(h.app.code.searchResults) == codeSearchPageSize
-	})
-	h.app.code.searchList.ScrollToEnd()
-	h.tester.Frame()
-	h.waitFor(t, "the automatic second search batch", func() bool {
-		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 2*codeSearchPageSize
+	h.waitFor(t, "the completed search", func() bool {
+		return !h.app.code.searchRunning && len(h.app.code.searchResults) == 1001
 	})
 	paths := make(map[string]bool)
 	for _, match := range h.app.code.searchResults {
@@ -667,7 +687,7 @@ func TestCodeSearchLazyLoadingReachesFilesBeyondMatchHeavyFiles(t *testing.T) {
 	}
 }
 
-func TestCodeSearchLazyLoadingKeepsResultsAndClearCancelsReload(t *testing.T) {
+func TestCodeSearchCompletionKeepsResultsAndClearCancels(t *testing.T) {
 	originalRun := runCodeSearch
 	t.Cleanup(func() { runCodeSearch = originalRun })
 	started := make(chan struct{})
@@ -691,19 +711,17 @@ func TestCodeSearchLazyLoadingKeepsResultsAndClearCancelsReload(t *testing.T) {
 	h.tester.Key(ui.Cmd|ui.Shift, ui.KeyF)
 	h.tester.Type("needle")
 	h.tester.Key(0, ui.KeyEnter)
-	h.waitFor(t, "the first search page", func() bool {
-		return !h.app.code.searchRunning && len(h.app.code.searchResults) == codeSearchPageSize
+	h.waitFor(t, "the visible first search page", func() bool {
+		return h.app.code.searchLoadingMore && len(h.app.code.searchResults) == codeSearchPageSize
 	})
-	h.app.code.searchList.ScrollToEnd()
-	h.tester.Frame()
 	select {
 	case <-started:
 	case <-time.After(2 * time.Second):
-		t.Fatal("the next search page did not start")
+		t.Fatal("the completing search did not start")
 	}
 	h.tester.Frame()
-	if len(h.app.code.searchResults) != codeSearchPageSize || !h.app.code.searchLoadingMore || !h.tester.HasText("500 matches") {
-		t.Fatal("loading another page discarded the visible results")
+	if len(h.app.code.searchResults) != codeSearchPageSize || !h.app.code.searchLoadingMore || !h.tester.HasText("500+ matches in 500+ files") {
+		t.Fatal("completing the search discarded the visible results")
 	}
 	if h.tester.HasText("Searching files…") {
 		t.Fatal("loading another page replaced the result list with the initial-search spinner")

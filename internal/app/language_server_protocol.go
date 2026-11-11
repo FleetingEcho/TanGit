@@ -24,6 +24,8 @@ type languageServerConnection interface {
 	DidSave(uri string)
 	DidClose(uri string)
 	Request(method string, params any, result func(json.RawMessage, error))
+	DocumentFormatting() bool
+	DocumentRangeFormatting() bool
 	Done() <-chan error
 	Close()
 }
@@ -108,15 +110,17 @@ type stdioLanguageServer struct {
 	stdin   io.WriteCloser
 	reader  *bufio.Reader
 
-	writeMu  sync.Mutex
-	mu       sync.Mutex
-	nextID   int64
-	pending  map[int64]chan languageServerResponse
-	outgoing chan languageServerWrite
-	done     chan error
-	closed   chan struct{}
-	once     sync.Once
-	onNotify func(method string, params json.RawMessage)
+	writeMu                 sync.Mutex
+	mu                      sync.Mutex
+	nextID                  int64
+	pending                 map[int64]chan languageServerResponse
+	outgoing                chan languageServerWrite
+	done                    chan error
+	closed                  chan struct{}
+	once                    sync.Once
+	documentFormatting      bool
+	documentRangeFormatting bool
+	onNotify                func(method string, params json.RawMessage)
 }
 
 func connectStdioLanguageServer(launch languageServerLaunch) (languageServerConnection, error) {
@@ -168,6 +172,8 @@ func connectStdioLanguageServer(launch languageServerLaunch) (languageServerConn
 				"synchronization":    map[string]any{"didSave": true},
 				"hover":              map[string]any{"contentFormat": []string{"markdown", "plaintext"}},
 				"definition":         map[string]any{"linkSupport": true},
+				"formatting":         map[string]any{},
+				"rangeFormatting":    map[string]any{},
 				"publishDiagnostics": map[string]any{"relatedInformation": true},
 				"completion": map[string]any{"completionItem": map[string]any{
 					"snippetSupport": true, "documentationFormat": []string{"markdown", "plaintext"},
@@ -180,10 +186,13 @@ func connectStdioLanguageServer(launch languageServerLaunch) (languageServerConn
 	if launch.InitializationOptions != nil {
 		params["initializationOptions"] = launch.InitializationOptions
 	}
-	if _, err := server.request("initialize", params, 8*time.Second); err != nil {
+	initialized, err := server.request("initialize", params, 8*time.Second)
+	if err != nil {
 		server.Close()
 		return nil, fmt.Errorf("initialize language server: %w", err)
 	}
+	server.documentFormatting = languageServerDocumentFormattingSupported(initialized)
+	server.documentRangeFormatting = languageServerRangeFormattingSupported(initialized)
 	server.notify("initialized", map[string]any{})
 	return server, nil
 }
@@ -196,7 +205,40 @@ func filepathBase(path string) string {
 	return path
 }
 
+func languageServerDocumentFormattingSupported(raw json.RawMessage) bool {
+	var initialized struct {
+		Capabilities struct {
+			Provider json.RawMessage `json:"documentFormattingProvider"`
+		} `json:"capabilities"`
+	}
+	return json.Unmarshal(raw, &initialized) == nil && languageServerFormattingProviderSupported(initialized.Capabilities.Provider)
+}
+
+func languageServerRangeFormattingSupported(raw json.RawMessage) bool {
+	var initialized struct {
+		Capabilities struct {
+			Provider json.RawMessage `json:"documentRangeFormattingProvider"`
+		} `json:"capabilities"`
+	}
+	return json.Unmarshal(raw, &initialized) == nil && languageServerFormattingProviderSupported(initialized.Capabilities.Provider)
+}
+
+func languageServerFormattingProviderSupported(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var supported bool
+	if json.Unmarshal(raw, &supported) == nil {
+		return supported
+	}
+	var options map[string]any
+	return json.Unmarshal(raw, &options) == nil && options != nil
+}
+
 func (s *stdioLanguageServer) Done() <-chan error { return s.done }
+
+func (s *stdioLanguageServer) DocumentFormatting() bool      { return s.documentFormatting }
+func (s *stdioLanguageServer) DocumentRangeFormatting() bool { return s.documentRangeFormatting }
 
 func (s *stdioLanguageServer) DidOpen(uri, language, text string, version uint64) {
 	s.notify("textDocument/didOpen", map[string]any{"textDocument": map[string]any{

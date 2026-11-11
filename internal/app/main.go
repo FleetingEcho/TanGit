@@ -223,6 +223,7 @@ type app struct {
 	goLanguageServerEnabled        bool
 	goLanguageServerPath           string
 	goLanguageServerArgs           string
+	goFormatterCommand             string
 	searchExcludedDirectoryDraft   string
 	languageServerDrafts           map[string]*languageServerDraft
 	languageServerTestID           string

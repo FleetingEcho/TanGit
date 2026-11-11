@@ -191,7 +191,7 @@ func (a *app) saveCustomLanguageServer(c *ui.Context) {
 		}
 		a.settings.LanguageServers[id] = languageServerSettings{
 			Disabled: !form.Enabled, Path: path, Arguments: languageServerArguments(form.Arguments),
-			ProbeArguments: languageServerArguments(form.Probe),
+			Formatter: a.settings.LanguageServers[id].Formatter, ProbeArguments: languageServerArguments(form.Probe),
 			Custom: &customLanguageServerDefinition{
 				Name: name, Description: strings.TrimSpace(form.Description), DownloadURL: downloadURL, Extensions: extensions,
 			},

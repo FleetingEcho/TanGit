@@ -23,7 +23,7 @@ const (
 
 	codeSearchDebounceDelay = 300 * time.Millisecond
 	codeSearchPageSize      = 500
-	codeSearchPrefetchRows  = 20
+	codeSearchAllResults    = int(^uint(0) >> 1)
 )
 
 // scheduleCodeSearch is a seam for proving that rapid edits collapse into one
@@ -75,6 +75,8 @@ type codeDocument struct {
 	hoverScroll          ui.ScrollState
 	definitionSeq        uint64
 	completionSeq        uint64
+	formatSeq            uint64
+	formatting           bool
 	languageDiagnostics  map[string][]editor.Diagnostic
 	blameEnabled         bool
 	blameLoading         bool
@@ -212,7 +214,6 @@ type codeState struct {
 	searchRunning               bool
 	searchLoadingMore           bool
 	searchHasMore               bool
-	searchLimit                 int
 	searchAfterFiles            bool
 	searchResults               []workspaceSearchMatch
 	searchBackend               workspaceSearchBackend
@@ -313,7 +314,6 @@ func (a *app) resetCode() {
 	a.code.searchRunning = false
 	a.code.searchLoadingMore = false
 	a.code.searchHasMore = false
-	a.code.searchLimit = 0
 	a.code.searchAfterFiles = false
 	a.code.searchResults, a.code.searchRows = nil, nil
 	a.code.searchBackend = workspaceSearchBackendNone
@@ -361,7 +361,6 @@ func (a *app) refreshCodeAfterCheckout(old, current repository.Snapshot) bool {
 	a.code.searchRunning = false
 	a.code.searchLoadingMore = false
 	a.code.searchHasMore = false
-	a.code.searchLimit = 0
 	a.code.searchAfterFiles = resubmitSearch && strings.TrimSpace(a.code.searchQuery) != ""
 	a.code.searchSubmitted = ""
 	a.code.searchSubmittedOptions = workspaceSearchOptions{}
@@ -1153,20 +1152,9 @@ func (a *app) beginCodeSearch() {
 	// verifies the index before and after consulting it; saves and filesystem
 	// changes invalidate it explicitly without another background stat pass.
 	a.ensureCodeSearchIndex()
-	a.code.searchLimit = codeSearchPageSize
 	a.code.searchHasMore = false
 	a.code.searchLoadingMore = false
 	a.startCodeSearch(codeSearchPageSize, false)
-}
-
-// loadMoreCodeSearch raises the match cap without discarding loaded results.
-// Scrolling near the end requests the next batch; a changed query or option
-// always starts again at the first batch instead.
-func (a *app) loadMoreCodeSearch() {
-	if a.code.searchRunning || !a.code.searchHasMore || a.code.searchSubmitted == "" || a.code.filesLoading {
-		return
-	}
-	a.startCodeSearch(a.code.searchLimit+codeSearchPageSize, true)
 }
 
 func (a *app) startCodeSearch(limit int, loadingMore bool) {
@@ -1184,7 +1172,6 @@ func (a *app) startCodeSearch(limit int, loadingMore bool) {
 	a.code.searchToken++
 	token := a.code.searchToken
 	a.code.searchSubmitted = query
-	a.code.searchLimit = limit
 	folder, validFolder := normalizedCodeSearchFolder(a.code.searchFolder)
 	if !validFolder {
 		a.code.searchError = tr("Search folder must stay inside the repository")
@@ -1247,9 +1234,6 @@ func (a *app) startCodeSearch(limit int, loadingMore bool) {
 	}
 	root := a.snapshot.Root
 	paths := append([]string(nil), a.code.files...)
-	if loadingMore {
-		paths = prioritizeNewCodeSearchFiles(paths, a.code.searchResults)
-	}
 	options := a.code.searchSubmittedOptions
 	ctx, cancel := context.WithCancel(context.Background())
 	a.code.searchCancel = cancel
@@ -1293,35 +1277,16 @@ func (a *app) startCodeSearch(limit int, loadingMore bool) {
 			}
 			a.code.searchSelectedRow = -1
 			a.rebuildCodeSearchRows()
+			if !loadingMore && a.code.searchHasMore {
+				// Publish the first useful page, then complete the query in one
+				// second scan. Repeatedly enlarging a cap would rescan every
+				// earlier match once per page and leave the count incomplete
+				// until the user reached the end of the result list.
+				a.startCodeSearch(codeSearchAllResults, true)
+			}
 			return a.workspaceTab == sectionCode
 		})
 	}()
-}
-
-// prioritizeNewCodeSearchFiles lets each lazy-loaded batch discover new file
-// groups before a match-heavy file consumes the enlarged global match cap.
-// Both search backends scan paths in their supplied order; ranking still sorts
-// the combined results for display after the scan completes.
-func prioritizeNewCodeSearchFiles(paths []string, existing []workspaceSearchMatch) []string {
-	if len(existing) == 0 {
-		return paths
-	}
-	represented := make(map[string]bool, len(existing))
-	for _, match := range existing {
-		represented[match.Path] = true
-	}
-	ordered := make([]string, 0, len(paths))
-	for _, path := range paths {
-		if !represented[path] {
-			ordered = append(ordered, path)
-		}
-	}
-	for _, path := range paths {
-		if represented[path] {
-			ordered = append(ordered, path)
-		}
-	}
-	return ordered
 }
 
 func (a *app) openCodeSearchMatch(match workspaceSearchMatch) {
