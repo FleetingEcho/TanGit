@@ -174,6 +174,9 @@ type app struct {
 	settingsLoaded bool
 	settingsOpen   bool
 	settingsPage   int
+	// autoFetchChoice is the Settings selector's stable UI state. Its custom
+	// sentinel keeps the numeric editor visible between input and repaint.
+	autoFetchChoice int
 	// SSH profiles persist in settings, but their credentials never do. The
 	// form's sensitive drafts are cleared on save/close; session secrets shadow
 	// older keychain values when the system credential store is unavailable.

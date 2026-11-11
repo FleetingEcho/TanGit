@@ -74,6 +74,8 @@ func TestToolbarVisibilitySettingsToggleIndependently(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
+	h.tester.Scroll(700, 480, 0, 500)
+	h.tester.Frame()
 	if err := h.tester.Click("Show Commands in status bar"); err != nil {
 		t.Fatal(err)
 	}
@@ -123,6 +125,10 @@ func TestEveryToolbarActionCanBeHidden(t *testing.T) {
 		{headerToolbarActions, "Show %s in header"},
 		{statusToolbarActions, "Show %s in status bar"},
 	} {
+		if group.format == "Show %s in status bar" {
+			h.tester.Scroll(700, 480, 0, 500)
+			h.tester.Frame()
+		}
 		for _, action := range group.actions {
 			if err := h.tester.Click(trf(group.format, action.label)); err != nil {
 				t.Fatalf("hide %s: %v", action.id, err)
