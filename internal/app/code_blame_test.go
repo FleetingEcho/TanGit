@@ -312,6 +312,60 @@ func TestCodeBlameReloadsWhenUndoRestoresSavedBuffer(t *testing.T) {
 	}
 }
 
+func TestCodeBlameStaleAnnotationsDoNotRepaint(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	session := &codeBlameTestSession{blameStarted: started, blameRelease: release}
+	document := &codeDocument{path: "notes.txt", state: &editor.State{Buffer: editor.NewBuffer("first\n")}, blameEnabled: true}
+	a := newApp(fakeOpener{})
+	a.session = session
+	a.workspaceTab = sectionCode
+	a.code.documents = map[string]*codeDocument{document.path: document}
+	a.code.active = document.path
+	acknowledged := acknowledgeAsyncPublications(a)
+
+	a.requestCodeBlame(document)
+	<-started
+	document.generation++
+	close(release)
+	if <-acknowledged {
+		t.Fatal("stale editor blame annotations requested a repaint")
+	}
+	if document.blameLoaded || len(document.blameLines) != 0 {
+		t.Fatal("stale editor blame annotations were installed")
+	}
+}
+
+func TestCodeBlameStaleCommitDetailsDoNotRepaint(t *testing.T) {
+	hash := strings.Repeat("d", 40)
+	started, release := make(chan struct{}), make(chan struct{})
+	session := &codeBlameTestSession{
+		commits:       []repository.Commit{{Hash: hash, ShortHash: "ddddddd", Subject: "Late details"}},
+		searchStarted: started,
+		searchRelease: release,
+	}
+	document := &codeDocument{path: "notes.txt", state: &editor.State{Buffer: editor.NewBuffer("first\n")}, blameEnabled: true}
+	document.blameLoaded = true
+	document.blameVersion = document.state.Buffer.Version()
+	document.blameLines = []repository.BlameLine{{Hash: hash, Text: "first"}}
+	a := newApp(fakeOpener{})
+	a.session = session
+	a.workspaceTab = sectionCode
+	a.code.documents = map[string]*codeDocument{document.path: document}
+	a.code.active = document.path
+	acknowledged := acknowledgeAsyncPublications(a)
+
+	a.openCodeBlameDetails(document, 0)
+	<-started
+	a.closeCodeBlameDetails()
+	close(release)
+	if <-acknowledged {
+		t.Fatal("stale editor blame commit details requested a repaint")
+	}
+	if a.codeBlameHover.commit.Hash != "" {
+		t.Fatal("stale editor blame commit details were installed")
+	}
+}
+
 func TestCodeBlameHoverBelongsToOneDocument(t *testing.T) {
 	uncommitted := strings.Repeat("0", 40)
 	newDocument := func(path string) *codeDocument {

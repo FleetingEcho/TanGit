@@ -35,6 +35,7 @@ import (
 // shell's cursor there, when the shell marks its prompt (OSC 133).
 func View(c *ui.Context, t *Terminal) ui.Element {
 	v := t.viewOf(c)
+	draw := t.draw.Load()
 	// A terminal's grid is left to right in a right-to-left interface too.
 	e := ui.Box(c).Direction(ui.LeftToRight).Focusable().FocusRing(false).Clip().Label("Terminal")
 	v.build(c, e)
@@ -47,6 +48,8 @@ func View(c *ui.Context, t *Terminal) ui.Element {
 	e.TextCaret(v.caret())
 	e.Draw(v.paint)
 	e.ContextMenu(v.menu)
+	// A replacement mount installs its callback before the old mount closes.
+	e.OnUnmount(func() { t.draw.CompareAndSwap(draw, nil) })
 	return e
 }
 
@@ -134,9 +137,9 @@ func (t *Terminal) viewOf(c *ui.Context) *view {
 	v := t.v
 	if v.services != c.Services() {
 		v.services = c.Services()
-		draw := v.services.Invalidate
-		t.draw.Store(&draw)
 	}
+	draw := v.services.Invalidate
+	t.draw.Store(&draw)
 	return v
 }
 

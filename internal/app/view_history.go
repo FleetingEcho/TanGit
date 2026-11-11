@@ -237,17 +237,18 @@ func (a *app) requestMoreCommits() {
 	go func() {
 		defer a.recoverBackground()
 		commits, err := session.RecentCommits(context.Background(), repository.SnapshotCommitLimit, skip)
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation || token != a.commitsToken {
-				return
+				return false
 			}
 			a.commitsLoading = false
 			if err != nil {
 				a.commitsError = safeError(err)
-				return
+				return isCommitSection(a.workspaceTab)
 			}
 			a.commitsMore = len(commits) == repository.SnapshotCommitLimit
 			a.snapshot.Commits = append(a.snapshot.Commits, commits...)
+			return isCommitSection(a.workspaceTab)
 		})
 	}()
 }

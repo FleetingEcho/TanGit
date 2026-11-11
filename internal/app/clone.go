@@ -161,29 +161,30 @@ func (a *app) browseCloneParent() {
 			Directory:         true,
 			CreateDirectories: true,
 		})
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if generation != a.cloneGeneration || repositoryGeneration != a.generation ||
 				!a.cloneOpen || a.state == stateCloning {
-				return
+				return false
 			}
 			if err != nil {
 				a.cloneError = cloneErrorMessage(err)
-				return
+				return true
 			}
 			if len(paths) == 0 {
-				return
+				return false
 			}
 			name, nameErr := repository.CloneRepositoryName(remote)
 			if nameErr != nil {
 				a.cloneValidationShown = true
 				a.cloneURLError = cloneErrorMessage(nameErr)
 				a.cloneError = ""
-				return
+				return true
 			}
 			a.cloneParent = paths[0]
 			a.cloneDestinationManual = false
 			a.cloneDestination = filepath.Join(paths[0], name)
 			a.cloneFieldChanged()
+			return true
 		})
 	}()
 }
@@ -221,30 +222,35 @@ func (a *app) beginClone() {
 	go func() {
 		defer a.recoverBackground()
 		err := cloner.Clone(ctx, options, func(progress repository.CloneProgress) {
-			a.update(func() {
+			a.updateChanged(func() bool {
 				if generation != a.cloneGeneration || repositoryGeneration != a.generation || a.state != stateCloning {
-					return
+					return false
 				}
 				progress.Detail = repository.RedactSecrets(progress.Detail)
+				if a.cloneProgress == progress {
+					return false
+				}
 				a.cloneProgress = progress
+				return true
 			})
 		})
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if generation != a.cloneGeneration || repositoryGeneration != a.generation || a.state != stateCloning {
-				return
+				return false
 			}
 			a.cancelClone = nil
 			if err != nil {
 				a.state = stateEmpty
 				a.cloneOpen = true
 				a.cloneError = cloneErrorMessage(err)
-				return
+				return true
 			}
 			// A clone only produces the path. The ordinary opener remains the
 			// single owner of snapshots, recents, tabs and progressive loading.
 			a.state = stateEmpty
 			a.path = options.Destination
 			a.beginOpen()
+			return true
 		})
 	}()
 }

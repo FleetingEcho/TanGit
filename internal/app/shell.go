@@ -209,11 +209,7 @@ func (s *shell) newTab(path string) *tab {
 		// Window.Update always repaints, even when a quiet Git read found the
 		// same snapshot. Only changed reads should cost a whole-window frame.
 		a.updateChanged = func(fn func() bool) {
-			mygo.RunOnMain(func() {
-				if fn() {
-					s.invalidate()
-				}
-			})
+			mygo.RunOnMain(func() { s.updateAppChanged(a, fn) })
 		}
 	}
 	a.pathUserData = s.pathUserData
@@ -237,6 +233,29 @@ func (s *shell) newTab(path string) *tab {
 	a.loadHistory()
 	s.pushSettings(a)
 	return &tab{app: a}
+}
+
+// updateAppChanged paints page content only when its tab is active. A hidden
+// page still updates its model, and a changed tab title or repository state
+// paints the strip; activation paints the rest of the stored page.
+func (s *shell) updateAppChanged(a *app, fn func() bool) {
+	t := s.tabOf(a)
+	repository, path, title := false, "", ""
+	if t != nil {
+		repository, path, title = t.repository(), t.path(), t.title()
+	}
+	if !fn() {
+		return
+	}
+	if s.activeApp() == a {
+		s.invalidate()
+		return
+	}
+	if t != nil && s.indexOf(t) >= 0 &&
+		(t.repository() != repository || t.path() != path || t.title() != title) {
+		s.refreshTitle()
+		s.invalidate()
+	}
 }
 
 // view draws the window: the title bar, then the active tab's page.

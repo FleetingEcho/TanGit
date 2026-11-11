@@ -129,6 +129,36 @@ func TestShellUpdateButtonAdvertisesAndOpensAnAvailableUpdate(t *testing.T) {
 	}
 }
 
+func TestShellBackgroundPageUpdatesDoNotRepaintActiveTab(t *testing.T) {
+	s := newShell(pathOpener{})
+	s.update = func(fn func()) { fn() }
+	invalidations := 0
+	s.invalidate = func() { invalidations++ }
+	s.start("")
+	first := readyShellTab(s, "/work/first")
+	second := readyShellTab(s, "/work/second")
+	s.active = s.indexOf(second)
+
+	s.updateAppChanged(first.app, func() bool {
+		first.app.snapshot.Files = []repository.File{{Path: "background.txt", Status: "M", Tracked: true}}
+		return true
+	})
+	if invalidations != 0 {
+		t.Fatal("a background page's content update repainted the active tab")
+	}
+	s.updateAppChanged(first.app, func() bool {
+		first.app.snapshot.Root = "/work/renamed"
+		return true
+	})
+	if invalidations != 1 {
+		t.Fatalf("a background tab title change caused %d frames, want 1", invalidations)
+	}
+	s.updateAppChanged(second.app, func() bool { return true })
+	if invalidations != 2 {
+		t.Fatalf("an active page update caused %d total frames, want 2", invalidations)
+	}
+}
+
 // Clicking a pill brings its page to the front, as the strip's tabs do in a
 // browser.
 func TestShellClickingATabSwitchesPages(t *testing.T) {

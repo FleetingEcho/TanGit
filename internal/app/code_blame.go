@@ -155,22 +155,22 @@ func (a *app) requestCodeBlame(document *codeDocument) {
 	go func() {
 		defer a.recoverBackground()
 		lines, err := session.BlameWorkingTreeFile(context.Background(), path)
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation || documentGeneration != document.generation ||
 				token != document.blameToken || !document.blameEnabled || document.state != state ||
 				a.code.documents[path] != document || state.Buffer.Version() != version {
-				return
+				return false
 			}
 			document.blameLoading = false
 			if state.Buffer.Modified() {
-				return
+				return false
 			}
 			if err != nil {
 				document.blameEnabled = false
 				document.blameError = safeError(err)
 				state.HoverDelay = 0
 				clearCodeBlameAnnotations(document)
-				return
+				return a.workspaceTab == sectionCode && a.activeCodeDocument() == document
 			}
 
 			valid := make([]bool, len(lines))
@@ -189,6 +189,7 @@ func (a *app) requestCodeBlame(document *codeDocument) {
 			document.blameLoaded = true
 			document.blameError = ""
 			a.syncCodeBlameActiveLine(document)
+			return a.workspaceTab == sectionCode && a.activeCodeDocument() == document
 		})
 	}()
 }
@@ -325,19 +326,20 @@ func (a *app) openCodeBlameDetails(document *codeDocument, line int) {
 		if err == nil && (len(commits) != 1 || commits[0].Hash != blame.Hash) {
 			err = fmt.Errorf("commit %s was not found", strings.TrimSpace(shortBlameHash(blame.Hash)))
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation || token != hover.token || !hover.open || hover.blame.Hash != blame.Hash ||
 				document.generation != documentGeneration || document.blameToken != blameToken ||
 				document.path != sourcePath || a.code.documents[sourcePath] != document ||
 				!document.blameEnabled || document.state == nil || document.state.Buffer.Version() != bufferVersion {
-				return
+				return false
 			}
 			hover.loading = false
 			if err != nil {
 				hover.loadError = safeError(err)
-				return
+			} else {
+				hover.commit = commits[0]
 			}
-			hover.commit = commits[0]
+			return a.workspaceTab == sectionCode && a.activeCodeDocument() == document
 		})
 	}()
 }

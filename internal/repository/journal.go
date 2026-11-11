@@ -250,7 +250,13 @@ func (s *gitSession) stashOperationState() (string, error) {
 
 func (s *gitSession) completeJournalOperation(record OperationRecord, actionErr error) error {
 	branch, head, identityErr := s.currentOperationIdentity()
-	state, stateErr := s.patchRepositoryState()
+	var state string
+	var stateErr error
+	if record.UndoKind == UndoResetHead {
+		state, stateErr = s.resetRepositoryState(record.HeadBefore, head)
+	} else {
+		state, stateErr = s.patchRepositoryState()
+	}
 	record.BranchAfter, record.HeadAfter = branch, head
 	if stateErr == nil {
 		record.AfterState = state
@@ -373,7 +379,12 @@ func (s *gitSession) requireUnchangedOperation(record OperationRecord) error {
 	if record.UndoKind == UndoResetHead && (branch != record.BranchAfter || head != record.HeadAfter) {
 		return fmt.Errorf("HEAD or its branch moved after this operation; undo would overwrite newer history")
 	}
-	state, err := s.patchRepositoryState()
+	var state string
+	if record.UndoKind == UndoResetHead {
+		state, err = s.resetRepositoryState(record.HeadBefore, record.HeadAfter)
+	} else {
+		state, err = s.patchRepositoryState()
+	}
 	if err != nil {
 		return err
 	}

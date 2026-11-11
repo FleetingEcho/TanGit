@@ -63,24 +63,25 @@ func (a *app) openFileHistory(path string) {
 	go func() {
 		defer a.recoverBackground()
 		commits, err := session.FileCommits(context.Background(), path, fileHistoryPage, 0)
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if token != a.fileHistoryToken || !a.fileHistoryOpen || a.fileHistoryPath != path {
-				return
+				return false
 			}
 			a.fileHistoryLoading = false
 			if err != nil {
 				a.fileHistoryMore = false
 				a.fileHistoryError = safeError(err)
-				return
+				return true
 			}
 			a.fileHistoryCommits = commits
 			a.fileHistoryRead = len(commits)
 			a.fileHistoryMore = len(commits) == fileHistoryPage
 			if len(commits) == 0 {
-				return
+				return true
 			}
 			a.fileHistorySelected = 0
 			a.loadFileHistoryCommit(commits[0], true)
+			return true
 		})
 	}()
 }
@@ -104,14 +105,14 @@ func (a *app) loadMoreFileHistory() {
 	go func() {
 		defer a.recoverBackground()
 		commits, err := session.FileCommits(context.Background(), path, fileHistoryPage, skip)
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if token != a.fileHistoryToken || !a.fileHistoryOpen || a.fileHistoryPath != path {
-				return
+				return false
 			}
 			a.fileHistoryLoadingMore = false
 			if err != nil {
 				a.fileHistoryMoreError = safeError(err)
-				return
+				return true
 			}
 			a.fileHistoryRead += len(commits)
 			// A commit can repeat across pages when the history shifted
@@ -129,6 +130,7 @@ func (a *app) loadMoreFileHistory() {
 				a.fileHistoryCommits = append(a.fileHistoryCommits, commit)
 			}
 			a.fileHistoryMore = len(commits) == fileHistoryPage
+			return true
 		})
 	}()
 }
@@ -196,18 +198,18 @@ func (a *app) loadFileHistoryCommit(commit repository.Commit, force bool) {
 	go func() {
 		defer a.recoverBackground()
 		files, err := session.CommitFiles(context.Background(), commit)
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if token != a.fileHistoryFilesToken || !a.fileHistoryOpen || a.fileHistoryPath != path {
-				return
+				return false
 			}
 			a.fileHistoryFilesLoading = false
 			if err != nil {
 				a.fileHistoryFilesError = safeError(err)
-				return
+				return true
 			}
 			a.fileHistoryFiles = files
 			if len(files) == 0 {
-				return
+				return true
 			}
 			choice := 0
 			for i, file := range files {
@@ -218,6 +220,7 @@ func (a *app) loadFileHistoryCommit(commit repository.Commit, force bool) {
 			}
 			a.fileHistorySelectedFile = choice
 			a.loadFileHistoryDiff(commit, files[choice], true)
+			return true
 		})
 	}()
 }
@@ -257,18 +260,19 @@ func (a *app) loadFileHistoryDiff(commit repository.Commit, file repository.Comm
 				})
 			}
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if token != a.fileHistoryDiffToken || !a.fileHistoryOpen {
-				return
+				return false
 			}
 			a.fileHistoryDiffLoading = false
 			if err != nil {
 				a.fileHistoryDiffError = safeError(err)
-				return
+				return true
 			}
 			a.fileHistoryDiffPatch = diff.Patch
 			a.fileHistoryDiffState = state
 			a.fileHistoryDiffMedia = media
+			return true
 		})
 	}()
 }

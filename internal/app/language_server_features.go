@@ -188,7 +188,7 @@ func (a *app) requestGoLanguageHover(document *codeDocument, request editor.Hove
 		if a.codeBlameHover.open && a.codeBlameHover.source == document {
 			return false
 		}
-		if err != nil {
+		if err != nil || a.workspaceTab != sectionCode || a.activeCodeDocument() != document {
 			return false
 		}
 		content, hoverRange, ok := parseLanguageServerHover(raw)
@@ -495,7 +495,7 @@ func (a *app) navigateCodeHistory(back bool) {
 
 func (a *app) requestGoLanguageCompletions(document *codeDocument, request editor.CompletionRequest) {
 	a.goLanguageRequest(document, &document.completionSeq, request.Offset, "textDocument/completion", func(raw json.RawMessage, err error, _ string, _ uint64) bool {
-		if err != nil {
+		if err != nil || a.workspaceTab != sectionCode || a.activeCodeDocument() != document {
 			return false
 		}
 		items := parseLanguageServerCompletions(raw)

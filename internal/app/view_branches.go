@@ -704,14 +704,14 @@ func (a *app) requestBranchCommits(branch string) {
 		} else {
 			commits, err = session.BranchCommits(context.Background(), branch, branchCommitsLimit)
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation || token != a.branchCommitsToken {
-				return
+				return false
 			}
 			a.branchCommitsLoading = false
 			if err != nil {
 				a.branchCommitsError = safeError(err)
-				return
+				return a.workspaceTab == sectionBranches
 			}
 			a.branchCommits = commits
 			// A quiet refresh keeps the commit the user was reading, by
@@ -721,13 +721,14 @@ func (a *app) requestBranchCommits(branch string) {
 				for i, commit := range commits {
 					if commit.Hash == keep {
 						a.selectedBranchCommit = i
-						return
+						return a.workspaceTab == sectionBranches
 					}
 				}
 			}
 			if len(commits) > 0 {
 				a.selectedBranchCommit = 0
 			}
+			return a.workspaceTab == sectionBranches
 		})
 	}()
 }
@@ -765,37 +766,38 @@ func (a *app) requestBranchCommitFiles(commit repository.Commit) {
 	go func() {
 		defer a.recoverBackground()
 		files, err := session.CommitFiles(context.Background(), commit)
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if token != a.branchCommitToken {
-				return
+				return false
 			}
 			if repositoryGeneration != a.generation {
 				// An action rewrote the repository: drop the request so
 				// the next frame reads the commit again.
 				a.branchCommitFilesHash = ""
 				a.branchCommitFilesLoading = false
-				return
+				return a.workspaceTab == sectionBranches
 			}
 			if a.branchCommitFilesHash != commit.Hash {
-				return
+				return false
 			}
 			a.branchCommitFilesLoading = false
 			if err != nil {
 				a.branchCommitFilesError = safeError(err)
-				return
+				return a.workspaceTab == sectionBranches
 			}
 			a.branchCommitFiles = files
 			if keepPath != "" {
 				for i, file := range files {
 					if file.Path == keepPath {
 						a.selectedBranchCommitFile = i
-						return
+						return a.workspaceTab == sectionBranches
 					}
 				}
 			}
 			if len(files) > 0 {
 				a.selectedBranchCommitFile = 0
 			}
+			return a.workspaceTab == sectionBranches
 		})
 	}()
 }
@@ -833,28 +835,29 @@ func (a *app) requestBranchCommitFileDiff(commit repository.Commit, file reposit
 				})
 			}
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if token != a.branchCommitToken {
-				return
+				return false
 			}
 			if repositoryGeneration != a.generation {
 				a.branchCommitDiffHash = ""
 				a.branchCommitDiffPath = ""
 				a.branchCommitDiffPatch = ""
 				a.branchCommitDiffLoading = false
-				return
+				return a.workspaceTab == sectionBranches
 			}
 			if a.branchCommitDiffHash != commit.Hash || a.branchCommitDiffPath != file.Path {
-				return
+				return false
 			}
 			a.branchCommitDiffLoading = false
 			if err != nil {
 				a.branchCommitDiffError = safeError(err)
-				return
+				return a.workspaceTab == sectionBranches
 			}
 			a.branchCommitDiffPatch = diff.Patch
 			a.branchCommitDiffState = state
 			a.branchCommitDiffMedia = media
+			return a.workspaceTab == sectionBranches
 		})
 	}()
 }

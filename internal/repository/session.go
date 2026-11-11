@@ -2357,13 +2357,24 @@ func (s *gitSession) ResetToCommit(ctx context.Context, commit Commit, mode Rese
 	default:
 		return fmt.Errorf("reset to %s: invalid mode %q", commit.ShortHash, mode)
 	}
+	var ignored []string
+	if mode == ResetHard {
+		_, before, err := s.currentOperationIdentity()
+		if err != nil {
+			return err
+		}
+		ignored, err = s.resetIgnoredPaths(before, commit.Hash)
+		if err != nil {
+			return err
+		}
+	}
 	var snapshot *WorkSnapshot
 	hasWork, err := s.repositoryHasWork()
 	if err != nil {
 		return err
 	}
-	if hasWork {
-		captured, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Before "+string(mode)+" reset")
+	if hasWork || len(ignored) > 0 {
+		captured, err := s.captureWorkSnapshotWithIgnored(ctx, RecoverySnapshotKind, "Before "+string(mode)+" reset", ignored)
 		if err != nil {
 			return err
 		}

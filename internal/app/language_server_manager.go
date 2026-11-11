@@ -385,6 +385,9 @@ func (a *app) additionalLanguageRequest(document *codeDocument, requestSequence 
 
 func (a *app) requestAdditionalLanguageHover(document *codeDocument, request editor.HoverRequest) {
 	a.additionalLanguageRequest(document, &document.hoverSeq, request.Offset, "textDocument/hover", func(raw json.RawMessage, text string) bool {
+		if a.workspaceTab != sectionCode || a.activeCodeDocument() != document {
+			return false
+		}
 		content, hoverRange, ok := parseLanguageServerHover(raw)
 		if !ok || strings.TrimSpace(content) == "" {
 			return false
@@ -412,6 +415,9 @@ func (a *app) requestAdditionalLanguageDefinition(document *codeDocument, offset
 
 func (a *app) requestAdditionalLanguageCompletions(document *codeDocument, request editor.CompletionRequest) {
 	a.additionalLanguageRequest(document, &document.completionSeq, request.Offset, "textDocument/completion", func(raw json.RawMessage, _ string) bool {
+		if a.workspaceTab != sectionCode || a.activeCodeDocument() != document {
+			return false
+		}
 		items := parseLanguageServerCompletions(raw)
 		if len(items) == 0 {
 			return false

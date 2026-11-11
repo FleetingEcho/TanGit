@@ -148,14 +148,14 @@ func (a *app) beginCompare() {
 	go func() {
 		defer a.recoverBackground()
 		files, err := session.CompareFiles(context.Background(), from, to, options)
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if generation != a.generation || token != a.compare.token {
-				return
+				return false
 			}
 			a.compare.filesLoading = false
 			if err != nil {
 				a.compare.filesError = safeError(err)
-				return
+				return a.workspaceTab == sectionCompare
 			}
 			if files == nil {
 				files = []repository.CommitFile{}
@@ -164,6 +164,7 @@ func (a *app) beginCompare() {
 			if len(files) > 0 {
 				a.compare.selected = 0
 			}
+			return a.workspaceTab == sectionCompare
 		})
 	}()
 }
@@ -288,18 +289,19 @@ func (a *app) requestCompareFileDiff() {
 		if err == nil && (diff.Patch != "" || diff.OldText != "" || diff.NewText != "") {
 			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if generation != a.generation || token != a.compare.token ||
 				a.compare.diffKey != file.Path {
-				return
+				return false
 			}
 			a.compare.diffLoading = false
 			if err != nil {
 				a.compare.diffError = safeError(err)
-				return
+				return a.workspaceTab == sectionCompare
 			}
 			a.compare.diffPatch = diff.Patch
 			a.compare.diffState = state
+			return a.workspaceTab == sectionCompare
 		})
 	}()
 }

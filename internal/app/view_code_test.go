@@ -1362,8 +1362,13 @@ func TestCodePageRetainsDocumentsAcrossSectionsAndRejectsStaleReads(t *testing.T
 	}
 	document.state = nil
 	repaint := true
+	published := make(chan struct{}, 1)
 	h.app.updateChanged = func(fn func() bool) {
 		h.app.update(func() { repaint = fn() })
+		select {
+		case published <- struct{}{}:
+		default:
+		}
 	}
 	h.app.requestCodeDocument(document)
 	select {
@@ -1378,8 +1383,13 @@ func TestCodePageRetainsDocumentsAcrossSectionsAndRejectsStaleReads(t *testing.T
 	case <-time.After(5 * time.Second):
 		t.Fatal("the released stale read did not finish")
 	}
-	// Run the stale read's completion itself, rather than depending on an
-	// arbitrary number of unrelated background updates.
+	select {
+	case <-published:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stale read did not publish its completion")
+	}
+	// The target callback is now queued even if an older blame notification
+	// supplied the wake-up that waitForUpdate consumes.
 	h.updates.waitForUpdate(t)
 	if len(h.app.code.documents) != 0 || h.app.code.active != "" {
 		t.Fatal("a read from the old repository repopulated reset Code state")
