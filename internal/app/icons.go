@@ -78,6 +78,7 @@ var (
 	pushIcon     = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10.5v-7"/><path d="m5.2 6.2 2.8-2.8 2.8 2.8"/><path d="M3 11.5v1c0 .55.45 1 1 1h8c.55 0 1-.45 1-1v-1"/></svg>`))
 	continueIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.75"/><path d="m6.5 5.5 4 2.5-4 2.5z"/></svg>`))
 	abortIcon    = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.75"/><path d="m5 5 6 6"/></svg>`))
+	skipIcon     = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 4 4 4-4 4m5-8 4 4-4 4"/></svg>`))
 
 	// Preferences and layout.
 	// settingsIcon is a gear, not a brightness glyph: the sun and moon are
