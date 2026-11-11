@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf16"
@@ -143,7 +144,7 @@ func languageServerWordRange(text string, offset int) (int, int) {
 }
 
 func (a *app) goLanguageRequest(document *codeDocument, requestSequence *uint64, offset int, method string,
-	result func(json.RawMessage, error, string, uint64)) {
+	result func(json.RawMessage, error, string, uint64) bool) {
 	connection := a.goLanguageServer
 	if connection == nil || document == nil || document.state == nil || document.state.Buffer == nil ||
 		a.code.documents[document.path] != document {
@@ -159,28 +160,32 @@ func (a *app) goLanguageRequest(document *codeDocument, requestSequence *uint64,
 		Position:     languageServerPositionAt(text, offset),
 	}
 	connection.Request(method, params, func(raw json.RawMessage, err error) {
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if a.goLanguageServer != connection || a.code.documents[document.path] != document ||
 				document.state == nil || document.state.Buffer == nil ||
 				*requestSequence != sequence || document.state.Buffer.Version() != version {
-				return
+				return false
 			}
+			changed := false
 			if err != nil && !isLanguageServerContentModified(err) && !isLanguageServerRequestTimeout(err) {
+				previous := a.goLanguageServerError
 				a.reportGoLanguageServerError(err.Error())
+				changed = previous != a.goLanguageServerError
 			}
-			result(raw, err, text, version)
+			resultChanged := result(raw, err, text, version)
+			return changed || resultChanged
 		})
 	})
 }
 
 func (a *app) requestGoLanguageHover(document *codeDocument, request editor.HoverRequest) {
-	a.goLanguageRequest(document, &document.hoverSeq, request.Offset, "textDocument/hover", func(raw json.RawMessage, err error, text string, _ uint64) {
+	a.goLanguageRequest(document, &document.hoverSeq, request.Offset, "textDocument/hover", func(raw json.RawMessage, err error, text string, _ uint64) bool {
 		if err != nil {
-			return
+			return false
 		}
 		content, hoverRange, ok := parseLanguageServerHover(raw)
 		if !ok || strings.TrimSpace(content) == "" {
-			return
+			return false
 		}
 		start, end := languageServerWordRange(text, request.Offset)
 		if hoverRange != nil {
@@ -188,6 +193,7 @@ func (a *app) requestGoLanguageHover(document *codeDocument, request editor.Hove
 			end = languageServerOffsetAt(text, hoverRange.End)
 		}
 		showLanguageServerHover(document, start, end, content)
+		return true
 	})
 }
 
@@ -327,15 +333,15 @@ func languageServerMarkupText(raw json.RawMessage) string {
 
 func (a *app) requestGoLanguageDefinition(document *codeDocument, offset int) {
 	source := a.currentCodeNavigationLocation()
-	a.goLanguageRequest(document, &document.definitionSeq, offset, "textDocument/definition", func(raw json.RawMessage, err error, _ string, _ uint64) {
+	a.goLanguageRequest(document, &document.definitionSeq, offset, "textDocument/definition", func(raw json.RawMessage, err error, _ string, _ uint64) bool {
 		if err != nil {
-			return
+			return false
 		}
 		location, ok := firstLanguageServerLocation(raw)
 		if !ok {
-			return
+			return false
 		}
-		a.openLanguageServerDefinition(source, location)
+		return a.openLanguageServerDefinition(source, location)
 	})
 }
 
@@ -480,14 +486,16 @@ func (a *app) navigateCodeHistory(back bool) {
 }
 
 func (a *app) requestGoLanguageCompletions(document *codeDocument, request editor.CompletionRequest) {
-	a.goLanguageRequest(document, &document.completionSeq, request.Offset, "textDocument/completion", func(raw json.RawMessage, err error, _ string, _ uint64) {
+	a.goLanguageRequest(document, &document.completionSeq, request.Offset, "textDocument/completion", func(raw json.RawMessage, err error, _ string, _ uint64) bool {
 		if err != nil {
-			return
+			return false
 		}
 		items := parseLanguageServerCompletions(raw)
-		if len(items) > 0 {
-			document.state.ShowCompletions(max(0, request.Offset-len(request.Prefix)), items)
+		if len(items) == 0 {
+			return false
 		}
+		document.state.ShowCompletions(max(0, request.Offset-len(request.Prefix)), items)
+		return true
 	})
 }
 
@@ -604,18 +612,18 @@ func (a *app) handleLanguageServerDiagnostics(serverID string, raw json.RawMessa
 	if json.Unmarshal(raw, &params) != nil {
 		return
 	}
-	a.update(func() {
+	a.updateChanged(func() bool {
 		if !valid() {
-			return
+			return false
 		}
 		path, ok := languageServerDocumentPath(a.snapshot.Root, params.URI)
 		document := a.code.documents[path]
 		if !ok || document == nil || document.state == nil || document.state.Buffer == nil {
-			return
+			return false
 		}
 		version := document.state.Buffer.Version()
 		if params.Version != nil && uint64(*params.Version) != version {
-			return
+			return false
 		}
 		text := document.state.Buffer.String()
 		diagnostics := make([]editor.Diagnostic, 0, len(params.Diagnostics))
@@ -627,6 +635,9 @@ func (a *app) handleLanguageServerDiagnostics(serverID string, raw json.RawMessa
 				Message:  diagnostic.Message, Source: diagnostic.Source,
 			})
 		}
+		if slices.Equal(document.languageDiagnostics[serverID], diagnostics) {
+			return false
+		}
 		if document.languageDiagnostics == nil {
 			document.languageDiagnostics = make(map[string][]editor.Diagnostic)
 		}
@@ -636,6 +647,7 @@ func (a *app) handleLanguageServerDiagnostics(serverID string, raw json.RawMessa
 			combined = append(combined, serverDiagnostics...)
 		}
 		document.state.SetDiagnostics(version, combined)
+		return true
 	})
 }
 

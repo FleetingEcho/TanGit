@@ -220,11 +220,71 @@ func TestGoLanguageServerRejectsAStaleHover(t *testing.T) {
 		t.Fatal("hover request was not sent")
 	}
 	document.state.Insert("x")
+	repaint := true
+	h.app.updateChanged = func(fn func() bool) {
+		h.app.update(func() { repaint = fn() })
+	}
 	answer(json.RawMessage(`{"contents":"stale hover"}`), nil)
 	h.updates.waitForUpdate(t)
 	h.tester.Frame()
 	if h.tester.HasText("stale hover") {
 		t.Fatal("a response for the previous buffer version became visible")
+	}
+	if repaint {
+		t.Fatal("a stale language-server response repainted the window")
+	}
+}
+
+func TestGoLanguageServerEmptyHoverDoesNotRepaint(t *testing.T) {
+	h, _, document := openGoDocumentWithLanguageServer(t, map[string]string{
+		"main.go": "package main\n",
+	}, func(method string, _ any, result func(json.RawMessage, error)) {
+		if method == "textDocument/hover" {
+			result(json.RawMessage(`{"contents":""}`), nil)
+		}
+	})
+	repaint := true
+	h.app.updateChanged = func(fn func() bool) {
+		h.app.update(func() { repaint = fn() })
+	}
+	document.state.Select(9, 9)
+	document.state.Run(editor.ShowHover)
+	h.updates.waitForUpdate(t)
+	if repaint {
+		t.Fatal("an empty language-server response repainted the window")
+	}
+}
+
+func TestAdditionalLanguageServerEmptyHoverDoesNotRepaint(t *testing.T) {
+	h := menuTestApp(t)
+	document := &codeDocument{path: "main.tsx", state: &editor.State{Buffer: editor.NewBuffer("const value = 1\n")}}
+	h.app.code.documents = map[string]*codeDocument{document.path: document}
+	connection := newFakeLanguageServerConnection()
+	var answer func(json.RawMessage, error)
+	connection.request = func(method string, _ any, result func(json.RawMessage, error)) {
+		if method == "textDocument/hover" {
+			answer = result
+		}
+	}
+	profile, _ := languageServerProfileByID("typescript")
+	h.app.settings.LanguageServers = map[string]languageServerSettings{profile.ID: {}}
+	server := &managedLanguageServer{
+		profile: profile, connection: connection, documents: make(map[string]uint64),
+	}
+	h.app.additionalLanguageServers = map[string]*managedLanguageServer{profile.ID: server}
+	repaint := true
+	h.app.updateChanged = func(fn func() bool) {
+		h.app.update(func() { repaint = fn() })
+	}
+
+	h.app.requestAdditionalLanguageHover(document, editor.HoverRequest{Offset: 6})
+	if answer == nil {
+		t.Fatal("the additional language-server request was not sent")
+	}
+	answer(json.RawMessage(`{"contents":""}`), nil)
+	h.updates.waitForUpdate(t)
+	if repaint {
+		t.Fatal("an empty additional language-server response repainted the window")
 	}
 }
 
@@ -290,6 +350,35 @@ func TestGoLanguageServerPublishesDiagnostics(t *testing.T) {
 	if len(diagnostics) != 1 || diagnostics[0].Start != strings.Index(document.state.Buffer.String(), "bad") ||
 		diagnostics[0].Message != "undefined: bad" || diagnostics[0].Severity != editor.SeverityError {
 		t.Fatalf("diagnostics = %#v", diagnostics)
+	}
+
+	for _, stale := range []bool{false, true} {
+		repaint := true
+		h.app.updateChanged = func(fn func() bool) {
+			h.app.update(func() { repaint = fn() })
+		}
+		sequence := h.app.goLanguageServerSeq
+		if stale {
+			sequence--
+		}
+		h.app.handleGoLanguageServerNotification(sequence, "textDocument/publishDiagnostics", params)
+		h.updates.waitForUpdate(t)
+		if repaint {
+			t.Fatalf("duplicate diagnostics (stale=%v) repainted the window", stale)
+		}
+	}
+
+	repaint := false
+	h.app.updateChanged = func(fn func() bool) {
+		h.app.update(func() { repaint = fn() })
+	}
+	cleared, _ := json.Marshal(map[string]any{
+		"uri": "file:///work/project/main.go", "version": version, "diagnostics": []any{},
+	})
+	h.app.handleGoLanguageServerNotification(h.app.goLanguageServerSeq, "textDocument/publishDiagnostics", cleared)
+	h.updates.waitForUpdate(t)
+	if !repaint || len(document.state.Diagnostics()) != 0 {
+		t.Fatalf("clearing diagnostics repaint = %v, diagnostics = %#v", repaint, document.state.Diagnostics())
 	}
 }
 

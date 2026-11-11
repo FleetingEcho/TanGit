@@ -299,12 +299,13 @@ func (a *app) startTerminalAt(index int) {
 		pane, err := newTerminal(terminal.Options{
 			Dir: dir,
 			OnSearch: func(status terminal.SearchStatus) {
-				a.update(func() {
+				a.updateChanged(func() bool {
 					_, current := a.terminalSessionByID(sessionID)
-					if generation != a.generation || current == nil || attempt != current.attempt {
-						return
+					if generation != a.generation || current == nil || attempt != current.attempt || current.searchStatus == status {
+						return false
 					}
 					current.searchStatus = status
+					return true
 				})
 			},
 			OpenLink: func(link string) bool {
@@ -320,38 +321,41 @@ func (a *app) startTerminalAt(index int) {
 				return true
 			},
 			OnTitle: func(title string) {
-				a.update(func() {
+				a.updateChanged(func() bool {
 					_, current := a.terminalSessionByID(sessionID)
-					if generation != a.generation || current == nil || attempt != current.attempt {
-						return
+					if generation != a.generation || current == nil || attempt != current.attempt || current.title == title {
+						return false
 					}
 					current.title = title
+					return true
 				})
 			},
 			OnExit: func(int) {
-				a.update(func() {
+				a.updateChanged(func() bool {
 					currentIndex, current := a.terminalSessionByID(sessionID)
 					if generation != a.generation || current == nil || attempt != current.attempt {
-						return
+						return false
 					}
 					a.closeTerminalAt(currentIndex)
+					return true
 				})
 			},
 		})
-		a.update(func() {
+		a.updateChanged(func() bool {
 			_, current := a.terminalSessionByID(sessionID)
 			if generation != a.generation || current == nil || attempt != current.attempt || current.pane != nil {
 				if pane != nil {
 					_ = pane.Close()
 				}
-				return
+				return false
 			}
 			current.loading = false
 			if err != nil {
 				current.err = safeError(err)
-				return
+				return true
 			}
 			current.pane = pane
+			return true
 		})
 	}()
 }
