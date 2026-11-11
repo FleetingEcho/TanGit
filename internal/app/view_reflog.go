@@ -47,7 +47,7 @@ func (a *app) reflogRowMenu(m *ui.Menu, entry repository.Commit, services ui.Ser
 	}
 }
 
-func (a *app) reflogActionIcons(c *ui.Context, entry repository.Commit, services ui.Services) {
+func (a *app) reflogActionIcons(c *ui.Context, entry repository.Commit) {
 	button := func(label, tooltip string, icon *ui.SVG, needsSession bool, run func()) {
 		disabled := a.actionBusy
 		if needsSession {
@@ -60,9 +60,6 @@ func (a *app) reflogActionIcons(c *ui.Context, entry repository.Commit, services
 			run()
 		}
 	}
-	button("Copy reflog commit hash", "Copy the full commit hash", copyIcon, false, func() {
-		a.notifyCopied(services, "commit hash", entry.Hash)
-	})
 	button("Checkout reflog commit", "Check out this commit in detached HEAD mode", historyIcon, true, func() {
 		a.confirmCheckoutCommit(entry)
 	})
@@ -124,7 +121,7 @@ func (a *app) reflogView(c *ui.Context) {
 			}
 			entry := a.snapshot.Reflog[a.selectedReflog]
 			a.commitDetailCard(c, &entry, "Select a reflog entry", func(c *ui.Context, entry repository.Commit) {
-				a.reflogActionIcons(c, entry, c.Services())
+				a.reflogActionIcons(c, entry)
 			})
 		})
 }
