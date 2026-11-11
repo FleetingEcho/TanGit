@@ -348,28 +348,32 @@ func (a *app) additionalLanguageRequest(document *codeDocument, requestSequence 
 		a.syncManagedLanguageServerDocument(server, document.path, document)
 		connection := server.connection
 		connection.Request(method, params, func(raw json.RawMessage, err error) {
-			a.update(func() {
+			a.updateChanged(func() bool {
 				if delivered || server.connection != connection || a.code.documents[document.path] != document ||
 					document.state == nil || document.state.Buffer == nil || *requestSequence != sequence ||
 					document.state.Buffer.Version() != version {
-					return
+					return false
 				}
 				if err != nil {
 					if isLanguageServerContentModified(err) || isLanguageServerRequestTimeout(err) {
-						return
+						return false
 					}
 					if server.error == "" {
 						server.error = safeError(err)
 						server.requestError = true
 						a.notify("error", server.profile.Name+" request failed", server.error)
+						return true
 					}
-					return
+					return false
 				}
+				changed := false
 				if server.requestError {
 					server.error = ""
 					server.requestError = false
+					changed = true
 				}
 				delivered = result(raw, text)
+				return changed || delivered
 			})
 		})
 	}
@@ -426,24 +430,31 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 		if json.Unmarshal(raw, &progress) != nil || len(progress.Token) == 0 || progress.Value.Kind == "" {
 			return
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence {
-				return
-			}
-			if server.progress == nil {
-				server.progress = make(map[string]string)
+				return false
 			}
 			key := string(progress.Token)
 			if progress.Value.Kind == "end" {
+				if _, exists := server.progress[key]; !exists {
+					return false
+				}
 				delete(server.progress, key)
 			} else {
 				detail := strings.TrimSpace(progress.Value.Message)
 				if detail == "" {
 					detail = strings.TrimSpace(progress.Value.Title)
 				}
+				if previous, exists := server.progress[key]; exists && previous == detail {
+					return false
+				}
+				if server.progress == nil {
+					server.progress = make(map[string]string)
+				}
 				server.progress[key] = detail
 			}
 			server.updateAnalysisStatus()
+			return true
 		})
 		return
 	}
@@ -456,10 +467,12 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 		if json.Unmarshal(raw, &status) != nil {
 			return
 		}
-		a.update(func() {
+		a.updateChanged(func() bool {
 			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence {
-				return
+				return false
 			}
+			busy, detail := server.statusBusy, server.statusDetail
+			statusError, serverError, analyzing := server.statusError, server.error, server.analyzing
 			server.statusBusy = !status.Quiescent
 			server.statusDetail = strings.TrimSpace(status.Message)
 			if status.Health == "warning" || status.Health == "error" {
@@ -475,6 +488,8 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 				server.statusError = false
 			}
 			server.updateAnalysisStatus()
+			return busy != server.statusBusy || detail != server.statusDetail ||
+				statusError != server.statusError || serverError != server.error || analyzing != server.analyzing
 		})
 		return
 	}
