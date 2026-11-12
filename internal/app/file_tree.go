@@ -263,8 +263,8 @@ func (a *app) setAllFileTreeDirectories(scope string, paths []string, collapse b
 }
 
 // fileTreeButtons offers flat/tree grouping and bulk folds in most file panes.
-// Compare uses fileTreeModeButton alone, keeping its per-directory fold arrows
-// without the two bulk-fold controls.
+// Commit details and Compare use fileTreeModeButton alone, keeping their
+// per-directory fold arrows without the two bulk-fold controls.
 func (a *app) fileTreeButtons(c *ui.Context, scope string, paths []string) {
 	a.fileTreeModeButton(c)
 	if !a.fileTreeMode {
@@ -278,7 +278,7 @@ func (a *app) fileTreeButtons(c *ui.Context, scope string, paths []string) {
 	})
 }
 
-func (a *app) fileTreeModeButton(c *ui.Context) {
+func (a *app) fileTreeModeButton(c *ui.Context) ui.Element {
 	label, tooltip := "Show files as tree", "Group files by directory"
 	if a.fileTreeMode {
 		label, tooltip = "Show files as a flat list", "Show every full file path"
@@ -295,6 +295,7 @@ func (a *app) fileTreeModeButton(c *ui.Context) {
 	if button.Clicked() {
 		a.fileTreeMode = !a.fileTreeMode
 	}
+	return button
 }
 
 func (a *app) fileTreeMenuItems(m *ui.Menu, scope string, paths []string) {

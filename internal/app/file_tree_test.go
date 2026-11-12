@@ -117,6 +117,10 @@ func TestCommitFileTreeKeepsTheChosenDiffOnItsSourceFile(t *testing.T) {
 	if got := h.tester.HasText("src") && h.tester.HasText("ui") && h.tester.HasText("app.go"); !got {
 		t.Fatalf("commit tree is incomplete: %q", h.texts())
 	}
+	if !h.tester.HasText("Show files as a flat list") || h.tester.HasText("Expand all directories") ||
+		h.tester.HasText("Collapse all directories") {
+		t.Fatalf("commit files have the wrong directory controls: %q", h.texts())
+	}
 	if err := h.tester.Click("Collapse directory src"); err != nil {
 		t.Fatal(err)
 	}

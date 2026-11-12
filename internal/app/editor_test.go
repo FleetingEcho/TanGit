@@ -430,8 +430,8 @@ func TestGitFileBuiltInOpenRejectsNonRegularAndOutsidePaths(t *testing.T) {
 	}
 }
 
-// The file pane keeps the overflow menu last, after the controls that change
-// only what the pane shows of the file.
+// The file pane keeps expansion in the title's top-right corner and the
+// overflow menu last on the left-aligned controls row.
 func TestFileActionsMenuComesLast(t *testing.T) {
 	h, _ := changesTestApp(t, unstagedTrackedFile())
 	h.tester.Frame()
@@ -444,8 +444,13 @@ func TestFileActionsMenuComesLast(t *testing.T) {
 	if !ok {
 		t.Fatalf("the file pane has no expand control: %q", h.texts())
 	}
-	if more.X <= expand.X {
-		t.Fatalf("the overflow menu sits at %.0f, before Expand diff at %.0f", more.X, expand.X)
+	save, ok := h.tester.Find("Save diff")
+	if !ok || more.X <= save.X {
+		t.Fatalf("the overflow menu is not last on the controls row: save=%+v more=%+v", save, more)
+	}
+	if expand.X <= more.X || more.Y < expand.Y+expand.H {
+		t.Fatalf("expand is not in the title's top-right corner above the controls: expand=%+v more=%+v",
+			expand, more)
 	}
 }
 

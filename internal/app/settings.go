@@ -39,9 +39,10 @@ type appSettings struct {
 	// DiffSplit opens every diff side by side, DiffWrap wraps long diff
 	// lines instead of scrolling them sideways, and IgnoreUntracked leaves
 	// untracked files out of the Changes list.
-	DiffSplit       bool `json:"diffSplit"`
-	DiffWrap        bool `json:"diffWrap"`
-	IgnoreUntracked bool `json:"ignoreUntracked"`
+	DiffSplit           bool `json:"diffSplit"`
+	DiffWrap            bool `json:"diffWrap"`
+	CommitDetailsLayout int  `json:"commitDetailsLayout"`
+	IgnoreUntracked     bool `json:"ignoreUntracked"`
 	// DisableShortcuts switches the window's keyboard shortcuts off. The
 	// header icons keep working, so every action stays reachable.
 	DisableShortcuts bool `json:"disableShortcuts"`
@@ -195,6 +196,9 @@ func normalizeSettings(s appSettings) appSettings {
 	}
 	if s.BufferLineHeight < 1 || s.BufferLineHeight > 2.5 {
 		s.BufferLineHeight = defaultBufferLineHeight
+	}
+	if s.CommitDetailsLayout != commitDetailsLeftRight && s.CommitDetailsLayout != commitDetailsTopBottom {
+		s.CommitDetailsLayout = commitDetailsLeftRight
 	}
 	if s.Spacing < 2 || s.Spacing > 10 {
 		s.Spacing = defaultSettings().Spacing
@@ -445,6 +449,7 @@ func (a *app) loadSettings() {
 	currentLanguage = normalizeLanguage(a.settings.Language)
 	a.diffSplit = a.settings.DiffSplit
 	a.diffWrap = a.settings.DiffWrap
+	a.commitDetailsLayout = a.settings.CommitDetailsLayout
 	a.ignoreUntracked = a.settings.IgnoreUntracked
 	a.ensureVisibleSection()
 }
@@ -461,6 +466,7 @@ func (a *app) saveSettings() {
 func (a *app) applySettingsChange() {
 	a.diffSplit = a.settings.DiffSplit
 	a.diffWrap = a.settings.DiffWrap
+	a.commitDetailsLayout = a.settings.CommitDetailsLayout
 	a.ignoreUntracked = a.settings.IgnoreUntracked
 	a.ensureVisibleSection()
 	currentLanguage = normalizeLanguage(a.settings.Language)

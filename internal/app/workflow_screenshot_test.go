@@ -87,3 +87,48 @@ func TestWorkflowScreenshots(t *testing.T) {
 		})
 	}
 }
+
+// TestCommitDetailAndToolbarScreenshots keeps the reworked commit details and
+// the whole-window diff in the shot set: both themes, both divider layouts,
+// and the maximized view with its own repository toolbar.
+func TestCommitDetailAndToolbarScreenshots(t *testing.T) {
+	dir := os.Getenv("MYGO_SHOTS")
+	if dir == "" {
+		t.Skip("set MYGO_SHOTS to a directory to write screenshots")
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, dark := range []bool{false, true} {
+		mode := "light"
+		if dark {
+			mode = "dark"
+		}
+		t.Run("commit-details-left-right-"+mode, func(t *testing.T) {
+			a, tt, updated := newScreenshotHarness(t, dark)
+			a.workspaceTab = sectionHistory
+			settleShot(t, tt, updated, func() bool { return a.commitDiffState != nil && !a.commitDiffLoading })
+			saveScreenshot(t, dir, "commit-details-left-right-"+mode, tt)
+		})
+		t.Run("commit-details-top-bottom-"+mode, func(t *testing.T) {
+			a, tt, updated := newScreenshotHarness(t, dark)
+			a.workspaceTab = sectionHistory
+			a.commitDetailsLayout = commitDetailsTopBottom
+			settleShot(t, tt, updated, func() bool { return a.commitDiffState != nil && !a.commitDiffLoading })
+			saveScreenshot(t, dir, "commit-details-top-bottom-"+mode, tt)
+		})
+		t.Run("maximized-diff-"+mode, func(t *testing.T) {
+			a, tt, updated := newScreenshotHarness(t, dark)
+			a.workspaceTab = sectionHistory
+			settleShot(t, tt, updated, func() bool { return a.commitDiffState != nil && !a.commitDiffLoading })
+			if err := tt.Click("Expand diff"); err != nil {
+				t.Fatalf("expand the diff: %v", err)
+			}
+			if !a.diffFullscreen {
+				t.Fatal("the diff did not open over the whole window")
+			}
+			tt.Frame()
+			saveScreenshot(t, dir, "maximized-diff-"+mode, tt)
+		})
+	}
+}

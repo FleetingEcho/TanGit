@@ -169,5 +169,10 @@ var featureTranslationsZhHans = map[string]string{
 	"Pushed all tags":        "已推送所有标签",
 	"Delete tag %s from %s?": "将标签 %s 从 %s 删除？",
 	"The tag is deleted only on the remote. Your local tag remains.": "只会删除远程仓库上的标签。本地标签仍会保留。",
-	"Deleted tag %s from %s": "已将标签 %s 从 %s 删除",
+	"Deleted tag %s from %s":     "已将标签 %s 从 %s 删除",
+	"Commit details layout":      "提交详情布局",
+	"Switch layout (Left/Right)": "切换布局（左/右）",
+	"Switch layout (Top/Bottom)": "切换布局（上/下）",
+	"Refresh commits":            "刷新提交",
+	"Reload the commit list":     "重新加载提交列表",
 }

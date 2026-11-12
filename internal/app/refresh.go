@@ -189,7 +189,7 @@ func (a *app) quietRefreshAllowed() bool {
 	if a.session == nil || a.state != stateReady || a.actionBusy || a.repositoryDetailsLoading {
 		return false
 	}
-	if a.fileEditing || a.modalOpen() {
+	if a.fileEditing || a.modalOpenExceptDiffFullscreen() {
 		return false
 	}
 	if a.blameState != nil || a.blameLoading {

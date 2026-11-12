@@ -411,16 +411,28 @@ func (a *app) expandDiffButton(c *ui.Context) {
 // them with the diff they change, instead of the window's top bar, puts them
 // where the user looks while reading the diff.
 func (a *app) diffViewOptions(c *ui.Context) {
+	a.diffViewOptionsWith(c, nil, true)
+}
+
+// diffViewOptionsWith adds pane-specific controls before the ordinary diff
+// actions and optionally includes their expand control. Commit details lead
+// with the file/diff orientation switch and put expansion in their title row.
+func (a *app) diffViewOptionsWith(c *ui.Context, leading func(*ui.Context), includeExpand bool) {
 	// Own the gap here rather than inheriting each pane's header spacing. Text
 	// buttons keep their natural width, so translations never collide with the
 	// fixed-width icon controls beside them.
 	ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
+		if leading != nil {
+			leading(c)
+		}
 		a.diffWhitespaceButton(c)
 		a.diffContextButton(c)
 		a.diffLayoutButton(c)
 		a.diffWrapButton(c)
 		a.exportDiffButton(c)
-		a.expandDiffButton(c)
+		if includeExpand {
+			a.expandDiffButton(c)
+		}
 	})
 }
 
@@ -564,6 +576,7 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 			panel.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })
 		}
 		panel.Children(func() {
+			a.headerViewWithID(c, "fullscreen-toolbar")
 			islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(10, 14)).Children(func() {
 				ui.Icon(c, diffSplitIcon).FontSize(18).TextColor(theme.Accent)
 				ui.Column(c).Gap(1).Grow(1).Children(func() {
