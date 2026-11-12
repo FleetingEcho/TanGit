@@ -1,7 +1,9 @@
 package app
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/egoist/mygo/plugins/terminal"
@@ -10,6 +12,15 @@ import (
 
 // newTerminal is a seam so tests can drive the pane without a real shell.
 var newTerminal = terminal.New
+
+type remoteTerminalConnection interface {
+	io.ReadWriteCloser
+	Resize(columns, rows int) error
+}
+
+var connectRemoteTerminal = func(ctx context.Context, client remoteWorkspaceClient, root string) (remoteTerminalConnection, error) {
+	return openRemoteTerminal(ctx, client, root)
+}
 
 // terminalPanelPercent is the bottom panel's initial share of the workspace.
 const terminalPanelPercent = 100.0 / 3.0
@@ -21,16 +32,17 @@ const terminalSessionLimit = 6
 // name is the user's label; shell and directory provide its default identity,
 // while title remains the shell's latest OSC-reported title.
 type terminalSessionState struct {
-	id        uint64
-	groupID   uint64
-	pane      *terminal.Terminal
-	loading   bool
-	err       string
-	name      string
-	shell     string
-	directory string
-	title     string
-	attempt   uint64
+	id          uint64
+	groupID     uint64
+	pane        *terminal.Terminal
+	loading     bool
+	err         string
+	name        string
+	shell       string
+	directory   string
+	title       string
+	attempt     uint64
+	startCancel context.CancelFunc
 	// Search belongs to this shell alone. Keeping the handle and latest status
 	// here preserves an independent find bar across splits and drag reordering.
 	searchOpen   bool
@@ -292,12 +304,23 @@ func (a *app) startTerminalAt(index int) {
 	session.loading = true
 	session.err = ""
 	dir := a.snapshot.Root
-	session.shell = terminalDefaultShellName()
+	remote := a.location.IsRemote()
+	var remoteClient remoteWorkspaceClient
+	var remoteErr error
+	if remote {
+		remoteClient, remoteErr = a.remoteWorkspaceClient()
+		session.shell = "SSH"
+	} else {
+		session.shell = terminalDefaultShellName()
+	}
 	session.directory = terminalDisplayDirectory(dir)
 	generation := a.generation
+	ctx, cancel := context.WithCancel(context.Background())
+	session.startCancel = cancel
 	go func() {
 		defer a.recoverBackground()
-		pane, err := newTerminal(terminal.Options{
+		defer cancel()
+		options := terminal.Options{
 			Dir: dir,
 			OnSearch: func(status terminal.SearchStatus) {
 				a.updateChanged(func() bool {
@@ -313,6 +336,14 @@ func (a *app) startTerminalAt(index int) {
 				_, current := a.terminalSessionByID(sessionID)
 				if generation != a.generation || current == nil || attempt != current.attempt {
 					return false
+				}
+				if remote {
+					relative, line, ok := remoteTerminalFileLink(dir, link)
+					if !ok {
+						return false
+					}
+					a.openCodeFile(relative, line)
+					return true
 				}
 				path, line, ok := terminalFileLink(dir, link)
 				if !ok {
@@ -343,7 +374,27 @@ func (a *app) startTerminalAt(index int) {
 					return visible
 				})
 			},
-		})
+		}
+		var connection remoteTerminalConnection
+		err := remoteErr
+		if remote && err == nil {
+			connection, err = connectRemoteTerminal(ctx, remoteClient, dir)
+			if connection != nil {
+				options.Conn = connection
+				options.ResizeByConn = true
+				options.Dir = ""
+			}
+		}
+		if err == nil {
+			err = ctx.Err()
+		}
+		var pane *terminal.Terminal
+		if err == nil {
+			pane, err = newTerminal(options)
+		}
+		if err != nil && connection != nil && pane == nil {
+			_ = connection.Close()
+		}
 		a.updateChanged(func() bool {
 			_, current := a.terminalSessionByID(sessionID)
 			if generation != a.generation || current == nil || attempt != current.attempt || current.pane != nil {
@@ -352,6 +403,7 @@ func (a *app) startTerminalAt(index int) {
 				}
 				return false
 			}
+			current.startCancel = nil
 			current.loading = false
 			if err != nil {
 				current.err = safeError(err)
@@ -436,6 +488,10 @@ func (a *app) closeTerminalAt(index int) {
 	}
 	a.storeTerminalLayout()
 	a.endTerminalSearch(&a.term.sessions[index])
+	if cancel := a.term.sessions[index].startCancel; cancel != nil {
+		cancel()
+		a.term.sessions[index].startCancel = nil
+	}
 	session := a.term.sessions[index]
 	activeID := uint64(0)
 	if active := a.activeTerminal(); active != nil {

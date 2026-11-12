@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -14,6 +15,8 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"lazygitapp/internal/repository"
+	"lazygitapp/internal/sshworkspace"
+	"lazygitapp/internal/workspace"
 )
 
 type monitoredTerminalConn struct {
@@ -110,6 +113,63 @@ func splitMonitoredTerminal(t *testing.T, h *harness, peers chan monitoredTermin
 	second := <-peers
 	t.Cleanup(func() { _ = second.Close() })
 	return second
+}
+
+type monitoredRemoteTerminalConn struct{ *monitoredTerminalConn }
+
+func (c *monitoredRemoteTerminalConn) Resize(int, int) error { return nil }
+
+func TestClosingStartingRemoteTerminalCancelsAndClosesLateConnection(t *testing.T) {
+	originalConnect := connectRemoteTerminal
+	originalNewTerminal := newTerminal
+	t.Cleanup(func() {
+		connectRemoteTerminal = originalConnect
+		newTerminal = originalNewTerminal
+	})
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	release := make(chan struct{})
+	terminalSide, peerSide := net.Pipe()
+	monitored := &monitoredTerminalConn{Conn: terminalSide, closed: make(chan struct{})}
+	connection := &monitoredRemoteTerminalConn{monitoredTerminalConn: monitored}
+	peer := monitoredTerminalPeer{Conn: peerSide, closed: monitored.closed}
+	t.Cleanup(func() { _ = peer.Close() })
+	connectRemoteTerminal = func(ctx context.Context, _ remoteWorkspaceClient, _ string) (remoteTerminalConnection, error) {
+		close(started)
+		go func() {
+			<-ctx.Done()
+			close(cancelled)
+		}()
+		<-release
+		return connection, nil
+	}
+	var terminalCalls atomic.Int32
+	newTerminal = func(terminal.Options) (*terminal.Terminal, error) {
+		terminalCalls.Add(1)
+		return nil, errors.New("cancelled startup reached local terminal creation")
+	}
+
+	h := menuTestApp(t)
+	h.app.location = workspace.Location{Kind: workspace.SSH, ProfileID: "test", Root: "/srv/repo"}
+	h.app.snapshot.Root = "/srv/repo"
+	h.app.session = sshProviderSession{Session: fakeSession{}, client: &sshworkspace.Client{}}
+	h.app.openTerminal()
+	<-started
+	if h.app.activeTerminal().startCancel == nil {
+		t.Fatal("remote startup did not retain its cancel function")
+	}
+	h.app.closeTerminal()
+	select {
+	case <-cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("closing the session did not cancel remote startup")
+	}
+	close(release)
+	requireTerminalClosed(t, peer)
+	h.updates.waitForUpdate(t)
+	if terminalCalls.Load() != 0 || h.app.terminalSessionCount() != 0 {
+		t.Fatalf("late remote startup revived the terminal: calls=%d sessions=%d", terminalCalls.Load(), h.app.terminalSessionCount())
+	}
 }
 
 func TestTerminalTitleRepaintsOnlyWhenSessionStateChanges(t *testing.T) {

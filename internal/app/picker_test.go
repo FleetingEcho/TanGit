@@ -60,6 +60,41 @@ func TestPickerLaunchAndRecentSectionsAreAligned(t *testing.T) {
 	}
 }
 
+func TestPickerRemoteActionsAreAtTheCardTopRight(t *testing.T) {
+	a := newApp(fakeOpener{})
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+
+	heading, found := tt.Find("Open a repository")
+	if !found {
+		t.Fatal("the launch-card heading is missing")
+	}
+	browse, found := tt.Find("Browse…")
+	if !found {
+		t.Fatal("the repository path action is missing")
+	}
+	remote, found := tt.Find("Open SSH")
+	if !found {
+		t.Fatal("the SSH workspace action is missing")
+	}
+	clone, found := tt.Find("Clone")
+	if !found {
+		t.Fatal("the clone action is missing")
+	}
+	if remote.Y != heading.Y || clone.Y != heading.Y {
+		t.Fatalf("remote actions are not aligned with the card heading: heading=%+v SSH=%+v clone=%+v", heading, remote, clone)
+	}
+	if remote.H < 38 || clone.H < 38 {
+		t.Fatalf("remote action targets are too small: SSH=%+v clone=%+v", remote, clone)
+	}
+	if remote.X <= heading.X+heading.W || clone.X <= remote.X+remote.W {
+		t.Fatalf("remote actions are not at the top right: heading=%+v SSH=%+v clone=%+v", heading, remote, clone)
+	}
+	if remote.Y+remote.H > browse.Y || clone.Y+clone.H > browse.Y {
+		t.Fatalf("remote actions must precede the path field: browse=%+v SSH=%+v clone=%+v", browse, remote, clone)
+	}
+}
+
 // While a repository opens, the picker is not shown as a working form: the
 // whole page becomes one loading screen, with a way back if it takes too long.
 func TestPickerShowsOnlyTheLoadingPageWhileOpening(t *testing.T) {

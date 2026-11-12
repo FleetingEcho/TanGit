@@ -59,88 +59,101 @@ func (a *app) codeSidebar(c *ui.Context) {
 
 func (a *app) codeFileExplorer(c *ui.Context) {
 	theme := c.Theme()
-	field := ui.SearchField(c, &a.code.filter).Bind(&a.sectionSearch[sectionCode]).
-		Label(tr("Quick open")).Placeholder(tr("Filter files (Ctrl+P)"))
-	if field.Changed() {
-		a.syncCodeTree()
-	}
-	if field.Submitted() {
-		a.openSelectedCodeFile()
-	}
-	if strings.TrimSpace(a.code.filter) == "" {
-		a.codeRepositoryRootRow(c, theme)
-	}
-	if a.code.filesLoading {
-		ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
-			ui.Spinner(c).Label(tr("Loading files"))
-			ui.Text(c, tr("Loading files…")).TextColor(theme.TextMuted)
-		})
-		return
-	}
-	if a.code.filesError != "" {
-		ui.Column(c).Grow(1).Center().Gap(8).Padding(8).Children(func() {
-			ui.Text(c, tr("The file list could not be read.")).Bold().TextAlign(ui.Center)
-			ui.Text(c, a.code.filesError).TextColor(theme.Danger).TextAlign(ui.Center)
-			if ui.Button(c, tr("Try again")).Clicked() {
-				a.requestCodeFiles()
-			}
-		})
-		return
-	}
-	if len(a.code.rows) == 0 {
-		message := "This repository has no files"
-		if strings.TrimSpace(a.code.filter) != "" {
-			message = "No files match this filter"
+	explorer := ui.Column(c).Grow(1).Gap(8)
+	explorer.Children(func() {
+		field := ui.SearchField(c, &a.code.filter).Bind(&a.sectionSearch[sectionCode]).
+			Label(tr("Quick open")).Placeholder(tr("Filter files (Ctrl+P)"))
+		if field.Changed() {
+			a.syncCodeTree()
 		}
-		listSearchEmpty(c, message)
-		return
-	}
-	list := a.keyboardList(c, &a.code.list, len(a.code.rows)).Grow(1).Rows(func(row ui.ListRow) {
-		if row.Index < 0 || row.Index >= len(a.code.rows) {
-			return
+		if field.Submitted() {
+			a.openSelectedCodeFile()
 		}
-		item := a.code.rows[row.Index]
-		if item.isDirectory() {
-			directory := a.fileTreeDirectoryRow(row.Context, codeFileTreeScope, item, row.Selected(), func() {
-				a.selectCodeRow(row.Index)
-				// fileTreeDirectoryRow toggles folding after this callback. Defer
-				// the one necessary rebuild until the next build pass.
-				a.code.treeDirty = true
-			}).Drag(codeExplorerDrag{path: item.path})
-			directory.PopoverMenu(func(m *ui.Menu) {
-				a.codeExplorerMenu(m, item, row.Context.Services())
+		if strings.TrimSpace(a.code.filter) == "" {
+			a.codeRepositoryRootRow(c, theme)
+		}
+		if a.code.filesLoading {
+			ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
+				ui.Spinner(c).Label(tr("Loading files"))
+				ui.Text(c, tr("Loading files…")).TextColor(theme.TextMuted)
 			})
-			if _, over := ui.DragOver[codeExplorerDrag](directory); over {
-				directory.Background(theme.Accent.Alpha(0.16))
-			}
-			if dropped, ok := ui.Drop[codeExplorerDrag](directory); ok && !a.code.fileOperationBusy {
-				a.code.pendingMoveSource = dropped.path
-				a.code.pendingMoveTarget = item.path
-			}
 			return
 		}
-		button := ui.ButtonBase(row.Context).Grow(1).Gap(6).Padding(6, 8, 6, float32(8+16*item.depth)).
-			Label(tr("Open") + " " + item.path).
-			Drag(codeExplorerDrag{path: item.path}).
-			PopoverMenu(func(m *ui.Menu) { a.codeExplorerMenu(m, item, row.Context.Services()) })
-		button.Children(func() {
-			fileTypeMark(row.Context, item.path, 13, row.Selected())
-			ui.Text(row.Context, item.name).Grow(1).SingleLine()
-			if status := a.codeFileStatus(item.path); status != "" {
-				ui.Text(row.Context, status).FontSize(theme.FontSize - 1).Bold().TextColor(theme.Warning)
+		if a.code.filesError != "" {
+			ui.Column(c).Grow(1).Center().Gap(8).Padding(8).Children(func() {
+				ui.Text(c, tr("The file list could not be read.")).Bold().TextAlign(ui.Center)
+				ui.Text(c, a.code.filesError).TextColor(theme.Danger).TextAlign(ui.Center)
+				if ui.Button(c, tr("Try again")).Clicked() {
+					a.requestCodeFiles()
+				}
+			})
+			return
+		}
+		if len(a.code.rows) == 0 {
+			message := "This repository has no files"
+			if strings.TrimSpace(a.code.filter) != "" {
+				message = "No files match this filter"
+			}
+			listSearchEmpty(c, message)
+			return
+		}
+		list := a.keyboardList(c, &a.code.list, len(a.code.rows)).Grow(1).Rows(func(row ui.ListRow) {
+			if row.Index < 0 || row.Index >= len(a.code.rows) {
+				return
+			}
+			item := a.code.rows[row.Index]
+			if item.isDirectory() {
+				directory := a.fileTreeDirectoryRow(row.Context, codeFileTreeScope, item, row.Selected(), func() {
+					a.selectCodeRow(row.Index)
+					// fileTreeDirectoryRow toggles folding after this callback. Defer
+					// the one necessary rebuild until the next build pass.
+					a.code.treeDirty = true
+				}).Drag(codeExplorerDrag{path: item.path})
+				directory.PopoverMenu(func(m *ui.Menu) {
+					a.codeExplorerMenu(m, item, row.Context.Services())
+					a.remoteTransferExplorerMenu(m, item)
+				})
+				a.remoteTransferExplorerHover(row.Context, directory, item)
+				if _, over := ui.DragOver[codeExplorerDrag](directory); over {
+					directory.Background(theme.Accent.Alpha(0.16))
+				}
+				if dropped, ok := ui.Drop[codeExplorerDrag](directory); ok && !a.code.fileOperationBusy {
+					a.code.pendingMoveSource = dropped.path
+					a.code.pendingMoveTarget = item.path
+				}
+				a.workspaceTransferDropTarget(directory, item.path, theme.Accent.Alpha(0.16))
+				return
+			}
+			button := ui.ButtonBase(row.Context).Grow(1).Gap(6).Padding(6, 8, 6, float32(8+16*item.depth)).
+				Label(tr("Open") + " " + item.path).
+				Drag(codeExplorerDrag{path: item.path}).
+				PopoverMenu(func(m *ui.Menu) {
+					a.codeExplorerMenu(m, item, row.Context.Services())
+					a.remoteTransferExplorerMenu(m, item)
+				})
+			button.Children(func() {
+				fileTypeMark(row.Context, item.path, 13, row.Selected())
+				ui.Text(row.Context, item.name).Grow(1).SingleLine()
+				if status := a.codeFileStatus(item.path); status != "" {
+					ui.Text(row.Context, status).FontSize(theme.FontSize - 1).Bold().TextColor(theme.Warning)
+				}
+				a.remoteTransferExplorerHover(row.Context, button, item)
+			})
+			if button.DoubleClicked() {
+				a.selectCodeRow(row.Index)
+				a.openPinnedCodeFile(item.path, 0)
+			} else if button.Clicked() {
+				a.selectCodeRow(row.Index)
+				a.openCodeFile(item.path, 0)
 			}
 		})
-		if button.DoubleClicked() {
-			a.selectCodeRow(row.Index)
-			a.openPinnedCodeFile(item.path, 0)
-		} else if button.Clicked() {
-			a.selectCodeRow(row.Index)
-			a.openCodeFile(item.path, 0)
+		if a.keyboardListChanged(&a.code.list, list) {
+			a.selectCodeRow(a.code.selectedRow)
 		}
 	})
-	if a.keyboardListChanged(&a.code.list, list) {
-		a.selectCodeRow(a.code.selectedRow)
-	}
+	// Files and folders dropped between rows belong to the visible workspace
+	// root. More specific folder rows still receive their own drops first.
+	a.workspaceTransferDropTarget(explorer, a.code.searchFolder, theme.Accent.Alpha(0.16))
 }
 
 // codeRepositoryRootRow makes the opened workspace root a real creation and
@@ -165,6 +178,7 @@ func (a *app) codeRepositoryRootRow(c *ui.Context, theme *ui.Theme) {
 		if m.Item(tr("New Folder…")).Disabled(a.code.fileOperationBusy).Chosen() {
 			a.openCodeFileForm(codeFileFormNewFolder, folder, "")
 		}
+		a.remoteTransferRootMenu(m)
 	})
 	if _, over := ui.DragOver[codeExplorerDrag](root); over {
 		root.Background(theme.Accent.Alpha(0.16))
@@ -173,6 +187,7 @@ func (a *app) codeRepositoryRootRow(c *ui.Context, theme *ui.Theme) {
 		a.code.pendingMoveSource = dropped.path
 		a.code.pendingMoveTarget = folder
 	}
+	a.workspaceTransferDropTarget(root, folder, theme.Accent.Alpha(0.16))
 }
 
 // codeSearchFolderSelector keeps the workspace root visible above either

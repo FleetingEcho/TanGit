@@ -28,6 +28,10 @@ type managedLanguageServer struct {
 }
 
 func (a *app) syncAdditionalLanguageServers() {
+	if a.location.IsRemote() {
+		a.stopAdditionalLanguageServers()
+		return
+	}
 	if a.settingsOpen || a.snapshot.Root == "" {
 		a.stopAdditionalLanguageServers()
 		return
@@ -175,6 +179,10 @@ func (a *app) startManagedLanguageServer(server *managedLanguageServer) {
 	}()
 }
 
+// languageServerStat is a test seam for proving that remote synchronization
+// returns before Rust manifest discovery touches the local filesystem.
+var languageServerStat = os.Stat
+
 // Git roots often contain nested Cargo projects (for example src-tauri).
 // Link those manifests explicitly, and treat loose Rust files as standalone
 // projects instead of asking rust-analyzer to discover a nonexistent workspace.
@@ -182,7 +190,7 @@ func rustLanguageServerInitializationOptions(root string, files, openFiles []str
 	projects := make(map[string]bool)
 	addManifest := func(relative string) bool {
 		full := filepath.Join(root, filepath.FromSlash(relative))
-		if info, err := os.Stat(full); err == nil && info.Mode().IsRegular() {
+		if info, err := languageServerStat(full); err == nil && info.Mode().IsRegular() {
 			projects[full] = true
 			return true
 		}

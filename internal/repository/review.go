@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/jesseduffield/lazygit/pkg/commands/models"
 )
@@ -21,12 +20,12 @@ type reviewFile struct {
 }
 
 func (s *gitSession) reviewPath() string {
-	return filepath.Join(s.git.RepoPaths.WorktreeGitDirPath(), "tangit", "reviewed.json")
+	return s.joinPath(s.git.RepoPaths.WorktreeGitDirPath(), "tangit", "reviewed.json")
 }
 
-func readReviewFile(name string) (reviewFile, error) {
+func (s *gitSession) readReviewFile(name string) (reviewFile, error) {
 	state := reviewFile{Version: 1, Files: map[string]string{}}
-	data, err := os.ReadFile(name)
+	data, err := s.fileService().ReadFile(name)
 	if os.IsNotExist(err) {
 		return state, nil
 	}
@@ -45,32 +44,13 @@ func readReviewFile(name string) (reviewFile, error) {
 	return state, nil
 }
 
-func writeReviewFile(name string, state reviewFile) error {
-	if err := os.MkdirAll(filepath.Dir(name), 0o700); err != nil {
-		return fmt.Errorf("create review-state folder: %w", err)
-	}
-	file, err := os.CreateTemp(filepath.Dir(name), "reviewed-*.json")
+func (s *gitSession) writeReviewFile(name string, state reviewFile) error {
+	data, err := json.Marshal(state)
 	if err != nil {
 		return fmt.Errorf("write review state: %w", err)
 	}
-	temporary := file.Name()
-	defer os.Remove(temporary)
-	if err := file.Chmod(0o600); err != nil {
-		file.Close()
-		return fmt.Errorf("protect review state: %w", err)
-	}
-	if err := json.NewEncoder(file).Encode(state); err != nil {
-		file.Close()
-		return fmt.Errorf("write review state: %w", err)
-	}
-	if err := file.Sync(); err != nil {
-		file.Close()
-		return fmt.Errorf("write review state: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("write review state: %w", err)
-	}
-	if err := os.Rename(temporary, name); err != nil {
+	data = append(data, '\n')
+	if err := s.fileService().WriteFileAtomic(name, data, 0o600); err != nil {
 		return fmt.Errorf("replace review state: %w", err)
 	}
 	return nil
@@ -98,24 +78,25 @@ func (s *gitSession) reviewFingerprint(ctx context.Context, file File) (string, 
 	hash.Write([]byte(patch))
 	hash.Write([]byte{0})
 	fmt.Fprintf(hash, "tracked=%v deleted=%v previous=%s\x00", file.Tracked, file.Deleted, file.PreviousPath)
-	path, err := worktreeFilePath(s.git.RepoPaths.WorktreePath(), file.Path)
+	name, err := s.worktreeFilePath(s.git.RepoPaths.WorktreePath(), file.Path)
 	if err != nil {
 		return "", err
 	}
-	info, statErr := os.Lstat(path)
+	files := s.fileService()
+	info, statErr := files.Lstat(name)
 	switch {
 	case os.IsNotExist(statErr):
 		hash.Write([]byte("absent"))
 	case statErr != nil:
 		return "", fmt.Errorf("read review content for %s: %w", file.Path, statErr)
 	case info.Mode()&os.ModeSymlink != 0:
-		target, err := os.Readlink(path)
+		target, err := files.Readlink(name)
 		if err != nil {
 			return "", fmt.Errorf("read review link for %s: %w", file.Path, err)
 		}
 		hash.Write([]byte("symlink\x00" + target))
 	case info.Mode().IsRegular():
-		content, err := os.ReadFile(path)
+		content, err := files.ReadFile(name)
 		if err != nil {
 			return "", fmt.Errorf("read review content for %s: %w", file.Path, err)
 		}
@@ -130,7 +111,7 @@ func (s *gitSession) reviewFingerprint(ctx context.Context, file File) (string, 
 func (s *gitSession) ReviewedFiles(ctx context.Context, files []File) (map[string]bool, error) {
 	s.reviewMu.Lock()
 	defer s.reviewMu.Unlock()
-	state, err := readReviewFile(s.reviewPath())
+	state, err := s.readReviewFile(s.reviewPath())
 	if err != nil {
 		return nil, err
 	}
@@ -155,18 +136,18 @@ func (s *gitSession) SetFileReviewed(ctx context.Context, file File, reviewed bo
 	s.reviewMu.Lock()
 	defer s.reviewMu.Unlock()
 	name := s.reviewPath()
-	state, err := readReviewFile(name)
+	state, err := s.readReviewFile(name)
 	if err != nil {
 		return err
 	}
 	if !reviewed {
 		delete(state.Files, file.Path)
-		return writeReviewFile(name, state)
+		return s.writeReviewFile(name, state)
 	}
 	identity, err := s.reviewFingerprint(ctx, file)
 	if err != nil {
 		return err
 	}
 	state.Files[file.Path] = identity
-	return writeReviewFile(name, state)
+	return s.writeReviewFile(name, state)
 }

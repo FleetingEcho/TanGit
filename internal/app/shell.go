@@ -71,6 +71,9 @@ func (t *tab) path() string {
 	if t.app == nil {
 		return ""
 	}
+	if t.app.location.Valid() {
+		return t.app.location.String()
+	}
 	if t.app.state == stateReady {
 		if root := strings.TrimSpace(t.app.snapshot.Root); root != "" {
 			return root
@@ -222,7 +225,15 @@ func (s *shell) newTab(path string) *tab {
 	a.openHomeTab = func() {
 		s.request(s.showHome)
 	}
-	a.claimOpen = func(path string) bool { return s.claimOpen(a, path) }
+	a.claimOpen = func(path string) bool {
+		if s.claimOpen(a, path) {
+			return true
+		}
+		// beginOpen asks this before it closes the previous session, giving its
+		// transfer queue a cancellation signal before the SSH client goes away.
+		a.shutdownRemoteTransfers()
+		return false
+	}
 	a.closeTab = func() { s.closeTabFor(a) }
 	a.onRecentRenamed = func(path, name string) { s.spreadRecentName(a, path, name) }
 	a.externalRefresh = func() {
@@ -588,6 +599,9 @@ func cleanRepoPath(path string) string {
 	if path == "" {
 		return ""
 	}
+	if remote, ok := canonicalRemoteReference(path); ok {
+		return remote
+	}
 	if abs, err := filepath.Abs(path); err == nil {
 		path = abs
 	}
@@ -684,6 +698,37 @@ func (s *shell) openTab(path string) {
 	t.app.beginOpen()
 }
 
+// prepareTabsShutdown flushes pending editors without removing any page. Only
+// after every page reports success may its final synchronous teardown run. A
+// failed save therefore leaves the complete set of tabs and sessions intact.
+func (s *shell) prepareTabsShutdown(tabs []*tab, run func()) {
+	if len(tabs) == 0 {
+		run()
+		return
+	}
+	candidate := tabs[0]
+	if candidate == nil || candidate.app == nil {
+		s.prepareTabsShutdown(tabs[1:], run)
+		return
+	}
+	candidate.app.prepareShutdown(func(ok bool) {
+		if !ok {
+			return
+		}
+		s.prepareTabsShutdown(tabs[1:], run)
+	})
+}
+
+// shutdownApp performs final teardown after prepareTabsShutdown succeeds. The
+// transfer queue closes off the UI thread; Main joins outstanding closes on exit.
+func (s *shell) shutdownApp(a *app) {
+	if a == nil {
+		return
+	}
+	a.shutdownRemoteTransfers()
+	a.shutdown()
+}
+
 // closeTabFor gives up the page an app belongs to, as the app's crash screen
 // and its "Back to repositories" ask.
 func (s *shell) closeTabFor(a *app) {
@@ -691,7 +736,7 @@ func (s *shell) closeTabFor(a *app) {
 		s.request(func() { s.closeTab(t) })
 		return
 	}
-	a.shutdown()
+	s.prepareTabsShutdown([]*tab{{app: a}}, func() { s.shutdownApp(a) })
 }
 
 // canClose reports whether closing a page would leave the window with a page:
@@ -724,27 +769,32 @@ func (s *shell) confirmCodeTabs(tabs []*tab, run func()) {
 }
 
 func (s *shell) closeTabConfirmed(t *tab) {
-	i := s.indexOf(t)
-	if i < 0 {
+	if s.indexOf(t) < 0 {
 		return
 	}
-	if len(s.tabs) == 1 {
-		if !t.repository() {
+	if len(s.tabs) == 1 && !t.repository() {
+		return
+	}
+	s.prepareTabsShutdown([]*tab{t}, func() {
+		i := s.indexOf(t)
+		if i < 0 {
 			return
 		}
-		t.app.shutdown()
-		s.tabs[0] = s.newTab("")
-		s.active = 0
-		s.pushSettings(s.tabs[0].app)
-		s.refreshTitle()
+		if len(s.tabs) == 1 {
+			s.shutdownApp(t.app)
+			s.tabs[0] = s.newTab("")
+			s.active = 0
+			s.pushSettings(s.tabs[0].app)
+			s.refreshTitle()
+			s.invalidate()
+			return
+		}
+		wasActive := s.activeTab()
+		s.shutdownApp(t.app)
+		s.tabs = append(s.tabs[:i], s.tabs[i+1:]...)
+		s.reindex(wasActive)
 		s.invalidate()
-		return
-	}
-	wasActive := s.activeTab()
-	t.app.shutdown()
-	s.tabs = append(s.tabs[:i], s.tabs[i+1:]...)
-	s.reindex(wasActive)
-	s.invalidate()
+	})
 }
 
 // closeOthers closes every page that can be closed besides t, keeping pinned
@@ -763,23 +813,35 @@ func (s *shell) closeOthersConfirmed(t *tab) {
 	if s.indexOf(t) < 0 {
 		return
 	}
-	wasActive := s.activeTab()
-	kept := make([]*tab, 0, len(s.tabs))
+	var closing []*tab
 	for _, candidate := range s.tabs {
-		if candidate == t || candidate.pinned {
-			kept = append(kept, candidate)
-			continue
+		if candidate != t && !candidate.pinned {
+			closing = append(closing, candidate)
 		}
-		candidate.app.shutdown()
 	}
-	s.tabs = kept
-	s.reindex(wasActive)
-	// The page that led here stays on screen when the one it replaced was
-	// the page the user was reading.
-	if wasActive != nil && s.indexOf(wasActive) < 0 {
-		s.activate(s.indexOf(t))
-	}
-	s.invalidate()
+	s.prepareTabsShutdown(closing, func() {
+		wasActive := s.activeTab()
+		targets := make(map[*tab]bool, len(closing))
+		for _, candidate := range closing {
+			targets[candidate] = true
+		}
+		kept := make([]*tab, 0, len(s.tabs))
+		for _, candidate := range s.tabs {
+			if !targets[candidate] {
+				kept = append(kept, candidate)
+				continue
+			}
+			s.shutdownApp(candidate.app)
+		}
+		s.tabs = kept
+		s.reindex(wasActive)
+		// The page that led here stays on screen when the one it replaced was
+		// the page the user was reading.
+		if wasActive != nil && s.indexOf(wasActive) < 0 {
+			s.activate(s.indexOf(t))
+		}
+		s.invalidate()
+	})
 }
 
 // closeRight closes the pages after t that can be closed, leaving pinned ones.
@@ -802,18 +864,30 @@ func (s *shell) closeRightConfirmed(t *tab) {
 	if i < 0 {
 		return
 	}
-	wasActive := s.activeTab()
-	kept := make([]*tab, 0, len(s.tabs))
-	for j, candidate := range s.tabs {
-		if j > i && !candidate.pinned {
-			candidate.app.shutdown()
-			continue
+	var closing []*tab
+	for _, candidate := range s.tabs[i+1:] {
+		if !candidate.pinned {
+			closing = append(closing, candidate)
 		}
-		kept = append(kept, candidate)
 	}
-	s.tabs = kept
-	s.reindex(wasActive)
-	s.invalidate()
+	s.prepareTabsShutdown(closing, func() {
+		wasActive := s.activeTab()
+		targets := make(map[*tab]bool, len(closing))
+		for _, candidate := range closing {
+			targets[candidate] = true
+		}
+		kept := make([]*tab, 0, len(s.tabs))
+		for _, candidate := range s.tabs {
+			if targets[candidate] {
+				s.shutdownApp(candidate.app)
+				continue
+			}
+			kept = append(kept, candidate)
+		}
+		s.tabs = kept
+		s.reindex(wasActive)
+		s.invalidate()
+	})
 }
 
 // closeAll closes every page and leaves the picker in the window.
@@ -822,16 +896,21 @@ func (s *shell) closeAll() {
 }
 
 func (s *shell) closeAllConfirmed() {
-	for _, t := range s.tabs {
-		t.app.shutdown()
-	}
-	s.tabs = nil
-	s.active = 0
-	t := s.newTab("")
-	s.tabs = []*tab{t}
-	s.pushSettings(t.app)
-	s.refreshTitle()
-	s.invalidate()
+	closing := append([]*tab(nil), s.tabs...)
+	s.prepareTabsShutdown(closing, func() {
+		for _, t := range closing {
+			if s.indexOf(t) >= 0 {
+				s.shutdownApp(t.app)
+			}
+		}
+		s.tabs = nil
+		s.active = 0
+		t := s.newTab("")
+		s.tabs = []*tab{t}
+		s.pushSettings(t.app)
+		s.refreshTitle()
+		s.invalidate()
+	})
 }
 
 // reindex points the window at the page that was active before pages went
@@ -1344,7 +1423,7 @@ func (s *shell) shutdown() {
 	}
 	for _, t := range s.tabs {
 		if t.app != nil {
-			t.app.shutdown()
+			s.shutdownApp(t.app)
 		}
 	}
 	s.tabs = nil

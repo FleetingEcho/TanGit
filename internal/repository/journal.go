@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -78,7 +79,7 @@ func (r OperationRecord) CanUndo() bool {
 }
 
 func (s *gitSession) journalDir() string {
-	return filepath.Join(s.git.RepoPaths.WorktreeGitDirPath(), "tangit", "journal")
+	return s.joinPath(s.git.RepoPaths.WorktreeGitDirPath(), "tangit", "journal")
 }
 
 func validOperationID(id string) bool {
@@ -93,13 +94,16 @@ func (s *gitSession) operationPath(id string) (string, error) {
 	if !validOperationID(id) {
 		return "", fmt.Errorf("invalid safety journal operation id")
 	}
-	return filepath.Join(s.journalDir(), id+".json"), nil
+	return s.joinPath(s.journalDir(), id+".json"), nil
 }
 
 // syncDirectory persists a rename's directory entry on Unix filesystems.
 // Directory fsync is not supported by Windows, where the file sync before the
 // rename remains the best available durability boundary.
-func syncDirectory(name string) error {
+func (s *gitSession) syncDirectory(name string) error {
+	if s.sshClient != nil {
+		return nil
+	}
 	if runtime.GOOS == "windows" {
 		return nil
 	}
@@ -114,7 +118,23 @@ func syncDirectory(name string) error {
 	return directory.Close()
 }
 
-func writeOperationRecord(name string, record OperationRecord) error {
+func (s *gitSession) writeOperationRecord(name string, record OperationRecord) error {
+	if s.sshClient != nil {
+		data, err := json.Marshal(record)
+		if err != nil {
+			return fmt.Errorf("write safety journal: %w", err)
+		}
+		if err := s.fileService().WriteFileAtomic(name, append(data, '\n'), 0o600); err != nil {
+			return err
+		}
+		if err := s.syncRemotePath(name); err != nil {
+			return fmt.Errorf("sync safety journal: %w", err)
+		}
+		if err := s.syncRemotePath(path.Dir(name)); err != nil {
+			return fmt.Errorf("sync safety journal directory: %w", err)
+		}
+		return nil
+	}
 	if err := os.MkdirAll(filepath.Dir(name), 0o700); err != nil {
 		return fmt.Errorf("create safety journal: %w", err)
 	}
@@ -142,14 +162,14 @@ func writeOperationRecord(name string, record OperationRecord) error {
 	if err := os.Rename(temporary, name); err != nil {
 		return fmt.Errorf("replace safety journal: %w", err)
 	}
-	if err := syncDirectory(filepath.Dir(name)); err != nil {
+	if err := s.syncDirectory(filepath.Dir(name)); err != nil {
 		return fmt.Errorf("sync safety journal: %w", err)
 	}
 	return nil
 }
 
-func readOperationRecord(name string) (OperationRecord, error) {
-	data, err := os.ReadFile(name)
+func (s *gitSession) readOperationRecord(name string) (OperationRecord, error) {
+	data, err := s.fileService().ReadFile(name)
 	if err != nil {
 		return OperationRecord{}, fmt.Errorf("read safety journal: %w", err)
 	}
@@ -214,7 +234,7 @@ func (s *gitSession) beginOperation(kind, summary string, undoKind string, snaps
 		UndoKind: undoKind, Snapshot: snapshot,
 	}
 	name, _ := s.operationPath(record.ID)
-	if err := writeOperationRecord(name, record); err != nil {
+	if err := s.writeOperationRecord(name, record); err != nil {
 		return OperationRecord{}, err
 	}
 	return record, nil
@@ -234,7 +254,7 @@ func (s *gitSession) pinOperationBefore(record OperationRecord) (OperationRecord
 	}
 	record.RefName = ref
 	name, _ := s.operationPath(record.ID)
-	if err := writeOperationRecord(name, record); err != nil {
+	if err := s.writeOperationRecord(name, record); err != nil {
 		return record, err
 	}
 	return record, nil
@@ -279,7 +299,7 @@ func (s *gitSession) completeJournalOperation(record OperationRecord, actionErr 
 		record.UndoKind = ""
 	}
 	name, _ := s.operationPath(record.ID)
-	if err := writeOperationRecord(name, record); err != nil {
+	if err := s.writeOperationRecord(name, record); err != nil {
 		if actionErr != nil {
 			return fmt.Errorf("%w (also could not finish the safety journal: %v)", actionErr, err)
 		}
@@ -301,7 +321,7 @@ func (s *gitSession) Operations(ctx context.Context) ([]OperationRecord, error) 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(s.journalDir())
+	entries, err := s.fileService().ReadDir(s.journalDir())
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -317,7 +337,7 @@ func (s *gitSession) Operations(ctx context.Context) ([]OperationRecord, error) 
 		if entry.IsDir() || entry.Name() != id+".json" || !validOperationID(id) {
 			continue
 		}
-		record, readErr := readOperationRecord(filepath.Join(s.journalDir(), entry.Name()))
+		record, readErr := s.readOperationRecord(s.joinPath(s.journalDir(), entry.Name()))
 		if readErr != nil || record.ID != id {
 			// A damaged record must not hide healthy history, worktrees or other
 			// operations. Keep the damage visible without retaining any partially
@@ -369,7 +389,7 @@ func (s *gitSession) requireUnchangedOperation(record OperationRecord) error {
 	if record.Worktree != s.git.RepoPaths.WorktreePath() {
 		return fmt.Errorf("operation belongs to a different worktree")
 	}
-	if state := s.git.Status.WorkingTreeState(); state.Any() {
+	if state := s.workingTreeState(); state.Any() {
 		return fmt.Errorf("cannot undo while %s is in progress", state.Effective().CommandName())
 	}
 	branch, head, err := s.currentOperationIdentity()
@@ -415,7 +435,7 @@ func (s *gitSession) requireUnchangedOperation(record OperationRecord) error {
 func (s *gitSession) markOperationUndone(record OperationRecord) error {
 	record.UndoneAt = time.Now().Unix()
 	name, _ := s.operationPath(record.ID)
-	if err := writeOperationRecord(name, record); err != nil {
+	if err := s.writeOperationRecord(name, record); err != nil {
 		return fmt.Errorf("undo completed, but the safety journal could not be updated: %w", err)
 	}
 	return nil
@@ -464,19 +484,11 @@ func (s *gitSession) restoreSnapshotUntracked(snapshot WorkSnapshot) error {
 	if listing == "" {
 		return nil
 	}
-	paths, err := os.CreateTemp("", "tangit-journal-untracked-")
+	name, removePaths, err := s.temporaryFile("tangit-journal-untracked-", []byte(listing), 0o600)
 	if err != nil {
 		return fmt.Errorf("prepare saved untracked files: %w", err)
 	}
-	name := paths.Name()
-	defer os.Remove(name)
-	if _, err := paths.WriteString(listing); err != nil {
-		paths.Close()
-		return fmt.Errorf("prepare saved untracked files: %w", err)
-	}
-	if err := paths.Close(); err != nil {
-		return fmt.Errorf("prepare saved untracked files: %w", err)
-	}
+	defer removePaths()
 	output, err := s.cmd.New([]string{
 		"git", "--literal-pathspecs", "restore", "--source=" + untrackedTree, "--worktree",
 		"--pathspec-from-file=" + name, "--pathspec-file-nul",
@@ -527,7 +539,7 @@ func (s *gitSession) UndoOperation(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	record, err := readOperationRecord(name)
+	record, err := s.readOperationRecord(name)
 	if err != nil {
 		return err
 	}
@@ -591,8 +603,8 @@ func (s *gitSession) UndoOperation(ctx context.Context, id string) error {
 			return fmt.Errorf("restore dropped stash: %w: %s", err, strings.TrimSpace(output))
 		}
 	case UndoReversePatch:
-		patchName := filepath.Join(s.journalDir(), record.ID+".patch")
-		data, err := os.ReadFile(patchName)
+		patchName := s.joinPath(s.journalDir(), record.ID+".patch")
+		data, err := s.fileService().ReadFile(patchName)
 		if err != nil {
 			return fmt.Errorf("undo operation: read saved patch: %w", err)
 		}

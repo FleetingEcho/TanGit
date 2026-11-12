@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	pathpkg "path"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -268,6 +269,11 @@ func (a *app) launchEditorCommand(command, path string, line int) {
 		a.openBuiltInEditor(path, line)
 		return
 	}
+	// An SSH path belongs to the remote host, not to a locally installed editor.
+	// Keep this guard beside the process boundary as well as hiding the actions.
+	if a.location.IsRemote() {
+		return
+	}
 	if err := runEditorTemplate(command, path, line); err != nil {
 		description := safeError(err)
 		switch {
@@ -294,7 +300,15 @@ func (a *app) openBuiltInEditor(path string, line int) {
 		a.openRecent(path)
 		return
 	}
-	relative, ok := codeEditorRelativePath(a.snapshot.Root, path)
+	var relative string
+	var ok bool
+	if a.location.IsRemote() {
+		if a.location.Valid() && a.location.Root == a.snapshot.Root {
+			relative, ok = codeEditorRemoteRelativePath(a.snapshot.Root, path)
+		}
+	} else {
+		relative, ok = codeEditorRelativePath(a.snapshot.Root, path)
+	}
 	if !ok {
 		a.notify("error", tr("Could not open the file"), tr("The built-in editor can only open files in this repository."))
 		return
@@ -307,9 +321,17 @@ func (a *app) openBuiltInEditor(path string, line int) {
 	if relative == "" {
 		return
 	}
-	a.openCodeFile(relative, line)
+	if a.location.IsRemote() {
+		a.openCodeDocumentLocation(relative, "", false, line, 0, false)
+	} else {
+		a.openCodeFile(relative, line)
+	}
 	a.revealCodeFile(relative)
 }
+
+// editorFileLstat is a test seam for keeping local-only filesystem validation
+// out of the SSH document-opening path.
+var editorFileLstat = os.Lstat
 
 // openGitFileInBuiltInEditor validates a working-tree path at action time.
 // Git row state may be stale, and a historical file is not necessarily still
@@ -326,8 +348,19 @@ func (a *app) openGitFileInBuiltInEditor(root, relative string) {
 		fail(tr("The built-in editor can only open files in this repository."))
 		return
 	}
+	if a.location.IsRemote() {
+		// The remote reader performs its own Lstat; a remote POSIX path must
+		// never be checked on the local filesystem.
+		filename, err := remoteWorkspacePath(root, relative)
+		if err != nil {
+			fail(tr("The built-in editor can only open files in this repository."))
+			return
+		}
+		a.openBuiltInEditor(filename, 0)
+		return
+	}
 	filename := filepath.Join(root, filepath.FromSlash(relative))
-	info, err := os.Lstat(filename)
+	info, err := editorFileLstat(filename)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			fail(tr("The file has been deleted or no longer exists."))
@@ -365,6 +398,25 @@ func codeEditorRelativePath(root, name string) (string, bool) {
 	return relative, true
 }
 
+func codeEditorRemoteRelativePath(root, name string) (string, bool) {
+	if root == "" || !pathpkg.IsAbs(root) || !pathpkg.IsAbs(name) {
+		return "", false
+	}
+	root, name = pathpkg.Clean(root), pathpkg.Clean(name)
+	if name == root {
+		return "", true
+	}
+	prefix := strings.TrimSuffix(root, "/") + "/"
+	if !strings.HasPrefix(name, prefix) {
+		return "", false
+	}
+	relative := strings.TrimPrefix(name, prefix)
+	if _, err := remoteWorkspacePath(root, relative); err != nil {
+		return "", false
+	}
+	return relative, true
+}
+
 // editorLaunchButton opens the path immediately with the configured command.
 // Editor selection belongs in Settings, not in the launch action.
 func (a *app) editorLaunchButton(c *ui.Context, label, tooltip, path string, line int) {
@@ -381,7 +433,7 @@ func (a *app) editorLaunchButton(c *ui.Context, label, tooltip, path string, lin
 // editorButton opens the repository in the chosen editor, where its files are
 // edited before they are staged here.
 func (a *app) editorButton(c *ui.Context) {
-	if a.snapshot.Root == "" {
+	if a.snapshot.Root == "" || a.location.IsRemote() && effectiveEditorCommand(a.settings.EditorCommand) != builtInEditorCommand {
 		return
 	}
 	a.editorLaunchButton(c, "Open in editor", "Open this repository in your editor", a.snapshot.Root, 0)
@@ -394,7 +446,7 @@ func (a *app) repositoryExternalEditorButton(c *ui.Context) {
 }
 
 func (a *app) repositoryExternalEditorButtonWithText(c *ui.Context, text string) {
-	if a.snapshot.Root == "" {
+	if a.snapshot.Root == "" || a.location.IsRemote() {
 		return
 	}
 	workspacePath := a.snapshot.Root
@@ -442,6 +494,9 @@ func (a *app) repositoryExternalEditorButtonWithText(c *ui.Context, text string)
 // fileEditorButton opens the selected file in the chosen editor, from the
 // working tree, so hand edits beside the diff land in the same file.
 func (a *app) fileEditorButton(c *ui.Context, file repository.File) {
+	if a.location.IsRemote() && effectiveEditorCommand(a.settings.EditorCommand) != builtInEditorCommand {
+		return
+	}
 	path := a.workingFilePath(file.Path)
 	if path == "" {
 		return

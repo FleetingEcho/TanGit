@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"lazygitapp/internal/repository"
+	"lazygitapp/internal/workspace"
 )
 
 // pathOpener opens a repository rooted at the folder it was asked for, so a
@@ -268,6 +269,28 @@ func TestShellClaimsAReformattedPath(t *testing.T) {
 	tt.Frame()
 	if len(s.tabs) != 1 || !s.activeTab().repository() {
 		t.Fatalf("a reformatted path opened a second page: %d tabs", len(s.tabs))
+	}
+}
+
+func TestShellRemoteWorkspaceIdentityUsesProfileAndPOSIXRoot(t *testing.T) {
+	s := newShell(pathOpener{})
+	s.start("")
+	first := readyShellTab(s, "/work/project")
+	first.app.location = workspace.Location{Kind: workspace.SSH, ProfileID: "first", Root: "/work/project"}
+	first.app.path = first.app.location.String()
+
+	canonical := "ssh://first/work/project"
+	if got := cleanRepoPath("ssh://first/work/./project/../project"); got != canonical {
+		t.Fatalf("canonical remote identity = %q, want %q", got, canonical)
+	}
+	if existing := s.tabForPath("ssh://first/work/./project", nil); existing != first {
+		t.Fatalf("canonical remote open did not find its existing tab: %+v", existing)
+	}
+	if existing := s.tabForPath("ssh://second/work/project", nil); existing != nil {
+		t.Fatalf("another server's identical root collided with the first tab: %+v", existing)
+	}
+	if got := repoName("ssh://first/work/my%20project"); got != "my project" {
+		t.Fatalf("remote repository name = %q", got)
 	}
 }
 
