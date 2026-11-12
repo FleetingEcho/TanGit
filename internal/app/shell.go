@@ -677,6 +677,19 @@ func (s *shell) showHome() {
 	s.activate(s.indexOf(t))
 }
 
+// openSecondInstance handles a command forwarded to the running app. A plain
+// launch only restores the window; a path uses the caller's working directory
+// and opens the repository once in the existing tab set.
+func (s *shell) openSecondInstance(args []string, workingDir string) {
+	if path := launchPathFrom(workingDir, args); path != "" {
+		s.openTab(path)
+	}
+	if s.window != nil {
+		s.window.Show()
+		s.window.Focus()
+	}
+}
+
 // openTab opens a repository in a page of its own, for the picker's "Open in
 // new tab". An already open repository is switched to instead of duplicated.
 func (s *shell) openTab(path string) {
