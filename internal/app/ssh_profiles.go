@@ -13,9 +13,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
 	"lazygitapp/internal/sshworkspace"
-	"lazygitapp/internal/workspace"
 )
 
 const (
@@ -193,7 +191,7 @@ func (a *app) clearSSHProfileSecrets() {
 }
 
 func newSSHProfileDraft() sshProfileDraft {
-	return sshProfileDraft{Port: strconv.Itoa(sshworkspace.DefaultPort), AuthMode: sshAuthAgent, DefaultRoot: "~"}
+	return sshProfileDraft{Port: strconv.Itoa(sshworkspace.DefaultPort), Username: "root", AuthMode: sshAuthPassword, DefaultRoot: "/home"}
 }
 
 func sshDraftFromProfile(profile sshworkspace.Profile) sshProfileDraft {
@@ -302,6 +300,7 @@ func (a *app) submitSSHProfileForm(c *ui.Context) {
 	a.saveSettings()
 	a.selectSSHWorkspaceProfile(profile.ID)
 	a.closeSSHProfileForm()
+	a.refreshSSHBrowserOnSelection()
 	if !persistent {
 		a.sshWorkspaceError = "Profile saved. Its new credential is available only for this session because the system keychain is unavailable."
 	}
@@ -424,6 +423,7 @@ func normalizeSSHProfileID(value string) string {
 func (a *app) openSSHWorkspacePicker() {
 	a.loadSettings()
 	a.sshWorkspaceOpen = true
+	a.sshBrowser = sshBrowserState{}
 	a.sshWorkspaceError = ""
 	a.sshProfileFormError = ""
 	a.sshProfileFormNotice = ""
@@ -433,6 +433,7 @@ func (a *app) openSSHWorkspacePicker() {
 	}
 	for _, profile := range a.settings.SSHProfiles {
 		if profile.ID == a.sshWorkspaceProfileID {
+			a.refreshSSHBrowserOnSelection()
 			return
 		}
 	}
@@ -459,9 +460,11 @@ func (a *app) selectSSHWorkspaceProfile(profileID string) {
 	a.cancelSSHWorkspaceResolve()
 	for _, profile := range a.settings.SSHProfiles {
 		if profile.ID == profileID {
+			a.sshBrowser = sshBrowserState{}
 			a.sshWorkspaceProfileID = profileID
 			a.sshWorkspaceRoot = profile.DefaultRoot
 			a.sshWorkspaceError = ""
+			a.refreshSSHBrowserOnSelection()
 			return
 		}
 	}
@@ -477,61 +480,7 @@ func (a *app) selectedSSHProfile() (sshworkspace.Profile, bool) {
 }
 
 func (a *app) openSelectedSSHWorkspace() {
-	profile, ok := a.selectedSSHProfile()
-	if !ok {
-		a.sshWorkspaceError = "Choose an SSH profile first."
-		return
-	}
-	root := strings.TrimSpace(a.sshWorkspaceRoot)
-	location := workspace.Location{Kind: workspace.SSH, ProfileID: profile.ID, Root: root}
-	if root != "" && path.IsAbs(root) {
-		location.Root = path.Clean(root)
-	}
-	canonical := location.String()
-	if canonical != "" {
-		a.path = canonical
-		a.closeSSHWorkspacePicker()
-		a.beginOpen()
-		return
-	}
-	if !validSSHRoot(root) {
-		a.sshWorkspaceError = "Enter an absolute remote folder, ~, or a path beginning with ~/."
-		return
-	}
-	if a.sshWorkspaceResolving {
-		return
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	a.cancelSSHWorkspaceResolve()
-	a.sshWorkspaceResolveCancel = cancel
-	a.sshWorkspaceResolving = true
-	a.sshWorkspaceResolveSeq++
-	sequence := a.sshWorkspaceResolveSeq
-	a.sshWorkspaceError = ""
-	go func() {
-		defer a.recoverBackground()
-		resolved, err := a.resolveSSHRoot(ctx, profile, root)
-		a.update(func() {
-			if sequence != a.sshWorkspaceResolveSeq || a.sshWorkspaceResolveCancel == nil {
-				return
-			}
-			a.sshWorkspaceResolveCancel = nil
-			a.sshWorkspaceResolving = false
-			cancel()
-			if err != nil {
-				a.sshWorkspaceError = "Resolve remote folder: " + statusErrorLine(repository.RedactSecrets(err.Error()))
-				return
-			}
-			location := workspace.Location{Kind: workspace.SSH, ProfileID: profile.ID, Root: resolved}
-			a.path = location.String()
-			if a.path == "" {
-				a.sshWorkspaceError = "The server returned an invalid remote folder."
-				return
-			}
-			a.closeSSHWorkspacePicker()
-			a.beginOpen()
-		})
-	}()
+	a.loadSSHFolder(a.sshWorkspaceRoot, true, a.sshBrowser.AllowInit)
 }
 
 func (a *app) cancelSSHProfileTest() {

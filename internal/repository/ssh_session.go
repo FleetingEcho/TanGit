@@ -67,6 +67,12 @@ func OpenSSHWorkspace(ctx context.Context, client *sshworkspace.Client, location
 		return nil, fmt.Errorf("open SSH workspace: %s is not a folder", location.Root)
 	}
 
+	if _, managed, err := client.GitRoot(ctx, location.Root); err != nil {
+		return nil, err
+	} else if !managed {
+		return nil, ErrNotRepository
+	}
+
 	cmn := common.NewDummyCommon()
 	appConfig := config.NewDummyAppConfig()
 	commandLog := NewCommandLog()
