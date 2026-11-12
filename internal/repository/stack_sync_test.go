@@ -439,6 +439,129 @@ func TestStackSyncDetachedLiveRebaseRetainsBranchRefusal(t *testing.T) {
 	}
 }
 
+func TestStackSyncParentMovedSkipIsNotPublished(t *testing.T) {
+	f := newStackSyncFixture(t)
+	f.branch(t, "parent")
+	runGit(t, f.repo, "checkout", "-b", "child", "parent")
+	childRemote := stackSyncCommit(t, f.repo, "child-reviewed")
+	runGit(t, f.repo, "push", "-u", "origin", "child")
+	childLocal := stackSyncCommit(t, f.repo, "child-unapproved")
+	runGit(t, f.repo, "checkout", "main")
+	parentRemote := f.peerCommit(t, "parent", "parent-remote")
+
+	sync := stackSyncSessionFor(t, f.repo)
+	plan, err := sync.PlanStackSync(context.Background(), StackSyncOptions{Publish: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := stackSyncBranchNamed(t, plan, "parent")
+	child := stackSyncBranchNamed(t, plan, "child")
+	if parent.Action != StackSyncActionUpdateRef || parent.TargetOID != parentRemote {
+		t.Fatalf("parent was not previewed as moved: %#v", parent)
+	}
+	if child.Action != StackSyncActionSkip || child.Relation != StackSyncLocalAheadOnly || child.Publish || !child.PublishAllowed || child.ParentTargetOID != parentRemote {
+		t.Fatalf("child was not previewed as an unapproved parent-moved skip: %#v", child)
+	}
+	if got := stackSyncOID(t, f.remote, "refs/heads/child"); got != childRemote || childLocal == childRemote {
+		t.Fatalf("remote setup = %s, reviewed local = %s, want untouched remote %s", got, childLocal, childRemote)
+	}
+
+	result, err := sync.ApplyStackSync(context.Background(), plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := stackSyncOID(t, f.remote, "refs/heads/child"); got != childRemote {
+		t.Fatalf("skipped child was published without approval: remote = %s, want %s", got, childRemote)
+	}
+	if len(result.Pushes) != 0 {
+		t.Fatalf("preview had no approved publications, Apply attempted: %#v", result.Pushes)
+	}
+	if got := stackSyncOID(t, f.repo, "refs/heads/child"); got != childLocal {
+		t.Fatalf("skipped child local ref changed: %s, want %s", got, childLocal)
+	}
+}
+
+func TestStackSyncDirtyHeadSkipIsNotPublished(t *testing.T) {
+	f := newStackSyncFixture(t)
+	f.branch(t, "parent")
+	runGit(t, f.repo, "checkout", "-b", "feature", "parent")
+	remote := stackSyncCommit(t, f.repo, "reviewed-head-work")
+	runGit(t, f.repo, "push", "-u", "origin", "feature")
+	local := stackSyncCommit(t, f.repo, "unapproved-head-work")
+	f.peerCommit(t, "parent", "parent-remote")
+	if err := os.WriteFile(filepath.Join(f.repo, "dirty.txt"), []byte("dirty\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	sync := stackSyncSessionFor(t, f.repo)
+	plan, err := sync.PlanStackSync(context.Background(), StackSyncOptions{Publish: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	branch := stackSyncBranchNamed(t, plan, "feature")
+	if !branch.Current || branch.Action != StackSyncActionSkip || branch.Relation != StackSyncLocalAheadOnly || branch.Publish || !branch.PublishAllowed {
+		t.Fatalf("dirty HEAD was not an unapproved local-ahead skip: %#v", branch)
+	}
+	result, err := sync.ApplyStackSync(context.Background(), plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := stackSyncOID(t, f.remote, "refs/heads/feature"); got != remote {
+		t.Fatalf("skipped HEAD was published without approval: remote = %s, want %s", got, remote)
+	}
+	if len(result.Pushes) != 0 {
+		t.Fatalf("dirty HEAD preview had no approved publications: %#v", result.Pushes)
+	}
+	if got := stackSyncOID(t, f.repo, "refs/heads/feature"); got != local {
+		t.Fatalf("skipped HEAD local ref changed: %s, want %s", got, local)
+	}
+}
+
+func TestStackSyncChangedPlanCannotGainOrRepeatPublications(t *testing.T) {
+	tests := []struct {
+		name   string
+		change func(*StackSyncPlan)
+	}{
+		{name: "SourceID", change: func(plan *StackSyncPlan) { plan.SourceID += "-changed" }},
+		{name: "omitted branch", change: func(plan *StackSyncPlan) { plan.Branches = nil }},
+		{name: "duplicated branch", change: func(plan *StackSyncPlan) {
+			plan.Branches = append(plan.Branches, plan.Branches[0])
+		}},
+		{name: "changed publish bit", change: func(plan *StackSyncPlan) {
+			plan.Branches[0].Publish = !plan.Branches[0].Publish
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f := newStackSyncFixture(t)
+			remote := f.branch(t, "feature")
+			runGit(t, f.repo, "checkout", "feature")
+			stackSyncCommit(t, f.repo, "approved-local-work")
+			runGit(t, f.repo, "checkout", "main")
+			sync := stackSyncSessionFor(t, f.repo)
+			plan, err := sync.PlanStackSync(context.Background(), StackSyncOptions{Publish: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(plan.Branches) != 1 || !plan.Branches[0].Publish {
+				t.Fatalf("test requires one approved publication: %#v", plan.Branches)
+			}
+			test.change(&plan)
+
+			result, err := sync.ApplyStackSync(context.Background(), plan)
+			if !errors.Is(err, ErrStackSyncChanged) {
+				t.Fatalf("changed plan error = %v, want ErrStackSyncChanged", err)
+			}
+			if len(result.Pushes) != 0 {
+				t.Fatalf("changed plan attempted publications: %#v", result.Pushes)
+			}
+			if got := stackSyncOID(t, f.remote, "refs/heads/feature"); got != remote {
+				t.Fatalf("changed plan published to bare remote: %s, want %s", got, remote)
+			}
+		})
+	}
+}
+
 func TestStackSyncPushLeaseAndPerBranchResults(t *testing.T) {
 	t.Run("published", func(t *testing.T) {
 		f := newStackSyncFixture(t)
@@ -573,8 +696,11 @@ func TestStackSyncRebaseAdvancesStackUsingRealUpdateRefsTODO(t *testing.T) {
 	if one.Action != StackSyncActionUpdateRef || one.Upstream.OID != oneRemote {
 		t.Fatalf("parent did not have its own pending CAS update: %#v", one)
 	}
-	if !plan.RebaseUpdateRefs || two.Action != StackSyncActionRebase || two.Relation != StackSyncDiverged || !two.MayUseUpdateRefs {
+	if !plan.RebaseUpdateRefs || two.Action != StackSyncActionRebase || two.Relation != StackSyncDiverged || !two.MayUseUpdateRefs || !two.Publish {
 		t.Fatalf("rebase preview = %#v, plan=%#v", two, plan)
+	}
+	if one.Publish {
+		t.Fatalf("updateRefs side effect was not explicitly approved for publication: %#v", one)
 	}
 	result, err := sync.ApplyStackSync(context.Background(), plan)
 	if err != nil {
@@ -600,14 +726,14 @@ func TestStackSyncRebaseAdvancesStackUsingRealUpdateRefsTODO(t *testing.T) {
 	if !driven {
 		t.Fatalf("real rebase TODO was not reported: %#v", result.Branches)
 	}
-	if got := stackSyncOID(t, f.remote, "refs/heads/one"); got != oneNew {
-		t.Fatalf("advanced parent was not published: %s != %s", got, oneNew)
+	if got := stackSyncOID(t, f.remote, "refs/heads/one"); got != oneRemote {
+		t.Fatalf("updateRefs side effect was published without preview approval: %s != %s", got, oneRemote)
 	}
 	if got := stackSyncOID(t, f.remote, "refs/heads/two"); got != twoNew {
 		t.Fatalf("advanced child was not published: %s != %s", got, twoNew)
 	}
-	if len(result.Pushes) != 2 {
-		t.Fatalf("wanted independent parent/child publication results: %#v", result.Pushes)
+	if len(result.Pushes) != 1 || result.Pushes[0].Branch != "two" {
+		t.Fatalf("wanted only the preview-approved child publication: %#v", result.Pushes)
 	}
 	for _, push := range result.Pushes {
 		if !push.Published || !push.ForceWithLease {
