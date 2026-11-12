@@ -25,6 +25,7 @@ func sshBrowserTestApp(t *testing.T) (*app, chan func()) {
 	updates := make(chan func(), 10)
 	a.update = func(fn func()) { updates <- fn }
 	a.openSSHWorkspacePicker()
+	a.selectSSHWorkspaceProfile("server")
 	return a, updates
 }
 
@@ -340,14 +341,151 @@ func TestSSHBrowserLoadsSelectedProfileImmediately(t *testing.T) {
 	a, updates := sshBrowserTestApp(t)
 	a.opener = appSSHRepositoryOpener{}
 	a.sshBrowseFolder = func(_ context.Context, _ sshworkspace.Profile, root string, _ bool) (sshFolderListing, error) {
-		if root != "~" {
+		if root != "/home" {
 			t.Errorf("initial root=%q", root)
 		}
 		return sshFolderListing{Root: "/home/git"}, nil
 	}
 	a.openSSHWorkspacePicker()
+	if a.sshWorkspaceProfileID != "" || a.sshWorkspaceResolving {
+		t.Fatal("picker connected before selection")
+	}
+	tester := ui.NewTester(a.view, 1280, 900)
+	tester.Frame()
+	if err := tester.Click("Use SSH profile Server"); err != nil {
+		t.Fatal(err)
+	}
+	tester.Frame()
 	applySSHBrowserUpdate(t, updates)
 	if a.sshWorkspaceRoot != "/home/git" || a.sshBrowser.Listing.Root != a.sshWorkspaceRoot {
 		t.Fatal("selected profile did not populate and synchronize browser")
+	}
+}
+
+func TestSSHBrowserListRemainsVisibleWhileLoadingAndOnError(t *testing.T) {
+	a, updates := sshBrowserTestApp(t)
+	tester := ui.NewTester(a.view, 1280, 900)
+	tester.Frame()
+	initial, ok := tester.Find("Remote folder contents")
+	if !ok || initial.H < 180 {
+		t.Fatalf("initial explorer is missing: %+v", initial)
+	}
+	release := make(chan struct{})
+	a.sshBrowseFolder = func(_ context.Context, _ sshworkspace.Profile, root string, _ bool) (sshFolderListing, error) {
+		if root == "/missing" {
+			return sshFolderListing{}, os.ErrNotExist
+		}
+		<-release
+		return sshFolderListing{Root: root}, nil
+	}
+	a.loadSSHFolder("/next", false, false)
+	tester.Frame()
+	loading, ok := tester.Find("Remote folder contents")
+	if !ok || loading.H != initial.H || !tester.HasText("Loading remote folder…") {
+		t.Fatalf("loading explorer collapsed or has no indicator: %+v texts=%v", loading, tester.Texts())
+	}
+	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+		saveScreenshot(t, dir, "ssh-browser-loading", tester)
+	}
+	close(release)
+	applySSHBrowserUpdate(t, updates)
+	tester.Frame()
+	loaded, _ := tester.Find("Remote folder contents")
+	if loaded.H != initial.H {
+		t.Fatal("loaded explorer height changed")
+	}
+	a.loadSSHFolder("/missing", false, false)
+	applySSHBrowserUpdate(t, updates)
+	tester.Frame()
+	failed, ok := tester.Find("Remote folder contents")
+	if !ok || failed.H != initial.H || !tester.HasText("Remote folder does not exist.") {
+		t.Fatal("failed explorer disappeared or hid error")
+	}
+}
+
+func TestSSHBrowserOpenNonRepositoryNotifies(t *testing.T) {
+	a, updates := sshBrowserTestApp(t)
+	a.sshBrowseFolder = func(_ context.Context, _ sshworkspace.Profile, root string, initialize bool) (sshFolderListing, error) {
+		if initialize {
+			t.Error("creation was not enabled")
+		}
+		return sshFolderListing{Root: root}, nil
+	}
+	a.loadSSHFolder("/plain", false, false)
+	applySSHBrowserUpdate(t, updates)
+	if len(a.pendingToasts) != 0 {
+		t.Fatal("browsing emitted a non-repository notification")
+	}
+	a.openSelectedSSHWorkspace()
+	applySSHBrowserUpdate(t, updates)
+	if !a.sshWorkspaceOpen || len(a.pendingToasts) != 1 || a.pendingToasts[0].title != "This folder is not a Git repository" {
+		t.Fatalf("Open did not explain missing Git repository: %+v", a.pendingToasts)
+	}
+}
+
+func TestSSHBrowserDefaultPathIsHome(t *testing.T) {
+	a, updates := sshBrowserTestApp(t)
+	a.settings.SSHProfiles[0].DefaultRoot = ""
+	a.selectSSHWorkspaceProfile("server")
+	if a.sshWorkspaceRoot != "/home" {
+		t.Fatalf("default selected path=%q", a.sshWorkspaceRoot)
+	}
+	a.sshBrowseFolder = func(_ context.Context, _ sshworkspace.Profile, root string, _ bool) (sshFolderListing, error) {
+		if root != "/home" {
+			t.Errorf("default browse path=%q", root)
+		}
+		return sshFolderListing{Root: root}, nil
+	}
+	a.loadSSHFolder("", false, false)
+	applySSHBrowserUpdate(t, updates)
+	if a.sshWorkspaceRoot != "/home" || a.sshBrowser.Listing.Root != "/home" {
+		t.Fatal("default explorer path is not /home")
+	}
+}
+
+func TestSSHBrowserStartsAtHomeRegardlessOfSavedPath(t *testing.T) {
+	for _, saved := range []string{"", "~", "/root", "/custom/repository"} {
+		t.Run(saved, func(t *testing.T) {
+			a, _ := sshBrowserTestApp(t)
+			a.settings.SSHProfiles[0].DefaultRoot = saved
+			a.selectSSHWorkspaceProfile("server")
+			if a.sshWorkspaceRoot != "/home" {
+				t.Fatalf("saved path %q overrode /home: %q", saved, a.sshWorkspaceRoot)
+			}
+			a.sshWorkspaceRoot = "/root"
+			a.closeSSHWorkspacePicker()
+			a.openSSHWorkspacePicker()
+			if a.sshWorkspaceRoot != "/home" {
+				t.Fatalf("reopening retained previous path %q", a.sshWorkspaceRoot)
+			}
+		})
+	}
+}
+
+func TestSSHBrowserOpeningNeverSelectsAProfile(t *testing.T) {
+	a, updates := sshBrowserTestApp(t)
+	a.opener = appSSHRepositoryOpener{}
+	requests := make(chan struct{}, 1)
+	a.sshBrowseFolder = func(context.Context, sshworkspace.Profile, string, bool) (sshFolderListing, error) {
+		requests <- struct{}{}
+		return sshFolderListing{Root: "/home"}, nil
+	}
+	a.openSSHWorkspacePicker()
+	tester := ui.NewTester(a.view, 1280, 900)
+	for i := 0; i < 3; i++ {
+		tester.Frame()
+	}
+	if a.sshWorkspaceProfileID != "" || a.sshWorkspaceResolving || a.sshWorkspaceRoot != "/home" {
+		t.Fatal("opening auto-selected a profile")
+	}
+	select {
+	case <-updates:
+		t.Fatal("opening scheduled a connection")
+	default:
+	}
+	select {
+	case <-requests:
+		t.Fatal("opening read remote credentials or files")
+	default:
 	}
 }
