@@ -1288,6 +1288,11 @@ func openAppWindow(opener repositoryOpener, path string) {
 	watchUpdater(s)
 	mainWindow = win
 	mygo.App.OnSecondInstance(s.openSecondInstance)
+	resumeQuit := mygo.App.Quit
+	stopQuitWatch := mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
+		resumeQuit = e.Retry
+	})
+	win.OnClosed(stopQuitWatch)
 	allowClose := false
 	win.OnClose(func(e *mygo.CloseEvent) {
 		if hideOnCloseEnabled() {
@@ -1300,6 +1305,12 @@ func openAppWindow(opener repositoryOpener, path string) {
 		}
 		e.PreventDefault()
 		wasQuitting := quitting
+		finishClose := win.Close
+		if wasQuitting {
+			// Capture this request before confirmation yields to another event.
+			// A plain Quit here would lose Relaunch after PreventDefault cancels it.
+			finishClose = resumeQuit
+		}
 		quitting = false
 		closing := append([]*tab(nil), s.tabs...)
 		dirty := false
@@ -1315,11 +1326,7 @@ func openAppWindow(opener repositoryOpener, path string) {
 			// its event loop may already be gone. Prepare first, then close for real.
 			s.prepareTabsShutdown(closing, func() {
 				allowClose = true
-				if wasQuitting {
-					mygo.App.Quit()
-				} else {
-					win.Close()
-				}
+				finishClose()
 			})
 		})
 	})
