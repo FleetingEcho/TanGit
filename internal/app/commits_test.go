@@ -23,6 +23,24 @@ func historyHarness(t *testing.T) (*harness, *callRecorder) {
 	return h, calls
 }
 
+func TestHistoryDiffOmitsCustomPatchSelectionBar(t *testing.T) {
+	h, _ := historyHarness(t)
+	h.waitFor(t, "the commit diff", func() bool { return h.app.commitDiffState != nil })
+	h.app.commitDiffPatch = fakeWorkingTreePatch
+	h.app.commitDiffState.LineSelection = true
+	h.tester.Frame()
+	h.tester.Frame() // The mounted diff keeps repainting without the removed bar.
+	for _, unwanted := range []string{
+		"Select lines for Custom Patch",
+		"Click changed line numbers to select them",
+		"Add hunk",
+	} {
+		if slices.Contains(h.texts(), unwanted) {
+			t.Errorf("History shows the removed Custom Patch control %q: %q", unwanted, h.texts())
+		}
+	}
+}
+
 // Each commit row offers the actions of a Git client's history view, named in
 // its context menu so the glyphs are never a guess.
 func TestCommitRowMenuOffersTheActions(t *testing.T) {
