@@ -1405,6 +1405,7 @@ func TestScreenshot(t *testing.T) {
 		a, tt := newScreenshotApp(t, false)
 		a.workspaceTab = sectionStash
 		a.savedWorkPanel = 1
+		a.showRecoveryModal = true
 		a.snapshot.Operations = []repository.OperationRecord{
 			{ID: "d14b529ee5b54fc98e4d1c18aa3d2f67", Kind: repository.OperationReset, Summary: "hard reset to 8f24c10", Status: repository.OperationSucceeded, CreatedAt: time.Date(2026, 11, 10, 9, 42, 0, 0, time.Local).Unix(), HeadBefore: "8f24c10a1b2c3d4e", HeadAfter: "51c93a7f1e2d3c4b", UndoKind: repository.UndoResetHead, Snapshot: &repository.WorkSnapshot{ID: "snapshot"}},
 			{ID: "b8f763ad1c224edcb29a18e06a441f5d", Kind: repository.OperationPatchApply, Summary: "Apply patch", Status: repository.OperationSucceeded, CreatedAt: time.Date(2026, 11, 10, 9, 36, 0, 0, time.Local).Unix(), UndoKind: repository.UndoReversePatch},

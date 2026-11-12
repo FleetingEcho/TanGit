@@ -247,22 +247,22 @@ func (a *app) tagsView(c *ui.Context) {
 					if tag.Message != "" {
 						ui.Text(c, tag.Message).TextColor(theme.TextMuted)
 					}
-					ui.Row(c).Gap(8).Children(func() {
-						if ui.PrimaryButton(c, tr("Push tag…")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Clicked() {
+					ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
+						primaryIconButton(c, "Push tag…", "Push tag…", pushIcon, a.actionBusy || len(a.snapshot.Remotes) == 0, func() {
 							a.showTagPushForm = true
 							if a.tagRemote == "" && len(a.snapshot.Remotes) > 0 {
 								a.tagRemote = a.snapshot.Remotes[0].Name
 							}
-						}
-						if ui.Button(c, tr("Delete tag…")).Disabled(a.actionBusy).Clicked() {
+						})
+						iconButton(c, "Delete tag…", "Delete tag…", trashIcon, a.actionBusy, func() {
 							a.confirmDeleteSelectedTag()
-						}
-						if ui.Button(c, tr("Delete remote tag…")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Clicked() {
+						})
+						iconButton(c, "Delete remote tag…", "Delete remote tag…", deleteRemoteTagIcon, a.actionBusy || len(a.snapshot.Remotes) == 0, func() {
 							a.openDeleteRemoteTag(tag)
-						}
-						if ui.Button(c, tr("Push all tags…")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Clicked() {
+						})
+						iconButton(c, "Push all tags…", "Push all tags…", pushAllTagsIcon, a.actionBusy || len(a.snapshot.Remotes) == 0, func() {
 							a.beginPushAllTags()
-						}
+						})
 					})
 					if a.showTagPushForm {
 						ui.Row(c).Gap(8).AlignItems(ui.End).Children(func() {

@@ -110,6 +110,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.commitActionModals(c)
 	a.branchFormModal(c)
 	a.moveCommitsModal(c)
+	a.recoveryModal(c)
 	a.stashFormModal(c)
 	a.remoteFormModal(c)
 	a.remoteWebURLFormModal(c)

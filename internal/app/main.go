@@ -658,6 +658,7 @@ type app struct {
 	stashRemovalPatch       string
 	stashMessage            string
 	stashIncludeUntracked   bool
+	showRecoveryModal       bool
 	checkpointName          string
 	showStashRenameForm     bool
 	stashRename             string
