@@ -10,7 +10,7 @@ require (
 	github.com/go-errors/errors v1.5.1
 	github.com/jesseduffield/lazygit v0.66.4-0.20261110130621-8290cc9357ad
 	github.com/junegunn/fzf v0.75.0
-	github.com/pkg/sftp v1.13.9
+	github.com/pkg/sftp v1.13.12
 	github.com/sasha-s/go-deadlock v0.3.9
 	github.com/sirupsen/logrus v1.10.2
 	github.com/stefanhaller/git-todo-parser v0.0.7-0.20250905083220-c50528f08304
