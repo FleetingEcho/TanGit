@@ -69,7 +69,7 @@ func (a *app) graphView(c *ui.Context) {
 					ui.Text(c, a.graphFilter.err).TextColor(theme.Danger).SingleLine().
 						Tooltip(a.graphFilter.err)
 				}
-				a.keyboardList(c, &a.commitList, len(commits)).Grow(1).Rows(func(row ui.ListRow) {
+				a.commitListElement(c, commits).Grow(1).Rows(func(row ui.ListRow) {
 					commit := commits[row.Index]
 					rowGraph := rows[row.Index]
 					services := row.Context.Services()
@@ -97,7 +97,11 @@ func (a *app) graphView(c *ui.Context) {
 								}
 							})
 						})
-					}).PopoverMenu(func(m *ui.Menu) {
+					})
+					if a.commitSelectionMode && line.RowClicked() {
+						a.toggleCommitForBatch(commit)
+					}
+					line.PopoverMenu(func(m *ui.Menu) {
 						a.selectedCommit = row.Index
 						a.commitRowMenu(m, commit, services)
 					})

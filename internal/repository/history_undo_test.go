@@ -140,6 +140,91 @@ func TestFindReflogAction(t *testing.T) {
 	})
 }
 
+func TestReflogReplayDescription(t *testing.T) {
+	tests := []struct {
+		name       string
+		entries    []Commit
+		operations []OperationRecord
+		redo       bool
+		want       string
+	}{
+		{
+			name:    "commit",
+			entries: []Commit{{Hash: "b", Subject: "commit: Add safe history editing"}, {Hash: "a"}},
+			want:    "commit: Add safe history editing",
+		},
+		{
+			name:    "reset",
+			entries: []Commit{{Hash: "b", Subject: "reset: moving to HEAD~1"}, {Hash: "a"}},
+			want:    "reset: moving to HEAD~1",
+		},
+		{
+			name:    "pull",
+			entries: []Commit{{Hash: "b", Subject: "pull origin main: Fast-forward"}, {Hash: "a"}},
+			want:    "pull origin main: Fast-forward",
+		},
+		{
+			name:    "checkout",
+			entries: []Commit{{Hash: "b", Subject: "checkout: moving from main to feature"}},
+			want:    "checkout: moving from main to feature",
+		},
+		{
+			name: "completed rebase",
+			entries: []Commit{
+				{Hash: "c", Subject: "rebase (finish): returning to refs/heads/main"},
+				{Hash: "b", Subject: "rebase (pick): Change"},
+				{Hash: "start", Subject: "rebase (start): checkout a"},
+				{Hash: "a", Subject: "reset: moving to main"},
+			},
+			want: "completed rebase",
+		},
+		{
+			name: "journaled squash",
+			entries: []Commit{
+				{Hash: "c", Subject: "rebase (finish): returning to refs/heads/main"},
+				{Hash: "b", Subject: "rebase (pick): Change"},
+				{Hash: "start", Subject: "rebase (start): checkout a"},
+				{Hash: "a", Subject: "reset: moving to main"},
+			},
+			operations: []OperationRecord{{Kind: OperationRebase, Summary: "Squash 2 commits", Status: OperationSucceeded, HeadBefore: "a", HeadAfter: "c"}},
+			want:       "Squash 2 commits",
+		},
+		{
+			name: "journaled squash with a stale hash",
+			entries: []Commit{
+				{Hash: "c", Subject: "rebase (finish): returning to refs/heads/main"},
+				{Hash: "b", Subject: "rebase (pick): Change"},
+				{Hash: "start", Subject: "rebase (start): checkout a"},
+				{Hash: "a", Subject: "reset: moving to main"},
+			},
+			operations: []OperationRecord{{Kind: OperationRebase, Summary: "Squash 2 unrelated commits", Status: OperationSucceeded, HeadBefore: "old", HeadAfter: "different"}},
+			want:       "completed rebase",
+		},
+		{
+			name: "redo",
+			entries: []Commit{
+				{Hash: "a", Subject: "[lazygit undo]: moving to b"},
+				{Hash: "b", Subject: "commit: Add safe history editing"},
+				{Hash: "a"},
+			},
+			redo: true,
+			want: "commit: Add safe history editing",
+		},
+		{
+			name:    "unsupported",
+			entries: []Commit{{Hash: "b", Subject: "merge topic: Merge made by the 'ort' strategy"}},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, ok := ReflogReplayDescription(test.entries, test.operations, test.redo)
+			if ok != (test.want != "") || got != test.want {
+				t.Fatalf("description = %q, %v; want %q, %v", got, ok, test.want, test.want != "")
+			}
+		})
+	}
+}
+
 func TestUndoRedoCommitsRepeatedlyAndAcrossSessions(t *testing.T) {
 	dir, session := newThreeCommitHistory(t)
 	before := historySnapshot(t, session)
@@ -214,6 +299,27 @@ func TestUndoRedoCheckout(t *testing.T) {
 	}
 	if got := currentBranchName(t, dir); got != "feature" {
 		t.Fatalf("checkout redo left branch %q, want feature", got)
+	}
+}
+
+func TestReflogReplayDescriptionUsesSquashJournal(t *testing.T) {
+	_, session := newThreeCommitHistory(t)
+	before := historySnapshot(t, session)
+	if err := session.CombineCommit(context.Background(), before.Commits[1], CombineSquash); err != nil {
+		t.Fatal(err)
+	}
+	after := historySnapshot(t, session)
+	description, ok := ReflogReplayDescription(after.Reflog, after.Operations, false)
+	if !ok || description != "Squash 2 commits" {
+		t.Fatalf("Undo preview = %q, %v; want the journaled squash", description, ok)
+	}
+	if err := session.Undo(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	undone := historySnapshot(t, session)
+	description, ok = ReflogReplayDescription(undone.Reflog, undone.Operations, true)
+	if !ok || description != "Squash 2 commits" {
+		t.Fatalf("Redo preview = %q, %v; want the journaled squash", description, ok)
 	}
 }
 

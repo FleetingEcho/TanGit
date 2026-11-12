@@ -79,10 +79,12 @@ func (s *gitSession) RewordCommit(ctx context.Context, commit Commit, summary, d
 		}
 		return nil
 	}
-	if err := s.rewordCommit(commits, index, summary, description); err != nil {
-		return fmt.Errorf("reword %s: %w", commit.ShortHash, err)
-	}
-	return nil
+	return s.runHistoryRebase("Reword "+commit.ShortHash, func() error {
+		if err := s.rewordCommit(commits, index, summary, description); err != nil {
+			return fmt.Errorf("reword %s: %w", commit.ShortHash, err)
+		}
+		return nil
+	})
 }
 
 // DropCommit removes the selected commit. Lazygit uses a dedicated todo edit
@@ -96,15 +98,17 @@ func (s *gitSession) DropCommit(ctx context.Context, commit Commit) error {
 	if err != nil {
 		return fmt.Errorf("drop commit: %w", err)
 	}
-	if commits[index].IsMerge() {
-		err = s.dropMergeCommit(commits, index)
-	} else {
-		err = s.interactiveRebase(commits, index, index, todo.Drop, "")
-	}
-	if err != nil {
-		return fmt.Errorf("drop %s: %w", commit.ShortHash, err)
-	}
-	return nil
+	return s.runHistoryRebase("Drop "+commit.ShortHash, func() error {
+		if commits[index].IsMerge() {
+			err = s.dropMergeCommit(commits, index)
+		} else {
+			err = s.interactiveRebase(commits, index, index, todo.Drop, "")
+		}
+		if err != nil {
+			return fmt.Errorf("drop %s: %w", commit.ShortHash, err)
+		}
+		return nil
+	})
 }
 
 // MoveCommit reorders a non-merge commit by one position. The directions name
@@ -123,22 +127,28 @@ func (s *gitSession) MoveCommit(ctx context.Context, commit Commit, direction Co
 	if commits[index].IsMerge() {
 		return fmt.Errorf("move commit: merge commits cannot be reordered")
 	}
-	switch direction {
-	case MoveCommitNewer:
-		if index == 0 {
-			return fmt.Errorf("move commit: HEAD cannot move any newer")
-		}
-		err = s.moveCommits(commits, index, index, -1)
-	case MoveCommitOlder:
-		if index == len(commits)-1 {
-			return fmt.Errorf("move commit: the root commit cannot move any older")
-		}
-		err = s.moveCommits(commits, index, index, 1)
+	summary := "Move " + commit.ShortHash + " toward HEAD"
+	if direction == MoveCommitOlder {
+		summary = "Move " + commit.ShortHash + " toward older history"
 	}
-	if err != nil {
-		return fmt.Errorf("move %s: %w", commit.ShortHash, err)
-	}
-	return nil
+	return s.runHistoryRebase(summary, func() error {
+		switch direction {
+		case MoveCommitNewer:
+			if index == 0 {
+				return fmt.Errorf("move commit: HEAD cannot move any newer")
+			}
+			err = s.moveCommits(commits, index, index, -1)
+		case MoveCommitOlder:
+			if index == len(commits)-1 {
+				return fmt.Errorf("move commit: the root commit cannot move any older")
+			}
+			err = s.moveCommits(commits, index, index, 1)
+		}
+		if err != nil {
+			return fmt.Errorf("move %s: %w", commit.ShortHash, err)
+		}
+		return nil
+	})
 }
 
 // CombineCommit folds the selected non-merge commit into its older neighbor.
@@ -165,10 +175,16 @@ func (s *gitSession) CombineCommit(ctx context.Context, commit Commit, mode Comb
 	if mode == CombineFixup {
 		action = todo.Fixup
 	}
-	if err := s.interactiveRebase(commits, index, index, action, ""); err != nil {
-		return fmt.Errorf("combine %s: %w", commit.ShortHash, err)
+	summary := "Squash 2 commits"
+	if mode == CombineFixup {
+		summary = "Fix up 2 commits"
 	}
-	return nil
+	return s.runHistoryRebase(summary, func() error {
+		if err := s.interactiveRebase(commits, index, index, action, ""); err != nil {
+			return fmt.Errorf("combine %s: %w", commit.ShortHash, err)
+		}
+		return nil
+	})
 }
 
 // AmendCommit folds staged changes into HEAD directly, or into an older commit
@@ -185,14 +201,17 @@ func (s *gitSession) AmendCommit(ctx context.Context, commit Commit) error {
 		return fmt.Errorf("amend commit: %w", err)
 	}
 	if models.IsHeadCommit(commits, index) {
-		err = s.git.Commit.AmendHead()
-	} else {
-		err = s.amendToCommit(commits, index)
+		if err := s.git.Commit.AmendHead(); err != nil {
+			return fmt.Errorf("amend %s: %w", commit.ShortHash, err)
+		}
+		return nil
 	}
-	if err != nil {
-		return fmt.Errorf("amend %s: %w", commit.ShortHash, err)
-	}
-	return nil
+	return s.runHistoryRebase("Amend "+commit.ShortHash, func() error {
+		if err := s.amendToCommit(commits, index); err != nil {
+			return fmt.Errorf("amend %s: %w", commit.ShortHash, err)
+		}
+		return nil
+	})
 }
 
 // CreateFixupCommit creates Git's standard fixup! commit for a later explicit
@@ -223,10 +242,27 @@ func (s *gitSession) ApplyFixupCommits(ctx context.Context, commit Commit) error
 	if err != nil {
 		return fmt.Errorf("apply fixup commits: %w", err)
 	}
-	if err := s.applyFixupCommits(commits[index]); err != nil {
-		return fmt.Errorf("apply fixups from %s: %w", commit.ShortHash, err)
+	return s.runHistoryRebase("Apply fixups from "+commit.ShortHash, func() error {
+		if err := s.applyFixupCommits(commits[index]); err != nil {
+			return fmt.Errorf("apply fixups from %s: %w", commit.ShortHash, err)
+		}
+		return nil
+	})
+}
+
+// runHistoryRebase records the user-facing operation, not just Git's generic
+// rebase reflog. Its before/after HEAD pair lets Undo identify this exact edit.
+func (s *gitSession) runHistoryRebase(summary string, run func() error) error {
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
+	record, err := s.beginOperation(OperationRebase, summary, UndoResetHead, nil)
+	if err != nil {
+		return err
 	}
-	return nil
+	if record, err = s.pinOperationBefore(record); err != nil {
+		return err
+	}
+	return s.completeJournalOperation(record, run())
 }
 
 func (s *gitSession) requireStagedChanges() error {

@@ -2176,6 +2176,40 @@ func TestResetToCommitModes(t *testing.T) {
 	}
 }
 
+func TestUndoLatestCommitLeavesOnlyItsChanges(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		mode     ResetMode
+		staged   bool
+		unstaged bool
+	}{
+		{name: "staged", mode: ResetSoft, staged: true},
+		{name: "unstaged", mode: ResetMixed, unstaged: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, session := newThreeCommitHistory(t)
+			snapshot := historySnapshot(t, session)
+			latest := snapshot.Commits[0]
+			parent := snapshot.Commits[1]
+			if latest.Parents[0] != parent.Hash {
+				t.Fatalf("HEAD parent = %q, want %q", latest.Parents[0], parent.Hash)
+			}
+			if err := session.ResetToCommit(context.Background(), parent, test.mode); err != nil {
+				t.Fatal(err)
+			}
+			snapshot = historySnapshot(t, session)
+			if len(snapshot.Commits) != 2 || snapshot.Commits[0].Hash != parent.Hash ||
+				len(snapshot.Files) != 1 || snapshot.Files[0].Path != "three.txt" {
+				t.Fatalf("the reset did not isolate the latest commit: %+v", snapshot)
+			}
+			file := snapshot.Files[0]
+			if file.Staged != test.staged || file.Unstaged != test.unstaged {
+				t.Fatalf("latest commit changes have the wrong placement: %+v", file)
+			}
+		})
+	}
+}
+
 func TestCheckoutCommitDetachesHead(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")

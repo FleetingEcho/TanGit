@@ -155,6 +155,15 @@ func (a *app) commitRowMenuWithHistory(m *ui.Menu, commit repository.Commit, ser
 	}
 	if historyEditable {
 		m.Separator()
+		if a.canUndoLatestCommit(commit) {
+			if m.Item(tr("Undo latest commit and keep changes staged…")).Disabled(a.actionBusy).Chosen() {
+				a.confirmUndoLatestCommit(commit, repository.ResetSoft)
+			}
+			if m.Item(tr("Undo latest commit and keep changes unstaged…")).Disabled(a.actionBusy).Chosen() {
+				a.confirmUndoLatestCommit(commit, repository.ResetMixed)
+			}
+			m.Separator()
+		}
 		if m.Item(tr("Soft reset to this commit…")).Disabled(a.actionBusy).Chosen() {
 			a.confirmResetCommit(commit, repository.ResetSoft)
 		}
@@ -187,6 +196,53 @@ func (a *app) commitRowMenuWithHistory(m *ui.Menu, commit repository.Commit, ser
 		Disabled(a.session == nil || len(commit.Parents) == 0).Chosen() {
 		a.compareCommit(commit, true)
 	}
+}
+
+// canUndoLatestCommit limits single-commit undo to the current branch tip.
+// General reset actions remain available for intentionally rewinding further.
+func (a *app) canUndoLatestCommit(commit repository.Commit) bool {
+	if a.snapshot.Head == "" || a.snapshot.Head != commit.Hash || len(commit.Parents) == 0 {
+		return false
+	}
+	for _, branch := range a.snapshot.Branches {
+		if branch.Head {
+			return !branch.DetachedHead
+		}
+	}
+	return false
+}
+
+// confirmUndoLatestCommit removes only HEAD, leaving its changes in the index
+// or working tree. Existing conflicts need user resolution before any reset.
+func (a *app) confirmUndoLatestCommit(commit repository.Commit, mode repository.ResetMode) {
+	if a.actionBusy || a.session == nil || !a.canUndoLatestCommit(commit) ||
+		(mode != repository.ResetSoft && mode != repository.ResetMixed) {
+		return
+	}
+	for _, file := range a.snapshot.Files {
+		if file.HasMergeConflicts {
+			a.notify("error", "Cannot undo the latest commit", tr("Resolve the current merge conflicts in Changes, then try again."))
+			return
+		}
+	}
+	parent := repository.Commit{Hash: commit.Parents[0], ShortHash: commit.Parents[0][:min(7, len(commit.Parents[0]))]}
+	detail := "Only this commit is removed; its changes stay staged."
+	success := trf("Undid %s; changes are staged", commit.ShortHash)
+	if mode == repository.ResetMixed {
+		detail = "Only this commit is removed; its changes stay unstaged in Changes."
+		success = trf("Undid %s; changes are unstaged", commit.ShortHash)
+	}
+	a.askConfirm(confirmRequest{
+		title:        "Undo Latest Commit",
+		message:      trf("Undo only %s and keep its changes?", commit.ShortHash),
+		detail:       commit.Subject + "\n\n" + tr(detail),
+		confirmLabel: "Undo commit",
+		run: func() {
+			a.beginRepositoryActionMessage(success, "", func(ctx context.Context, session repository.Session) error {
+				return session.ResetToCommit(ctx, parent, mode)
+			}, nil)
+		},
+	})
 }
 
 // confirmResetCommit asks before moving the branch, spelling out what the

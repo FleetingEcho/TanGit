@@ -86,33 +86,44 @@ func (s *gitSession) EditCommitRange(ctx context.Context, selected []Commit, act
 			return fmt.Errorf("select a linear commit range")
 		}
 	}
-	switch action {
-	case RangeSquash, RangeFixup:
-		cmd := todo.Squash
-		if action == RangeFixup {
-			cmd = todo.Fixup
-		}
-		// Retain the oldest selected commit, folding only its selected successors.
-		return s.interactiveRebase(commits, first, last-1, cmd, "")
-	case RangeDrop:
-		return s.interactiveRebase(commits, first, last, todo.Drop, "")
-	case RangeMoveNewer:
-		if first == 0 {
-			return fmt.Errorf("selection is already at HEAD")
-		}
-		if commits[first-1].IsMerge() {
-			return fmt.Errorf("cannot move across a merge commit")
-		}
-		return s.moveCommits(commits, first, last, -1)
-	case RangeMoveOlder:
-		if last == len(commits)-1 {
-			return fmt.Errorf("selection includes the root commit")
-		}
-		if commits[last+1].IsMerge() {
-			return fmt.Errorf("cannot move across a merge commit")
-		}
-		return s.moveCommits(commits, first, last, 1)
-	default:
+	summary := map[CommitRangeAction]string{
+		RangeSquash:    fmt.Sprintf("Squash %d commits", len(selected)),
+		RangeFixup:     fmt.Sprintf("Fix up %d commits", len(selected)),
+		RangeDrop:      fmt.Sprintf("Drop %d commits", len(selected)),
+		RangeMoveNewer: fmt.Sprintf("Move %d commits toward HEAD", len(selected)),
+		RangeMoveOlder: fmt.Sprintf("Move %d commits toward older history", len(selected)),
+	}[action]
+	if summary == "" {
 		return fmt.Errorf("unknown range action %q", action)
 	}
+	return s.runHistoryRebase(summary, func() error {
+		switch action {
+		case RangeSquash, RangeFixup:
+			cmd := todo.Squash
+			if action == RangeFixup {
+				cmd = todo.Fixup
+			}
+			// Retain the oldest selected commit, folding only its selected successors.
+			return s.interactiveRebase(commits, first, last-1, cmd, "")
+		case RangeDrop:
+			return s.interactiveRebase(commits, first, last, todo.Drop, "")
+		case RangeMoveNewer:
+			if first == 0 {
+				return fmt.Errorf("selection is already at HEAD")
+			}
+			if commits[first-1].IsMerge() {
+				return fmt.Errorf("cannot move across a merge commit")
+			}
+			return s.moveCommits(commits, first, last, -1)
+		case RangeMoveOlder:
+			if last == len(commits)-1 {
+				return fmt.Errorf("selection includes the root commit")
+			}
+			if commits[last+1].IsMerge() {
+				return fmt.Errorf("cannot move across a merge commit")
+			}
+			return s.moveCommits(commits, first, last, 1)
+		}
+		return fmt.Errorf("unknown range action %q", action)
+	})
 }

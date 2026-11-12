@@ -22,6 +22,28 @@ func (a *app) selectedCommitsForBatch() []repository.Commit {
 	return selected
 }
 
+// commitListElement highlights checked commits without changing the list's
+// detail cursor, clicks or keyboard behavior. Batch rows get visible breathing
+// room; ordinary history keeps its original compact layout.
+func (a *app) commitListElement(c *ui.Context, commits []repository.Commit) ui.Element {
+	a.commitList.RowHighlighted = nil
+	gap := float32(0)
+	if a.commitSelectionMode {
+		a.commitList.RowHighlighted = func(row int) bool {
+			return row >= 0 && row < len(commits) && a.commitSelection[commits[row].Hash]
+		}
+		gap = 4
+	}
+	return a.keyboardList(c, &a.commitList, len(commits)).Gap(gap)
+}
+
+// cancelCommitSelection leaves batch mode and discards every checked commit;
+// the independent commit-detail cursor stays where it is.
+func (a *app) cancelCommitSelection() {
+	a.commitSelectionMode = false
+	a.commitSelection = nil
+}
+
 // commitSelectionModeButton reveals the commit checkboxes only while batch
 // selection is wanted. Leaving the mode also clears its selection, so hidden
 // commits can never be acted on accidentally.
@@ -41,9 +63,10 @@ func (a *app) commitSelectionModeButton(c *ui.Context) {
 		button.Background(theme.SurfaceHover)
 	}
 	if clicked {
-		a.commitSelectionMode = !a.commitSelectionMode
-		if !a.commitSelectionMode {
-			a.commitSelection = nil
+		if a.commitSelectionMode {
+			a.cancelCommitSelection()
+		} else {
+			a.commitSelectionMode = true
 		}
 	}
 }
@@ -70,16 +93,16 @@ func (a *app) toggleCommitForBatch(commit repository.Commit) {
 }
 
 func (a *app) commitSelectionBar(c *ui.Context) {
-	selected := a.selectedCommitsForBatch()
-	if len(selected) == 0 {
+	if !a.commitSelectionMode {
 		return
 	}
-	ui.Column(c).Gap(4).Children(func() {
-		ui.Text(c, trf("%d commits selected", len(selected))).SingleLine()
-		ui.Row(c).Gap(8).Children(func() {
-			ui.PopoverMenuButton(c, tr("Batch actions"), func(m *ui.Menu) { a.commitBatchMenu(m) }).Disabled(a.actionBusy)
-			ui.Button(c, tr("Clear selection")).Disabled(a.actionBusy).OnClick(func() { a.commitSelection = nil })
-		})
+	selected := a.selectedCommitsForBatch()
+	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+		ui.Text(c, trf("%d selected", len(selected))).SingleLine().Grow(1)
+		batch := compactTextButton(ui.Button(c, tr("Batch actions")))
+		batch.PopoverMenuButton(func(m *ui.Menu) { a.commitBatchMenu(m) })
+		batch.Disabled(a.actionBusy || len(selected) == 0)
+		iconButton(c, "Clear selection", "Exit batch selection and clear every selected commit", closeIcon, a.actionBusy, a.cancelCommitSelection)
 	})
 }
 
