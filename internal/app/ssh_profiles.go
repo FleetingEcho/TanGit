@@ -81,7 +81,7 @@ func (a *app) sshKeychain() sshKeychain {
 
 func (s appSSHSecretStore) Get(ref sshworkspace.SecretRef) (string, bool, error) {
 	if ref == "" {
-		return "", false, errors.New("invalid SSH secret reference")
+		return "", false, errors.New(tr("invalid SSH secret reference"))
 	}
 	account := string(ref)
 	mutex, values := s.app.sshSessionSecretState()
@@ -100,12 +100,12 @@ func (s appSSHSecretStore) Get(ref sshworkspace.SecretRef) (string, bool, error)
 	if errors.Is(err, mygo.ErrSecretNotFound) {
 		return "", false, nil
 	}
-	return "", false, errors.New("SSH system keychain is unavailable")
+	return "", false, errors.New(tr("SSH system keychain is unavailable"))
 }
 
 func (s appSSHSecretStore) Set(ref sshworkspace.SecretRef, value string) error {
 	if ref == "" {
-		return errors.New("invalid SSH secret reference")
+		return errors.New(tr("invalid SSH secret reference"))
 	}
 	account := string(ref)
 	err := s.app.sshKeychain().Set(account, []byte(value))
@@ -127,7 +127,7 @@ func (s appSSHSecretStore) Set(ref sshworkspace.SecretRef, value string) error {
 
 func (s appSSHSecretStore) Delete(ref sshworkspace.SecretRef) error {
 	if ref == "" {
-		return errors.New("invalid SSH secret reference")
+		return errors.New(tr("invalid SSH secret reference"))
 	}
 	account := string(ref)
 	err := s.app.sshKeychain().Delete(account)
@@ -250,6 +250,45 @@ func (a *app) sshDraftProfile(draft sshProfileDraft) (sshworkspace.Profile, erro
 	return profile, nil
 }
 
+// sshProfileValidationMessage translates only the validation messages produced
+// by sshDraftProfile and sshworkspace.Profile.Validate. In particular, a host,
+// profile ID, or authentication mode is an argument to a known format string;
+// the complete dynamic message is never used as a translation key.
+func sshProfileValidationMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := err.Error()
+	switch message {
+	case "Enter an SSH port from 1 to 65535.",
+		"Enter an SSH password.",
+		"SSH username must be nonempty and contain no whitespace or control characters",
+		"private-key authentication requires a private key path",
+		"private key path is only valid with private-key authentication",
+		"SSH host must be nonempty and have no surrounding whitespace",
+		"SSH default root contains a control character",
+		"SSH default root must be absolute or home-relative":
+		return tr(message)
+	}
+	for _, format := range []string{
+		"invalid SSH profile ID %q",
+		"invalid SSH host %q",
+		"invalid bracketed SSH host %q",
+		"SSH host must not include a port: %q",
+		"unsupported SSH auth mode %q",
+	} {
+		var value string
+		if count, scanErr := fmt.Sscanf(message, format, &value); scanErr == nil && count == 1 {
+			return trf(format, value)
+		}
+	}
+	var port int
+	if count, scanErr := fmt.Sscanf(message, "invalid SSH port %d", &port); scanErr == nil && count == 1 {
+		return trf("invalid SSH port %d", port)
+	}
+	return message
+}
+
 func (a *app) openSSHProfileForm(profileID string) {
 	a.cancelSSHWorkspaceResolve()
 	a.cancelSSHProfileTest()
@@ -280,7 +319,7 @@ func (a *app) closeSSHProfileForm() {
 func (a *app) submitSSHProfileForm(c *ui.Context) {
 	profile, err := a.sshDraftProfile(a.sshProfileDraft)
 	if err != nil {
-		a.sshProfileFormError = err.Error()
+		a.sshProfileFormError = sshProfileValidationMessage(err)
 		a.sshProfileFormNotice = ""
 		return
 	}
@@ -302,7 +341,7 @@ func (a *app) submitSSHProfileForm(c *ui.Context) {
 	a.closeSSHProfileForm()
 	a.refreshSSHBrowserOnSelection()
 	if !persistent {
-		a.sshWorkspaceError = "Profile saved. Its new credential is available only for this session because the system keychain is unavailable."
+		a.sshWorkspaceError = tr("Profile saved. Its new credential is available only for this session because the system keychain is unavailable.")
 	}
 	if c != nil {
 		c.Invalidate()
@@ -496,13 +535,13 @@ func (a *app) cancelSSHProfileTest() {
 
 func (a *app) testSSHProfile() {
 	if a.sshTestConnection == nil {
-		a.sshProfileFormNotice = "SSH connection testing is not wired yet."
+		a.sshProfileFormNotice = tr("SSH connection testing is not wired yet.")
 		a.sshProfileFormError = ""
 		return
 	}
 	profile, err := a.sshDraftProfile(a.sshProfileDraft)
 	if err != nil {
-		a.sshProfileFormError = err.Error()
+		a.sshProfileFormError = sshProfileValidationMessage(err)
 		a.sshProfileFormNotice = ""
 		return
 	}
@@ -513,7 +552,7 @@ func (a *app) testSSHProfile() {
 	a.sshProfileTestSeq++
 	sequence := a.sshProfileTestSeq
 	a.sshProfileFormError = ""
-	a.sshProfileFormNotice = "Testing SSH connection…"
+	a.sshProfileFormNotice = tr("Testing SSH connection…")
 	var secrets sshProfileSecrets
 	switch profile.AuthMode {
 	case sshworkspace.AuthPassword:
@@ -539,12 +578,12 @@ func (a *app) testSSHProfile() {
 			a.sshProfileTestBusy = false
 			a.sshProfileTestCancel = nil
 			if err == nil {
-				a.sshProfileFormNotice = "SSH connection succeeded."
+				a.sshProfileFormNotice = tr("SSH connection succeeded.")
 				return
 			}
 			message := redactSSHProfileError(err, secrets).Error()
 			a.sshProfileFormNotice = ""
-			a.sshProfileFormError = "SSH connection failed: " + statusErrorLine(message)
+			a.sshProfileFormError = trf("SSH connection failed: %s", statusErrorLine(message))
 		})
 	}()
 }

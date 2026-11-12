@@ -42,7 +42,7 @@ func (a *app) themeButton(c *ui.Context) {
 	}
 	button := compactIconButton(ui.Button(c, ""))
 	button.Label(tr("Theme")).
-		Tooltip("Choose a theme (currently " + a.settings.Theme + ")")
+		Tooltip(trf("Choose a theme (currently %s)", a.settings.Theme))
 	button.Children(func() {
 		ui.Icon(c, icon).FontSize(14)
 	})
@@ -822,7 +822,7 @@ func (a *app) themePreview(c *ui.Context) {
 func (a *app) themeSwatch(c *ui.Context, color ui.Color, label string) {
 	theme := c.Theme()
 	ui.Box(c).Size(26, 20).Radius(theme.Radius).Border(1, theme.Border).
-		Background(color).Tooltip(label)
+		Background(color).Tooltip(tr(label))
 }
 
 func (a *app) settingsFooter(c *ui.Context) {

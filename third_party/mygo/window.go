@@ -1068,6 +1068,18 @@ func (w *Window) IsMaximized() bool { return get(w, platform.Window.IsMaximized)
 // Restore restores a minimized window.
 func (w *Window) Restore() { w.do(platform.Window.Restore) }
 
+// startDrag restores full screen before moving a window from a custom drag
+// region, as dragging a native title bar does. Main thread only.
+func (w *Window) startDrag() {
+	if w.native == nil {
+		return
+	}
+	if w.native.IsFullScreen() {
+		w.native.SetFullScreen(false)
+	}
+	w.native.StartDrag()
+}
+
 // SetFullScreen enters or leaves full screen.
 func (w *Window) SetFullScreen(v bool) {
 	w.do(func(n platform.Window) { n.SetFullScreen(v) })

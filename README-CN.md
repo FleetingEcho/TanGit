@@ -19,18 +19,17 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/workspace.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/workspace_dark.png">
-    <img src="docs/screenshots/workspace.png" alt="TanGit 工作区：仓库导航、文件更改与差异预览">
+    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/workspace_light.png">
+    <img src="docs/screenshots/workspace_light.png" alt="TanGit 工作区：仓库导航、文件更改与差异预览">
   </picture>
 </p>
 
-<details>
-<summary><strong>查看全部截图 · 6 个视图</strong></summary>
+<p><strong>截图 · 8 个视图</strong></p>
 
 <table>
   <tr>
     <td width="50%"><a href="docs/screenshots/workspace.png"><img src="docs/screenshots/workspace.png" alt="工作区 · 深色"></a><br><sub>工作区 · 深色</sub></td>
-    <td width="50%"><a href="docs/screenshots/workspace_dark.png"><img src="docs/screenshots/workspace_dark.png" alt="工作区 · 浅色"></a><br><sub>工作区 · 浅色</sub></td>
+    <td width="50%"><a href="docs/screenshots/workspace_light.png"><img src="docs/screenshots/workspace_light.png" alt="工作区 · 浅色"></a><br><sub>工作区 · 浅色</sub></td>
   </tr>
   <tr>
     <td width="50%"><a href="docs/screenshots/graph_dark.png"><img src="docs/screenshots/graph_dark.png" alt="提交图 · 深色"></a><br><sub>提交图 · 深色</sub></td>
@@ -40,8 +39,11 @@
     <td width="50%"><a href="docs/screenshots/picker.png"><img src="docs/screenshots/picker.png" alt="仓库选择"></a><br><sub>仓库选择</sub></td>
     <td width="50%"><a href="docs/screenshots/file-history.png"><img src="docs/screenshots/file-history.png" alt="文件历史"></a><br><sub>文件历史</sub></td>
   </tr>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/editor.png"><img src="docs/screenshots/editor.png" alt="代码编辑器"></a><br><sub>代码编辑器</sub></td>
+    <td width="50%"><a href="docs/screenshots/i18n.png"><img src="docs/screenshots/i18n.png" alt="多语言"></a><br><sub>多语言</sub></td>
+  </tr>
 </table>
-</details>
 
 ## TanGit是什么？
 

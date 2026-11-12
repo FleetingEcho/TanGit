@@ -4,6 +4,7 @@ var spanish = map[string]string{
 	// Keyboard navigation and commands.
 	"Check out the chosen remote branch":          "Cambiar a la rama remota elegida",
 	"Checkout this commit":                        "Cambiar a este commit",
+	"Checkout to this commit (detached)…":         "Cambiar a este commit (HEAD separado)…",
 	"Cherry-pick %d commits onto %s?":             "¿Aplicar %d commits sobre %s?",
 	"Cherry-pick copied commits":                  "Aplicar los commits copiados",
 	"Copied commits for cherry-pick":              "Commits copiados para aplicar",

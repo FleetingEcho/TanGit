@@ -104,15 +104,15 @@ func (a *app) currentRemoteTransfer(manager *transfer.Manager, generation uint64
 
 func (a *app) remoteTransferManager() (*transfer.Manager, uint64, *sshworkspace.Client, error) {
 	if a.state != stateReady || !a.location.IsRemote() || a.session == nil {
-		return nil, 0, nil, errors.New("transfers are available only in an open SSH workspace")
+		return nil, 0, nil, errors.New(tr("transfers are available only in an open SSH workspace"))
 	}
 	provider, ok := a.session.(sshClientSession)
 	if !ok {
-		return nil, 0, nil, errors.New("remote repository session does not provide an SSH client")
+		return nil, 0, nil, errors.New(tr("remote repository session does not provide an SSH client"))
 	}
 	client := provider.SSHClient()
 	if client == nil {
-		return nil, 0, nil, errors.New("remote repository SSH client is not connected")
+		return nil, 0, nil, errors.New(tr("remote repository SSH client is not connected"))
 	}
 	state := &a.remoteTransfers
 	if state.manager != nil {
@@ -388,9 +388,9 @@ func (a *app) publishRemoteTransfer(manager *transfer.Manager, generation uint64
 		job.terminalNotified = true
 		delete(a.remoteTransfers.prompts, result.ID)
 	}
-	jobTitle := "Upload"
+	jobTitle := tr("Upload")
 	if job.kind == "download" {
-		jobTitle = "Download"
+		jobTitle = tr("Download")
 	}
 	toast := appToast{
 		id:          fmt.Sprintf("%s:%d", a.remoteTransfers.toastPrefix, result.ID),
@@ -399,14 +399,14 @@ func (a *app) publishRemoteTransfer(manager *transfer.Manager, generation uint64
 		timeout:     -1,
 	}
 	if !terminal {
-		toast.title = jobTitle + " queued"
+		toast.title = trf("%s queued", jobTitle)
 		if result.Status == transfer.StatusRunning {
-			toast.title = jobTitle + " in progress"
+			toast.title = trf("%s in progress", jobTitle)
 		}
 		if job.cancelling {
-			toast.title = "Cancelling " + strings.ToLower(jobTitle)
+			toast.title = trf("Cancelling %s", strings.ToLower(jobTitle))
 		}
-		toast.action = "Cancel"
+		toast.action = tr("Cancel")
 		toast.onAction = func() {
 			a.cancelRemoteTransfer(manager, generation, result.ID)
 		}
@@ -415,34 +415,34 @@ func (a *app) publishRemoteTransfer(manager *transfer.Manager, generation uint64
 		toast.description = remoteTransferTerminalDescription(result)
 		if result.TotalBytes > 0 {
 			completed := min(result.CompletedBytes, result.TotalBytes)
-			toast.description += fmt.Sprintf(" · %s of %s", formatRemoteTransferBytes(completed), formatRemoteTransferBytes(result.TotalBytes))
+			toast.description += " · " + trf("%s of %s", formatRemoteTransferBytes(completed), formatRemoteTransferBytes(result.TotalBytes))
 		}
 		switch result.Status {
 		case transfer.StatusSucceeded:
 			toast.kind = "success"
-			toast.title = jobTitle + " complete"
+			toast.title = trf("%s complete", jobTitle)
 		case transfer.StatusPartial:
 			toast.kind = "error"
-			toast.title = jobTitle + " partially completed"
+			toast.title = trf("%s partially completed", jobTitle)
 		case transfer.StatusFailed:
 			toast.kind = "error"
-			toast.title = jobTitle + " failed"
+			toast.title = trf("%s failed", jobTitle)
 		case transfer.StatusCancelled:
-			toast.title = jobTitle + " cancelled"
+			toast.title = trf("%s cancelled", jobTitle)
 		}
 		if result.Status == transfer.StatusFailed || result.Status == transfer.StatusPartial || result.Status == transfer.StatusCancelled {
-			toast.action = "Retry"
+			toast.action = tr("Retry")
 			toast.onAction = func() { a.retryRemoteTransfer(manager, generation, result.ID) }
 		}
 		toast.moreActions = append(toast.moreActions, appToastAction{
-			label: "Details",
+			label: tr("Details"),
 			onAction: func() {
 				a.showRemoteTransferDetails(manager, generation, result.ID)
 			},
 		})
 		if job.kind == "download" && result.CompletedItems > 0 && len(job.localOutputs) > 0 {
 			output := job.localOutputs[0]
-			reveal := appToastAction{label: "Reveal", onAction: func() {
+			reveal := appToastAction{label: tr("Reveal"), onAction: func() {
 				if a.currentRemoteTransfer(manager, generation) {
 					revealRemoteTransferOutput(output)
 				}
@@ -455,7 +455,7 @@ func (a *app) publishRemoteTransfer(manager *transfer.Manager, generation uint64
 			}
 		}
 		if toast.action == "" {
-			toast.action = "Details"
+			toast.action = tr("Details")
 			toast.onAction = func() { a.showRemoteTransferDetails(manager, generation, result.ID) }
 			toast.moreActions = nil
 		}
@@ -469,13 +469,13 @@ func (a *app) publishRemoteTransfer(manager *transfer.Manager, generation uint64
 
 func remoteTransferProgressDescription(job *remoteTransferJob, result transfer.Result) string {
 	if job.cancelling {
-		return "Waiting for the current item to stop and clean up…"
+		return tr("Waiting for the current item to stop and clean up…")
 	}
 	processed := result.CompletedItems + result.SkippedItems + result.FailedItems
-	text := fmt.Sprintf("%d of %d items", processed, result.TotalItems)
+	text := trf("%d of %d items", processed, result.TotalItems)
 	if result.TotalBytes > 0 {
 		percent := result.CompletedBytes * 100 / result.TotalBytes
-		text = fmt.Sprintf("%s · %d%% · %s of %s", text, percent, formatRemoteTransferBytes(result.CompletedBytes), formatRemoteTransferBytes(result.TotalBytes))
+		text = trf("%s · %d%% · %s of %s", text, percent, formatRemoteTransferBytes(result.CompletedBytes), formatRemoteTransferBytes(result.TotalBytes))
 	} else if result.CompletedBytes > 0 {
 		text += " · " + formatRemoteTransferBytes(result.CompletedBytes)
 	}
@@ -483,13 +483,15 @@ func remoteTransferProgressDescription(job *remoteTransferJob, result transfer.R
 }
 
 func remoteTransferTerminalDescription(result transfer.Result) string {
-	parts := []string{fmt.Sprintf("%d completed", result.CompletedItems)}
+	parts := []string{trf("%d completed", result.CompletedItems)}
 	if result.SkippedItems > 0 {
-		parts = append(parts, fmt.Sprintf("%d skipped", result.SkippedItems))
+		parts = append(parts, trf("%d skipped", result.SkippedItems))
 	}
 	if result.FailedItems > 0 {
-		parts = append(parts, fmt.Sprintf("%d failed", result.FailedItems))
+		parts = append(parts, trf("%d failed", result.FailedItems))
 	}
+	// The transfer error is a dynamic SSH, filesystem, server, or user payload.
+	// Append it verbatim after redaction rather than treating it as a catalog key.
 	if message := firstRemoteTransferError(result); message != "" && result.Status != transfer.StatusSucceeded {
 		parts = append(parts, message)
 	}
@@ -569,7 +571,7 @@ func (a *app) showRemoteTransferDetails(manager *transfer.Manager, generation ui
 			Parent:        a.window,
 			Type:          mygo.MessageInfo,
 			Title:         tr(title),
-			Message:       tr("Transfer batch") + fmt.Sprintf(" #%d", id),
+			Message:       trf("Transfer batch #%d", id),
 			Detail:        detail,
 			Buttons:       []string{tr("Close")},
 			DefaultButton: 0,
@@ -578,21 +580,40 @@ func (a *app) showRemoteTransferDetails(manager *transfer.Manager, generation ui
 	}()
 }
 
+func remoteTransferStatusText(status transfer.Status) string {
+	switch status {
+	case transfer.StatusQueued:
+		return tr("queued")
+	case transfer.StatusRunning:
+		return tr("running")
+	case transfer.StatusSucceeded:
+		return tr("succeeded")
+	case transfer.StatusPartial:
+		return tr("partial")
+	case transfer.StatusFailed:
+		return tr("failed")
+	case transfer.StatusCancelled:
+		return tr("cancelled")
+	default:
+		return string(status)
+	}
+}
+
 func remoteTransferJobDetails(job *remoteTransferJob) string {
 	result := job.result
 	var text strings.Builder
-	fmt.Fprintf(&text, "Status: %s\n", result.Status)
-	fmt.Fprintf(&text, "Items: %d total, %d completed, %d skipped, %d failed\n",
+	fmt.Fprintf(&text, tr("Status: %s\n"), remoteTransferStatusText(result.Status))
+	fmt.Fprintf(&text, tr("Items: %d total, %d completed, %d skipped, %d failed\n"),
 		result.TotalItems, result.CompletedItems, result.SkippedItems, result.FailedItems)
-	fmt.Fprintf(&text, "Bytes: %s of %s\n", formatRemoteTransferBytes(result.CompletedBytes), formatRemoteTransferBytes(result.TotalBytes))
+	fmt.Fprintf(&text, tr("Bytes: %s of %s\n"), formatRemoteTransferBytes(result.CompletedBytes), formatRemoteTransferBytes(result.TotalBytes))
 	if job.remoteDirectory != "" {
-		fmt.Fprintf(&text, "Remote destination: %s\n", job.remoteDirectory)
+		fmt.Fprintf(&text, tr("Remote destination: %s\n"), job.remoteDirectory)
 	}
 	for _, filename := range job.localSources {
-		fmt.Fprintf(&text, "Local source: %s\n", filename)
+		fmt.Fprintf(&text, tr("Local source: %s\n"), filename)
 	}
 	for _, filename := range job.localOutputs {
-		fmt.Fprintf(&text, "Local output: %s\n", filename)
+		fmt.Fprintf(&text, tr("Local output: %s\n"), filename)
 	}
 	for _, itemErr := range result.Errors {
 		if itemErr.ItemIndex >= 0 {

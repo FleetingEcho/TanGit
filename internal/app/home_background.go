@@ -62,6 +62,21 @@ func readHomeBackground(path string) (*ui.Bitmap, error) {
 	return bitmap, nil
 }
 
+// homeBackgroundErrorDescription translates only the fixed validation errors
+// created by readHomeBackground. Dialog, filesystem, and decoder errors remain
+// verbatim after redaction instead of becoming runtime translation keys.
+func homeBackgroundErrorDescription(err error) string {
+	message := safeError(err)
+	switch message {
+	case "Choose an image no larger than 10 MiB",
+		"Choose a valid PNG, JPEG, GIF, WebP, or BMP image",
+		"Choose an image with at most 40 million pixels":
+		return tr(message)
+	default:
+		return message
+	}
+}
+
 // browseHomeBackground asks for one image and decodes it away from the UI
 // thread. A failed pick leaves both the old setting and its cached bitmap in
 // place, and cancellation is deliberately quiet.
@@ -84,7 +99,7 @@ func (a *app) browseHomeBackground() {
 		if err != nil {
 			a.update(func() {
 				if selection == a.homeBackgroundSelectionSeq {
-					a.notify("error", "Could not set Home background", tr(safeError(err)))
+					a.notify("error", "Could not set Home background", safeError(err))
 				}
 			})
 			return
@@ -99,7 +114,7 @@ func (a *app) browseHomeBackground() {
 				return
 			}
 			if err != nil {
-				a.notify("error", "Could not set Home background", tr(safeError(err)))
+				a.notify("error", "Could not set Home background", homeBackgroundErrorDescription(err))
 				return
 			}
 			// Invalidate a persisted-image read that may still be in flight,
@@ -175,7 +190,7 @@ func (a *app) syncHomeBackground() {
 			a.homeBackgroundPending = ""
 			if err != nil {
 				a.homeBackgroundFailed = path
-				a.notify("error", "Could not load Home background", tr(safeError(err)))
+				a.notify("error", "Could not load Home background", homeBackgroundErrorDescription(err))
 				return
 			}
 			a.homeBackgroundPath = path

@@ -385,30 +385,33 @@ type themeChoice struct {
 	build func() *ui.Theme
 }
 
-// themeNames are the theme menu's options, System first and then the
-// palettes, dark before light within a family.
+// themeNames keeps System first, then orders the palettes by WCAG relative
+// background luminance from lightest to darkest. Names break luminance ties.
 var themeNames = []string{
 	"System",
-	"Tokyo Night",
-	"Dracula",
-	"Gruvbox Dark",
-	"GitHub Dark",
+	"GitHub Light",
+	"High Contrast Light",
+	"Ayu Light",
+	"One Light",
+	"Solarized Light",
+	"Rosé Pine Dawn",
+	"Catppuccin Latte",
+	"Gruvbox Light",
+	"Catppuccin Frappé",
+	"Everforest Dark",
 	"Nord",
 	"One Dark",
-	"Solarized Dark",
-	"Catppuccin Frappé",
+	"Dracula",
 	"Catppuccin Macchiato",
-	"Catppuccin Mocha",
-	"Rosé Pine",
-	"Kanagawa Wave",
-	"Everforest Dark",
+	"Gruvbox Dark",
+	"Solarized Dark",
 	"Ayu Mirage",
-	"Gruvbox Light",
-	"GitHub Light",
-	"Solarized Light",
-	"Catppuccin Latte",
-	"One Light",
-	"Rosé Pine Dawn",
+	"Kanagawa Wave",
+	"Catppuccin Mocha",
+	"Tokyo Night",
+	"Rosé Pine",
+	"GitHub Dark",
+	"High Contrast",
 }
 
 var themeChoices = map[string]themeChoice{
@@ -611,6 +614,40 @@ var themeChoices = map[string]themeChoice{
 			accentPressed: "#665475", accentText: "#ffffff", danger: "#b4637a",
 			warning: "#ea9d34", success: "#6d8f89",
 			selection: ui.RGBA(144, 122, 169, 0.22), focus: ui.RGBA(144, 122, 169, 0.50),
+		})
+	}},
+	"Ayu Light": {build: func() *ui.Theme {
+		return palette(ui.LightTheme(), paletteColors{
+			background: "#fafafa", surface: "#f3f4f5", surfaceHover: "#e7e8e9",
+			surfacePressed: "#dcdddd", border: "#dcdfe1", text: "#5c6773",
+			textMuted: "#828c99", accent: "#ffaa33", accentHover: "#ffb454",
+			accentPressed: "#e69500", accentText: "#1f2430", danger: "#f07178",
+			warning: "#fa8d3e", success: "#86b300",
+			selection: ui.RGBA(255, 170, 51, 0.24), focus: ui.RGBA(255, 170, 51, 0.55),
+		})
+	}},
+	// VS Code's Light High Contrast roles: white editor and input surfaces,
+	// dark foreground, navy contrast borders, and blue interactive accents.
+	"High Contrast Light": {build: func() *ui.Theme {
+		return palette(ui.LightTheme(), paletteColors{
+			background: "#ffffff", surface: "#ffffff", surfaceHover: "#f2f2f2",
+			surfacePressed: "#e5e5e5", border: "#0f4a85", text: "#292929",
+			textMuted: "#515151", accent: "#0f4a85", accentHover: "#006bbd",
+			accentPressed: "#09345f", accentText: "#ffffff", danger: "#b5200d",
+			warning: "#795e26", success: "#096d48",
+			selection: ui.RGBA(15, 74, 133, 0.22), focus: ui.RGBA(0, 107, 189, 1),
+		})
+	}},
+	// VS Code's Dark High Contrast roles: black editor and input surfaces,
+	// white foreground, cyan contrast borders, and blue interactive accents.
+	"High Contrast": {build: func() *ui.Theme {
+		return palette(ui.DarkTheme(), paletteColors{
+			background: "#000000", surface: "#000000", surfaceHover: "#0a0a0a",
+			surfacePressed: "#141414", border: "#6fc3df", text: "#ffffff",
+			textMuted: "#b3b3b3", accent: "#21a6ff", accentHover: "#55bbff",
+			accentPressed: "#008ce6", accentText: "#000000", danger: "#f48771",
+			warning: "#ffff00", success: "#7ca668",
+			selection: ui.RGBA(111, 195, 223, 0.38), focus: ui.RGBA(111, 195, 223, 1),
 		})
 	}},
 }

@@ -1368,6 +1368,28 @@ func TestScreenshot(t *testing.T) {
 		saveScreenshot(t, dir, "18-settings-dark", tt)
 	})
 
+	for _, themeName := range []string{"Ayu Light", "High Contrast Light", "High Contrast"} {
+		t.Run("changes-"+strings.ToLower(strings.ReplaceAll(themeName, " ", "-")), func(t *testing.T) {
+			a, tt := newScreenshotApp(t, false)
+			a.settings.Theme = themeName
+			a.reviewedFiles["ui/appevents.go"] = true
+			tt.Frame()
+			saveScreenshot(t, dir, "theme-"+strings.ToLower(strings.ReplaceAll(themeName, " ", "-")), tt)
+		})
+	}
+
+	t.Run("theme-menu-light-to-dark", func(t *testing.T) {
+		a, tt := newScreenshotApp(t, false)
+		tt.SetSize(1280, 900)
+		a.settings.Theme = "GitHub Light"
+		tt.Frame()
+		if err := tt.Click("Theme"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		saveScreenshot(t, dir, "theme-menu-light-to-dark", tt)
+	})
+
 	t.Run("settings-search-exclusions-dark", func(t *testing.T) {
 		a, tt := newScreenshotApp(t, true)
 		a.settings.SearchExcludedDirectories = []string{"cooked", "dist", "node_modules"}

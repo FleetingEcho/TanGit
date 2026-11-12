@@ -38,6 +38,43 @@ func contentWindow(t *testing.T, view func(c *ui.Context)) (*Window, *fake.Windo
 	return w, fw, s
 }
 
+// A drag region restores a full-screen window before asking the native
+// backend to move it, as dragging a platform title bar out of full screen does.
+func TestContentStartDragLeavesFullScreen(t *testing.T) {
+	for _, fullScreen := range []bool{false, true} {
+		t.Run(fmt.Sprintf("fullScreen=%v", fullScreen), func(t *testing.T) {
+			w, _, s := contentWindow(t, func(c *ui.Context) {
+				ui.Box(c).Size(200, 100).DragWindow()
+			})
+			native := &contentDragWindow{Window: w.native}
+			onMain(func() { w.native = native })
+			w.SetFullScreen(fullScreen)
+			if w.IsFullScreen() != fullScreen {
+				t.Fatalf("full screen = %v, want %v", w.IsFullScreen(), fullScreen)
+			}
+			onMain(func() {
+				s.Send(platform.SurfaceEvent{Kind: platform.PointerDown, X: 20, Y: 20})
+				s.Frame()
+				s.Send(platform.SurfaceEvent{Kind: platform.PointerUp, X: 40, Y: 30})
+				s.Frame()
+			})
+			if native.drags != 1 {
+				t.Fatalf("the native backend received %d drags, want 1", native.drags)
+			}
+			if w.IsFullScreen() {
+				t.Fatal("dragging the title region did not leave full screen")
+			}
+		})
+	}
+}
+
+type contentDragWindow struct {
+	platform.Window
+	drags int
+}
+
+func (w *contentDragWindow) StartDrag() { w.drags++ }
+
 // TestContentReadyToShow checks that a window showing Content is ready to
 // show once it drew its first frame, which also tells mygo dev that a new
 // build is up.

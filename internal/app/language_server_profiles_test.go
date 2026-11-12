@@ -26,6 +26,48 @@ func TestEveryManagedLanguageServerHasAVerifiableDownloadSource(t *testing.T) {
 	}
 }
 
+func TestLanguageServerDescriptionBoundaryTranslatesOnlyBuiltIns(t *testing.T) {
+	const customDescription = "A user's server description"
+	stubScopedTranslationCatalog(t, map[string]string{
+		"Official Go language server": "translated Go description",
+		customDescription:             "must not be used",
+	})
+	builtIn, ok := languageServerProfileByID("go")
+	if !ok {
+		t.Fatal("built-in Go profile is missing")
+	}
+	if got := languageServerProfileDescription(builtIn); got != "translated Go description" {
+		t.Fatalf("built-in description = %q", got)
+	}
+	if builtIn.ID != "go" || builtIn.Description != "Official Go language server" {
+		t.Fatalf("presentation changed canonical profile data: %+v", builtIn)
+	}
+	custom := languageServerProfile{ID: "custom", Description: customDescription, Custom: true}
+	if got := languageServerProfileDescription(custom); got != customDescription {
+		t.Fatalf("custom user description passed through translation: %q", got)
+	}
+}
+
+func TestLanguageServerDescriptionsUseRealCatalogs(t *testing.T) {
+	t.Cleanup(func() { currentLanguage = defaultLanguage })
+	for _, choice := range languageChoices[1:] {
+		t.Run(choice.Code, func(t *testing.T) {
+			currentLanguage = choice.Code
+			catalog := translations[choice.Code]
+			for _, profile := range languageServerProfiles {
+				want, ok := catalog[profile.Description]
+				if !ok || want == "" {
+					t.Errorf("%s has no real-catalog translation for built-in profile %s description %q", choice.Code, profile.ID, profile.Description)
+					continue
+				}
+				if got := languageServerProfileDescription(profile); got != want {
+					t.Errorf("%s built-in profile %s description = %q, want %q", choice.Code, profile.ID, got, want)
+				}
+			}
+		})
+	}
+}
+
 func TestLanguageServerExecutableCandidatesSplitTrimAndFallBack(t *testing.T) {
 	got := languageServerExecutableCandidates(" /missing/gopls, , /zed/gopls ", "gopls")
 	want := []string{"/missing/gopls", "/zed/gopls"}

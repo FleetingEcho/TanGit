@@ -345,7 +345,7 @@ func (w *Window) handleMessage(msg string) {
 		w.fitContentSize(contentSize{m.W, m.H, m.SW, m.SH})
 	case "drag":
 		if w.native != nil && !w.untrusted {
-			w.native.StartDrag()
+			w.startDrag()
 		}
 	case "dblclick":
 		if w.native != nil && !w.untrusted {

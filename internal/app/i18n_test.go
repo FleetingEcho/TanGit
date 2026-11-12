@@ -150,6 +150,22 @@ func TestLanguageSelectorTranslatesTheInterface(t *testing.T) {
 	}
 }
 
+func TestDetachedCommitCheckoutLabelIsTranslated(t *testing.T) {
+	t.Cleanup(func() { currentLanguage = defaultLanguage })
+	const english = "Checkout to this commit (detached)…"
+	for _, choice := range languageChoices {
+		if choice.Code == defaultLanguage {
+			continue
+		}
+		t.Run(choice.Code, func(t *testing.T) {
+			currentLanguage = choice.Code
+			if got, want := tr(english), translations[choice.Code][english]; got == english || got != want {
+				t.Fatalf("detached checkout label = %q, want translation %q", got, want)
+			}
+		})
+	}
+}
+
 // A stored choice in any supported language is applied when settings load.
 func TestStoredLanguageAppliesOnLoad(t *testing.T) {
 	for _, choice := range languageChoices {
