@@ -212,7 +212,10 @@ type editor struct {
 	toggledNumbers bool
 	suggestion     string
 
-	find     finder
+	find finder
+	// peerFind caches the other side of a split diff's matches when its
+	// find bar is the open one, for highlighting without another bar.
+	peerFind finder
 	goTo     goToLine
 	complete completions
 	snippet  *snippetSession
