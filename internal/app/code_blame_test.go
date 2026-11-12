@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -50,9 +52,30 @@ func (s *codeBlameTestSession) SearchCommits(_ context.Context, filter repositor
 	return append([]repository.Commit(nil), s.commits...), nil
 }
 
+type codeBlameHistoryTestSession struct {
+	*codeBlameTestSession
+	files []repository.CommitFile
+	diff  repository.Diff
+}
+
+func (s *codeBlameHistoryTestSession) CommitFiles(_ context.Context, commit repository.Commit) ([]repository.CommitFile, error) {
+	s.calls.record("code-blame-history-files:" + commit.Hash)
+	return append([]repository.CommitFile(nil), s.files...), nil
+}
+
+func (s *codeBlameHistoryTestSession) CommitFileDiff(_ context.Context, _ repository.Commit, file repository.CommitFile, _ repository.DiffOptions) (repository.Diff, error) {
+	s.calls.record("code-blame-history-diff:" + file.Path)
+	return s.diff, nil
+}
+
 func openCodeBlameDocument(t *testing.T, session *codeBlameTestSession) (*harness, *codeDocument) {
 	t.Helper()
-	stubCodeWorkspace(t, map[string]string{"notes.txt": "first\nsecond\n"})
+	return openCodeBlameTextDocument(t, session, "first\nsecond\n")
+}
+
+func openCodeBlameTextDocument(t *testing.T, session *codeBlameTestSession, content string) (*harness, *codeDocument) {
+	t.Helper()
+	stubCodeWorkspace(t, map[string]string{"notes.txt": content})
 	h, calls := menuTestAppWithCalls(t)
 	openCodePageForTest(t, h, 1)
 	h.app.openCodeFile("notes.txt", 0)
@@ -122,17 +145,96 @@ func TestCodeBlameAnnotationsOpenCommitAndJumpToHistory(t *testing.T) {
 		t.Fatalf("commit details are incomplete: %q", h.texts())
 	}
 
+	h.app.session = &codeBlameHistoryTestSession{
+		codeBlameTestSession: session,
+		files:                []repository.CommitFile{{Path: "other.txt", Status: "M"}, {Path: "notes.txt", Status: "M"}},
+		diff:                 repository.Diff{OldText: "old first\nold second\n", NewText: "first\nsecond\n", Kind: "Commit"},
+	}
 	if err := h.tester.Click("Open in History"); err != nil {
 		t.Fatal(err)
 	}
 	h.waitFor(t, "the blamed commit in History", func() bool {
 		return h.app.workspaceTab == sectionHistory && h.app.selectedCommit == 0 &&
-			len(h.app.historyFilter.matches) == 1 && !h.app.historyFilter.loading
+			len(h.app.historyFilter.matches) == 1 && !h.app.historyFilter.loading &&
+			h.app.commitDiffState != nil && !h.app.commitDiffLoading
 	})
 	if h.app.codeBlameHover.open || h.app.historyFilter.applied.Query != hash ||
 		h.app.historyFilter.applied.Branch != "" || h.app.historyFilter.matches[0].Hash != hash {
 		t.Fatalf("History did not select exact blame commit: dialog=%#v query=%#v commits=%#v",
 			h.app.codeBlameHover, h.app.historyFilter.applied, h.app.historyFilter.matches)
+	}
+	// BlameLine coordinates added later may be absent in older/incomplete
+	// data; the hover's current path and one-based line are the fallback.
+	if h.app.selectedCommitFile != 1 || h.app.commitDiffPath != "notes.txt" || h.app.commitDiffState.ScrollY() != 0 {
+		t.Fatalf("History fallback opened file %d %q at scroll %v, want notes.txt line 1",
+			h.app.selectedCommitFile, h.app.commitDiffPath, h.app.commitDiffState.ScrollY())
+	}
+}
+
+func TestCodeBlameHistoryOpensBlamedFileAtCommitLine(t *testing.T) {
+	hash := strings.Repeat("f", 40)
+	var content, oldContent strings.Builder
+	blame := make([]repository.BlameLine, 40)
+	for index := range blame {
+		line := index + 1
+		fmt.Fprintf(&content, "line %d\n", line)
+		fmt.Fprintf(&oldContent, "old line %d\n", line)
+		blame[index] = repository.BlameLine{
+			Hash: hash, CommitPath: "dir/notes.txt", CommitLine: line + 3,
+			Author: "Ada", Text: fmt.Sprintf("line %d", line),
+		}
+	}
+	session := &codeBlameTestSession{
+		lines: blame,
+		commits: []repository.Commit{{
+			Hash: hash, ShortHash: "fffffff", Subject: "Track the blamed line",
+			AuthorName: "Ada", AuthorEmail: "ada@example.com",
+		}},
+	}
+	h, document := openCodeBlameTextDocument(t, session, content.String())
+	h.waitFor(t, "blame for the source file", func() bool { return document.blameLoaded })
+	history := &codeBlameHistoryTestSession{
+		codeBlameTestSession: session,
+		files:                []repository.CommitFile{{Path: "other.txt", Status: "M"}, {Path: "dir/notes.txt", Status: "M"}},
+		diff: repository.Diff{
+			OldText: "history 1\nhistory 2\nhistory 3\n" + oldContent.String(),
+			NewText: "history 1\nhistory 2\nhistory 3\n" + content.String(),
+			Kind:    "Commit",
+		},
+	}
+	h.app.session = history
+	h.app.fileTreeCollapsed[fileTreeCollapseKey(fileTreeCommitScope, "dir")] = true
+
+	document.state.GoTo(editor.Pos{Line: 11})
+	h.app.syncCodeBlameActiveLine(document)
+	snapshot := document.state.Buffer.Snapshot()
+	document.state.OnHover(editor.HoverRequest{Offset: snapshot.LineEnd(11), Version: snapshot.Version()})
+	h.waitFor(t, "the blamed line's commit details", func() bool {
+		return h.app.codeBlameHover.open && !h.app.codeBlameHover.loading
+	})
+	if h.app.codeBlameHover.line != 12 {
+		t.Fatalf("hover line = %d, want 12", h.app.codeBlameHover.line)
+	}
+	if err := h.tester.Click("Open in History"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor(t, "the blamed file's diff", func() bool {
+		return h.app.workspaceTab == sectionHistory && h.app.commitDiffState != nil && !h.app.commitDiffLoading
+	})
+	if h.app.selectedCommitFile != 1 || h.app.commitDiffPath != "dir/notes.txt" || h.app.historyFilter.matches[0].Hash != hash {
+		t.Fatalf("History opened file %d %q for %v, want the pre-rename dir/notes.txt at %s",
+			h.app.selectedCommitFile, h.app.commitDiffPath, h.app.historyFilter.matches, hash)
+	}
+	if h.app.fileTreeCollapsed[fileTreeCollapseKey(fileTreeCommitScope, "dir")] {
+		t.Fatal("History left the blamed file's parent directory folded")
+	}
+	state := h.app.commitDiffState
+	if got, want := state.ScrollY(), state.LineTop(editor.DiffNew, 14); got != want {
+		t.Fatalf("diff scroll = %v, blamed commit line 15 top = %v, height = %v, viewport = %v; target=%#v", got, want,
+			state.LineTop(editor.DiffNew, state.New.LineCount()), state.ViewportHeight(), h.app.codeBlameHistoryTarget)
+	}
+	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+		saveScreenshot(t, dir, "code-blame-history-commit-line", h.tester)
 	}
 }
 

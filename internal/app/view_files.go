@@ -494,6 +494,10 @@ func (a *app) fileRowMenu(m *ui.Menu, index int, services ui.Services) {
 		}
 	}
 	m.Separator()
+	if m.Item(tr("Find file histories")).Disabled(a.actionBusy || a.session == nil).Chosen() {
+		a.findFileHistories(file.Path)
+	}
+	m.Separator()
 	a.copyPathItems(m, services, file.Path)
 }
 

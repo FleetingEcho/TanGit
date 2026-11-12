@@ -77,6 +77,7 @@ func (a *app) confirmAbortOperation() {
 // resetCommitDetails drops what the commit detail pane read, so the next
 // frame reads the chosen commit again after an action changed it.
 func (a *app) resetCommitDetails() {
+	a.codeBlameHistoryTarget = nil
 	a.commitFilesHash = ""
 	a.commitFiles = nil
 	a.commitFilesLoading = false
@@ -139,11 +140,34 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 			}
 			a.commitFiles = files
 			if len(files) == 0 {
+				a.codeBlameHistoryTarget = nil
 				a.selectedCommitFileRow = -1
 				a.selectedCommitFile = -1
 				return
 			}
 			a.selectedCommitFile = 0
+			if target := a.codeBlameHistoryTarget; target != nil && target.hash == commit.Hash {
+				matched := false
+				for index, file := range files {
+					if file.Path != target.path {
+						continue
+					}
+					a.selectedCommitFile = index
+					matched = true
+					// Keep the requested file visible when its parent directories
+					// were folded by an earlier commit.
+					if a.fileTreeCollapsed == nil {
+						a.fileTreeCollapsed = make(map[string]bool)
+					}
+					for _, directory := range fileTreeDirectories([]string{file.Path}) {
+						a.fileTreeCollapsed[fileTreeCollapseKey(fileTreeCommitScope, directory)] = false
+					}
+					break
+				}
+				if !matched {
+					a.codeBlameHistoryTarget = nil
+				}
+			}
 		})
 	}()
 }
@@ -151,6 +175,9 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 // requestCommitFileDiff reads the diff of the file chosen in commit, unless
 // it is already the one the pane shows.
 func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.CommitFile) {
+	if target := a.codeBlameHistoryTarget; target != nil && (target.hash != commit.Hash || target.path != file.Path) {
+		a.codeBlameHistoryTarget = nil
+	}
 	if a.session == nil || (a.commitDiffHash == commit.Hash && a.commitDiffPath == file.Path &&
 		a.commitDiffOptions == a.diffOptions) {
 		return
@@ -212,6 +239,9 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 			a.commitDiffPatch = diff.Patch
 			a.commitDiffState = state
 			a.commitDiffMedia = media
+			if target := a.codeBlameHistoryTarget; target != nil && target.hash == commit.Hash && target.path == file.Path && state == nil {
+				a.codeBlameHistoryTarget = nil
+			}
 		})
 	}()
 }

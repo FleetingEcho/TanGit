@@ -367,6 +367,7 @@ var japanese = map[string]string{
 	"No files here":                 "ここにファイルはありません",
 	"Line-by-line history (B)":      "行ごとの履歴 (B)",
 	"Blame":                         "Blame",
+	"Find file histories":           "ファイル履歴を検索",
 	"Blame at HEAD":                 "HEAD で Blame",
 	"Close blame":                   "Blame を閉じる",
 	"Loading blame…":                "Blame を読み込んでいます…",

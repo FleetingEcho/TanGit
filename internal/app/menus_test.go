@@ -154,14 +154,14 @@ func TestFileRowContextMenu(t *testing.T) {
 	h.app.selectedFile = 0
 
 	h.rightClick(t, "one.txt")
-	h.requireMenuLabels(t, "Open in built-in editor", "Unstage", "Blame", "Discard changes…", "Copy relative path", "Copy absolute path")
+	h.requireMenuLabels(t, "Open in built-in editor", "Unstage", "Blame", "Find file histories", "Discard changes…", "Copy relative path", "Copy absolute path")
 	if slices.Contains(h.texts(), "Stage") {
 		t.Errorf("a staged file offers Stage in its menu: %q", h.texts())
 	}
 	h.press(t, ui.KeyEscape)
 
 	h.rightClick(t, "two.txt")
-	h.requireMenuLabels(t, "Open in built-in editor", "Stage", "Discard changes…", "Copy relative path", "Copy absolute path")
+	h.requireMenuLabels(t, "Open in built-in editor", "Stage", "Find file histories", "Discard changes…", "Copy relative path", "Copy absolute path")
 
 	// The menu acts on the row clicked, not on the row selected: the details
 	// pane follows it, and the discard confirmation it opens names it.
