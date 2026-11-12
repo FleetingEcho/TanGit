@@ -2,11 +2,13 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
 	"lazygitapp/internal/repository"
@@ -20,6 +22,38 @@ type codeBlameTestSession struct {
 	blameRelease  chan struct{}
 	searchStarted chan struct{}
 	searchRelease chan struct{}
+	message       *repository.CommitMessage
+	messageError  error
+	files         []repository.CommitFile
+	filesError    error
+	filesStarted  chan struct{}
+	filesRelease  chan struct{}
+}
+
+func (s *codeBlameTestSession) CommitMessage(ctx context.Context, commit repository.Commit) (repository.CommitMessage, error) {
+	if s.messageError != nil {
+		return repository.CommitMessage{}, s.messageError
+	}
+	if s.message != nil {
+		return *s.message, nil
+	}
+	return s.fakeSession.CommitMessage(ctx, commit)
+}
+
+func (s *codeBlameTestSession) CommitFiles(ctx context.Context, commit repository.Commit) ([]repository.CommitFile, error) {
+	if s.filesStarted != nil {
+		close(s.filesStarted)
+	}
+	if s.filesRelease != nil {
+		<-s.filesRelease
+	}
+	if s.filesError != nil {
+		return nil, s.filesError
+	}
+	if s.files != nil {
+		return append([]repository.CommitFile(nil), s.files...), nil
+	}
+	return s.fakeSession.CommitFiles(ctx, commit)
 }
 
 func (s *codeBlameTestSession) BlameWorkingTreeFile(_ context.Context, path string) ([]repository.BlameLine, error) {
@@ -548,5 +582,254 @@ func TestCodeBlameHoverBelongsToOneDocument(t *testing.T) {
 	a.closeCodeBlameDetailsFor(first)
 	if !a.codeBlameHover.open || a.codeBlameHover.source != second {
 		t.Fatal("closing the previous document dismissed the current document's hover")
+	}
+}
+
+func TestCodeBlameCardLoadsMessageFilesAndExactTotals(t *testing.T) {
+	hash := strings.Repeat("c", 40)
+	session := &codeBlameTestSession{
+		lines:   []repository.BlameLine{{Hash: hash, Author: "Ada Lovelace", Current: true, UnixTimestamp: timeNow() - 3*86400, Subject: "Improve server errors", Text: "first"}},
+		commits: []repository.Commit{{Hash: hash, Subject: "Improve server errors", AuthorName: "Ada Lovelace", AuthorEmail: "ada@example.com", UnixTimestamp: timeNow() - 3*86400, Parents: []string{strings.Repeat("d", 40)}, Tags: []string{"v2.0"}}},
+		message: &repository.CommitMessage{Summary: "Improve server errors", Description: "Include the original error for better debugging."},
+		files: []repository.CommitFile{
+			{Path: "server/server.go", LinesAdded: 2, LinesDeleted: 1},
+			{Path: "server/config.go", PreviousPath: "old/config.go", LinesAdded: 4},
+			{Path: "docs/server.md", LinesAdded: 12, LinesDeleted: 3},
+		},
+	}
+	h, document := openCodeBlameDocument(t, session)
+	h.waitFor(t, "working-tree blame", func() bool { return document.blameLoaded })
+	h.app.snapshot.HeadHash = hash
+	h.app.openCodeBlameDetails(document, 0)
+	h.waitFor(t, "rich commit details", func() bool { return !h.app.codeBlameHover.loading })
+	h.tester.Frame()
+	if h.app.codeBlameHover.filesCollapsed || !h.app.codeBlameHover.infoExpanded {
+		t.Fatal("commit card sections must default to expanded")
+	}
+	if bounds, ok := h.tester.Find("Changed files"); !ok || bounds.H != 144 {
+		t.Fatalf("file list does not retain its fixed height: %+v", bounds)
+	}
+	for _, text := range []string{"Improve server errors", "Include the original error for better debugging.", "You", "v2.0", "Changes in this commit (3)", "server/server.go", "old/config.go → server/config.go", "+18", "−4"} {
+		if !h.tester.HasText(text) {
+			t.Errorf("card missing %q: %v", text, h.texts())
+		}
+	}
+	if err := h.tester.Click("Changes in this commit (3)"); err != nil {
+		t.Fatal(err)
+	}
+	if h.tester.HasText("server/server.go") || !h.tester.HasText("+18") {
+		t.Fatal("collapsing files lost totals or retained file rows")
+	}
+	if err := h.tester.Click("Changes in this commit (3)"); err != nil {
+		t.Fatal(err)
+	}
+	if !h.tester.HasText("ada@example.com") || !h.tester.HasText("ddddddd") {
+		t.Fatal("expanded metadata missing author or parent")
+	}
+	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+		saveScreenshot(t, dir, "blame-commit-card-editor", h.tester)
+	}
+}
+
+func TestCodeBlameCardKeepsPartialDetailsOnReadFailure(t *testing.T) {
+	for _, part := range []string{"message", "files"} {
+		t.Run(part, func(t *testing.T) {
+			hash := strings.Repeat("c", 40)
+			session := &codeBlameTestSession{
+				lines:   []repository.BlameLine{{Hash: hash, Author: "Ada", Text: "first"}},
+				commits: []repository.Commit{{Hash: hash, Subject: "Keep the commit visible"}},
+			}
+			if part == "message" {
+				session.messageError = errors.New("message unavailable")
+			} else {
+				session.filesError = errors.New("files unavailable")
+			}
+			h, document := openCodeBlameDocument(t, session)
+			h.waitFor(t, "working-tree blame", func() bool { return document.blameLoaded })
+			h.app.openCodeBlameDetails(document, 0)
+			h.waitFor(t, "partial details", func() bool { return !h.app.codeBlameHover.loading })
+			h.tester.Frame()
+			if h.app.codeBlameHover.commit.Hash != hash || !h.tester.HasText(part+" unavailable") {
+				t.Fatal("partial failure discarded the commit or error")
+			}
+			if part == "message" && !h.tester.HasText("Changes in this commit (2)") {
+				t.Fatal("message failure discarded files")
+			}
+			if part == "files" && (!h.tester.HasText("Existing body") || h.tester.HasText("Changes in this commit (0)")) {
+				t.Fatal("file failure lost body or presented a false empty commit")
+			}
+		})
+	}
+}
+
+func TestCodeBlameRejectsLateFileDetailsAfterClose(t *testing.T) {
+	hash := strings.Repeat("c", 40)
+	session := &codeBlameTestSession{
+		lines:        []repository.BlameLine{{Hash: hash, Text: "first"}},
+		commits:      []repository.Commit{{Hash: hash, Subject: "Old commit"}},
+		filesStarted: make(chan struct{}), filesRelease: make(chan struct{}),
+	}
+	h, document := openCodeBlameDocument(t, session)
+	h.waitFor(t, "working-tree blame", func() bool { return document.blameLoaded })
+	completed := make(chan bool, 1)
+	updateChanged := h.app.updateChanged
+	h.app.updateChanged = func(fn func() bool) {
+		updateChanged(func() bool {
+			changed := fn()
+			completed <- changed
+			return changed
+		})
+	}
+	h.app.openCodeBlameDetails(document, 0)
+	<-session.filesStarted
+	h.app.closeCodeBlameDetails()
+	close(session.filesRelease)
+	h.waitFor(t, "late file detail publication", func() bool {
+		select {
+		case changed := <-completed:
+			if changed {
+				t.Error("stale file details requested a repaint")
+			}
+			return true
+		default:
+			return false
+		}
+	})
+	if h.app.codeBlameHover.open || h.app.codeBlameHover.filesLoaded || h.app.codeBlameHover.commit.Hash != "" {
+		t.Fatal("closed card accepted late file details")
+	}
+}
+
+func TestCodeBlameCardFitsSmallWindowsAndLargeFonts(t *testing.T) {
+	for _, size := range []struct {
+		width, height int
+		font          float32
+	}{{720, 680, 14}, {360, 320, 20}} {
+		t.Run(fmt.Sprintf("%dx%d", size.width, size.height), func(t *testing.T) {
+			a := newApp(fakeOpener{})
+			a.codeBlameHover = codeBlameHoverState{
+				open: true, path: "server/server.go", line: 42,
+				blame:       repository.BlameLine{Hash: strings.Repeat("a", 40), Current: true, UnixTimestamp: timeNow() - 3*86400},
+				commit:      repository.Commit{Subject: "Improve server errors", AuthorName: "Ada Lovelace", AuthorEmail: "ada@example.com", Parents: []string{strings.Repeat("b", 40)}},
+				description: "Include the original error for better debugging.", filesLoaded: true, infoExpanded: true,
+			}
+			for i := 0; i < 30; i++ {
+				a.codeBlameHover.files = append(a.codeBlameHover.files, repository.CommitFile{Path: fmt.Sprintf("server/very-long-folder-name/config-%02d.go", i), LinesAdded: i, LinesDeleted: 1})
+			}
+			tt := ui.NewTester(func(c *ui.Context) {
+				theme := *c.Theme()
+				theme.FontSize = size.font
+				ui.Themed(c, &theme).Fill().Children(func() {
+					ui.Column(c).Fill().Padding(12).Background(c.Theme().Background).Children(func() {
+						ui.Column(c).Padding(8).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(10).Children(func() { a.codeBlameDetailsCard(c) })
+					})
+				})
+			}, size.width, size.height)
+			for _, label := range []string{"Copy commit hash", "Open in History", "Changes in this commit (30)"} {
+				bounds, ok := tt.Find(label)
+				if !ok || bounds.X < 0 || bounds.Y < 0 || bounds.X+bounds.W > float32(size.width) || bounds.Y+bounds.H > float32(size.height) {
+					t.Fatalf("%s outside viewport: %+v", label, bounds)
+				}
+			}
+			if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+				saveScreenshot(t, dir, fmt.Sprintf("blame-card-%dx%d-light", size.width, size.height), tt)
+				tt.SetDark(true)
+				saveScreenshot(t, dir, fmt.Sprintf("blame-card-%dx%d-dark", size.width, size.height), tt)
+			}
+			// Scroll over the header, outside the nested file list, to reach
+			// metadata even when large text makes the entire card overflow.
+			tt.Scroll(40, 50, 0, 1600)
+			tt.Frame()
+			bounds, ok := tt.Find("server/server.go:42")
+			if !ok || bounds.Y < 0 || bounds.Y+bounds.H > float32(size.height) {
+				t.Fatalf("card footer remains unreachable after scrolling: %+v", bounds)
+			}
+			a.codeBlameHover.token++ // a newly opened card starts at its author header
+			tt.Frame()
+			bounds, ok = tt.Find("Copy commit hash")
+			if !ok || bounds.Y < 0 || bounds.Y+bounds.H > float32(size.height) {
+				t.Fatalf("new card retained the old scroll position: %+v", bounds)
+			}
+		})
+	}
+}
+
+func TestCodeBlameFileListHasFixedHeightAndScrollsIndependently(t *testing.T) {
+	a := newApp(fakeOpener{})
+	a.codeBlameHover = codeBlameHoverState{
+		open: true, path: "server/server.go", line: 42,
+		blame:       repository.BlameLine{Hash: strings.Repeat("a", 40)},
+		commit:      repository.Commit{Subject: "Improve server errors", AuthorName: "Ada", AuthorEmail: "ada@example.com", UnixTimestamp: timeNow() - 86400},
+		filesLoaded: true, infoExpanded: true,
+	}
+	for i := 0; i < 30; i++ {
+		a.codeBlameHover.files = append(a.codeBlameHover.files, repository.CommitFile{Path: fmt.Sprintf("server/file-%02d.go", i)})
+	}
+	a.codeBlameHover.files[0].LinesAdded = 1100
+	a.codeBlameHover.files[0].LinesDeleted = 10
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Fill().Padding(12).Background(c.Theme().Background).Children(func() {
+			ui.Column(c).Padding(8).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(10).Children(func() { a.codeBlameDetailsCard(c) })
+		})
+	}, 720, 780)
+	list, ok := tt.Find("Changed files")
+	if !ok || list.H != 144 {
+		t.Fatalf("file list height = %+v, want 144", list)
+	}
+	info, _ := tt.Find("More info")
+	insertions, _ := tt.Find("Insertions")
+	if !tt.HasText("+1100") || !tt.HasText("−10") || !tt.HasText("Deletions") {
+		t.Fatal("exact commit totals missing")
+	}
+	tt.Scroll(list.X+list.W/2, list.Y+list.H/2, 0, 2400)
+	tt.Frame()
+	last, ok := tt.Find("server/file-29.go")
+	if !ok || last.Y < list.Y || last.Y+last.H > list.Y+list.H {
+		t.Fatalf("last file is not reachable inside its scroll region: %+v list %+v", last, list)
+	}
+	afterInfo, _ := tt.Find("More info")
+	afterInsertions, _ := tt.Find("Insertions")
+	if afterInfo != info || afterInsertions != insertions {
+		t.Fatal("scrolling files moved the metadata or commit totals")
+	}
+	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+		saveScreenshot(t, dir, "blame-fixed-file-list-scrolled", tt)
+	}
+	a.codeBlameHover.files = a.codeBlameHover.files[:1]
+	tt.Frame()
+	shortList, _ := tt.Find("Changed files")
+	shortInfo, _ := tt.Find("More info")
+	if shortList.H != 144 || shortInfo != info {
+		t.Fatalf("one file changed the fixed layout: list %+v info %+v, want %+v", shortList, shortInfo, info)
+	}
+}
+
+func TestCodeBlameCardUsesWindowHeightToShowExpandedContent(t *testing.T) {
+	a := newApp(fakeOpener{})
+	a.codeBlameHover = codeBlameHoverState{
+		open: true, path: "server/server.go", line: 42,
+		blame:       repository.BlameLine{Hash: strings.Repeat("a", 40)},
+		commit:      repository.Commit{Subject: "Improve server errors", AuthorName: "Ada", AuthorEmail: "ada@example.com", Parents: []string{strings.Repeat("b", 40)}, UnixTimestamp: timeNow() - 86400},
+		description: strings.Repeat("Explain another part of the server change.\n", 16),
+		filesLoaded: true, infoExpanded: true,
+		files: []repository.CommitFile{{Path: "server/server.go", LinesAdded: 1100, LinesDeleted: 10}},
+	}
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Fill().Padding(12).Background(c.Theme().Background).Children(func() {
+			ui.Column(c).Padding(8).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(10).Children(func() { a.codeBlameDetailsCard(c) })
+		})
+	}, 720, 1000)
+	card, ok := tt.Find("Commit details")
+	if !ok || card.H <= 620 {
+		t.Fatalf("card retained an arbitrary height cap: %+v", card)
+	}
+	for _, label := range []string{"Copy commit hash", "Changed files", "Insertions", "Deletions", "server/server.go:42"} {
+		bounds, ok := tt.Find(label)
+		if !ok || bounds.Y < card.Y || bounds.Y+bounds.H > card.Y+card.H || bounds.Y+bounds.H > 1000 {
+			t.Fatalf("%s is not visible without scrolling: %+v card %+v", label, bounds, card)
+		}
+	}
+	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+		saveScreenshot(t, dir, "blame-expanded-card-full-height", tt)
 	}
 }

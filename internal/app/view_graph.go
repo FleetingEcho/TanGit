@@ -86,7 +86,7 @@ func (a *app) graphView(c *ui.Context) {
 						// right of the line it belongs to.
 						ui.Box(row.Context).Width(graphRowInset(rowGraph.width, laneCount))
 						a.commitSelectionCheckbox(row.Context, commit)
-						authorAvatar(row.Context, commit.AuthorName, commit.AuthorEmail, 18)
+						a.authorAvatar(row.Context, commit, 18)
 						ui.Column(row.Context).Gap(1).Grow(1).Children(func() {
 							ui.Text(row.Context, commit.Subject).SingleLine()
 							ui.Row(row.Context).Gap(8).Children(func() {

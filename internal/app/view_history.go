@@ -371,7 +371,7 @@ func (a *app) historyView(c *ui.Context) {
 					rowElement := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(7, 8)
 					rowElement.Children(func() {
 						a.commitSelectionCheckbox(row.Context, commit)
-						authorAvatar(row.Context, commit.AuthorName, commit.AuthorEmail, 18)
+						a.authorAvatar(row.Context, commit, 18)
 						ui.Column(row.Context).Gap(2).Grow(1).Children(func() {
 							ui.Text(row.Context, commit.Subject).SingleLine().Grow(1)
 							ui.Row(row.Context).Gap(8).Children(func() {
@@ -536,7 +536,7 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 		a.commitHashRow(c, *commit, copyLabel)
 		if commit.AuthorName != "" || commit.AuthorEmail != "" {
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-				authorAvatar(c, commit.AuthorName, commit.AuthorEmail, 24)
+				a.authorAvatar(c, *commit, 24)
 				switch {
 				case commit.AuthorName == "":
 					ui.Text(c, commit.AuthorEmail).Grow(1).SingleLine().Tooltip(commit.AuthorEmail)

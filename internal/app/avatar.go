@@ -7,6 +7,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
+
+	"lazygitapp/internal/repository"
 )
 
 // avatarPalette is the set of colors a generated author avatar picks from.
@@ -32,14 +34,43 @@ var avatarPalette = []ui.Color{
 // for white, in either theme.
 var avatarTextColor = ui.RGB(255, 255, 255)
 
-// authorAvatar draws the round icon that stands in for a commit author: a
-// colored circle holding the first letter of the name, because Git stores a
-// name and an email and no picture of them.
-func authorAvatar(c *ui.Context, name, email string, size float32) {
+// authorAvatar shows a cached hosting photo when available, and keeps the
+// generated initial while a lookup is pending or unavailable.
+func (a *app) authorAvatar(c *ui.Context, commit repository.Commit, size float32) {
+	var bitmap *ui.Bitmap
+	if a.authorAvatars != nil {
+		remotes := a.snapshot.Remotes
+		// Prefer origin; a fork's upstream must not override its configured host.
+		for pass := 0; pass < 2; pass++ {
+			found := false
+			for _, remote := range remotes {
+				if (remote.Name == "origin") != (pass == 0) {
+					continue
+				}
+				if source, ok := avatarSourceFor(a.remoteWebAddress(remote), commit); ok {
+					services := c.Services()
+					bitmap = a.authorAvatars.lookup(source, services.Invalidate)
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+	}
+	drawAuthorAvatar(c, commit.AuthorName, commit.AuthorEmail, size, bitmap)
+}
+
+func drawAuthorAvatar(c *ui.Context, name, email string, size float32, bitmap *ui.Bitmap) {
 	avatar := ui.Row(c).Width(size).Height(size).Radius(size / 2).
 		Background(avatarColor(name, email)).Center().
-		Label(authorLabel(name, email))
+		Label(authorLabel(name, email)).Shrink(0).Clip()
 	avatar.Children(func() {
+		if bitmap != nil {
+			ui.Image(c, bitmap).Size(size, size).Fit(ui.Cover).Role(ui.RoleImage).Label(authorLabel(name, email))
+			return
+		}
 		ui.Text(c, authorInitial(name, email)).
 			Bold().FontSize(size * 0.5).TextColor(avatarTextColor).SingleLine()
 	})
