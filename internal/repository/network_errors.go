@@ -40,9 +40,10 @@ func safeNetworkError(err error, forceWithLease bool) error {
 	message := RedactSecrets(err.Error())
 	lower := strings.ToLower(message)
 	kind := error(nil)
+	// "failed to push some refs" is only Git's final summary: pre-push hooks
+	// and other local failures end with it too, without rejecting a remote ref.
 	pushRejected := containsAny(lower,
-		"failed to push some refs", "non-fast-forward", "fetch first",
-		"[remote rejected]", "[rejected]", "stale info",
+		"non-fast-forward", "fetch first", "[remote rejected]", "[rejected]", "stale info",
 	)
 	switch {
 	case containsAny(lower,
@@ -64,7 +65,7 @@ func safeNetworkError(err error, forceWithLease bool) error {
 		"terminal prompts disabled", "http basic: access denied",
 	):
 		kind = ErrAuthentication
-	case forceWithLease && pushRejected && containsAny(lower, "stale info", "non-fast-forward", "fetch first", "failed to push some refs"):
+	case forceWithLease && pushRejected && containsAny(lower, "stale info", "non-fast-forward", "fetch first"):
 		kind = ErrPushLeaseRejected
 	case pushRejected:
 		kind = ErrPushRejected
