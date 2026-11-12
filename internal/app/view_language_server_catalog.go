@@ -76,7 +76,7 @@ func (a *app) customLanguageServerEditor(c *ui.Context) {
 	if form.ID != "" {
 		title = "Edit custom language server"
 	}
-	ui.Column(c).Key("custom-language-server-form").Border(1, theme.Border).Radius(theme.Radius).
+	ui.Column(c.Key("custom-language-server-form")).Border(1, theme.Border).Radius(theme.Radius).
 		Padding(10).Gap(8).MaxWidth(600).Children(func() {
 		ui.Text(c, tr(title)).Bold()
 		ui.TextInput(c, &form.Name).Label(tr("Custom server name")).Placeholder("ty")
@@ -152,7 +152,7 @@ func (a *app) languageServerCatalogRow(c *ui.Context, profile languageServerProf
 	enabled := a.languageServerCatalogProfileEnabled(profile)
 	installing := a.languageServerInstalling[profile.ID]
 	selected := a.languageServerCatalogSelected == profile.ID
-	ui.Column(c).Key("lsp-catalog-"+profile.ID).Border(1, theme.Border).Radius(theme.Radius).
+	ui.Column(c.Key("lsp-catalog-"+profile.ID)).Border(1, theme.Border).Radius(theme.Radius).
 		Padding(10).Gap(8).Margin(0, 0, 10, 0).MaxWidth(600).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {

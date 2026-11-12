@@ -72,7 +72,7 @@ func (s *gitSession) replayReflog(ctx context.Context, redo bool) error {
 		verb = "redo"
 	}
 	if state := s.git.Status.WorkingTreeState(); state.Any() {
-		return fmt.Errorf("cannot %s while a %s is in progress", verb, state.CommandName())
+		return fmt.Errorf("cannot %s while a %s is in progress", verb, state.Effective().CommandName())
 	}
 
 	// Read all reflog entries on every call. Undo markers may be older than the
