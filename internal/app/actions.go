@@ -200,6 +200,7 @@ func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 	// A new repository shows every change and both sections open.
 	a.fileSearch = ""
 	a.ignoreUntracked = false
+	a.changesFiltersOpen = false
 	a.reviewedFiles = map[string]bool{}
 	a.reviewRequestedSeq = 0
 	a.reviewRequestToken++
@@ -260,6 +261,7 @@ func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 	a.resetCommitDetails()
 	a.resetComparison()
 	a.resetCustomPatch()
+	a.resetChangeCourier()
 }
 
 // resetCommitPaging starts the commit list at the page a snapshot carries:
@@ -425,7 +427,7 @@ func (a *app) beginBlame() {
 		var state *editor.State
 		if err == nil {
 			buffer := editor.NewBuffer(formatBlame(lines))
-			state = &editor.State{Buffer: buffer, ReadOnly: true, SoftWrap: false, Label: "Git blame output"}
+			state = &editor.State{Buffer: buffer, ReadOnly: true, SoftWrap: false, NoIndentGuides: true, Label: "Git blame output"}
 		}
 		a.update(func() {
 			if repositoryGeneration != a.generation || blameGeneration != a.blameGeneration {
@@ -470,12 +472,17 @@ func (a *app) beginRepositoryActionMessage(
 		return
 	}
 
+	a.invalidateCodeBlameForRepositoryMutation()
 	session := a.session
 	repositoryGeneration := a.generation
 	// The lists keep their place by what they show, not by index: an action
 	// or a refresh that moves a row must not move the user's choice with it.
 	selected := a.captureSelection(keepPath)
 	selectedCommitHash := selected.commit
+	previousOperations := make(map[string]bool, len(a.snapshot.Operations))
+	for _, record := range a.snapshot.Operations {
+		previousOperations[record.ID] = true
+	}
 	a.actionBusy = true
 	a.actionError = ""
 
@@ -521,6 +528,7 @@ func (a *app) beginRepositoryActionMessage(
 				a.snapshot = snapshot
 				a.snapshotSeq++
 				a.refreshCodeAfterCheckout(oldSnapshot, snapshot)
+				a.refreshCodeBlameAfterRepositoryMutation()
 				a.resetCommitPaging(snapshot)
 				a.restoreSelection(selected)
 				// An action changed the commits, so the branch browse must read
@@ -550,9 +558,7 @@ func (a *app) beginRepositoryActionMessage(
 			if onSuccess != nil {
 				onSuccess()
 			}
-			if message != "" {
-				a.notify("success", message, "")
-			}
+			a.notifyRepositorySuccess(message, previousOperations)
 		})
 	}()
 }

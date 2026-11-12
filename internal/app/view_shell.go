@@ -120,6 +120,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.cloneModal(c)
 	a.patchPreviewModal(c)
 	a.customPatchModal(c)
+	a.changeCourierModal(c)
 	a.commandLogModal(c)
 	a.settingsModal(c)
 	a.keybindingsModal(c)

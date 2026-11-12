@@ -179,7 +179,15 @@ func (a *app) goLanguageRequest(document *codeDocument, requestSequence *uint64,
 }
 
 func (a *app) requestGoLanguageHover(document *codeDocument, request editor.HoverRequest) {
+	if document != nil {
+		// Only the newest hover request may occupy the native editor card.
+		document.hoverSeq++
+	}
 	a.goLanguageRequest(document, &document.hoverSeq, request.Offset, "textDocument/hover", func(raw json.RawMessage, err error, text string, _ uint64) bool {
+		// Never replace a newer blame card with a late LSP response.
+		if a.codeBlameHover.open && a.codeBlameHover.source == document {
+			return false
+		}
 		if err != nil {
 			return false
 		}
