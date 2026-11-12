@@ -59,6 +59,8 @@ func (a *app) agentTaskFormModal(c *ui.Context) {
 						ui.TextInput(c, &a.agents.testCommand).Label(tr("Test command (optional)")).Grow(1)
 					})
 					ui.TextInput(c, &a.agents.runCommand).Label(tr("Development/run command (optional)")).Placeholder(tr("go run ./cmd/server --port {port}"))
+					ui.TextInput(c, &a.agents.assistCommand).Label(tr("AssistCommand (optional)")).Placeholder(tr("advisor {requestFile} {responseFile} {artifactDir}"))
+					ui.Text(c, tr("Conflict Assistant and Change Splitter run this JSON-file helper only after an explicit request. It receives only isolated request, response, and artifact paths; it never returns a Git patch.")).TextColor(c.Theme().TextMuted)
 					ui.Row(c).Gap(10).Children(func() {
 						ui.TextArea(c, &a.agents.environment).Label(tr("Nonsecret environment (KEY=value per line)")).Lines(2, 4).Grow(1)
 						ui.TextArea(c, &a.agents.sparsePaths).Label(tr("Sparse checkout paths (optional)")).Lines(2, 4).Grow(1)

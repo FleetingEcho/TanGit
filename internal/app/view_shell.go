@@ -117,6 +117,8 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.tagFormModal(c)
 	a.worktreeFormModal(c)
 	a.agentTaskFormModal(c)
+	a.conflictAssistantModal(c)
+	a.changeSplitterModal(c)
 	a.worktreeMoveFormModal(c)
 	a.worktreeLockFormModal(c)
 	a.worktreeRepairFormModal(c)
