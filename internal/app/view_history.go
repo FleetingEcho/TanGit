@@ -623,7 +623,6 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 				case a.commitDiffError != "":
 					ui.Text(c, a.commitDiffError).TextColor(theme.Danger)
 				case a.commitDiffState != nil:
-					a.customPatchSelectionControls(c)
 					a.keyboardDiffViewer(c, a.commitDiffState)
 				default:
 					noTextualDiffOrMedia(c, a.commitDiffMedia, a.commitDiffPath)
