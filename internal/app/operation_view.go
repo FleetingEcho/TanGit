@@ -78,5 +78,11 @@ func (a *app) operationContextView(c *ui.Context) {
 					TextColor(theme.Danger).FontSize(theme.FontSize - 1).SingleLine()
 			}
 		})
+		if a.hasRestorableFileRecovery() {
+			rowIconButton(c, tr("Conflict recovery"), tr("Restore an original unresolved file and its index stages"), softResetIcon, func() {
+				a.savedWorkPanel = 0
+				a.showRecoveryModal = true
+			})
+		}
 	})
 }

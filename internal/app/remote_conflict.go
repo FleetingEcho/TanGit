@@ -1,6 +1,10 @@
 package app
 
-import "github.com/egoist/mygo/ui/editor"
+import (
+	"context"
+
+	"github.com/egoist/mygo/ui/editor"
+)
 
 // startRemoteConflictWrite serializes an SSH conflict save behind the stamped
 // file version read by requestConflictFile. It only captures immutable data for
@@ -8,6 +12,27 @@ import "github.com/egoist/mygo/ui/editor"
 // The repository generation and per-state sequence keep an old save from
 // landing in a replacement repository or conflict pane.
 func (a *app) startRemoteConflictWrite(state *conflictState, content string, version uint64, done func(error)) bool {
+	return a.startRemoteConflictWriteWithMutation(state, content, version, nil, done)
+}
+
+func (a *app) startRemoteConflictRecoveryWrite(state *conflictState, content string, done func(error)) bool {
+	// Pin repository identity with the stamped remote client. A later repository
+	// switch must not archive one session while writing through another.
+	session := a.session
+	return a.startRemoteConflictWriteWithMutation(state, content, 0,
+		func(write func() error) error {
+			return runFileRecoveryMutation(context.Background(), session, state.path, write)
+		}, func(err error) {
+			a.refreshFileRecoveries()
+			done(err)
+		})
+}
+
+// startRemoteConflictWriteWithMutation runs write inside an optional durable
+// mutation envelope. The envelope and write both run on the SSH worker; only
+// stamps, editor state and notifications return to the UI thread.
+func (a *app) startRemoteConflictWriteWithMutation(state *conflictState, content string, version uint64,
+	envelope func(func() error) error, done func(error)) bool {
 	if state == nil || state.remoteSave.running || a.actionBusy {
 		return false
 	}
@@ -47,7 +72,18 @@ func (a *app) startRemoteConflictWrite(state *conflictState, content string, ver
 				panic(recovered)
 			}
 		}()
-		stamp, writeErr := writeRemoteWorkingFile(client, root, name, data, previous, previousKnown)
+		var stamp remoteFileStamp
+		write := func() error {
+			var err error
+			stamp, err = writeRemoteWorkingFile(client, root, name, data, previous, previousKnown)
+			return err
+		}
+		var writeErr error
+		if envelope == nil {
+			writeErr = write()
+		} else {
+			writeErr = envelope(write)
+		}
 		a.updateChanged(func() bool {
 			if generation != a.generation || sequence != save.sequence {
 				save.invalidate()

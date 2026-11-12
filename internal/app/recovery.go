@@ -68,13 +68,13 @@ func (a *app) recoveryPanel(c *ui.Context) {
 			if journalClicked {
 				a.savedWorkPanel = 1
 			}
-			ui.Badge(c, fmt.Sprintf("%d", len(a.snapshot.WorkSnapshots)+len(a.snapshot.Operations)))
+			ui.Badge(c, fmt.Sprintf("%d", len(a.snapshot.WorkSnapshots)+len(a.snapshot.FileRecoveries)+len(a.snapshot.Operations)))
 		})
 		if a.savedWorkPanel == 1 {
 			a.safetyJournalBody(c)
 			return
 		}
-		ui.Text(c, tr("Recovery copies appear here after a discard. Named checkpoints stay until deleted.")).
+		ui.Text(c, tr("Conflict recovery restores the original unresolved file and Git stages. Discard copies and named checkpoints stay separate.")).
 			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		ui.Text(c, tr("Save all current work without changing it")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
@@ -100,6 +100,7 @@ func (a *app) recoveryPanel(c *ui.Context) {
 				create()
 			}
 		})
+		a.fileRecoveryList(c)
 		if len(a.snapshot.WorkSnapshots) == 0 {
 			return
 		}
@@ -126,6 +127,114 @@ func (a *app) recoveryPanel(c *ui.Context) {
 				rowIconButton(row.Context, "Delete "+snapshot.ID, "Delete this recovery entry…", revertIcon, func() {
 					a.confirmDeleteWorkSnapshot(snapshot)
 				})
+			})
+		})
+	})
+}
+
+func fileRecoveryStageSummary(record repository.FileRecoveryRecord) string {
+	stages := make([]string, 0, 3)
+	for stage, entry := range []repository.FileRecoveryIndexEntry{
+		record.Initial.Index.Stage1, record.Initial.Index.Stage2, record.Initial.Index.Stage3,
+	} {
+		if entry.Present {
+			stages = append(stages, fmt.Sprint(stage+1))
+		}
+	}
+	if len(stages) == 0 {
+		return tr("Saved file and ordinary index entry")
+	}
+	return trf("Original index stages %s", strings.Join(stages, "/"))
+}
+
+func fileRecoveryStatus(record repository.FileRecoveryRecord) (string, string) {
+	switch record.Status {
+	case repository.FileRecoveryRestored:
+		return tr("Restored"), tr("Original unresolved state restored")
+	case repository.FileRecoveryInterrupted:
+		if record.Progress == repository.FileRecoveryWorktreeRestored {
+			return tr("Interrupted · index pending"), tr("The file step finished; retry verifies and resumes the index step")
+		}
+		return tr("Interrupted"), tr("Retry verifies the after-state before resuming")
+	default:
+		return tr("Ready"), tr("Ready to restore")
+	}
+}
+
+// fileRecoveryList renders V2 conflict records above the independent V1
+// discard/checkpoint list. Every row comes from a durable manifest discovered
+// again on repository open, including interrupted two-phase restores.
+func (a *app) fileRecoveryList(c *ui.Context) {
+	records := a.snapshot.FileRecoveries
+	if len(records) == 0 {
+		return
+	}
+	if a.fileRecoveryFocus != "" {
+		ordered := make([]repository.FileRecoveryRecord, 0, len(records))
+		for _, record := range records {
+			if record.OperationID == a.fileRecoveryFocus {
+				ordered = append(ordered, record)
+			}
+		}
+		for _, record := range records {
+			if record.OperationID != a.fileRecoveryFocus {
+				ordered = append(ordered, record)
+			}
+		}
+		records = ordered
+	}
+	theme := c.Theme()
+	ui.Column(c).FillWidth().Gap(7).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
+			ui.Icon(c, conflictIcon).FontSize(14).TextColor(theme.Warning)
+			ui.Text(c, tr("Conflict recovery")).Bold().Grow(1)
+			ui.Badge(c, fmt.Sprintf("%d", len(records)))
+		})
+		ui.Text(c, tr("Restores saved marker bytes, deletions, executable modes, and exact unmerged index stages.")).
+			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+		height := float32(min(len(records), 3)) * 76
+		list := a.keyboardList(c, &a.fileRecoveryRows, len(records)).Height(height)
+		list.Rows(func(row ui.ListRow) {
+			record := records[row.Index]
+			status, statusTip := fileRecoveryStatus(record)
+			statusColor := theme.Accent
+			if record.Status == repository.FileRecoveryInterrupted {
+				statusColor = theme.Danger
+			} else if record.Status == repository.FileRecoveryRestored {
+				statusColor = theme.Success
+			}
+			ui.Column(row.Context).FillWidth().Gap(3).Padding(5, 7).
+				Border(1, theme.Border.Alpha(0.65)).Radius(theme.Radius).Children(func() {
+				ui.Row(row.Context).AlignItems(ui.Center).Gap(7).Children(func() {
+					ui.Icon(row.Context, softResetIcon).FontSize(14).TextColor(statusColor)
+					ui.Text(row.Context, record.Path).SingleLine().Tooltip(record.Path).Grow(1)
+					ui.Badge(row.Context, status).Background(statusColor.Alpha(0.14)).TextColor(statusColor).
+						Tooltip(tr(statusTip))
+				})
+				ui.Row(row.Context).AlignItems(ui.Center).Gap(7).Children(func() {
+					ui.Column(row.Context).Gap(1).Grow(1).Children(func() {
+						ui.Text(row.Context, fileRecoveryStageSummary(record)).SingleLine().
+							TextColor(secondaryRowColor(theme, row)).FontSize(theme.FontSize - 1)
+						ui.Text(row.Context, time.Unix(record.UpdatedAt, 0).Format("2006-01-02 15:04")).
+							TextColor(secondaryRowColor(theme, row)).FontSize(theme.FontSize - 2)
+					})
+					if fileRecoveryCanRestore(record) {
+						label := tr("Restore unresolved…")
+						if record.Status == repository.FileRecoveryInterrupted {
+							label = tr("Retry…")
+						}
+						button := compactTextButton(ui.Button(row.Context, label)).
+							Label(label).Tooltip(tr("Restore this saved state; newer changes to the same file stop the compare-and-swap")).
+							Disabled(a.actionBusy)
+						if button.Clicked() {
+							a.confirmRestoreFileRecovery(record)
+						}
+					}
+				})
+				if record.Error != "" && record.Status == repository.FileRecoveryInterrupted {
+					ui.Text(row.Context, record.Error).SingleLine().Tooltip(record.Error).
+						TextColor(theme.Danger).FontSize(theme.FontSize - 2)
+				}
 			})
 		})
 	})
