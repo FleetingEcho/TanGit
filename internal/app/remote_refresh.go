@@ -38,11 +38,19 @@ func remoteFilesSignature(snapshot repository.Snapshot) string {
 // refreshRemoteQuietDetails is the conservative counterpart of the local
 // size/mtime signature check. SSH snapshots do not expose host file metadata,
 // and equal Git metadata can hide a timestamp-only or same-size content edit.
-// beginDiff performs its normal asynchronous repository/SSH read.
+// Reread the displayed diff behind the scenes, without flashing a spinner or
+// repainting an identical result.
 func (a *app) refreshRemoteQuietDetails() bool {
-	if _, ok := a.selectedChange(); !ok {
+	change, ok := a.selectedChange()
+	if !ok {
 		return false
 	}
-	a.beginDiff()
-	return true
+	if change.diffFile().HasMergeConflicts {
+		// Conflict editing keeps its existing reload and selection behavior.
+		a.beginDiff()
+		return true
+	}
+	a.requestQuietFileDiff()
+	// The asynchronous read repaints if its result actually changes.
+	return false
 }

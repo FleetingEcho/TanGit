@@ -351,10 +351,18 @@ func (a *app) beginDiff() {
 // shows or is reading it. The detail pane asks on every frame, so a filter, a
 // folded section or an action that moved the choice re-reads the diff without
 // a click.
-func (a *app) requestFileDiff() {
+func (a *app) requestFileDiff() { a.requestFileDiffMode(false) }
+
+// requestQuietFileDiff conservatively rereads the displayed diff without
+// replacing it with a spinner. It publishes only changed output.
+func (a *app) requestQuietFileDiff() { a.requestFileDiffMode(true) }
+
+func (a *app) requestFileDiffMode(quiet bool) {
 	change, ok := a.selectedChange()
 	if a.session == nil || !ok {
-		a.resetFileDiff()
+		if !quiet {
+			a.resetFileDiff()
+		}
 		return
 	}
 	file := change.diffFile()
@@ -364,7 +372,10 @@ func (a *app) requestFileDiff() {
 		// file itself, so the read is keyed by its path alone.
 		key = "conflict\x00" + file.Path
 	}
-	if a.diffKey == key {
+	if a.diffKey == key && !quiet {
+		return
+	}
+	if quiet && (file.HasMergeConflicts || (a.diffKey != "" && a.diffKey != key) || a.diffLoading || a.cancelDiff != nil) {
 		return
 	}
 
@@ -375,20 +386,22 @@ func (a *app) requestFileDiff() {
 	a.diffGeneration++
 	generation := a.diffGeneration
 	a.diffKey = key
-	a.diffLoading = true
-	a.diffError = ""
-	a.diffState = nil
-	a.diffMedia = nil
-	a.conflictState = nil
-	a.conflictView = nil
-	a.conflictStages = repository.ConflictStages{}
-	a.conflictStageViews = [3]*editor.State{}
-	a.conflictStageTab = 3
-	a.conflictSides = nil
-	a.conflictSaveError = ""
-	a.conflictSaveVersion = 0
-	a.conflictDiffState = nil
-	a.conflictDiffPatch = ""
+	if !quiet {
+		a.diffLoading = true
+		a.diffError = ""
+		a.diffState = nil
+		a.diffMedia = nil
+		a.conflictState = nil
+		a.conflictView = nil
+		a.conflictStages = repository.ConflictStages{}
+		a.conflictStageViews = [3]*editor.State{}
+		a.conflictStageTab = 3
+		a.conflictSides = nil
+		a.conflictSaveError = ""
+		a.conflictSaveVersion = 0
+		a.conflictDiffState = nil
+		a.conflictDiffPatch = ""
+	}
 
 	if file.HasMergeConflicts {
 		a.requestConflictFile(file, generation)
@@ -429,9 +442,25 @@ func (a *app) requestFileDiff() {
 			a.cancelDiff = nil
 			a.diffLoading = false
 			if err != nil {
-				a.diffError = safeError(err)
+				message := safeError(err)
+				if quiet && a.diffError == message && a.diffKind == "" && a.diffPatch == "" && a.diffState == nil && sameMediaReview(a.diffMedia, media) {
+					return false
+				}
+				a.diffError = message
+				if quiet {
+					a.diffKind = ""
+					a.diffPatch = ""
+					a.diffState = nil
+					a.diffMedia = nil
+				}
 				return true
 			}
+			if quiet && a.diffError == "" && a.diffKind == diff.Kind && a.diffPatch == diff.Patch &&
+				(diff.Patch != "" || samePatchlessDiffText(a.diffState, diff.OldText, diff.NewText)) &&
+				sameMediaReview(a.diffMedia, media) {
+				return false
+			}
+			a.diffError = ""
 			a.diffKind = diff.Kind
 			a.diffPatch = diff.Patch
 			a.diffState = state
@@ -439,6 +468,13 @@ func (a *app) requestFileDiff() {
 			return true
 		})
 	}()
+}
+
+func samePatchlessDiffText(state *editor.DiffState, oldText, newText string) bool {
+	if state == nil {
+		return oldText == "" && newText == ""
+	}
+	return state.Old.String() == oldText && state.New.String() == newText
 }
 
 func (a *app) beginBlame() {

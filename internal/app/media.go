@@ -21,11 +21,26 @@ type mediaPreview struct {
 	bitmap      *ui.Bitmap
 	width       int
 	height      int
+	// data lets quiet reloads compare pictures after decoding. DecodeBitmap
+	// already retains these same bytes for restoring released GPU pixels.
+	data []byte
 }
 
 type mediaReview struct {
 	old mediaPreview
 	new mediaPreview
+}
+
+func sameMediaReview(a, b *mediaReview) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return sameMediaPreview(a.old, b.old) && sameMediaPreview(a.new, b.new)
+}
+
+func sameMediaPreview(a, b mediaPreview) bool {
+	return a.present == b.present && a.unavailable == b.unavailable && a.problem == b.problem &&
+		a.width == b.width && a.height == b.height && bytes.Equal(a.data, b.data)
 }
 
 func isMediaPath(path string) bool {
@@ -57,7 +72,7 @@ func decodeMediaPreview(blob repository.MediaBlob) mediaPreview {
 
 // decodeMediaData validates and decodes image bytes already read by an editor.
 func decodeMediaData(data []byte) mediaPreview {
-	preview := mediaPreview{present: true}
+	preview := mediaPreview{present: true, data: data}
 	config, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || config.Width <= 0 || config.Height <= 0 {
 		preview.problem = "This side is not a supported image"
