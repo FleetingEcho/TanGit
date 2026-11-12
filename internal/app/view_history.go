@@ -362,6 +362,10 @@ func (a *app) filteredCommitFooter(c *ui.Context, theme *ui.Theme, target int, q
 }
 
 func (a *app) historyView(c *ui.Context) {
+	if a.rebaseWorkspaceVisible() {
+		a.rebaseHistoryView(c)
+		return
+	}
 	theme := c.Theme()
 	a.collapsibleContentPaneSplit(c, &a.filePaneWidth, &a.workspacePaneCollapsed[sectionHistory],
 		"Expand list pane", func() {
@@ -381,6 +385,9 @@ func (a *app) historyView(c *ui.Context) {
 					commit := commits[row.Index]
 					services := row.Context.Services()
 					rowElement := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(7, 8)
+					if a.markedBaseCommit.Hash != "" && a.markedBaseCommit.Hash == commit.Hash {
+						rowElement.Background(theme.Warning.Alpha(0.12)).Border(1, theme.Warning.Alpha(0.55)).Radius(theme.Radius)
+					}
 					rowElement.Children(func() {
 						a.commitSelectionCheckbox(row.Context, commit)
 						a.authorAvatar(row.Context, commit, 18)
@@ -388,6 +395,9 @@ func (a *app) historyView(c *ui.Context) {
 							ui.Text(row.Context, commit.Subject).SingleLine().Grow(1)
 							ui.Row(row.Context).Gap(8).Children(func() {
 								ui.Text(row.Context, commit.ShortHash).TextColor(secondaryRowColor(theme, row)).SingleLine()
+								if a.markedBaseCommit.Hash != "" && a.markedBaseCommit.Hash == commit.Hash {
+									ui.Badge(row.Context, tr("Rebase base"))
+								}
 								ui.Text(row.Context, commit.AuthorName).TextColor(secondaryRowColor(theme, row)).SingleLine()
 								if rel := relTime(commit.UnixTimestamp); rel != "" {
 									ui.Text(row.Context, rel).TextColor(secondaryRowColor(theme, row)).SingleLine()
@@ -429,6 +439,7 @@ func (a *app) historyListHeader(c *ui.Context) {
 				}
 			}
 			ui.Spacer(c).Grow(1)
+			commitHeaderButton(c, "Open Rebase TODO workspace", "Start or inspect a real Git rebase plan", rebaseIcon, a.openRebaseWorkspace)
 			a.commitSelectionModeButton(c)
 			commitFilterButton(c, "Search and filter the commit list", filtered, func() {
 				a.openCommitFilter(sectionHistory)
