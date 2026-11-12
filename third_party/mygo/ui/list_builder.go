@@ -107,7 +107,7 @@ func (e Element) Rows(row func(ListRow)) Element {
 		}
 		r := ListRow{Context: makeContext(n.c), Index: i, owner: e}
 		if rb := n.c.row; rb != nil {
-			r.row, r.selected = wrapElement(rb.e), rb.chosen
+			r.row, r.selected = wrapElement(rb.e), rb.highlighted
 		}
 		row(r)
 	}, plainList)

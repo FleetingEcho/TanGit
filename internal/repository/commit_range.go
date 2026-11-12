@@ -53,6 +53,8 @@ func (s *gitSession) EditCommitRange(ctx context.Context, selected []Commit, act
 	if len(selected) < 2 {
 		return fmt.Errorf("select at least two commits")
 	}
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
 	commits, _, err := s.editableHeadHistory(selected[0].Hash)
 	if err != nil {
 		return err

@@ -250,6 +250,14 @@ func (f fakeSession) Redo(context.Context) error {
 	return nil
 }
 
+func (f fakeSession) UndoExpected(ctx context.Context, _ string) error {
+	return f.Undo(ctx)
+}
+
+func (f fakeSession) RedoExpected(ctx context.Context, _ string) error {
+	return f.Redo(ctx)
+}
+
 func (f fakeSession) CommitMessage(_ context.Context, commit repository.Commit) (repository.CommitMessage, error) {
 	return repository.CommitMessage{Summary: commit.Subject, Description: "Existing body"}, nil
 }
@@ -524,6 +532,11 @@ func (f fakeSession) CherryPickCommit(_ context.Context, commit repository.Commi
 func (f fakeSession) RevertCommit(_ context.Context, commit repository.Commit) error {
 	f.calls.record("revert:" + commit.Hash)
 	return nil
+}
+
+func (f fakeSession) UndoLatestCommit(ctx context.Context, branch string, commit repository.Commit, mode repository.ResetMode) error {
+	f.calls.record("undo-latest-branch:" + branch)
+	return f.ResetToCommit(ctx, repository.Commit{Hash: commit.Parents[0]}, mode)
 }
 
 func (f fakeSession) ResetToCommit(ctx context.Context, commit repository.Commit, mode repository.ResetMode) error {

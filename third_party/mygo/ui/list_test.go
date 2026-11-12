@@ -476,6 +476,26 @@ func TestListRowHighlightedDoesNotChangeSelection(t *testing.T) {
 	}
 }
 
+func TestListRowHighlightedDoesNotChangeEditableSelection(t *testing.T) {
+	sel := 0
+	name := "Name"
+	s := ListState{Selected: &sel, RowHighlighted: func(int) bool { return false }}
+	tt := NewTester(func(c *Context) {
+		List(c, &s, 1).Rows(func(row ListRow) {
+			EditableText(c, &name)
+		})
+	}, 200, 100)
+	if err := tt.Click("Name"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(renameDelay + 50*time.Millisecond)
+	tt.Type("renamed")
+	tt.Key(0, KeyEnter)
+	if name != "renamed" {
+		t.Fatalf("highlight override changed click-to-edit selection: name = %q", name)
+	}
+}
+
 func TestListRowHighlightedOnlyVisitsBuiltRows(t *testing.T) {
 	sel, built, highlighted := 0, 0, 0
 	s := ListState{Selected: &sel, RowHighlighted: func(row int) bool {

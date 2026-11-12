@@ -323,6 +323,64 @@ func TestReflogReplayDescriptionUsesSquashJournal(t *testing.T) {
 	}
 }
 
+func TestReflogReplayRejectsStaleConfirmation(t *testing.T) {
+	for _, redo := range []bool{false, true} {
+		t.Run(map[bool]string{false: "undo", true: "redo"}[redo], func(t *testing.T) {
+			dir, session := newThreeCommitHistory(t)
+			if redo {
+				if err := session.Undo(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			snapshot := historySnapshot(t, session)
+			expected, ok := ReflogReplayIdentity(snapshot.Reflog, redo)
+			if !ok || expected == "" {
+				t.Fatal("test did not produce an exact reflog preview")
+			}
+			runGit(t, dir, "commit", "--allow-empty", "-m", "meanwhile")
+			before := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
+			var err error
+			if redo {
+				err = session.RedoExpected(context.Background(), expected)
+			} else {
+				err = session.UndoExpected(context.Background(), expected)
+			}
+			if err == nil {
+				t.Fatal("stale confirmation replayed a different reflog state")
+			}
+			if after := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD")); after != before {
+				t.Fatalf("stale replay moved HEAD from %s to %s", before, after)
+			}
+		})
+	}
+}
+
+func TestConcurrentExpectedUndoReplaysOnlyOnce(t *testing.T) {
+	_, session := newThreeCommitHistory(t)
+	expected, ok := ReflogReplayIdentity(historySnapshot(t, session).Reflog, false)
+	if !ok {
+		t.Fatal("missing exact undo preview")
+	}
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for range 2 {
+		go func() {
+			<-start
+			results <- session.UndoExpected(context.Background(), expected)
+		}()
+	}
+	close(start)
+	succeeded := 0
+	for range 2 {
+		if err := <-results; err == nil {
+			succeeded++
+		}
+	}
+	if succeeded != 1 {
+		t.Fatalf("two acceptances of one preview succeeded %d times, want exactly once", succeeded)
+	}
+}
+
 func TestUndoRedoCompletedInteractiveRebase(t *testing.T) {
 	dir, session := newThreeCommitHistory(t)
 	before := historySnapshot(t, session)

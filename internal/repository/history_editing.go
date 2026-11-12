@@ -69,6 +69,8 @@ func (s *gitSession) RewordCommit(ctx context.Context, commit Commit, summary, d
 	if strings.TrimSpace(summary) == "" {
 		return fmt.Errorf("commit summary is required")
 	}
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
 	commits, index, err := s.editableHeadHistory(commit.Hash)
 	if err != nil {
 		return fmt.Errorf("reword commit: %w", err)
@@ -94,6 +96,8 @@ func (s *gitSession) DropCommit(ctx context.Context, commit Commit) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
 	commits, index, err := s.editableHeadHistory(commit.Hash)
 	if err != nil {
 		return fmt.Errorf("drop commit: %w", err)
@@ -120,6 +124,8 @@ func (s *gitSession) MoveCommit(ctx context.Context, commit Commit, direction Co
 	if direction != MoveCommitNewer && direction != MoveCommitOlder {
 		return fmt.Errorf("move commit: invalid direction %d", direction)
 	}
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
 	commits, index, err := s.editableHeadHistory(commit.Hash)
 	if err != nil {
 		return fmt.Errorf("move commit: %w", err)
@@ -161,6 +167,8 @@ func (s *gitSession) CombineCommit(ctx context.Context, commit Commit, mode Comb
 	if mode != CombineSquash && mode != CombineFixup {
 		return fmt.Errorf("combine commit: invalid mode %d", mode)
 	}
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
 	commits, index, err := s.editableHeadHistory(commit.Hash)
 	if err != nil {
 		return fmt.Errorf("combine commit: %w", err)
@@ -193,6 +201,8 @@ func (s *gitSession) AmendCommit(ctx context.Context, commit Commit) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
 	if err := s.requireStagedChanges(); err != nil {
 		return fmt.Errorf("amend commit: %w", err)
 	}
@@ -238,6 +248,8 @@ func (s *gitSession) ApplyFixupCommits(ctx context.Context, commit Commit) error
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
 	commits, index, err := s.editableHeadHistory(commit.Hash)
 	if err != nil {
 		return fmt.Errorf("apply fixup commits: %w", err)
@@ -251,10 +263,9 @@ func (s *gitSession) ApplyFixupCommits(ctx context.Context, commit Commit) error
 }
 
 // runHistoryRebase records the user-facing operation, not just Git's generic
-// rebase reflog. Its before/after HEAD pair lets Undo identify this exact edit.
+// rebase reflog. Callers hold the worktree lock across preflight and this edit.
+// Its before/after HEAD pair lets Undo identify this exact edit.
 func (s *gitSession) runHistoryRebase(summary string, run func() error) error {
-	unlock := s.lockWorktreeMutation()
-	defer unlock()
 	record, err := s.beginOperation(OperationRebase, summary, UndoResetHead, nil)
 	if err != nil {
 		return err

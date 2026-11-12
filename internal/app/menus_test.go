@@ -31,8 +31,9 @@ func menuTestAppWithCalls(t *testing.T) (*harness, *callRecorder) {
 	t.Helper()
 	calls := &callRecorder{}
 	a := newApp(fakeOpener{calls: calls, result: openResult{snapshot: repository.Snapshot{
-		Root:   "/work/project",
-		Branch: "main",
+		Root:     "/work/project",
+		Branch:   "main",
+		HeadHash: "c2c2c2c2",
 		Files: []repository.File{
 			{Path: "one.txt", Status: "M ", Staged: true, Tracked: true},
 			{Path: "two.txt", Status: "??", Unstaged: true, Added: true},

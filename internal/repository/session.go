@@ -76,9 +76,12 @@ type ConflictStages struct {
 }
 
 type Snapshot struct {
-	Root          string
-	Branch        string
+	Root   string
+	Branch string
+	// Head remains nonempty only for detached HEAD. HeadHash is the resolved
+	// commit on both attached and detached HEAD, independent of all-ref order.
 	Head          string
+	HeadHash      string
 	Files         []File
 	Commits       []Commit
 	Branches      []Branch
@@ -271,6 +274,10 @@ type Session interface {
 	// markers persist in Git, so replay remains balanced across app restarts.
 	Undo(context.Context) error
 	Redo(context.Context) error
+	// UndoExpected and RedoExpected replay only the exact reflog action a
+	// confirmation approved; a changed or unavailable preview fails closed.
+	UndoExpected(context.Context, string) error
+	RedoExpected(context.Context, string) error
 	Discard(context.Context, File) error
 	// DiscardFiles captures one recovery entry before removing the selection.
 	DiscardFiles(context.Context, []File) error
@@ -371,6 +378,9 @@ type Session interface {
 	PushTag(context.Context, string, string) error
 	CherryPickCommit(context.Context, Commit) error
 	RevertCommit(context.Context, Commit) error
+	// UndoLatestCommit removes exactly the approved HEAD commit, refusing if
+	// HEAD changed or an operation is in progress before the reset starts.
+	UndoLatestCommit(context.Context, string, Commit, ResetMode) error
 	// ResetToCommit moves the branch to commit, with mode deciding what the
 	// index and working tree retain.
 	ResetToCommit(context.Context, Commit, ResetMode) error
@@ -698,10 +708,19 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 	if branchInfo.DetachedHead {
 		head = branchInfo.RefName
 	}
+	headHash := head
+	if !branchInfo.DetachedHead && s.headHasCommit() {
+		headHash, err = s.gitText("rev-parse", "--verify", "HEAD")
+		if err != nil {
+			return Snapshot{}, fmt.Errorf("resolve current HEAD: %w", err)
+		}
+		headHash = strings.TrimSpace(headHash)
+	}
 	return Snapshot{
 		Root:      s.git.RepoPaths.WorktreePath(),
 		Branch:    branchInfo.DisplayName,
 		Head:      head,
+		HeadHash:  headHash,
 		Files:     files,
 		Operation: operation,
 	}, nil
@@ -2365,6 +2384,16 @@ func (s *gitSession) RevertCommit(ctx context.Context, commit Commit) error {
 // ResetToCommit moves HEAD to commit. Soft keeps the difference staged, mixed
 // keeps it only in the working tree, and hard discards it.
 func (s *gitSession) ResetToCommit(ctx context.Context, commit Commit, mode ResetMode) error {
+	return s.resetToCommit(ctx, commit, mode, "", "")
+}
+
+// UndoLatestCommit binds a destructive confirmation to the exact approved
+// branch and HEAD, re-deriving the first parent instead of trusting stale UI.
+func (s *gitSession) UndoLatestCommit(ctx context.Context, branch string, commit Commit, mode ResetMode) error {
+	return s.resetToCommit(ctx, commit, mode, branch, commit.Hash)
+}
+
+func (s *gitSession) resetToCommit(ctx context.Context, commit Commit, mode ResetMode, expectedBranch, expectedHEAD string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -2374,6 +2403,33 @@ func (s *gitSession) ResetToCommit(ctx context.Context, commit Commit, mode Rese
 	case ResetSoft, ResetMixed, ResetHard:
 	default:
 		return fmt.Errorf("reset to %s: invalid mode %q", commit.ShortHash, mode)
+	}
+	if expectedHEAD != "" {
+		if mode != ResetSoft && mode != ResetMixed {
+			return fmt.Errorf("undo latest commit: invalid mode %q", mode)
+		}
+		if state := s.workingTreeState(); state.Any() {
+			return fmt.Errorf("cannot undo latest commit while a %s is in progress", state.Effective().CommandName())
+		}
+		branch, head, err := s.currentOperationIdentity()
+		if err != nil {
+			return err
+		}
+		if branch == "" {
+			return fmt.Errorf("cannot undo latest commit on a detached HEAD")
+		}
+		if branch != expectedBranch {
+			return fmt.Errorf("cannot undo latest commit: branch changed; review the new branch and try again")
+		}
+		if head != expectedHEAD {
+			return fmt.Errorf("cannot undo latest commit: HEAD changed; review the new HEAD and try again")
+		}
+		parent, err := s.gitText("rev-parse", "--verify", expectedHEAD+"^")
+		if err != nil {
+			return fmt.Errorf("undo latest commit: HEAD has no parent: %w", err)
+		}
+		parent = strings.TrimSpace(parent)
+		commit = Commit{Hash: parent, ShortHash: parent[:min(7, len(parent))]}
 	}
 	var ignored []string
 	if mode == ResetHard {
