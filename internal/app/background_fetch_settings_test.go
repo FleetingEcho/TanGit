@@ -57,7 +57,10 @@ func TestBackgroundFetchSelectorAcceptsAndPersistsCustomMinutes(t *testing.T) {
 	if _, found := h.tester.Find("Custom fetch interval in minutes"); !found {
 		t.Fatalf("the custom minutes editor is missing: %v", h.tester.Texts())
 	}
-
+	// The Behavior page is intentionally scrollable; changing the selector can
+	// reveal its editor below other preferences, so bring it into view first.
+	h.tester.Scroll(700, 400, 0, 240)
+	h.tester.Frame()
 	if err := h.tester.Click("Custom fetch interval in minutes"); err != nil {
 		t.Fatal(err)
 	}

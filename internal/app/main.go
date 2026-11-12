@@ -177,6 +177,9 @@ type app struct {
 	settingsLoaded bool
 	settingsOpen   bool
 	settingsPage   int
+	// conflictActionStyleChoice backs the segmented Settings control. Persist
+	// the canonical string in settings, not this transient numeric selection.
+	conflictActionStyleChoice int
 	// autoFetchChoice is the Settings selector's stable UI state. Its custom
 	// sentinel keeps the numeric editor visible between input and repaint.
 	autoFetchChoice int
