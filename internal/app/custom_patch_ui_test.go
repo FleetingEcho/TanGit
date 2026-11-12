@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,22 +32,31 @@ func (s customPatchSession) CommitFilePatch(_ context.Context, commit repository
 	return strings.ReplaceAll(customPatchFixture, "changed.txt", file.Path), nil
 }
 
-func (s customPatchSession) PreviewPatchText(_ context.Context, text string) (repository.PatchPreview, error) {
-	s.calls.record("custom-preview:" + text)
+func (s customPatchSession) PreviewPatchRequest(_ context.Context, request repository.PatchRequest) (repository.PatchPreview, error) {
+	s.calls.record("custom-preview:" + request.Text)
 	if s.previewErr != nil {
 		return repository.PatchPreview{}, s.previewErr
 	}
 	if s.previewSession != nil {
-		return s.previewSession.PreviewPatchText(context.Background(), text)
+		return s.previewSession.PreviewPatchRequest(context.Background(), request)
 	}
 	return repository.PatchPreview{
-		Path: "Custom Patch", Text: text, Clean: true,
+		Path: "Custom Patch", Text: request.Text, Target: request.Target, Reverse: request.Reverse, ThreeWay: request.ThreeWay, Clean: true,
 		Files: []repository.PatchFile{{Path: "changed.txt"}}, Additions: 2, Deletions: 2,
 	}, nil
 }
 
 func (s customPatchSession) ApplyPatch(_ context.Context, preview repository.PatchPreview) error {
-	s.calls.record("custom-apply:" + preview.Text)
+	s.calls.record(fmt.Sprintf("custom-apply:%d:%t:%t:", preview.Target, preview.Reverse, preview.ThreeWay) + preview.Text)
+	return nil
+}
+
+type customPatchHistorySession struct {
+	customPatchSession
+}
+
+func (s customPatchHistorySession) ApplyHistoryPatch(_ context.Context, request repository.HistoryPatchRequest) error {
+	s.calls.record(fmt.Sprintf("history-apply:%s:%s:%s:%s:%s:%t:%s", request.Kind, request.SourceSHA, request.DestinationSHA, request.ExpectedHeadSHA, request.Summary, request.Kind == repository.HistoryPatchNewBefore || request.Kind == repository.HistoryPatchNewAfter, request.Patch))
 	return nil
 }
 
@@ -144,11 +154,66 @@ func TestCustomPatchCollectsPreviewsExportsAndApplies(t *testing.T) {
 	}
 	h.waitFor(t, "safe application", func() bool { return len(h.app.customPatch.entries) == 0 && !h.app.customPatch.open })
 	for _, call := range calls.all() {
-		if strings.HasPrefix(call, "custom-apply:") {
+		if strings.HasPrefix(call, "custom-apply:0:false:false:") {
 			return
 		}
 	}
-	t.Fatalf("ApplyPatch was not called: %v", calls.all())
+	t.Fatalf("traditional worktree-only ApplyPatch was not called: %v", calls.all())
+}
+
+func TestCustomPatchDirectApplyBindsTargetDirectionAndThreeWay(t *testing.T) {
+	h, calls, commit := customPatchHistoryHarness(t)
+	session := h.app.session.(customPatchSession)
+	session.previewSession = nil
+	h.app.session = session
+	h.app.customPatch.entries = []customPatchEntry{customPatchTestEntry(commit.Hash, "changed.txt")}
+	h.app.customPatch.target = repository.PatchBoth
+	h.app.customPatch.reverse = true
+	h.app.customPatch.threeWay = true
+	h.app.beginCustomPatchPreview()
+	h.waitFor(t, "reverse combined preview", func() bool { return h.app.customPatch.preview != nil })
+	if got := h.app.customPatch.preview; got == nil || got.Target != repository.PatchBoth || !got.Reverse || !got.ThreeWay || !got.Clean {
+		t.Fatalf("bound preview = %#v", got)
+	}
+	h.app.beginCustomPatchApply()
+	h.waitFor(t, "reverse combined apply", func() bool {
+		return len(h.app.customPatch.entries) == 0
+	})
+	text, err := customPatchText([]customPatchEntry{customPatchTestEntry(commit.Hash, "changed.txt")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "custom-apply:2:true:true:" + text
+	if !calls.has(want) {
+		t.Fatalf("apply options were not preserved: %v", calls.all())
+	}
+}
+
+func TestCustomPatchHistoryRejectsMultipleSourcesAndSubmitsSingleSource(t *testing.T) {
+	h, calls, commit := customPatchHistoryHarness(t)
+	other := commit
+	other.Hash = "abcdef1234567890"
+	h.app.customPatch.entries = []customPatchEntry{
+		customPatchTestEntry(commit.Hash, "one.txt"), customPatchTestEntry(other.Hash, "two.txt"),
+	}
+	if _, err := h.app.customPatchSourceCommit(); err == nil || !strings.Contains(err.Error(), "one source") {
+		t.Fatalf("multiple-source history edit was not rejected: %v", err)
+	}
+	h.app.customPatch.entries = h.app.customPatch.entries[:1]
+	historySession := customPatchHistorySession{customPatchSession: h.app.session.(customPatchSession)}
+	h.app.session = historySession
+	h.app.snapshot.HeadHash = commit.Hash
+	h.app.customPatch.history = customPatchHistoryState{kind: repository.HistoryPatchMoveIndex}
+	h.app.beginCustomPatchHistoryApply()
+	h.waitFor(t, "single-source history request", func() bool { return len(h.app.customPatch.entries) == 0 })
+	text, err := customPatchText([]customPatchEntry{customPatchTestEntry(commit.Hash, "one.txt")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("history-apply:move-index:%s::%s::false:%s", commit.Hash, commit.Hash, text)
+	if !calls.has(want) {
+		t.Fatalf("single-source history request = %v", calls.all())
+	}
 }
 
 func TestClosingCustomPatchPreviewRejectsLateResult(t *testing.T) {

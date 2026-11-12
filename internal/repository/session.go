@@ -778,14 +778,17 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 	var operationState *OperationState
 	if workingTreeState.Any() {
 		operation = workingTreeState.Effective().CommandName()
-		state, stateErr := s.OperationState(ctx)
-		if stateErr != nil {
-			return Snapshot{}, fmt.Errorf("load operation state: %w", stateErr)
-		}
-		if state.Type != OperationTypeNone {
-			operation = string(state.Type)
-			operationState = &state
-		}
+	}
+	// A Custom Patch history edit also has a durable post-rebase index/stash
+	// stop. Always consult the model so that stop remains recoverable after a
+	// restart even though Git no longer reports an active rebase.
+	state, stateErr := s.OperationState(ctx)
+	if stateErr != nil {
+		return Snapshot{}, fmt.Errorf("load operation state: %w", stateErr)
+	}
+	if state.Type != OperationTypeNone {
+		operation = string(state.Type)
+		operationState = &state
 	}
 
 	// Snapshots run unattended and the filesystem watcher observes .git. Keep

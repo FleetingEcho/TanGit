@@ -76,6 +76,10 @@ type OperationRecord struct {
 	// ActiveOperation keeps journal provenance while Git is paused. It is
 	// cleared only after the matching operation has actually finished.
 	ActiveOperation OperationType `json:"active_operation,omitempty"`
+	// HistoryPatch is the durable coordinator for a single-source Custom Patch
+	// rewrite. It survives process restarts and is advanced only by the
+	// CAS-checked Operation driver, never by a transient apply callback.
+	HistoryPatch *HistoryPatchState `json:"history_patch,omitempty"`
 
 	patchFile string
 }

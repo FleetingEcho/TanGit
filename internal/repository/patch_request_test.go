@@ -88,6 +88,104 @@ func TestPatchPreviewRequestRejectsStaleStateDigest(t *testing.T) {
 	}
 }
 
+func TestPatchRequestAllTargetsForwardReversePreserveIntendedIndices(t *testing.T) {
+	oldText, newText := "one\ntwo\nthree\n", "one\nNEW\nthree\n"
+	oldBinary := []byte{0, 1, 2, 0}
+	newBinary := []byte{0, 9, 8, 0, 7}
+	for _, reverse := range []bool{false, true} {
+		for _, target := range []PatchTarget{PatchWorktree, PatchIndex, PatchBoth} {
+			name := patchTargetForTest(target) + "/forward"
+			if reverse {
+				name = patchTargetForTest(target) + "/reverse"
+			}
+			t.Run(name, func(t *testing.T) {
+				dir, session := patchImportRepository(t)
+				writePatchImportFile(t, dir, "binary.dat", oldBinary)
+				runGit(t, dir, "add", "binary.dat")
+				runGit(t, dir, "commit", "-m", "binary base")
+				patchPath := makeImportPatch(t, dir, func() {
+					writePatchImportFile(t, dir, "a.txt", []byte(newText))
+					writePatchImportFile(t, dir, "binary.dat", newBinary)
+				})
+				if reverse {
+					writePatchImportFile(t, dir, "a.txt", []byte(newText))
+					writePatchImportFile(t, dir, "binary.dat", newBinary)
+					runGit(t, dir, "add", "a.txt", "binary.dat")
+				}
+				preview, err := session.PreviewPatchRequest(context.Background(), PatchRequest{
+					Text: readRequestedPatch(t, patchPath), Target: target, Reverse: reverse,
+				})
+				if err != nil || !preview.Clean {
+					t.Fatalf("preview options = %#v, error = %v, diagnostic = %s", preview, err, preview.Diagnostic)
+				}
+				binarySeen := false
+				for _, file := range preview.Files {
+					if file.Path == "binary.dat" {
+						binarySeen = file.Binary
+					}
+				}
+				if !binarySeen {
+					t.Fatalf("binary file was not reported as binary: %#v", preview.Files)
+				}
+				if err := session.ApplyPatch(context.Background(), preview); err != nil {
+					t.Fatal(err)
+				}
+
+				var wantIndexText, wantWorkText string
+				var wantIndexBinary, wantWorkBinary []byte
+				if reverse {
+					switch target {
+					case PatchWorktree:
+						wantIndexText, wantWorkText = newText, oldText
+						wantIndexBinary, wantWorkBinary = newBinary, oldBinary
+					case PatchIndex:
+						wantIndexText, wantWorkText = oldText, newText
+						wantIndexBinary, wantWorkBinary = oldBinary, newBinary
+					case PatchBoth:
+						wantIndexText, wantWorkText = oldText, oldText
+						wantIndexBinary, wantWorkBinary = oldBinary, oldBinary
+					}
+				} else {
+					switch target {
+					case PatchWorktree:
+						wantIndexText, wantWorkText = oldText, newText
+						wantIndexBinary, wantWorkBinary = oldBinary, newBinary
+					case PatchIndex:
+						wantIndexText, wantWorkText = newText, oldText
+						wantIndexBinary, wantWorkBinary = newBinary, oldBinary
+					case PatchBoth:
+						wantIndexText, wantWorkText = newText, newText
+						wantIndexBinary, wantWorkBinary = newBinary, newBinary
+					}
+				}
+				if got := gitOutput(t, dir, "show", ":a.txt"); got != wantIndexText {
+					t.Fatalf("index text = %q, want %q", got, wantIndexText)
+				}
+				if got := gitOutput(t, dir, "show", ":binary.dat"); got != string(wantIndexBinary) {
+					t.Fatalf("index binary = %v, want %v", []byte(got), wantIndexBinary)
+				}
+				if got := string(readPatchImportFile(t, dir, "a.txt")); got != wantWorkText {
+					t.Fatalf("worktree text = %q, want %q", got, wantWorkText)
+				}
+				if got := readPatchImportFile(t, dir, "binary.dat"); string(got) != string(wantWorkBinary) {
+					t.Fatalf("worktree binary = %v, want %v", got, wantWorkBinary)
+				}
+			})
+		}
+	}
+}
+
+func patchTargetForTest(target PatchTarget) string {
+	switch target {
+	case PatchIndex:
+		return "index"
+	case PatchBoth:
+		return "both"
+	default:
+		return "worktree"
+	}
+}
+
 func TestPatchRequestBothAndThreeWayApplyTheCheckedOptions(t *testing.T) {
 	dir, session := patchImportRepository(t)
 	patchPath := makeImportPatch(t, dir, func() {

@@ -345,6 +345,9 @@ func operationsSignature(snapshot repository.Snapshot) string {
 			record.BeforeState, record.AfterState, record.StashAfter, record.ObjectID,
 			record.RefName, record.Message, record.UndoKind)
 		fmt.Fprintf(&b, "%s\x00%s\x00%t\x00", record.Error, record.ActiveOperation, record.RebasePaused)
+		if record.HistoryPatch != nil {
+			fmt.Fprintf(&b, "%+v\x00", *record.HistoryPatch)
+		}
 		writeWorkSnapshotSignature(&b, record.Snapshot)
 	}
 	return b.String()
