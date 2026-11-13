@@ -19,7 +19,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/workspace.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/workspace_light.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/workspace_dark.png">
     <img src="docs/screenshots/workspace.png" alt="TanGit workspace with repository navigation, changes, and a file diff">
   </picture>
 </p>
@@ -30,7 +30,7 @@
 <table>
   <tr>
     <td width="50%"><a href="docs/screenshots/workspace.png"><img src="docs/screenshots/workspace.png" alt="Workspace · Dark"></a><br><sub>Workspace · Dark</sub></td>
-    <td width="50%"><a href="docs/screenshots/workspace_light.png"><img src="docs/screenshots/workspace_light.png" alt="Workspace · Light"></a><br><sub>Workspace · Light</sub></td>
+    <td width="50%"><a href="docs/screenshots/workspace_dark.png"><img src="docs/screenshots/workspace_dark.png" alt="Workspace · Light"></a><br><sub>Workspace · Light</sub></td>
   </tr>
   <tr>
     <td width="50%"><a href="docs/screenshots/graph_dark.png"><img src="docs/screenshots/graph_dark.png" alt="Commit graph · Dark"></a><br><sub>Commit graph · Dark</sub></td>
@@ -101,8 +101,10 @@ tangit .
 tangit "./repository with spaces"
 ```
 
-The macOS launcher and Windows PATH need one-time setup. The guide includes
-instructions for existing installations and custom app locations.
+The command returns immediately and reuses a running TanGit window, selecting
+an existing repository tab or opening a new one. The macOS launcher and Windows
+PATH need one-time setup. The guide includes instructions for existing
+installations and custom app locations.
 
 **From your editor workflow:** choose a preset or command in **Settings → Editor**.
 Editor buttons launch it directly. Neovim opens in a terminal; on macOS,

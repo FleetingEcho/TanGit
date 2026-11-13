@@ -8,7 +8,9 @@
 ## Open a repository from the terminal
 
 After setup, run `tangit .` or `tangit "path/to/repository"`.
-Relative paths use your current directory. Git must be on `PATH`.
+Relative paths use your current directory. Git must be on `PATH`. The command
+returns immediately. If TanGit is already running, it focuses that window and
+opens the repository in a new tab, or selects its existing tab.
 
 ### macOS
 
@@ -25,7 +27,7 @@ The v1.0.2 DMG has no bundled launcher. From a source checkout, use
 `sudo install -m 755 resources/darwin/tangit /usr/local/bin/tangit` instead.
 For installation without administrator access, use `~/.local/bin` if it is on your `PATH`.
 
-The launcher returns immediately and opens the repository in a new app window.
+The launcher returns immediately and opens the repository in the running app, or starts TanGit when it is not running.
 It finds TanGit in `/Applications` or `~/Applications`. For another location:
 
 ```sh
