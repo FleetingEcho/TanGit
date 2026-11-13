@@ -413,10 +413,10 @@ func (a *app) behaviorSettings(c *ui.Context) {
 		settingsGroup(c, commitIcon, "Behavior", "Diff reading, files, and keyboard controls")
 		ui.Column(c).Gap(12).Padding(15).Background(c.Theme().Surface.Alpha(0.55)).
 			Border(1, c.Theme().Border).Radius(c.Theme().Radius + 5).Children(func() {
-			settingRow(c, "Conflict and hunk buttons", "Choose compact icons or add visible action labels", func() {
-				choice := ui.Segmented(c, &a.conflictActionStyleChoice, tr("Icons"), tr("Icons + labels")).
+			settingRow(c, "Conflict and hunk buttons", "Choose icons, icons with labels, or guided conflict resolution", func() {
+				choice := ui.Segmented(c, &a.conflictActionStyleChoice, tr("Icons"), tr("Icons + labels"), tr("Guided")).
 					Label(tr("Conflict and hunk button style")).
-					Tooltip(tr("Show conflict and Changes hunk actions as icons or icons with labels"))
+					Tooltip(tr("Show conflict and Changes hunk actions as icons, icons with labels, or labeled actions with step-by-step guidance"))
 				if choice.Changed() {
 					a.settings.ConflictActionStyle = conflictActionStyleForChoice(a.conflictActionStyleChoice)
 					a.settingsChanged(c)
