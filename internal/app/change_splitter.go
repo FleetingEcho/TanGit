@@ -222,8 +222,8 @@ func (a *app) beginChangeSplitAdvice() {
 		}
 
 		// Every group is preflighted by Git against the same frozen source.
-		// Apply still repeats preview+state validation immediately before its
-		// explicit index-only mutation; these previews never grant broad writes.
+		// Apply consumes this exact private ticket so its original state digest,
+		// patch bytes, and options remain the only mutation authority.
 		if runErr == nil {
 			for index := range groups {
 				if groups[index].previewError != "" {
@@ -282,16 +282,16 @@ func (a *app) applyChangeSplitGroup(index int) {
 		return
 	}
 	group := assist.groups[index]
-	if group.patch == "" || group.previewError != "" || group.preview == nil || !group.preview.Clean {
+	if group.previewError != "" || group.preview == nil || !group.preview.Clean {
 		return
 	}
-	// Re-preview regardless of how old the displayed preview is. ApplyPatch's
-	// private CAS bytes and state digest then authorize only this exact group.
+	// Keep the reviewed private request, bytes, and repository-state ticket
+	// together. Public display fields and group.patch cannot mint a fresh CAS
+	// approval for an external change or redirect the mutation.
+	preview := *group.preview
 	a.beginRepositoryActionMessage(tr("Staged Change Splitter group"), assist.file.Path,
 		func(ctx context.Context, session repository.Session) error {
-			return previewAndApplyPatch(ctx, session, repository.PatchRequest{
-				Text: group.patch, Target: repository.PatchIndex,
-			})
+			return session.ApplyPatch(ctx, preview)
 		}, func() {
 			a.closeChangeSplitter()
 			a.notify("success", tr("Change group staged"), tr("Only this group's index entries changed. The working tree was not changed and no commit was created."))
