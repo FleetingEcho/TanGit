@@ -425,8 +425,9 @@ func TestConflictToolbarStaysFixedAcrossViewTabs(t *testing.T) {
 	}
 }
 
-// Separators stay about two thirds of a toolbar group's height, centered
-// beside its actions, even when Apply wraps; they never span the container.
+// In the full-width layout separators stay about two thirds of a toolbar
+// group's height, centered beside its actions. Measured compact groups name
+// their own Popovers and drop these decorative lines to preserve editor room.
 func TestConflictToolbarSeparatorsKeepContentHeight(t *testing.T) {
 	content := "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> topic\n"
 	originalRead := readWorkingFile
@@ -436,7 +437,7 @@ func TestConflictToolbarSeparatorsKeepContentHeight(t *testing.T) {
 	h.waitFor(t, "the conflict read", func() bool {
 		return !h.app.diffLoading && h.app.conflictState != nil
 	})
-	for _, width := range []int{1280, 1120, 1040, 960, 880, 800, 720} {
+	for _, width := range []int{1280} {
 		h.tester.SetSize(width, 800)
 		h.tester.Frame()
 		for _, label := range []string{"Hunk separator", "View separator", "Apply separator"} {
@@ -1260,12 +1261,8 @@ func TestAConflictedFileFitsItsControlsInTheDefaultWindow(t *testing.T) {
 		"Expand diff",
 		"File actions",
 		"Mark resolved",
-		"Previous conflict",
-		"Next conflict",
 		"Use current",
 		"Use incoming",
-		"Use both",
-		"Restore initial conflict",
 	} {
 		r, ok := h.tester.Find(label)
 		if !ok {
@@ -1274,6 +1271,14 @@ func TestAConflictedFileFitsItsControlsInTheDefaultWindow(t *testing.T) {
 		if r.W <= 0 {
 			t.Fatalf("%q is laid out past the pane's edge, with no width", label)
 		}
+	}
+	for _, action := range []struct{ label, group string }{
+		{"Previous conflict", "Conflict navigation"},
+		{"Next conflict", "Conflict navigation"},
+		{"Use both", "Conflict apply actions"},
+		{"Restore initial conflict", "Conflict apply actions"},
+	} {
+		matrixAction(t, h, action.label, action.group, conflictActionStyleIcons, opts.Width, opts.Height)
 	}
 	name, ok := h.tester.Find(path)
 	if !ok || name.W < 120 {

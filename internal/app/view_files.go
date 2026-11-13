@@ -549,7 +549,7 @@ func (a *app) fileDetailsView(c *ui.Context) {
 	// The editor handled the clicks of the last frame, so what it holds now is
 	// what the next click extends.
 	a.syncLineSelection()
-	islandCard(c, ui.Column(c).Grow(1).Gap(10).Padding(16)).Children(func() {
+	islandCard(c, ui.Column(c).Grow(1).Gap(10).Padding(16)).Label(tr("File details")).Children(func() {
 		change, ok := a.selectedChange()
 		if !ok {
 			a.resetFileDiff()
@@ -823,7 +823,7 @@ func (a *app) conflictPane(c *ui.Context, theme *ui.Theme) {
 		a.conflictView.ScrollTo(a.conflictScrollTo)
 		a.conflictScrollTo = -1
 	}
-	a.keyboardPane(c, "conflict-editor", editor.View(c, a.conflictView).Grow(1))
+	a.keyboardPane(c, "conflict-editor", editor.View(c, a.conflictView).Grow(1)).Label(tr("Conflict content"))
 }
 
 // conflictReviewPane shows the two sides of the conflict as a diff, laid out
@@ -901,7 +901,7 @@ func conflictSuccessBadgeText(theme *ui.Theme) ui.Color {
 // conflictToolbarGroup builds one titled action group shared by inline and
 // whole-file conflicts, so Deleted can never fall back to a different toolbar.
 func conflictToolbarGroup(c *ui.Context, theme *ui.Theme, label string, content func()) {
-	ui.Column(c).MinWidth(0).MaxWidthPercent(100).Gap(5).Children(func() {
+	ui.Column(c).MinWidth(0).MaxWidthPercent(100).Gap(5).Label(tr(label) + " group").Children(func() {
 		ui.Text(c, tr(label)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		ui.Row(c).AlignItems(ui.Center).Gap(6).Children(content)
 	})
@@ -920,7 +920,32 @@ func (a *app) conflictSidesToolbar(c *ui.Context, theme *ui.Theme) {
 	sides := a.conflictSides
 	reason := a.conflictMutationReason()
 	disabled := reason != ""
-	ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(10).Wrap().Children(func() {
+	applyActions := []actionControl{
+		{label: "Use current", description: "Resolve with the current side", icon: useCurrentIcon,
+			disabled: disabled, disabledReason: reason, run: func() { a.resolveConflictFile(sides.file, true) }},
+		{label: "Use incoming", description: "Resolve with the incoming side", icon: useIncomingIcon,
+			disabled: disabled, disabledReason: reason, run: func() { a.resolveConflictFile(sides.file, false) }},
+	}
+	busyReason := ""
+	if a.actionBusy {
+		busyReason = "Wait for the current Git action to finish."
+	}
+	markResolved := actionControl{
+		label: "Mark resolved", description: "Stage the file as it is", primary: true, textOnly: true,
+		disabled: a.actionBusy, disabledReason: busyReason, run: func() { a.beginStageFile(sides.file, true) },
+	}
+	row, compact, tiny := a.conflictToolbarRow(c)
+	row.Children(func() {
+		if compact {
+			ui.Row(c).AlignItems(ui.Center).Gap(6).Label(tr("Hunk") + " group").Children(func() {
+				ui.Text(c, tr("Hunk")).SingleLine()
+				ui.Badge(c, tr(conflictStatusLabel(sides.file.Status))).Background(theme.Danger).TextColor(ui.Hex("#ffffff"))
+			})
+			a.conflictCompactActionGroup(c, "View", diffSplitIcon, a.conflictCompactViewActions(0, false), nil, !tiny)
+			a.conflictCompactApplyGroup(c, applyActions, tiny)
+			a.conflictActionButton(c, markResolved)
+			return
+		}
 		conflictToolbarGroup(c, theme, "Hunk", func() {
 			ui.Badge(c, tr(conflictStatusLabel(sides.file.Status))).Background(theme.Danger).TextColor(ui.Hex("#ffffff"))
 		})
@@ -930,24 +955,37 @@ func (a *app) conflictSidesToolbar(c *ui.Context, theme *ui.Theme) {
 		})
 		conflictToolbarSeparator(c, theme, "View separator")
 		conflictToolbarGroup(c, theme, "Apply", func() {
-			a.conflictActionToolbar(c, "Whole-file conflict actions", []actionControl{
-				{label: "Use current", description: "Resolve with the current side", icon: useCurrentIcon,
-					disabled: disabled, disabledReason: reason, run: func() { a.resolveConflictFile(sides.file, true) }},
-				{label: "Use incoming", description: "Resolve with the incoming side", icon: useIncomingIcon,
-					disabled: disabled, disabledReason: reason, run: func() { a.resolveConflictFile(sides.file, false) }},
-			})
+			a.conflictActionToolbar(c, "Whole-file conflict actions", applyActions)
 		})
 		ui.Spacer(c).Grow(1)
 		conflictToolbarSeparator(c, theme, "Apply separator")
-		busyReason := ""
-		if a.actionBusy {
-			busyReason = "Wait for the current Git action to finish."
-		}
-		a.conflictActionButton(c, actionControl{
-			label: "Mark resolved", description: "Stage the file as it is", primary: true, textOnly: true,
-			disabled: a.actionBusy, disabledReason: busyReason, run: func() { a.beginStageFile(sides.file, true) },
-		})
+		a.conflictActionButton(c, markResolved)
 	})
+}
+
+// conflictCompactViewActions is the Popover form of the same stage selector
+// and assistant used by the full View group. A compact frame constructs only
+// these menu actions; switching back rebuilds the ordinary tab buttons.
+func (a *app) conflictCompactViewActions(count int, assistant bool) []actionControl {
+	actions := make([]actionControl, 0, 5)
+	for tab, label := range []string{"Base", "Current", "Incoming", "Result"} {
+		tab, label := tab, label
+		actions = append(actions, actionControl{
+			label: label, description: conflictStageTooltip(tab),
+			run: func() { a.conflictStageTab = tab },
+		})
+	}
+	if assistant {
+		assistReason := a.conflictMutationReason()
+		if assistReason == "" && count == 0 {
+			assistReason = "No conflict markers remain for suggestions."
+		}
+		actions = append(actions, actionControl{
+			label: "Conflict Assistant", description: "Preview region suggestions on a clone; Accept writes Result only", icon: commandIcon,
+			disabled: assistReason != "", disabledReason: assistReason, run: a.openConflictAssistant,
+		})
+	}
+	return actions
 }
 
 // conflictToolbar is the row above a conflicted file: which conflict is
@@ -962,29 +1000,69 @@ func (a *app) conflictToolbar(c *ui.Context, theme *ui.Theme) {
 	state := a.conflictState
 	count := len(state.regions)
 	region, hasRegion := state.current()
-	// Each labeled group wraps as one unit; narrow labeled groups use one
-	// Popover menu, preserving the Hunk | View | Apply hierarchy.
-	ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(10).Wrap().Children(func() {
-		conflictToolbarGroup(c, theme, "Hunk", func() {
+	var navigation []actionControl
+	if count > 0 {
+		navigation = []actionControl{
+			{label: "Previous conflict", shortcut: "Shift+F7", description: "Select the conflict above", icon: chevronUpIcon,
+				disabled: state.selected == 0, disabledReason: "Already at the first conflict.", run: func() { a.moveConflictSelection(-1) }},
+			{label: "Next conflict", shortcut: "F7", description: "Select the conflict below", icon: chevronDownIcon,
+				disabled: state.selected == count-1, disabledReason: "Already at the last conflict.", run: func() { a.moveConflictSelection(1) }},
+		}
+	}
+	applyActions := a.inlineConflictApplyActions(state, region, hasRegion)
+	busyReason := ""
+	if a.actionBusy {
+		busyReason = "Wait for the current Git action to finish."
+	}
+	markResolved := actionControl{
+		label: "Mark resolved", description: "Stage the file as it is", primary: true, textOnly: true,
+		disabled: a.actionBusy, disabledReason: busyReason,
+		run: func() {
+			if change, ok := a.selectedChange(); ok {
+				a.beginStageFile(change.file, true)
+			}
+		},
+	}
+	statusBadge := func() {
+		if count == 0 {
+			ui.Row(c).Padding(0, theme.Space(1.5)).Radius(999).
+				Background(theme.Success).Shrink(0).Children(func() {
+				ui.Text(c, tr("No conflict markers")).FontSize(theme.FontSize - 2).
+					TextColor(conflictSuccessBadgeText(theme)).SingleLine()
+			})
+		} else {
+			ui.Badge(c, trf("%d / %d", state.selected+1, count)).
+				Label(trf("Conflict %d of %d", state.selected+1, count)).
+				Tooltip(trf("Conflict %d of %d", state.selected+1, count)).
+				Background(theme.Danger).TextColor(ui.Hex("#ffffff"))
+		}
+	}
+	row, compact, tiny := a.conflictToolbarRow(c)
+	row.Children(func() {
+		if compact {
 			if count == 0 {
-				ui.Row(c).Padding(0, theme.Space(1.5)).Radius(999).
-					Background(theme.Success).Shrink(0).Children(func() {
-					ui.Text(c, tr("No conflict markers")).FontSize(theme.FontSize - 2).
-						TextColor(conflictSuccessBadgeText(theme)).SingleLine()
+				ui.Row(c).AlignItems(ui.Center).Gap(6).Label(tr("Hunk") + " group").Children(func() {
+					ui.Text(c, tr("Hunk")).SingleLine()
+					statusBadge()
 				})
 			} else {
-				ui.Badge(c, trf("%d / %d", state.selected+1, count)).
-					Label(trf("Conflict %d of %d", state.selected+1, count)).
-					Tooltip(trf("Conflict %d of %d", state.selected+1, count)).
-					Background(theme.Danger).TextColor(ui.Hex("#ffffff"))
-			}
-			if count > 0 {
-				a.conflictActionToolbar(c, "Conflict navigation", []actionControl{
-					{label: "Previous conflict", shortcut: "Shift+F7", description: "Select the conflict above", icon: chevronUpIcon,
-						disabled: state.selected == 0, disabledReason: "Already at the first conflict.", run: func() { a.moveConflictSelection(-1) }},
-					{label: "Next conflict", shortcut: "F7", description: "Select the conflict below", icon: chevronDownIcon,
-						disabled: state.selected == count-1, disabledReason: "Already at the last conflict.", run: func() { a.moveConflictSelection(1) }},
+				ui.Row(c).AlignItems(ui.Center).Gap(6).Label(tr("Hunk") + " group").Children(func() {
+					renderActionControl(c, actionControl{
+						label: "Hunk", visibleLabel: "Hunk", icon: historyIcon,
+						description: "Show this action group with labels and unavailable reasons", menu: navigation,
+					}, !tiny)
+					statusBadge()
 				})
+			}
+			a.conflictCompactActionGroup(c, "View", diffSplitIcon, a.conflictCompactViewActions(count, true), nil, !tiny)
+			a.conflictCompactApplyGroup(c, applyActions, tiny)
+			a.conflictActionButton(c, markResolved)
+			return
+		}
+		conflictToolbarGroup(c, theme, "Hunk", func() {
+			statusBadge()
+			if count > 0 {
+				a.conflictActionToolbar(c, "Conflict navigation", navigation)
 			}
 		})
 		conflictToolbarSeparator(c, theme, "Hunk separator")
@@ -1001,22 +1079,10 @@ func (a *app) conflictToolbar(c *ui.Context, theme *ui.Theme) {
 		})
 		conflictToolbarSeparator(c, theme, "View separator")
 		conflictToolbarGroup(c, theme, "Apply", func() {
-			a.conflictActionToolbar(c, "Conflict apply actions", a.inlineConflictApplyActions(state, region, hasRegion))
+			a.conflictActionToolbar(c, "Conflict apply actions", applyActions)
 		})
 		ui.Spacer(c).Grow(1)
 		conflictToolbarSeparator(c, theme, "Apply separator")
-		busyReason := ""
-		if a.actionBusy {
-			busyReason = "Wait for the current Git action to finish."
-		}
-		a.conflictActionButton(c, actionControl{
-			label: "Mark resolved", description: "Stage the file as it is", primary: true, textOnly: true,
-			disabled: a.actionBusy, disabledReason: busyReason,
-			run: func() {
-				if change, ok := a.selectedChange(); ok {
-					a.beginStageFile(change.file, true)
-				}
-			},
-		})
+		a.conflictActionButton(c, markResolved)
 	})
 }

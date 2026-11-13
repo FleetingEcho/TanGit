@@ -878,14 +878,20 @@ func (a *app) headerViewWithID(c *ui.Context, keyboardID string) {
 	if a.openExternalURL == nil {
 		a.openExternalURL = c.Services().OpenURL
 	}
-	a.keyboardPane(c, keyboardID, islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(6, 14)).Focusable()).Children(func() {
+	header := a.keyboardPane(c, keyboardID, islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(6, 14)).Focusable()).Label(tr("Repository header"))
+	headerWidth := a.measuredActionGroupWidth(c, header)
+	compactOperation := !a.editorOnlyWorkspace() && a.snapshot.Operation != "" &&
+		(headerWidth <= 0 || headerWidth < 800)
+	header.Children(func() {
 		base := filepath.Base(a.snapshot.Root)
 		if base == "." || base == string(filepath.Separator) || base == "" {
 			base = a.snapshot.Root
 		}
-		ui.Text(c, base).FontSize(16).Bold().Tooltip(a.snapshot.Root)
+		if !compactOperation {
+			ui.Text(c, base).FontSize(16).Bold().Tooltip(a.snapshot.Root)
+		}
 		if !a.editorOnlyWorkspace() {
-			if a.openedLinkedWorktree() {
+			if !compactOperation && a.openedLinkedWorktree() {
 				ui.Badge(c, tr("Linked worktree")).Tooltip(a.snapshot.Root)
 				if ownerPath := a.openedMainWorktreePath(); ownerPath != "" {
 					owner := tr("Main worktree") + " · " + repoName(ownerPath)
@@ -912,28 +918,36 @@ func (a *app) headerViewWithID(c *ui.Context, keyboardID string) {
 				branch = tr("Worktree")
 			}
 			ui.Text(c, tr("●")).TextColor(theme.Success)
-			ui.Text(c, branch).Bold().Tooltip(branchTooltip)
-			if a.snapshot.ChangeCount() == 0 {
-				ui.Badge(c, tr("Clean"))
-			} else {
-				ui.Badge(c, trf("%d changed", a.snapshot.ChangeCount()))
+			branchView := ui.Text(c, branch).Bold().Tooltip(branchTooltip)
+			if compactOperation {
+				if branchTooltip == "" {
+					branchView.Tooltip(branch)
+				}
+				branchView.SingleLine().MaxWidth(120).MinWidth(0)
 			}
-			if a.snapshot.Operation != "" {
-				ui.Badge(c, strings.ToUpper(a.snapshot.Operation))
-			}
-			for _, b := range a.snapshot.Branches {
-				if !b.Head {
-					continue
+			if !compactOperation {
+				if a.snapshot.ChangeCount() == 0 {
+					ui.Badge(c, tr("Clean"))
+				} else {
+					ui.Badge(c, trf("%d changed", a.snapshot.ChangeCount()))
 				}
-				ahead, behind, known := aheadBehind(b)
-				if !known {
-					continue
+				if a.snapshot.Operation != "" {
+					ui.Badge(c, strings.ToUpper(a.snapshot.Operation))
 				}
-				if n, show := count(ahead); show {
-					aheadCountView(c, n, b, theme.Success, theme.FontSize-1)
-				}
-				if n, show := count(behind); show {
-					behindCountView(c, n, b, theme.Warning, theme.FontSize-1)
+				for _, b := range a.snapshot.Branches {
+					if !b.Head {
+						continue
+					}
+					ahead, behind, known := aheadBehind(b)
+					if !known {
+						continue
+					}
+					if n, show := count(ahead); show {
+						aheadCountView(c, n, b, theme.Success, theme.FontSize-1)
+					}
+					if n, show := count(behind); show {
+						behindCountView(c, n, b, theme.Warning, theme.FontSize-1)
+					}
 				}
 			}
 		}
