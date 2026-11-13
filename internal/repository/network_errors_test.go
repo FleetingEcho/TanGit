@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -44,6 +46,41 @@ func TestNetworkErrorDoesNotClassifyOrdinaryFailures(t *testing.T) {
 	}
 	if got, want := err.Error(), "could not resolve host: example.invalid"; got != want {
 		t.Fatalf("error %q, want %q", got, want)
+	}
+}
+
+func TestPrePushHookFailureIsNotRemoteRejection(t *testing.T) {
+	dir, session := newHistoryEditingSession(t)
+	writeHistoryCommit(t, dir, "file.txt", "first\n", "initial")
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	runGit(t, dir, "init", "--bare", remote)
+	runGit(t, dir, "remote", "add", "origin", remote)
+	hook := "#!/bin/sh\n" +
+		"echo 'Try linting on changed files...'\n" +
+		"echo '  × eslint(no-unused-vars): Identifier getGuiServerHandlerURL is imported but never used.' >&2\n" +
+		"echo 'Found 98 warnings and 2 errors.' >&2\n" +
+		"exit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, ".git", "hooks", "pre-push"), []byte(hook), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	err := session.Push(context.Background())
+	if err == nil {
+		t.Fatal("push with a failing pre-push hook unexpectedly succeeded")
+	}
+	if errors.Is(err, ErrPushRejected) || errors.Is(err, ErrPushLeaseRejected) {
+		t.Fatalf("pre-push lint failure was misreported as a remote rejection: %v", err)
+	}
+	if !strings.Contains(err.Error(), "getGuiServerHandlerURL") || !strings.Contains(err.Error(), "2 errors") {
+		t.Fatalf("push error lost the lint diagnostics: %v", err)
+	}
+	entries := session.CommandLog().Entries()
+	if len(entries) == 0 || !strings.Contains(entries[len(entries)-1].Command, "git push") {
+		t.Fatalf("push command missing from the command log: %+v", entries)
+	}
+	output := entries[len(entries)-1].Output
+	if !strings.Contains(output, "Try linting") || !strings.Contains(output, "getGuiServerHandlerURL") {
+		t.Fatalf("command log lost mixed stdout/stderr hook diagnostics: %q", output)
 	}
 }
 
