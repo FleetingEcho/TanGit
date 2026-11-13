@@ -68,6 +68,11 @@ func actionPresentationSize(t *testing.T, h *harness, label, style string, width
 		bounds.X+bounds.W > float32(width)+0.5 {
 		t.Fatalf("%q is clipped or has no hit target at %dx%d: %+v", label, width, height, bounds)
 	}
+	if group, compact := h.tester.Access("Apply"); compact && group.HasPopup != ui.PopupNone && style == conflictActionStyleIconsLabels {
+		// A measured compact Apply group keeps common side choices as direct
+		// icons; opening Apply supplies their visible labels and descriptions.
+		style = conflictActionStyleIcons
+	}
 	switch style {
 	case conflictActionStyleIcons:
 		if bounds.W != 34 {
@@ -89,20 +94,30 @@ func matrixAction(t *testing.T, h *harness, label, toolbarLabel, style string, w
 	if _, found := h.tester.Access(label); found {
 		return actionPresentationSize(t, h, label, style, width, height), true
 	}
-	trigger, found := h.tester.Access(toolbarLabel)
+	triggerLabel := toolbarLabel
+	trigger, found := h.tester.Access(triggerLabel)
+	if !found {
+		switch toolbarLabel {
+		case "Conflict apply actions":
+			triggerLabel = "Apply"
+		case "Conflict navigation":
+			triggerLabel = "Hunk"
+		}
+		trigger, found = h.tester.Access(triggerLabel)
+	}
 	if !found || trigger.HasPopup == ui.PopupNone {
-		t.Fatalf("%q disappeared without its %q Popover trigger: %q", label, toolbarLabel, h.texts())
+		t.Fatalf("%q disappeared without its %q Popover trigger: %q", label, triggerLabel, h.texts())
 	}
 	bounds := trigger.Bounds
 	if bounds.W <= 0 || bounds.H <= 0 || bounds.X < 0 || bounds.Y < 0 ||
 		bounds.X+bounds.W > float32(width)+0.5 || bounds.Y+bounds.H > float32(height)+0.5 {
-		t.Fatalf("%q Popover trigger is clipped: %+v", toolbarLabel, bounds)
+		t.Fatalf("%q Popover trigger is clipped: %+v", triggerLabel, bounds)
 	}
 	h.tester.ClickAt(bounds.X+bounds.W/2, bounds.Y+bounds.H/2)
 	h.tester.Frame()
 	item, found := h.tester.Access(label)
 	if !found || item.Bounds.W <= 0 || item.Bounds.H <= 0 {
-		t.Fatalf("%q is not reachable from %q Popover: %+v, %q", label, toolbarLabel, item, h.texts())
+		t.Fatalf("%q is not reachable from %q Popover: %+v, %q", label, triggerLabel, item, h.texts())
 	}
 	h.tester.Key(0, ui.KeyEscape)
 	h.tester.Frame()
