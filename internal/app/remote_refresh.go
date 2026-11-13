@@ -41,14 +41,9 @@ func remoteFilesSignature(snapshot repository.Snapshot) string {
 // Reread the displayed diff behind the scenes, without flashing a spinner or
 // repainting an identical result.
 func (a *app) refreshRemoteQuietDetails() bool {
-	change, ok := a.selectedChange()
+	_, ok := a.selectedChange()
 	if !ok {
 		return false
-	}
-	if change.diffFile().HasMergeConflicts {
-		// Conflict editing keeps its existing reload and selection behavior.
-		a.beginDiff()
-		return true
 	}
 	a.requestQuietFileDiff()
 	// The asynchronous read repaints if its result actually changes.

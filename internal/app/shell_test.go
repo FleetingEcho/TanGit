@@ -1,12 +1,14 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"image/color"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -168,31 +170,53 @@ func TestShellUpdateButtonAdvertisesAndOpensAnAvailableUpdate(t *testing.T) {
 
 func TestShellBackgroundPageUpdatesDoNotRepaintActiveTab(t *testing.T) {
 	s := newShell(pathOpener{})
-	s.update = func(fn func()) { fn() }
-	invalidations := 0
-	s.invalidate = func() { invalidations++ }
+	repaints := 0
+	// Window.Update always repaints, even when its callback changes nothing.
+	// RunOnMain only runs the callback; keep those different semantics visible
+	// here without needing a native window in the test.
+	s.update = func(fn func()) { fn(); repaints++ }
+	s.postMain = func(fn func()) { fn() }
+	s.invalidate = func() { repaints++ }
 	s.start("")
 	first := readyShellTab(s, "/work/first")
 	second := readyShellTab(s, "/work/second")
 	s.active = s.indexOf(second)
 
-	s.updateAppChanged(first.app, func() bool {
+	first.app.update(func() {
 		first.app.snapshot.Files = []repository.File{{Path: "background.txt", Status: "M", Tracked: true}}
-		return true
 	})
-	if invalidations != 0 {
+	if repaints != 0 {
 		t.Fatal("a background page's content update repainted the active tab")
 	}
-	s.updateAppChanged(first.app, func() bool {
+	first.app.update(func() {
 		first.app.snapshot.Root = "/work/renamed"
-		return true
 	})
-	if invalidations != 1 {
-		t.Fatalf("a background tab title change caused %d frames, want 1", invalidations)
+	if repaints != 1 {
+		t.Fatalf("a background tab title change caused %d frames, want 1", repaints)
 	}
-	s.updateAppChanged(second.app, func() bool { return true })
-	if invalidations != 2 {
-		t.Fatalf("an active page update caused %d total frames, want 2", invalidations)
+	second.app.update(func() {})
+	if repaints != 2 {
+		t.Fatalf("an active page update caused %d total frames, want 2", repaints)
+	}
+}
+
+func TestShellIdleWorkspaceDoesNotRepaintOrFlash(t *testing.T) {
+	s, tester, _ := newShellTester(t, repository.Snapshot{Root: "/work/project"})
+	page := readyShellTab(s, "/work/project")
+	s.activate(s.indexOf(page))
+	page.app.workspaceTab = sectionHistory
+	tester.Frame()
+	pixels := append([]byte(nil), tester.Image().Pix...)
+
+	for frame := 1; frame <= 20; frame++ {
+		tester.Advance(25 * time.Millisecond)
+		tester.Frame()
+		if tester.FramePending() {
+			t.Fatalf("idle workspace requested another frame at step %d", frame)
+		}
+		if !bytes.Equal(pixels, tester.Image().Pix) {
+			t.Fatalf("idle workspace pixels changed at step %d", frame)
+		}
 	}
 }
 

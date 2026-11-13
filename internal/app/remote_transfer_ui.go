@@ -25,16 +25,36 @@ type remoteTransferUIState struct {
 	jobs        map[transfer.ID]*remoteTransferJob
 	prompts     map[transfer.ID]transfer.CollisionPrompt
 	toastPrefix string
+
+	// Snapshot delivery runs on the manager's goroutine. These fields coalesce
+	// progress before it reaches the UI queue; the mutex does not protect jobs.
+	snapshotMu          sync.Mutex
+	snapshotActive      bool
+	snapshotSeq         uint64
+	snapshotScheduleSeq uint64
+	snapshotPending     transfer.Snapshot
+	snapshotScheduled   bool
+	snapshotCancel      func() bool
+	lastSnapshot        time.Time
+}
+
+const remoteTransferProgressInterval = 100 * time.Millisecond
+
+var scheduleRemoteTransferProgress = func(delay time.Duration, run func()) func() bool {
+	timer := time.AfterFunc(delay, run)
+	return timer.Stop
 }
 
 type remoteTransferJob struct {
-	kind             string
-	localSources     []string
-	remoteDirectory  string
-	localOutputs     []string
-	result           transfer.Result
-	terminalNotified bool
-	cancelling       bool
+	kind                string
+	localSources        []string
+	remoteDirectory     string
+	localOutputs        []string
+	result              transfer.Result
+	presented           bool
+	presentedCancelling bool
+	terminalNotified    bool
+	cancelling          bool
 }
 
 var (
@@ -61,6 +81,18 @@ var (
 // the shared SSH opener after the event loop has stopped.
 func (a *app) shutdownRemoteTransfers() {
 	state := &a.remoteTransfers
+	state.snapshotMu.Lock()
+	state.snapshotActive = false
+	state.snapshotSeq++
+	state.snapshotScheduleSeq++
+	if state.snapshotCancel != nil {
+		state.snapshotCancel()
+	}
+	state.snapshotCancel = nil
+	state.snapshotScheduled = false
+	state.snapshotPending = transfer.Snapshot{}
+	state.lastSnapshot = time.Time{}
+	state.snapshotMu.Unlock()
 	manager := state.manager
 	if manager != nil {
 		// Running cancellation only signals its context. Queued cancellation has
@@ -128,12 +160,93 @@ func (a *app) remoteTransferManager() (*transfer.Manager, uint64, *sshworkspace.
 	state.jobs = make(map[transfer.ID]*remoteTransferJob)
 	state.prompts = make(map[transfer.ID]transfer.CollisionPrompt)
 	state.toastPrefix = fmt.Sprintf("workspace-transfer:%p", a)
+	state.snapshotMu.Lock()
+	state.snapshotActive = true
+	state.snapshotSeq++
+	state.snapshotPending = transfer.Snapshot{}
+	state.snapshotScheduled = false
+	state.snapshotCancel = nil
+	state.lastSnapshot = time.Time{}
+	state.snapshotMu.Unlock()
 	state.unsubscribe = manager.Subscribe(func(snapshot transfer.Snapshot) {
-		a.update(func() {
-			a.applyRemoteTransferSnapshot(manager, generation, snapshot)
-		})
+		a.queueRemoteTransferSnapshot(manager, generation, snapshot)
 	})
 	return manager, generation, client, nil
+}
+
+// queueRemoteTransferSnapshot keeps only the newest progress in each 100 ms
+// window. Initial inspection and terminal results are immediate. Sequence and
+// active checks suppress canceled timers, stale callbacks, and duplicate UI
+// frames without reading UI-owned app state on the manager's goroutine.
+func (a *app) queueRemoteTransferSnapshot(manager *transfer.Manager, generation uint64, snapshot transfer.Snapshot) {
+	state := &a.remoteTransfers
+	force := snapshot.Closed
+	for _, result := range snapshot.Jobs {
+		force = force || result.Status.Terminal()
+	}
+	state.snapshotMu.Lock()
+	if !state.snapshotActive {
+		state.snapshotMu.Unlock()
+		return
+	}
+	state.snapshotSeq++
+	sequence := state.snapshotSeq
+	state.snapshotPending = snapshot
+	if state.snapshotScheduled {
+		if !force {
+			state.snapshotMu.Unlock()
+			return
+		}
+		if state.snapshotCancel != nil {
+			state.snapshotCancel()
+		}
+		state.snapshotScheduled = false
+		state.snapshotCancel = nil
+	}
+	delay := time.Duration(0)
+	if !force && !state.lastSnapshot.IsZero() {
+		delay = remoteTransferProgressInterval - time.Since(state.lastSnapshot)
+	}
+	if delay > 0 {
+		state.snapshotScheduled = true
+		state.snapshotScheduleSeq++
+		scheduleSequence := state.snapshotScheduleSeq
+		state.snapshotCancel = scheduleRemoteTransferProgress(delay, func() {
+			a.runRemoteTransferSnapshotSchedule(manager, generation, scheduleSequence)
+		})
+		state.snapshotMu.Unlock()
+		return
+	}
+	state.lastSnapshot = time.Now()
+	state.snapshotMu.Unlock()
+	a.publishQueuedRemoteTransferSnapshot(manager, generation, sequence, snapshot)
+}
+
+func (a *app) runRemoteTransferSnapshotSchedule(manager *transfer.Manager, generation, scheduleSequence uint64) {
+	state := &a.remoteTransfers
+	state.snapshotMu.Lock()
+	if !state.snapshotActive || !state.snapshotScheduled || scheduleSequence != state.snapshotScheduleSeq {
+		state.snapshotMu.Unlock()
+		return
+	}
+	// The timer belongs to one schedule, not one snapshot. Publish the newest
+	// progress queued while it waited; newer timers still have their own identity.
+	sequence, snapshot := state.snapshotSeq, state.snapshotPending
+	state.snapshotScheduled = false
+	state.snapshotCancel = nil
+	state.lastSnapshot = time.Now()
+	state.snapshotMu.Unlock()
+	a.publishQueuedRemoteTransferSnapshot(manager, generation, sequence, snapshot)
+}
+
+func (a *app) publishQueuedRemoteTransferSnapshot(manager *transfer.Manager, generation, sequence uint64, snapshot transfer.Snapshot) {
+	a.updateChanged(func() bool {
+		state := &a.remoteTransfers
+		state.snapshotMu.Lock()
+		current := state.snapshotActive && sequence == state.snapshotSeq
+		state.snapshotMu.Unlock()
+		return current && a.applyRemoteTransferSnapshot(manager, generation, snapshot)
+	})
 }
 
 func (a *app) remoteTransfersAvailable() bool {
@@ -347,10 +460,11 @@ func (a *app) ensureRemoteTransferJob(id transfer.ID, kind string, localSources 
 	return job
 }
 
-func (a *app) applyRemoteTransferSnapshot(manager *transfer.Manager, generation uint64, snapshot transfer.Snapshot) {
+func (a *app) applyRemoteTransferSnapshot(manager *transfer.Manager, generation uint64, snapshot transfer.Snapshot) bool {
 	if !a.currentRemoteTransfer(manager, generation) {
-		return
+		return false
 	}
+	changed := false
 	for _, result := range snapshot.Jobs {
 		job := a.remoteTransfers.jobs[result.ID]
 		if job == nil && result.RetryOf != 0 {
@@ -363,26 +477,51 @@ func (a *app) applyRemoteTransferSnapshot(manager *transfer.Manager, generation 
 			// completion callback or the enqueue continuation supplies metadata.
 			continue
 		}
-		a.publishRemoteTransfer(manager, generation, job, result)
+		changed = a.publishRemoteTransfer(manager, generation, job, result) || changed
 	}
+	return changed
+}
+
+func sameRemoteTransferResult(left, right transfer.Result) bool {
+	if left.ID != right.ID || left.RetryOf != right.RetryOf || left.Status != right.Status ||
+		left.TotalItems != right.TotalItems || left.CompletedItems != right.CompletedItems ||
+		left.SkippedItems != right.SkippedItems || left.FailedItems != right.FailedItems ||
+		left.TotalBytes != right.TotalBytes || left.CompletedBytes != right.CompletedBytes ||
+		safeError(left.Err) != safeError(right.Err) || len(left.Errors) != len(right.Errors) {
+		return false
+	}
+	for index := range left.Errors {
+		leftError, rightError := left.Errors[index], right.Errors[index]
+		if leftError.ItemIndex != rightError.ItemIndex || leftError.Item != rightError.Item ||
+			safeError(leftError.Err) != safeError(rightError.Err) {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *app) completeRemoteTransfer(manager *transfer.Manager, generation uint64, result transfer.Result, kind string, localSources []string, remoteDirectory string, localOutputs []string) {
-	a.update(func() {
+	a.updateChanged(func() bool {
 		if !a.currentRemoteTransfer(manager, generation) {
-			return
+			return false
 		}
 		job := a.ensureRemoteTransferJob(result.ID, kind, localSources, remoteDirectory, localOutputs)
-		a.publishRemoteTransfer(manager, generation, job, result)
+		return a.publishRemoteTransfer(manager, generation, job, result)
 	})
 }
 
-func (a *app) publishRemoteTransfer(manager *transfer.Manager, generation uint64, job *remoteTransferJob, result transfer.Result) {
+// publishRemoteTransfer reports whether the visible notification or another
+// visible workspace effect changed. The model retains the newest result even
+// when its presentation is identical and needs no repaint.
+func (a *app) publishRemoteTransfer(manager *transfer.Manager, generation uint64, job *remoteTransferJob, result transfer.Result) bool {
+	changed := !job.presented || job.presentedCancelling != job.cancelling || !sameRemoteTransferResult(job.result, result)
 	job.result = result
-	result = job.result
 	terminal := result.Status.Terminal()
 	if terminal && job.terminalNotified {
-		return
+		return false
+	}
+	if !changed {
+		return false
 	}
 	if terminal {
 		job.terminalNotified = true
@@ -461,10 +600,13 @@ func (a *app) publishRemoteTransfer(manager *transfer.Manager, generation uint64
 		}
 	}
 	a.notifyToast(toast)
+	job.presented = true
+	job.presentedCancelling = job.cancelling
 	if terminal && job.kind == "upload" && (result.Status == transfer.StatusSucceeded || result.Status == transfer.StatusPartial) {
 		a.code.filesLoaded = false
 		a.requestCodeFiles()
 	}
+	return true
 }
 
 func remoteTransferProgressDescription(job *remoteTransferJob, result transfer.Result) string {
