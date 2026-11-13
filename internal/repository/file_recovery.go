@@ -516,6 +516,9 @@ func (s *gitSession) readFileRecoveryRecord(id string, identify bool) (FileRecov
 	}
 	var record FileRecoveryRecord
 	decoder := json.NewDecoder(bytes.NewReader(data))
+	// V2 is an exact, versioned schema at every nesting level. Unknown fields
+	// fail closed rather than being silently dropped into a restorable record;
+	// additive changes require deliberate compatibility handling and tests.
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&record); err != nil {
 		return FileRecoveryRecord{}, fmt.Errorf("decode file recovery manifest: %w", err)
