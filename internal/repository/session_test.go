@@ -2176,6 +2176,21 @@ func TestResetToCommitModes(t *testing.T) {
 	}
 }
 
+func TestSnapshotResolvesHeadAcrossAllRefs(t *testing.T) {
+	dir, session := newThreeCommitHistory(t)
+	runGit(t, dir, "checkout", "-b", "feature")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "newer other branch")
+	runGit(t, dir, "checkout", "main")
+	actual := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
+	snapshot := historySnapshot(t, session)
+	if snapshot.HeadHash != actual {
+		t.Fatalf("resolved HEAD = %q, want %q", snapshot.HeadHash, actual)
+	}
+	if snapshot.Head != "" {
+		t.Fatalf("attached HEAD unexpectedly marked detached as %q", snapshot.Head)
+	}
+}
+
 func TestUndoLatestCommitLeavesOnlyItsChanges(t *testing.T) {
 	for _, test := range []struct {
 		name     string
@@ -2194,7 +2209,7 @@ func TestUndoLatestCommitLeavesOnlyItsChanges(t *testing.T) {
 			if latest.Parents[0] != parent.Hash {
 				t.Fatalf("HEAD parent = %q, want %q", latest.Parents[0], parent.Hash)
 			}
-			if err := session.ResetToCommit(context.Background(), parent, test.mode); err != nil {
+			if err := session.UndoLatestCommit(context.Background(), "main", latest, test.mode); err != nil {
 				t.Fatal(err)
 			}
 			snapshot = historySnapshot(t, session)
@@ -2207,6 +2222,73 @@ func TestUndoLatestCommitLeavesOnlyItsChanges(t *testing.T) {
 				t.Fatalf("latest commit changes have the wrong placement: %+v", file)
 			}
 		})
+	}
+}
+
+func TestUndoLatestCommitRejectsChangedHead(t *testing.T) {
+	dir, session := newThreeCommitHistory(t)
+	snapshot := historySnapshot(t, session)
+	approved := snapshot.Commits[0]
+	runGit(t, dir, "commit", "--allow-empty", "-m", "newer commit")
+	before := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
+	if before == approved.Hash {
+		t.Fatal("test did not advance HEAD")
+	}
+	err := session.UndoLatestCommit(context.Background(), "main", approved, ResetSoft)
+	if err == nil || !strings.Contains(err.Error(), "HEAD changed") {
+		t.Fatalf("undo after HEAD changed = %v, want a stale-confirmation rejection", err)
+	}
+	if after := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD")); after != before {
+		t.Fatalf("stale undo moved HEAD from %s to %s", before, after)
+	}
+}
+
+func TestUndoLatestCommitRejectsChangedBranchAtSameCommit(t *testing.T) {
+	dir, session := newThreeCommitHistory(t)
+	approved := historySnapshot(t, session).Commits[0]
+	runGit(t, dir, "checkout", "-b", "feature")
+	before := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
+	if before != approved.Hash {
+		t.Fatal("test branch did not start at the approved commit")
+	}
+	err := session.UndoLatestCommit(context.Background(), "main", approved, ResetSoft)
+	if err == nil || !strings.Contains(err.Error(), "branch changed") {
+		t.Fatalf("undo after branch change = %v, want a stale-confirmation rejection", err)
+	}
+	if after := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD")); after != before {
+		t.Fatalf("branch-stale undo moved HEAD from %s to %s", before, after)
+	}
+}
+
+func TestUndoLatestCommitRejectsOperationAfterConflictsAreResolved(t *testing.T) {
+	dir := conflictRepository(t, "UU")
+	session, err := (Opener{}).Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := session.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := session.ResolveConflict(context.Background(), conflictFile(t, snapshot), true); err != nil {
+		t.Fatal(err)
+	}
+	snapshot = historySnapshot(t, session)
+	if snapshot.Operation == "" {
+		t.Fatal("resolved merge no longer has operation state")
+	}
+	for _, file := range snapshot.Files {
+		if file.HasMergeConflicts {
+			t.Fatalf("test still has an unresolved file: %+v", file)
+		}
+	}
+	before := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
+	err = session.UndoLatestCommit(context.Background(), snapshot.Branch, snapshot.Commits[0], ResetMixed)
+	if err == nil || !strings.Contains(err.Error(), "in progress") {
+		t.Fatalf("undo with resolved merge state = %v, want an in-progress rejection", err)
+	}
+	if after := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD")); after != before {
+		t.Fatalf("in-progress undo moved HEAD from %s to %s", before, after)
 	}
 }
 

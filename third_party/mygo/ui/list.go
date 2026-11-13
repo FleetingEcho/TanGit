@@ -484,12 +484,12 @@ type listRow struct {
 // once, not as the later click of a double click (RowClicked), and an
 // element took that click not given by the pointer.
 type rowBuild struct {
-	f                       *listFrame
-	e                       *node
-	i                       int
-	key                     any
-	clicked, chosen, double bool
-	single, singleTaken     bool
+	f                                    *listFrame
+	e                                    *node
+	i                                    int
+	key                                  any
+	clicked, chosen, highlighted, double bool
+	single, singleTaken                  bool
 }
 
 // List creates a vertical scroll container of n rows, built with row(i),
@@ -774,12 +774,13 @@ func (f *listFrame) build(i int) *node {
 			w.flags |= flagDraggable // the moves of a press come as frames
 		}
 		rb.chosen = f.chosen(i, key)
+		rb.highlighted = rb.chosen
 		*valueBinding[listRowInput](w) = listRowInput{f: f, i: i}
 		w.onValueInput(listRowValueInput)
 		on := f.chosen(i, key)
 		if s.RowHighlighted != nil {
 			on = s.RowHighlighted(i)
-			rb.chosen = on
+			rb.highlighted = on
 		}
 		if f.choosesCells() {
 			// Its cells in the block show the choice (Table); CellsStyle

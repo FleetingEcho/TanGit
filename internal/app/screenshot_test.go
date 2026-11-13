@@ -255,6 +255,8 @@ func (s screenshotSession) UnstageAll(context.Context) error                   {
 func (s screenshotSession) Commit(context.Context, string, string, bool) error { return nil }
 func (s screenshotSession) Undo(context.Context) error                         { return nil }
 func (s screenshotSession) Redo(context.Context) error                         { return nil }
+func (s screenshotSession) UndoExpected(context.Context, string) error         { return nil }
+func (s screenshotSession) RedoExpected(context.Context, string) error         { return nil }
 func (s screenshotSession) CommitMessage(_ context.Context, commit repository.Commit) (repository.CommitMessage, error) {
 	return repository.CommitMessage{Summary: commit.Subject}, nil
 }
@@ -343,6 +345,9 @@ func (s screenshotSession) CherryPickCommit(context.Context, repository.Commit) 
 }
 func (s screenshotSession) RevertCommit(context.Context, repository.Commit) error   { return nil }
 func (s screenshotSession) CheckoutCommit(context.Context, repository.Commit) error { return nil }
+func (s screenshotSession) UndoLatestCommit(context.Context, string, repository.Commit, repository.ResetMode) error {
+	return nil
+}
 func (s screenshotSession) ResetToCommit(context.Context, repository.Commit, repository.ResetMode) error {
 	return nil
 }
