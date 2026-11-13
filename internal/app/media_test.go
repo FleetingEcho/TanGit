@@ -90,6 +90,22 @@ func TestMediaReviewExplainsAbsentAndLocalLFSSides(t *testing.T) {
 	}
 }
 
+func TestSameMediaReviewComparesContentNotDecodedBitmapIdentity(t *testing.T) {
+	data := testPNG(t, 2, 3, color.RGBA{R: 255, A: 255})
+	first := &mediaReview{old: decodeMediaData(data), new: decodeMediaPreview(repository.MediaBlob{})}
+	second := &mediaReview{old: decodeMediaData(append([]byte(nil), data...)), new: decodeMediaPreview(repository.MediaBlob{})}
+	if !sameMediaReview(first, second) {
+		t.Fatal("identical encoded images decoded into different bitmaps compared as changed")
+	}
+	second.old = decodeMediaData(testPNG(t, 2, 3, color.RGBA{B: 255, A: 255}))
+	if sameMediaReview(first, second) {
+		t.Fatal("different image content compared as unchanged")
+	}
+	if !sameMediaReview(nil, nil) || sameMediaReview(first, nil) {
+		t.Fatal("nil media reviews did not compare correctly")
+	}
+}
+
 func TestMediaDecodeRejectsInvalidAndOversizedImages(t *testing.T) {
 	invalid := decodeMediaPreview(repository.MediaBlob{Present: true, Data: []byte("not an image")})
 	if invalid.problem == "" || invalid.bitmap != nil {
