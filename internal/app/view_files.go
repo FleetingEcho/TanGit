@@ -653,10 +653,7 @@ func (a *app) fileDetailsView(c *ui.Context) {
 		}
 		a.changedFileNavigationControls(c)
 		if a.blameLoading {
-			ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
-				ui.Spinner(c).Label(tr("Loading blame"))
-				ui.Text(c, tr("Loading blame…")).TextColor(theme.TextMuted)
-			})
+			loadingPane(c, "Loading blame", "Loading blame…")
 			return
 		}
 		if a.blameError != "" {
@@ -682,10 +679,7 @@ func (a *app) fileDetailsView(c *ui.Context) {
 			return
 		}
 		if a.diffLoading {
-			ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
-				ui.Spinner(c).Label(tr("Loading diff"))
-				ui.Text(c, tr("Loading diff…")).TextColor(theme.TextMuted)
-			})
+			loadingPane(c, "Loading diff", "Loading diff…")
 			return
 		}
 		if a.diffError != "" {
@@ -778,10 +772,7 @@ func (a *app) fileActionsMenu(c *ui.Context, theme *ui.Theme, file repository.Fi
 // conflict the toolbar acts on, and takes hand edits that are written as typed.
 func (a *app) conflictPane(c *ui.Context, theme *ui.Theme) {
 	if a.diffLoading {
-		ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
-			ui.Spinner(c).Label(tr("Loading conflict"))
-			ui.Text(c, tr("Loading conflict…")).TextColor(theme.TextMuted)
-		})
+		loadingPane(c, "Loading conflict", "Loading conflict…")
 		return
 	}
 	if a.diffError != "" {

@@ -72,10 +72,7 @@ func (a *app) codeFileExplorer(c *ui.Context) {
 			a.codeRepositoryRootRow(c, theme)
 		}
 		if a.code.filesLoading {
-			ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
-				ui.Spinner(c).Label(tr("Loading files"))
-				ui.Text(c, tr("Loading files…")).TextColor(theme.TextMuted)
-			})
+			loadingPane(c, "Loading files", "Loading files…")
 			return
 		}
 		if a.code.filesError != "" {
@@ -328,10 +325,7 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 		if a.code.filesLoading {
 			label = tr("Loading files")
 		}
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Spinner(c).Label(label)
-			ui.Text(c, label+"…").TextColor(theme.TextMuted).Grow(1)
-		})
+		loadingPane(c, label, label+"…")
 		return
 	}
 	if a.code.searchSubmitted == "" {
@@ -794,10 +788,7 @@ func (a *app) codeEmptyEditor(c *ui.Context) {
 func (a *app) codeDocumentView(c *ui.Context, document *codeDocument) {
 	theme := c.Theme()
 	if document.loading {
-		ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
-			ui.Spinner(c).Label(tr("Loading file"))
-			ui.Text(c, tr("Loading file…")).TextColor(theme.TextMuted)
-		})
+		loadingPane(c, "Loading file", "Loading file…")
 		return
 	}
 	if document.binary {

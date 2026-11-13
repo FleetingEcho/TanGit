@@ -1017,10 +1017,7 @@ func (a *app) terminalSessionContent(c *ui.Context, index int, session *terminal
 		return
 	}
 	if session.loading {
-		ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
-			ui.Spinner(c).Label(tr("Starting the shell"))
-			ui.Text(c, tr("Starting the shell…")).TextColor(theme.TextMuted)
-		})
+		loadingPane(c, "Starting the shell", "Starting the shell…")
 		return
 	}
 	if session.pane != nil {

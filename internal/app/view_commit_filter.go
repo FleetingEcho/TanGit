@@ -263,6 +263,9 @@ func (a *app) dropCommitFilter(target int, selectedHash string) {
 	query := a.commitQueryFor(target)
 	query.reset()
 	a.selectedCommit = selectedCommitIndex(a.visibleCommits(), selectedHash)
+	if a.workspaceTab == target {
+		a.commitList.ScrollTo(0, ui.Start)
+	}
 }
 
 // clearCommitFilter drops every field of target's filter and shows the whole
@@ -280,6 +283,9 @@ func (a *app) clearCommitFilter(target int) {
 	selectedHash := commitHashAt(a.visibleCommits(), a.selectedCommit)
 	a.commitQueryFor(target).reset()
 	a.selectedCommit = selectedCommitIndex(a.visibleCommits(), selectedHash)
+	if a.workspaceTab == target {
+		a.commitList.ScrollTo(0, ui.Start)
+	}
 }
 
 // refreshCommitFilter reads the authors again and re-runs the filter that is
@@ -300,11 +306,21 @@ func (a *app) refreshCommitFilter() {
 	a.runCommitFilter(a.filterTarget, commitHashAt(a.visibleCommits(), a.selectedCommit))
 }
 
-// runCommitFilter asks Git for target's filter's matches. selectedHash is the
-// commit to choose when it is among them.
+// runCommitFilter asks Git for target's filter's matches. A replacement query
+// starts at its top; the requestMoreFilteredCommits variant says otherwise.
 func (a *app) runCommitFilter(target int, selectedHash string) {
+	a.runCommitFilterMode(target, selectedHash, true)
+}
+
+func (a *app) runCommitFilterMode(target int, selectedHash string, resetScroll bool) {
 	if a.session == nil {
 		return
+	}
+	firstVisible := -1
+	if !resetScroll && a.workspaceTab == target {
+		// Replacing the enlarged result prefix changes list anchoring on some
+		// datasets. Keep the reader's actual top row across that replacement.
+		firstVisible, _ = a.commitList.Visible()
 	}
 	query := a.commitQueryFor(target)
 	filter := query.applied
@@ -338,6 +354,12 @@ func (a *app) runCommitFilter(target int, selectedHash string) {
 			// selection the page on screen is showing.
 			if a.workspaceTab == target {
 				a.selectedCommit = selectedCommitIndex(commits, selectedHash)
+				switch {
+				case resetScroll:
+					a.commitList.ScrollTo(0, ui.Start)
+				case firstVisible >= 0:
+					a.commitList.ScrollTo(firstVisible, ui.Start)
+				}
 			}
 		})
 	}()
@@ -352,7 +374,7 @@ func (a *app) requestMoreFilteredCommits(target int) {
 		return
 	}
 	query.limit += repository.SnapshotCommitLimit
-	a.runCommitFilter(target, commitHashAt(a.visibleCommits(), a.selectedCommit))
+	a.runCommitFilterMode(target, commitHashAt(a.visibleCommits(), a.selectedCommit), false)
 }
 
 // loadCommitAuthors reads the repository's author names for the filter's
