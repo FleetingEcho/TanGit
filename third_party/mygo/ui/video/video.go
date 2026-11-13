@@ -40,6 +40,7 @@ var ErrUnsupported = errors.New("video: the system has no media framework that p
 // source is what a player opens: a URL, or bytes in memory.
 type source struct {
 	url  string
+	path string // the file Open opened, which url is the file: URL of
 	data []byte
 }
 
@@ -49,7 +50,7 @@ func Open(path string) (*ui.VideoPlayer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return open(source{url: fileURL(abs)})
+	return open(source{url: fileURL(abs), path: abs})
 }
 
 // OpenURL opens a video at a URL: a file:, http: or https: URL, or an HLS

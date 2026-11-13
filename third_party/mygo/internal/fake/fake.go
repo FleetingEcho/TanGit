@@ -10,6 +10,7 @@ import (
 	"image"
 	"image/png"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -40,12 +41,14 @@ type Backend struct {
 	noSession        bool // SetNoSessionState
 	windows          []*Window
 	trayIDs          []string
+	trayMonospaced   int
 	trays            []*tray
 	trayDark         bool
 	appMenu          *platform.Menu
 	popups           []Popup
 	updates          []*platform.MenuItem
 	hotkeys          map[int]string
+	hotkeyNames      map[int]string
 	clipboard        transfer.Data
 	clipboardRelease func()
 	// ClipboardConcealed is whether the last write marked its content
@@ -56,9 +59,14 @@ type Backend struct {
 	// ClipboardDuringFlush simulates a toolkit pumping a nested event loop
 	// after releasing providers but before its storage operation returns.
 	ClipboardDuringFlush func()
-	theme                string
-	prefs                platform.Preferences
-	prefsReads           int
+	// ClipboardWatchError injects a failure to start observing changes.
+	ClipboardWatchError error
+	// ClipboardWatchStarts and ClipboardWatchStops count native watches.
+	ClipboardWatchStarts, ClipboardWatchStops int
+	clipboardChanged                          func()
+	theme                                     string
+	prefs                                     platform.Preferences
+	prefsReads                                int
 	// languages and region are the user's (SetSystemLanguages,
 	// SetSystemRegion); en-US without them.
 	languages []string
@@ -391,7 +399,7 @@ func (b *Backend) Applications() ([]platform.Application, error) {
 	return append([]platform.Application(nil), Apps...), nil
 }
 
-func (b *Backend) NewTray(h platform.TrayHandler) (platform.Tray, error) {
+func (b *Backend) NewTray(_ string, h platform.TrayHandler) (platform.Tray, error) {
 	t := &tray{b: b, h: h}
 	b.mu.Lock()
 	b.trays = append(b.trays, t)
@@ -421,9 +429,21 @@ func (b *Backend) TrayIDs() []string {
 	return append([]string(nil), b.trayIDs...)
 }
 
-func (b *Backend) RegisterHotkey(id int, acc string) error {
+// MonospacedTrayTitles returns how many tray icons were asked to draw
+// their title in the monospaced font.
+func (b *Backend) MonospacedTrayTitles() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.trayMonospaced
+}
+
+func (b *Backend) RegisterHotkey(id int, acc, description string) error {
 	b.mu.Lock()
 	b.hotkeys[id] = acc
+	if b.hotkeyNames == nil {
+		b.hotkeyNames = map[int]string{}
+	}
+	b.hotkeyNames[id] = description
 	b.mu.Unlock()
 	return nil
 }
@@ -431,20 +451,41 @@ func (b *Backend) RegisterHotkey(id int, acc string) error {
 func (b *Backend) UnregisterHotkey(id int) {
 	b.mu.Lock()
 	delete(b.hotkeys, id)
+	delete(b.hotkeyNames, id)
 	b.mu.Unlock()
+}
+
+// hotkey returns the id of a registered global shortcut, -1 without one.
+func (b *Backend) hotkey(acc string) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for id, a := range b.hotkeys {
+		if a == acc {
+			return id
+		}
+	}
+	return -1
+}
+
+// HotkeyDescription returns what a global shortcut was said to do.
+func (b *Backend) HotkeyDescription(acc string) string {
+	id := b.hotkey(acc)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.hotkeyNames[id]
+}
+
+// BindHotkey simulates a desktop that binds global shortcuts for apps
+// telling the keys it has for one, "" for none.
+func (b *Backend) BindHotkey(acc, keys string) {
+	if id := b.hotkey(acc); id >= 0 {
+		b.h.HotkeyBound(id, keys)
+	}
 }
 
 // PressHotkey simulates a global shortcut.
 func (b *Backend) PressHotkey(acc string) {
-	b.mu.Lock()
-	var hid = -1
-	for id, a := range b.hotkeys {
-		if a == acc {
-			hid = id
-		}
-	}
-	b.mu.Unlock()
-	if hid >= 0 {
+	if hid := b.hotkey(acc); hid >= 0 {
 		b.h.HotkeyPressed(hid)
 	}
 }
@@ -535,6 +576,7 @@ type Window struct {
 	bounds    platform.Rect
 	visible   bool
 	focused   bool
+	radius    float64 // SetCornerRadius
 	minimized bool
 	maximized bool
 	full      bool
@@ -548,6 +590,8 @@ type Window struct {
 	// capture is the page's capture of each kind (SetCapture).
 	capture [platform.CaptureDisplay + 1]platform.CaptureState
 	pip     bool // TogglePictureInPicture
+	// ignoreMouse is what SetIgnoreMouseEvents was given last.
+	ignoreMouse bool
 	// Restored is the last state RestoreSessionState put back.
 	Restored []byte
 	// Dropped is what DroppedFiles returns, once.
@@ -734,11 +778,29 @@ func (w *Window) framesOnShow() {
 	}
 }
 
-func (w *Window) Hide()                           { w.mu.Lock(); w.visible = false; w.mu.Unlock() }
-func (w *Window) IsVisible() bool                 { w.mu.Lock(); defer w.mu.Unlock(); return w.visible }
-func (w *Window) Focus()                          { w.H.Focused() }
-func (w *Window) Blur()                           { w.H.Blurred() }
-func (w *Window) IsFocused() bool                 { w.mu.Lock(); defer w.mu.Unlock(); return w.focused }
+func (w *Window) Hide()           { w.mu.Lock(); w.visible = false; w.mu.Unlock() }
+func (w *Window) IsVisible() bool { w.mu.Lock(); defer w.mu.Unlock(); return w.visible }
+func (w *Window) Focus()          { w.H.Focused() }
+func (w *Window) Blur()           { w.H.Blurred() }
+func (w *Window) IsFocused() bool { w.mu.Lock(); defer w.mu.Unlock(); return w.focused }
+
+// CornerRadius is the frameless window's WindowOptions.CornerRadius, as
+// macOS rounds it, or SetCornerRadius's.
+func (w *Window) CornerRadius() float64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.radius != 0 {
+		return w.radius
+	}
+	if w.Opts != nil && w.Opts.Frameless {
+		return float64(w.Opts.CornerRadius)
+	}
+	return 0
+}
+
+// SetCornerRadius makes CornerRadius r, as a system that rounds the window.
+func (w *Window) SetCornerRadius(r float64) { w.mu.Lock(); w.radius = r; w.mu.Unlock() }
+
 func (w *Window) Minimize()                       { w.mu.Lock(); w.minimized = true; w.mu.Unlock(); w.H.Minimized() }
 func (w *Window) IsMinimized() bool               { w.mu.Lock(); defer w.mu.Unlock(); return w.minimized }
 func (w *Window) Maximize()                       { w.mu.Lock(); w.maximized = true; w.mu.Unlock(); w.H.Maximized() }
@@ -752,7 +814,8 @@ func (w *Window) SetOpacity(float64)              {}
 func (w *Window) Opacity() float64                { return 1 }
 func (w *Window) SetHasShadow(bool)               {}
 func (w *Window) HasShadow() bool                 { return true }
-func (w *Window) SetIgnoreMouseEvents(bool)       {}
+func (w *Window) SetIgnoreMouseEvents(v bool)     { w.mu.Lock(); w.ignoreMouse = v; w.mu.Unlock() }
+func (w *Window) IgnoresMouseEvents() bool        { w.mu.Lock(); defer w.mu.Unlock(); return w.ignoreMouse }
 func (w *Window) SetContentProtection(bool)       {}
 func (w *Window) SetVibrancy(string)              {}
 func (w *Window) SetVibrancyTint(*platform.Color) {}
@@ -1108,6 +1171,26 @@ func (d dialogs) ShowMessageBox(_ platform.Window, o *platform.MessageBoxOptions
 
 type clipboard struct{ b *Backend }
 
+func (c clipboard) WatchChanges(changed func()) (func(), error) {
+	if c.b.ClipboardWatchError != nil {
+		return nil, c.b.ClipboardWatchError
+	}
+	c.b.ClipboardWatchStarts++
+	c.b.clipboardChanged = changed
+	return func() {
+		c.b.ClipboardWatchStops++
+		c.b.clipboardChanged = nil
+	}, nil
+}
+
+// EmitClipboardChange simulates a native change without reading clipboard
+// providers. Like native callbacks, it must run on the main thread.
+func (b *Backend) EmitClipboardChange() {
+	if b.clipboardChanged != nil {
+		b.clipboardChanged()
+	}
+}
+
 func (c clipboard) ReadText() string   { b, _ := c.b.clipboard.Read(transfer.Text); return string(b) }
 func (c clipboard) WriteText(s string) { _ = c.WriteData(transfer.TextData(s), false, nil) }
 func (c clipboard) ReadHTML() string   { b, _ := c.b.clipboard.Read(transfer.HTML); return string(b) }
@@ -1148,6 +1231,7 @@ func (c clipboard) WriteData(d transfer.Data, concealed bool, released func()) e
 	if len(d.Formats()) == 0 {
 		c.release()
 	}
+	c.b.EmitClipboardChange()
 	return nil
 }
 func (c clipboard) release() {
@@ -1197,6 +1281,12 @@ var Trashed []string
 func (shell) TrashItem(path string) error {
 	Trashed = append(Trashed, path)
 	return nil
+}
+
+func (shell) TrashItemResult(path string) (string, error) {
+	Trashed = append(Trashed, path)
+	// Return a synthetic trash path so callers can test restore without a real Trash.
+	return filepath.Join(os.Getenv("HOME"), ".Trash", filepath.Base(path)), nil
 }
 
 // Previewed are the paths PreviewItem was given.
@@ -1424,6 +1514,14 @@ func (t *tray) SetID(id string) {
 	t.b.trayIDs = append(t.b.trayIDs, id)
 	t.b.mu.Unlock()
 }
+func (t *tray) SetTitleMonospaced(on bool) {
+	if on {
+		t.b.mu.Lock()
+		t.b.trayMonospaced++
+		t.b.mu.Unlock()
+	}
+}
+
 func (*tray) SetImage([]byte, bool) error { return nil }
 func (*tray) SetTitle(string)             {}
 func (*tray) SetToolTip(string)           {}

@@ -150,6 +150,37 @@ func (shell) TrashItem(path string) error {
 	return err
 }
 
+// TrashItemResult moves the item at path to the trash and returns the
+// path where it landed inside the trash directory, so an app can put it
+// back exactly. trashItemAtURL:resultingItemURL:error: writes the URL of
+// the trashed item where the system left it; TrashItem passes nil for it
+// and the path is lost. Finder renames an item that collides with one
+// already in the trash ("foo.txt" -> "foo 2.txt"), so the returned path is
+// the only way to find the trashed item.
+func (shell) TrashItemResult(path string) (string, error) {
+	var trashPath string
+	var err error
+	withPool(func() {
+		var result id
+		var nserr id
+		fm := send(class("NSFileManager"), "defaultManager")
+		if !sendBool(fm, "trashItemAtURL:resultingItemURL:error:", uintptr(fileURL(path)), uintptr(unsafe.Pointer(&result)), uintptr(unsafe.Pointer(&nserr))) {
+			err = nsError(nserr)
+			if err == nil {
+				err = errors.New("mygo: cannot move to trash")
+			}
+			return
+		}
+		// result is set on success and nil on failure; pull its file path.
+		if result != 0 {
+			if p := send(result, "path"); p != 0 {
+				trashPath = goString(p)
+			}
+		}
+	})
+	return trashPath, err
+}
+
 // Quick Look: QLPreviewPanel is the panel Finder opens with the space bar.
 // The app does not link QuickLook, so the framework is opened on first use,
 // before its class and data source protocol can be looked up.

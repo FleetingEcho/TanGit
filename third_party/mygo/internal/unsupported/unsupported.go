@@ -43,12 +43,14 @@ func (*Backend) Power() platform.Power                                      { re
 func (*Backend) Network() platform.Network                                  { return network{} }
 func (*Backend) NowPlaying() platform.NowPlaying                            { return nowPlaying{} }
 func (*Backend) Secrets() platform.Secrets                                  { return secrets{} }
-func (*Backend) NewTray(platform.TrayHandler) (platform.Tray, error)        { return nil, errUnsupported }
-func (*Backend) RegisterHotkey(int, string) error                           { return errUnsupported }
-func (*Backend) UnregisterHotkey(int)                                       {}
-func (*Backend) NotificationsSupported() bool                               { return false }
-func (*Backend) WebViewAvailable() bool                                     { return false }
-func (*Backend) RemoveNotification(string)                                  {}
+func (*Backend) NewTray(string, platform.TrayHandler) (platform.Tray, error) {
+	return nil, errUnsupported
+}
+func (*Backend) RegisterHotkey(int, string, string) error { return errUnsupported }
+func (*Backend) UnregisterHotkey(int)                     {}
+func (*Backend) NotificationsSupported() bool             { return false }
+func (*Backend) WebViewAvailable() bool                   { return false }
+func (*Backend) RemoveNotification(string)                {}
 
 func (*Backend) ShowNotification(_ *platform.Notification, done func(error)) {
 	done(errUnsupported)
@@ -123,6 +125,10 @@ func (dialogs) ShowMessageBox(_ platform.Window, _ *platform.MessageBoxOptions, 
 
 type clipboard struct{}
 
+func (clipboard) WatchChanges(func()) (func(), error) {
+	return nil, platform.ErrUnsupported
+}
+
 func (clipboard) ReadData([]transfer.Format) (transfer.Data, error) {
 	return transfer.Data{}, errUnsupported
 }
@@ -142,16 +148,19 @@ func (clipboard) AvailableFormats() []string { return nil }
 
 type shell struct{}
 
-func (shell) OpenExternal(string) error            { return errUnsupported }
-func (shell) OpenPath(string) error                { return errUnsupported }
-func (shell) ShowItemInFolder(string)              {}
-func (shell) TrashItem(string) error               { return errUnsupported }
-func (shell) PreviewItem(string) error             { return errUnsupported }
-func (shell) Beep()                                {}
-func (shell) FileIcon(string, int) ([]byte, error) { return nil, errUnsupported }
-func (shell) TypeIcon(string, int) ([]byte, error) { return nil, errUnsupported }
-func (shell) OpenApplication(string) error                     { return errUnsupported }
-func (shell) DefaultApp(string) (platform.Application, error) { return platform.Application{}, errUnsupported }
+func (shell) OpenExternal(string) error              { return errUnsupported }
+func (shell) OpenPath(string) error                  { return errUnsupported }
+func (shell) ShowItemInFolder(string)                {}
+func (shell) TrashItem(string) error                 { return errUnsupported }
+func (shell) TrashItemResult(string) (string, error) { return "", platform.ErrUnsupported }
+func (shell) PreviewItem(string) error               { return errUnsupported }
+func (shell) Beep()                                  {}
+func (shell) FileIcon(string, int) ([]byte, error)   { return nil, errUnsupported }
+func (shell) TypeIcon(string, int) ([]byte, error)   { return nil, errUnsupported }
+func (shell) OpenApplication(string) error           { return errUnsupported }
+func (shell) DefaultApp(string) (platform.Application, error) {
+	return platform.Application{}, errUnsupported
+}
 
 func (*Backend) Applications() ([]platform.Application, error) { return nil, errUnsupported }
 

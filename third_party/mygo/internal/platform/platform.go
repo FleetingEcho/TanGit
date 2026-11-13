@@ -113,8 +113,13 @@ type Backend interface {
 	// before Init, from any goroutine.
 	ReplaceFile(target, replacement string) error
 
-	NewTray(h TrayHandler) (Tray, error)
-	RegisterHotkey(id int, accelerator string) error
+	// NewTray makes a tray icon. id is TrayOptions.ID, which Linux needs
+	// as the icon is made; the other backends take it through Tray.SetID.
+	NewTray(id string, h TrayHandler) (Tray, error)
+	// RegisterHotkey makes accelerator a global shortcut. description says
+	// what it does, for desktops that show the app's shortcuts to the
+	// user; such desktops tell the keys they bound with HotkeyBound.
+	RegisterHotkey(id int, accelerator, description string) error
 	UnregisterHotkey(id int)
 
 	NotificationsSupported() bool
@@ -177,6 +182,15 @@ type WindowButtonsBackend interface {
 	WindowButtons() (start, end []string)
 }
 
+// ExitBackend releases what the native application must not take into the
+// process's exit (Windows: its windows, whose window procedure is Go's and
+// cannot run once the process exits). The app calls Exiting once, on the
+// main thread, when it has finished and is about to exit; nothing native
+// is used after it.
+type ExitBackend interface {
+	Exiting()
+}
+
 // AppOptions configures Backend.Init.
 type AppOptions struct {
 	Name string
@@ -225,6 +239,9 @@ type AppHandler interface {
 	// called, when it may have changed.
 	NetworkChanged(status NetworkStatus)
 	HotkeyPressed(id int)
+	// HotkeyBound reports the keys a desktop that binds global shortcuts
+	// for apps has for one, as it writes them, "" when it bound none.
+	HotkeyBound(id int, keys string)
 	NotificationClicked(id string)
 	// MediaCommand reports a media key or a remote command for what
 	// NowPlaying shows; position is where MediaSeek asks to go.
@@ -595,6 +612,10 @@ type Window interface {
 	Focus()
 	Blur()
 	IsFocused() bool
+	// CornerRadius is the radius, in DIPs, the window's corners are
+	// rounded to on screen, or 0 when they are square or the system
+	// does not tell it.
+	CornerRadius() float64
 	Minimize()
 	IsMinimized() bool
 	Maximize()
@@ -610,6 +631,7 @@ type Window interface {
 	SetHasShadow(v bool)
 	HasShadow() bool
 	SetIgnoreMouseEvents(v bool)
+	IgnoresMouseEvents() bool
 	SetContentProtection(v bool)
 	SetVibrancy(material string)
 	// SetVibrancyTint tints the window's material, where it takes one
@@ -816,6 +838,14 @@ type WebViewPlacement struct {
 	// top-left clockwise, as the hole showing it has: the page shows, and
 	// takes the pointer, inside them.
 	Radii [4]float64
+	// Opacity is how opaque the page shows, 0 to 1. Where the content
+	// painted a background under the element, opaque or through, the
+	// frames' own hole blends the page with it, and this is 1. Where none
+	// is, as in a transparent window, this is the element's opacity, and
+	// the platform fades the page itself by it, over what is behind the
+	// window, as over a parent window a flyout leaves live. A platform
+	// that cannot fades nothing (the page then shows whole).
+	Opacity float64
 	// Covers are the boxes, within Clip, of what the content painted over
 	// the web view that takes the pointer: there the pointer is the
 	// surface's, elsewhere in Clip the web view's.
@@ -1064,19 +1094,44 @@ type Menu struct {
 	RightToLeft bool
 }
 
+// BadgeAlignment is where an item's badge sits in the column the badges of
+// its menu share.
+type BadgeAlignment string
+
+const (
+	BadgeAlignLeft   BadgeAlignment = "left"
+	BadgeAlignCenter BadgeAlignment = "center"
+	BadgeAlignRight  BadgeAlignment = "right"
+)
+
+// BadgeShape is the background behind a badge.
+type BadgeShape string
+
+const (
+	BadgeShapeSquare  BadgeShape = "square"
+	BadgeShapeRounded BadgeShape = "rounded"
+	BadgeShapePill    BadgeShape = "pill"
+)
+
 // MenuItem is a snapshot of a menu item. ID identifies the public item the
 // native item was built from.
 type MenuItem struct {
-	ID          int
-	Type        MenuItemType
-	Label       string
-	Subtitle    string
-	Role        string
-	Accelerator string
-	Enabled     bool
-	Visible     bool
-	Checked     bool
-	ToolTip     string
+	ID             int
+	Type           MenuItemType
+	Label          string
+	Subtitle       string
+	Badge          string
+	BadgeAlign     BadgeAlignment
+	BadgeShape     BadgeShape
+	BadgeColor     *Color
+	BadgeTextColor *Color
+	KeepOpen       bool
+	Role           string
+	Accelerator    string
+	Enabled        bool
+	Visible        bool
+	Checked        bool
+	ToolTip        string
 	// Icon is the image beside the label, nil for none.
 	Icon *MenuIcon
 	// IconColor, when set, is the color of a template Icon in the menus
@@ -1161,6 +1216,11 @@ type Dialogs interface {
 
 // Clipboard accesses the system clipboard.
 type Clipboard interface {
+	// WatchChanges observes clipboard changes without reading data. It does
+	// not report the initial contents. changed and the returned stop function
+	// run on the main thread; stop prevents later callbacks. Only one watch
+	// is active at a time. Unsupported backends return ErrUnsupported.
+	WatchChanges(changed func()) (stop func(), err error)
 	// Data reads copy accepted representations, so returned data outlives
 	// native ownership. Nil formats reads all; a missing explicit match is
 	// transfer.ErrFormat. WriteData takes an application-owned snapshot;
@@ -1199,6 +1259,10 @@ type Shell interface {
 	OpenPath(path string) error
 	ShowItemInFolder(path string)
 	TrashItem(path string) error
+	// TrashItemResult moves the item at path to the trash and returns the
+	// path where it landed inside the trash directory. It is supported on
+	// macOS only; all other platforms return ("", ErrUnsupported).
+	TrashItemResult(path string) (string, error)
 	// PreviewItem shows the item at path in the Quick Look panel, the
 	// preview Finder opens with the space bar. It is supported on macOS
 	// only; all other platforms return ErrUnsupported.
@@ -1351,13 +1415,20 @@ const (
 	MediaNext
 	MediaPrevious
 	MediaSeek
+	// MediaRaise asks for the app's window in front, as MPRIS's Raise
+	// does. The core answers it whatever the info's Commands, which never
+	// hold it.
+	MediaRaise
 )
 
 // NowPlayingInfo is what the app plays, fully defaulted by the core.
 type NowPlayingInfo struct {
 	Title, Artist, Album string
-	Artwork              []byte // PNG or JPEG, or nil
-	Duration             time.Duration
+	// Artists are the track's artists, one each, for the systems that
+	// take a list (MPRIS); Artist is them joined with ", ".
+	Artists  []string
+	Artwork  []byte // PNG or JPEG, or nil
+	Duration time.Duration
 	// Position is where playback was when the core set the info; the
 	// system advances it at Rate while State is "playing".
 	Position time.Duration
@@ -1425,6 +1496,10 @@ type Tray interface {
 	Dark() bool
 	SetImage(png []byte, template bool) error
 	SetTitle(title string)
+	// SetTitleMonospaced draws the title in the system's monospaced font,
+	// every character as wide as the others, where the icon has a title
+	// (macOS).
+	SetTitleMonospaced(on bool)
 	SetToolTip(tip string)
 	SetMenu(m *Menu)
 	PopUpMenu(m *Menu)

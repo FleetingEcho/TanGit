@@ -23,6 +23,8 @@ var derivedFields = map[string]bool{
 	"lay": true, "laid": true, "placed": true, "flips": true, "frags": true,
 	"poseM": true, "poseFade": true, "reposed": true,
 	"parent": true, "first": true, "last": true, "next": true, "nchild": true,
+	// What a measuring pass kept for the commit pass, as "measured" is.
+	"hold": true,
 }
 
 // builtField is a field the check compares: its bytes, and a slice's
@@ -60,43 +62,7 @@ var nslices = func() (n int) {
 	return
 }()
 
-const nodeSize = int(unsafe.Sizeof(node{}))
-
-// holds compares the node at i with the address p, for a binary search.
-func (s *builtSnapshot) holds(i int, p uintptr) int {
-	a := uintptr(unsafe.Pointer(s.nodes[i]))
-	switch {
-	case p < a:
-		return 1
-	case p >= a+uintptr(nodeSize):
-		return -1
-	}
-	return 0
-}
-
-func (s *builtSnapshot) byAddress(a, b int) int {
-	x, y := uintptr(unsafe.Pointer(s.nodes[a])), uintptr(unsafe.Pointer(s.nodes[b]))
-	switch {
-	case x < y:
-		return -1
-	case x > y:
-		return 1
-	}
-	return 0
-}
-
-// builtSnapshot is what the view built.
-type builtSnapshot struct {
-	nodes  []*node
-	bytes  []byte
-	hashes []uint64
-	// order sorts nodes by address, to find the node of a journal entry.
-	order   []int
-	scratch []byte
-}
-
 var (
-	builtSnaps   = map[*engine]*builtSnapshot{}
 	builtFails   = map[string]int{}
 	builtCollect = os.Getenv("MYGO_BUILT_COLLECT") != ""
 	builtSeed    = maphash.MakeSeed()
@@ -125,7 +91,7 @@ func hashSlices(s *builtSnapshot, b []byte) {
 
 func checkBuiltFields(rt *engine, phase builtPhase) {
 	if phase == builtDropped {
-		delete(builtSnaps, rt)
+		rt.builtSnap = nil
 		return
 	}
 	root := rt.c.root
@@ -133,10 +99,10 @@ func checkBuiltFields(rt *engine, phase builtPhase) {
 		return
 	}
 	if phase == builtBuilt {
-		s := builtSnaps[rt]
+		s := rt.builtSnap
 		if s == nil {
 			s = &builtSnapshot{}
-			builtSnaps[rt] = s
+			rt.builtSnap = s
 		}
 		s.nodes, s.bytes, s.hashes = s.nodes[:0], s.bytes[:0], s.hashes[:0]
 		// Depth first, without a closure, so that checking allocates
@@ -173,7 +139,7 @@ func checkBuiltFields(rt *engine, phase builtPhase) {
 		// which wrote.
 		return
 	}
-	s := builtSnaps[rt]
+	s := rt.builtSnap
 	if s == nil || len(s.nodes) == 0 {
 		return
 	}

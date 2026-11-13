@@ -20,7 +20,7 @@ import (
 func proseTester(t *testing.T, doc *Document, th *Theme, h int) (*ui.Tester, *[]ParagraphBox) {
 	t.Helper()
 	boxes := new([]ParagraphBox)
-	tt := ui.NewTester(func(c *ui.Context) {
+	tt := openTester(t, func(c *ui.Context) {
 		*boxes = doc.VisibleParagraphs()
 		EditorBase(c, doc, EditorOptions{Font: ui.Font{Size: 10}, Theme: th}).Fill()
 	}, 300, h)
@@ -325,13 +325,19 @@ func TestVisibleParagraphs(t *testing.T) {
 	if last := (*boxes)[len(*boxes)-1]; last.Index != 199 {
 		t.Fatalf("revealing the end, the last paragraph in view is %d", last.Index)
 	}
-	// An edit above moves the paragraphs down.
+	// An edit above, in the editor that has the keyboard, keeps the
+	// caret's line where it is: the paragraphs from the edit's down to the
+	// caret's stay, and those above them move up.
 	first := (*boxes)[1]
 	doc.Edit(func(e *Edit) { e.ReplaceString(first.Start, first.Start, "New\n", Attributes{}) })
 	tt.Frame()
 	check("edited")
-	if (*boxes)[1].Start != first.Start || (*boxes)[2].Start != first.Start+4 {
-		t.Fatalf("after a paragraph inserted at %d, boxes %v", first.Start, (*boxes)[:3])
+	moved := slices.IndexFunc(*boxes, func(b ParagraphBox) bool { return b.Start == first.Start+4 })
+	if moved < 0 || math.Abs(float64((*boxes)[moved].Top-first.Top)) > 0.01 {
+		t.Fatalf("after a paragraph inserted at %d at %v, boxes %v", first.Start, first.Top, (*boxes)[:3])
+	}
+	if moved > 0 && (*boxes)[moved-1].Start != first.Start {
+		t.Fatalf("after a paragraph inserted at %d, the box above the paragraph it moved is %+v", first.Start, (*boxes)[moved-1])
 	}
 	// Another width wraps the paragraphs otherwise: the frame that paints
 	// them builds another, for the view to follow.
@@ -672,5 +678,98 @@ func TestCaretRect(t *testing.T) {
 	tt.Frame()
 	if builds != n+1 || tt.FramePending() {
 		t.Fatalf("%d frames for one", builds-n)
+	}
+}
+
+// The room Space leaves above a block of code is outside the block: its
+// background starts below it, and fills the block from there.
+func TestCodeBlockSpaceOutside(t *testing.T) {
+	doc := NewDocument(TextOf(
+		para("Before"),
+		Paragraph{Style: ParagraphStyle{CodeBlock: true}, Runs: []Run{{Text: "code"}}},
+		para("After"),
+	))
+	red := ui.RGB(255, 0, 0)
+	boxes := new([]ParagraphBox)
+	tt := openTester(t, func(c *ui.Context) {
+		*boxes = doc.VisibleParagraphs()
+		EditorBase(c, doc, EditorOptions{Font: ui.Font{Size: 10}, Theme: &Theme{CodeBlockBackground: red},
+			Space: func(p int) float32 { return map[int]float32{1: 40}[p] }}).Fill()
+	}, 300, 200)
+	tt.Frame()
+	if len(*boxes) != 3 {
+		t.Fatalf("%d paragraphs in view, want 3", len(*boxes))
+	}
+	code := (*boxes)[1]
+	img := tt.Image()
+	s := float32(img.Bounds().Dx()) / 300
+	isRed := func(y float32) bool {
+		c := img.RGBAAt(int(250*s), int(y*s))
+		return c.R > 200 && c.G < 60 && c.B < 60
+	}
+	// The block's padding above its line is 0.5 em: 5 DIPs.
+	if room := code.Top - 5 - 20; isRed(room) {
+		t.Errorf("the room above the block, at %v, has the block's background", room)
+	}
+	if line := code.Top + code.Height/2; !isRed(line) {
+		t.Errorf("the block's line, at %v, has no background", line)
+	}
+}
+
+// A quotation that starts with a heading is as far from the paragraph
+// before it as from the paragraph after it: the heading's room beyond the
+// spacing between body paragraphs is inside the quotation's bar.
+func TestQuotationHeadingRoomInside(t *testing.T) {
+	doc := NewDocument(TextOf(
+		para("Before"),
+		Paragraph{Style: ParagraphStyle{Quote: true, Heading: 1}, Runs: []Run{{Text: "Title"}}},
+		Paragraph{Style: ParagraphStyle{Quote: true}, Runs: []Run{{Text: "Quoted"}}},
+		para("After"),
+	))
+	red := ui.RGB(255, 0, 0)
+	boxes := new([]ParagraphBox)
+	tt := openTester(t, func(c *ui.Context) {
+		*boxes = doc.VisibleParagraphs()
+		// The spacing is 5 DIPs; the heading's room, 0.6 of its 18, is 10.8.
+		EditorBase(c, doc, EditorOptions{Font: ui.Font{Size: 10},
+			Theme: &Theme{QuoteBar: red, QuoteBarWidth: 4, ParagraphSpacing: 0.5}}).Fill()
+	}, 300, 200)
+	tt.Frame()
+	if len(*boxes) != 4 {
+		t.Fatalf("%d paragraphs in view, want 4", len(*boxes))
+	}
+	before, quoted, after := (*boxes)[0], (*boxes)[2], (*boxes)[3]
+	img := tt.Image()
+	s := float32(img.Bounds().Dx()) / 300
+	isRed := func(x, y int) bool {
+		c := img.RGBAAt(x, y)
+		return c.R > 200 && c.G < 60 && c.B < 60
+	}
+	// The bar's middle, on the quoted line.
+	row := int((quoted.Top + quoted.Height/2) * s)
+	first, last := -1, -1
+	for x := 0; x < img.Bounds().Dx()/2; x++ {
+		if isRed(x, row) {
+			if first < 0 {
+				first = x
+			}
+			last = x
+		}
+	}
+	if first < 0 {
+		t.Fatal("no bar beside the quoted line")
+	}
+	x := (first + last) / 2
+	top, bottom := row, row
+	for top > 0 && isRed(x, top-1) {
+		top--
+	}
+	for bottom+1 < img.Bounds().Dy() && isRed(x, bottom+1) {
+		bottom++
+	}
+	above := float32(top)/s - (before.Top + before.Height)
+	below := after.Top - float32(bottom+1)/s
+	if d := above - below; d > 1 || d < -1 {
+		t.Errorf("the bar is %v DIPs under the paragraph before and %v over the paragraph after, want them equal", above, below)
 	}
 }
