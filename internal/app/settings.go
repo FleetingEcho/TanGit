@@ -16,6 +16,14 @@ import (
 	"lazygitapp/internal/sshworkspace"
 )
 
+// continuePreflightSettings names the two independent Continue gates. The
+// persisted commands are data for the fully trusted local shell runner, never
+// approval tokens or output sentinels.
+type continuePreflightSettings struct {
+	RequiredCommand string `json:"requiredCommand,omitempty"`
+	OptionalCommand string `json:"optionalCommand,omitempty"`
+}
+
 // appSettings is what the settings modal edits and the app stores between
 // launches, beside the recent repositories.
 type appSettings struct {
@@ -59,8 +67,10 @@ type appSettings struct {
 	// every fetch, manual and automatic alike.
 	FetchPrune bool `json:"fetchPrune"`
 	// CustomCommands are user-defined shell commands bound to keys, run in
-	// the repository root.
-	CustomCommands []customCommandSetting `json:"customCommands,omitempty"`
+	// the repository root. ContinuePreflight has a separate required gate and
+	// an optional gate whose failure alone needs an explicit user override.
+	CustomCommands    []customCommandSetting    `json:"customCommands,omitempty"`
+	ContinuePreflight continuePreflightSettings `json:"continuePreflight,omitempty"`
 	// Language is the code of the language the interface is drawn in, from
 	// languageChoices; English is the default.
 	Language string `json:"language"`
@@ -229,6 +239,8 @@ func normalizeSettings(s appSettings) appSettings {
 		s.AutoFetchInterval = defaultSettings().AutoFetchInterval
 	}
 	s.CustomCommands = normalizeCustomCommands(s.CustomCommands)
+	s.ContinuePreflight.RequiredCommand = strings.TrimSpace(s.ContinuePreflight.RequiredCommand)
+	s.ContinuePreflight.OptionalCommand = strings.TrimSpace(s.ContinuePreflight.OptionalCommand)
 	s.HomeBackgroundOpacity = normalizeHomeBackgroundOpacity(s.HomeBackgroundOpacity)
 	s.VisibleSections = normalizeVisibleSections(s.VisibleSections)
 	s.SectionOrder = normalizeSectionOrder(s.SectionOrder)

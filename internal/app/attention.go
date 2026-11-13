@@ -106,19 +106,13 @@ func (a *app) confirmPullStrategy(strategy repository.PullStrategy) {
 }
 
 func (a *app) confirmContinueOperation() {
-	if hasConflictedFiles(a.snapshot.Files) || !a.operationCan(repository.OperationActionContinue) {
+	if a.actionBusy || a.session == nil || hasConflictedFiles(a.snapshot.Files) ||
+		!a.operationCan(repository.OperationActionContinue) {
 		return
 	}
-	expected := snapshotOperationFingerprint(a.snapshot)
-	historyPatch := a.snapshot.OperationState != nil && a.snapshot.OperationState.HistoryPatch != nil
-	a.confirmAttention("Continue", a.snapshot.Operation,
-		"This continues the interrupted Git operation using the current staged resolutions. Review them before continuing.", func() {
-			a.beginRepositoryActionMessage(tr("Continued the operation"), "", func(ctx context.Context, s repository.Session) error {
-				return driveOperation(ctx, s, repository.OperationActionContinue, expected)
-			}, func() {
-				if historyPatch {
-					a.clearCustomPatch()
-				}
-			})
-		})
+	if a.location.IsRemote() {
+		a.notify("warning", "Continue checks run locally", tr("Continue checks use fully trusted local shell commands in the repository root. They are not sandboxed and cannot safely act on an SSH workspace, so Continue is disabled here."))
+		return
+	}
+	a.openContinueReview()
 }
