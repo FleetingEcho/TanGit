@@ -4,6 +4,7 @@ var zhHant = map[string]string{
 	// Keyboard navigation and commands.
 	"Check out the chosen remote branch":          "簽出所選遠端分支",
 	"Checkout this commit":                        "簽出此提交",
+	"Checkout to this commit (detached)…":         "檢出到此提交（游離 HEAD）…",
 	"Cherry-pick %d commits onto %s?":             "將 %d 個提交揀選至 %s？",
 	"Cherry-pick copied commits":                  "揀選已複製的提交",
 	"Copied commits for cherry-pick":              "已複製提交以供揀選",

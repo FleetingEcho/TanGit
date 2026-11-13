@@ -16,7 +16,7 @@ func (a *app) reportGoLanguageServerError(message string) {
 	first := a.goLanguageServerError == ""
 	a.goLanguageServerError = message
 	if first {
-		a.notify("error", "gopls cannot analyze this workspace", message)
+		a.notify("error", trf("%s cannot analyze this workspace", "gopls"), message)
 	}
 }
 

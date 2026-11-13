@@ -16,6 +16,8 @@ import (
 
 const goLanguageServerID = "go"
 
+var errLanguageServerNoResponse = errors.New("the language server did not respond within 5 seconds")
+
 var runLanguageServerVersion = func(program string, arguments []string) (string, error) {
 	return runLanguageServerVersionArguments(program, arguments, []string{"version"})
 }
@@ -98,7 +100,7 @@ func runLanguageServerVersionArguments(program string, arguments, versionArgumen
 	command.Env = languageServerCommandEnvironment(command.Environ(), program, nil)
 	output, err := command.CombinedOutput()
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return "", errors.New("the language server did not respond within 5 seconds")
+		return "", errLanguageServerNoResponse
 	}
 	text := strings.TrimSpace(string(output))
 	if err != nil {
@@ -256,21 +258,25 @@ func (a *app) testLanguageServerProfile(id string) {
 				return
 			}
 			a.languageServerTestBusy = false
+			name := profile.Name
+			if id == goLanguageServerID {
+				name = "gopls"
+			}
 			if err != nil {
-				name := profile.Name
-				if id == goLanguageServerID {
-					name = "gopls"
+				// safeError preserves external command output. Replace only the
+				// known application-authored timeout on the UI thread.
+				message := safeError(err)
+				if errors.Is(err, errLanguageServerNoResponse) {
+					if prefix := strings.TrimSuffix(message, errLanguageServerNoResponse.Error()); prefix != message {
+						message = prefix + tr("the language server did not respond within 5 seconds")
+					}
 				}
-				a.languageServerTestResult = "Could not start " + name + ": " + safeError(err)
+				a.languageServerTestResult = trf("Could not start %s: %s", name, message)
 				return
 			}
 			a.languageServerTestOK = true
 			if output == "" {
-				if id == goLanguageServerID {
-					output = "gopls started successfully"
-				} else {
-					output = profile.Name + " started successfully"
-				}
+				output = trf("%s started successfully", name)
 			}
 			a.languageServerTestResult = output
 		})

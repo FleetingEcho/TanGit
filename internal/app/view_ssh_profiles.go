@@ -96,8 +96,7 @@ func (a *app) sshProfileForm(c *ui.Context) {
 				Placeholder("22").Width(110)
 		})
 		settingRow(c, "Authentication", "Agent, private key, or password", func() {
-			ui.Select(c, &a.sshProfileDraft.AuthMode, []string{sshAuthAgent, sshAuthKey, sshAuthPassword}).
-				Label(tr("SSH authentication")).Grow(1)
+			a.sshAuthModeSelect(c)
 		})
 		switch a.sshProfileDraft.AuthMode {
 		case sshAuthKey:
@@ -141,6 +140,43 @@ func (a *app) sshProfileForm(c *ui.Context) {
 			}
 		})
 	})
+}
+
+// sshAuthModeSelect keeps persisted SSH mode IDs stable while presenting each
+// choice in the interface language, just like the language picker does.
+func (a *app) sshAuthModeSelect(c *ui.Context) {
+	theme := c.Theme()
+	selects := ui.SelectBase(c, &a.sshProfileDraft.AuthMode)
+	selects.Trigger.Label(tr("SSH authentication")).Grow(1).Padding(6, 10).Gap(8).
+		Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius).
+		Children(func() {
+			ui.Text(c, sshAuthModeName(a.sshProfileDraft.AuthMode)).Grow(1)
+		})
+	selects.Popup(func(panel ui.Element) {
+		panel.Padding(4).Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius)
+		for _, mode := range []string{sshAuthAgent, sshAuthKey, sshAuthPassword} {
+			item := selects.Item(mode).Padding(6, 10)
+			if item.Highlighted() {
+				item.Background(theme.SurfaceHover)
+			}
+			item.Children(func() {
+				ui.Text(c, sshAuthModeName(mode))
+			})
+		}
+	})
+}
+
+func sshAuthModeName(mode string) string {
+	switch mode {
+	case sshAuthAgent:
+		return tr("SSH agent")
+	case sshAuthKey:
+		return tr("Private key")
+	case sshAuthPassword:
+		return tr("Password")
+	default:
+		return mode
+	}
 }
 
 // sshWorkspaceModal is Home's remote launcher and folder browser.
@@ -252,7 +288,7 @@ func (a *app) sshWorkspaceProfiles(c *ui.Context) {
 		ui.Text(c, a.sshWorkspaceError).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
 	}
 	if selected, ok := a.selectedSSHProfile(); ok {
-		ui.Text(c, fmt.Sprintf("%s · %s", selected.Name, selected.AuthMode)).
+		ui.Text(c, fmt.Sprintf("%s · %s", selected.Name, sshAuthModeName(string(selected.AuthMode)))).
 			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 	}
 	ui.Row(c).Justify(ui.End).Gap(8).Children(func() {

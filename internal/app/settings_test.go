@@ -485,6 +485,131 @@ func TestPopularThemeAdditionsAreCatalogued(t *testing.T) {
 	}
 }
 
+func TestThemeCatalogRunsFromLightToDark(t *testing.T) {
+	if len(themeNames) == 0 || themeNames[0] != "System" {
+		t.Fatalf("System must stay first in the theme list: %q", themeNames)
+	}
+	if len(themeNames) != len(themeChoices) {
+		t.Fatalf("theme list has %d entries but the catalog has %d", len(themeNames), len(themeChoices))
+	}
+	seen := make(map[string]bool, len(themeNames))
+	previous := math.Inf(1)
+	for i, name := range themeNames {
+		if seen[name] {
+			t.Errorf("duplicate theme %q", name)
+		}
+		seen[name] = true
+		if _, ok := themeChoices[name]; !ok {
+			t.Errorf("theme %q has no palette", name)
+			continue
+		}
+		if i == 0 {
+			continue
+		}
+		luminance := colorRelativeLuminance(themeForSettings(appSettings{Theme: name}, false).Background)
+		if luminance > previous+1e-12 {
+			t.Errorf("%q (luminance %.6f) is lighter than %q (luminance %.6f)",
+				name, luminance, themeNames[i-1], previous)
+		}
+		if luminance == previous && themeNames[i-1] > name {
+			t.Errorf("equal-luminance themes %q and %q are not alphabetical", themeNames[i-1], name)
+		}
+		previous = luminance
+	}
+}
+
+func TestHighContrastMatchesVSCodeColorRoles(t *testing.T) {
+	theme := themeForSettings(appSettings{Theme: "High Contrast"}, false)
+	for name, check := range map[string]struct {
+		got, want ui.Color
+	}{
+		"background": {theme.Background, ui.Hex("#000000")},
+		"surface":    {theme.Surface, ui.Hex("#000000")},
+		"text":       {theme.Text, ui.Hex("#ffffff")},
+		"border":     {theme.Border, ui.Hex("#6fc3df")},
+		"accent":     {theme.Accent, ui.Hex("#21a6ff")},
+		"focus":      {theme.Focus, ui.RGBA(111, 195, 223, 1)},
+	} {
+		if check.got != check.want {
+			t.Errorf("%s = %v, want VS Code High Contrast %v", name, check.got, check.want)
+		}
+	}
+	if !theme.Dark {
+		t.Fatal("High Contrast was not built as a dark palette")
+	}
+	for name, foreground := range map[string]ui.Color{
+		"text": theme.Text, "muted text": theme.TextMuted, "border": theme.Border,
+	} {
+		if ratio := colorContrastRatio(foreground, theme.Background); ratio < 7 {
+			t.Errorf("%s has only %.2f:1 contrast against black", name, ratio)
+		}
+	}
+}
+
+func TestHighContrastLightMatchesVSCodeColorRoles(t *testing.T) {
+	theme := themeForSettings(appSettings{Theme: "High Contrast Light"}, true)
+	for name, check := range map[string]struct {
+		got, want ui.Color
+	}{
+		"background": {theme.Background, ui.Hex("#ffffff")},
+		"surface":    {theme.Surface, ui.Hex("#ffffff")},
+		"text":       {theme.Text, ui.Hex("#292929")},
+		"border":     {theme.Border, ui.Hex("#0f4a85")},
+		"accent":     {theme.Accent, ui.Hex("#0f4a85")},
+		"focus":      {theme.Focus, ui.RGBA(0, 107, 189, 1)},
+	} {
+		if check.got != check.want {
+			t.Errorf("%s = %v, want VS Code Light High Contrast %v", name, check.got, check.want)
+		}
+	}
+	if theme.Dark {
+		t.Fatal("High Contrast Light was not built as a light palette")
+	}
+	for name, foreground := range map[string]ui.Color{
+		"text": theme.Text, "muted text": theme.TextMuted, "border": theme.Border,
+	} {
+		if ratio := colorContrastRatio(foreground, theme.Background); ratio < 7 {
+			t.Errorf("%s has only %.2f:1 contrast against white", name, ratio)
+		}
+	}
+}
+
+func TestAyuLightIsALightReadablePalette(t *testing.T) {
+	if !slices.Contains(themeNames, "Ayu Light") {
+		t.Fatal("the theme menu is missing Ayu Light")
+	}
+	theme := themeForSettings(appSettings{Theme: "Ayu Light"}, true)
+	if theme.Dark {
+		t.Fatal("Ayu Light was not built as a light palette")
+	}
+	if theme.Background != ui.Hex("#fafafa") || theme.Accent != ui.Hex("#ffaa33") {
+		t.Fatalf("Ayu Light does not use the Ayu palette: background=%v accent=%v", theme.Background, theme.Accent)
+	}
+	if ratio := colorContrastRatio(theme.Text, theme.Background); ratio < 4.5 {
+		t.Fatalf("Ayu Light text has only %.2f:1 contrast", ratio)
+	}
+}
+
+func colorRelativeLuminance(color ui.Color) float64 {
+	channel := func(value uint8) float64 {
+		srgb := float64(value) / 255
+		if srgb <= 0.04045 {
+			return srgb / 12.92
+		}
+		return math.Pow((srgb+0.055)/1.055, 2.4)
+	}
+	return 0.2126*channel(color.R) + 0.7152*channel(color.G) + 0.0722*channel(color.B)
+}
+
+func colorContrastRatio(first, second ui.Color) float64 {
+	lighter := colorRelativeLuminance(first)
+	darker := colorRelativeLuminance(second)
+	if lighter < darker {
+		lighter, darker = darker, lighter
+	}
+	return (lighter + 0.05) / (darker + 0.05)
+}
+
 // The header's sun or moon opens the theme list rather than flipping the
 // appearance by itself: a theme is one pick from the whole catalog.
 func TestThemeButtonOpensTheThemeList(t *testing.T) {

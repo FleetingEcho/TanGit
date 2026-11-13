@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -78,6 +79,110 @@ func TestNormalizeSSHProfilesStableIDsAndDefaults(t *testing.T) {
 	}
 }
 
+func TestSSHProfileValidationTranslatesKnownMessagesOnly(t *testing.T) {
+	const unknown = "an arbitrary backend or user payload"
+	catalog := map[string]string{
+		unknown:                                "must not be used",
+		"Enter an SSH port from 1 to 65535.":   "translated port requirement",
+		"Enter an SSH password.":               "translated password requirement",
+		"invalid SSH host %q":                  "translated host %q",
+		"SSH host must not include a port: %q": "translated host port %q",
+		"invalid SSH port %d":                  "translated numeric port %d",
+	}
+	stubScopedTranslationCatalog(t, catalog)
+	for _, test := range []struct {
+		message string
+		want    string
+	}{
+		{"Enter an SSH port from 1 to 65535.", "translated port requirement"},
+		{"Enter an SSH password.", "translated password requirement"},
+		{`invalid SSH host "bad host"`, `translated host "bad host"`},
+		{`SSH host must not include a port: "example.com:22"`, `translated host port "example.com:22"`},
+		{"invalid SSH port 70000", "translated numeric port 70000"},
+		{unknown, unknown},
+	} {
+		if got := sshProfileValidationMessage(errors.New(test.message)); got != test.want {
+			t.Errorf("validation message %q = %q, want %q", test.message, got, test.want)
+		}
+	}
+}
+
+func TestSSHProfileValidationUsesRealCatalogs(t *testing.T) {
+	messages := []struct {
+		key       string
+		formatted bool
+		argument  any
+	}{
+		{key: "Enter an SSH port from 1 to 65535."},
+		{key: "Enter an SSH password."},
+		{key: "SSH username must be nonempty and contain no whitespace or control characters"},
+		{key: "private-key authentication requires a private key path"},
+		{key: "private key path is only valid with private-key authentication"},
+		{key: "SSH host must be nonempty and have no surrounding whitespace"},
+		{key: "SSH default root contains a control character"},
+		{key: "SSH default root must be absolute or home-relative"},
+		{key: "invalid SSH profile ID %q", formatted: true, argument: "bad id"},
+		{key: "invalid SSH host %q", formatted: true, argument: "bad host"},
+		{key: "invalid bracketed SSH host %q", formatted: true, argument: "[bad"},
+		{key: "SSH host must not include a port: %q", formatted: true, argument: "example.com:22"},
+		{key: "unsupported SSH auth mode %q", formatted: true, argument: "unknown"},
+		{key: "invalid SSH port %d", formatted: true, argument: 70000},
+	}
+	if len(messages) != 14 {
+		t.Fatalf("real SSH validation catalog fixture has %d messages, want 14", len(messages))
+	}
+	t.Cleanup(func() { currentLanguage = defaultLanguage })
+	for _, choice := range languageChoices[1:] {
+		t.Run(choice.Code, func(t *testing.T) {
+			currentLanguage = choice.Code
+			catalog := translations[choice.Code]
+			for _, test := range messages {
+				message, want := test.key, catalog[test.key]
+				if want == "" {
+					t.Errorf("%s has no real-catalog translation for SSH validation %q", choice.Code, test.key)
+					continue
+				}
+				if test.formatted {
+					message = fmt.Sprintf(test.key, test.argument)
+					want = fmt.Sprintf(want, test.argument)
+				}
+				if got := sshProfileValidationMessage(errors.New(message)); got != want {
+					t.Errorf("%s SSH validation %q = %q, want %q", choice.Code, test.key, got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestSSHConnectionNoticesTranslateWithoutTranslatingPayloads(t *testing.T) {
+	const payload = "dial tcp: server-specific failure"
+	stubScopedTranslationCatalog(t, map[string]string{
+		"SSH connection testing is not wired yet.": "translated unavailable notice",
+		"SSH connection failed: %s":                "translated failure: %s",
+		payload:                                    "must not be used",
+	})
+	a := newApp(fakeOpener{})
+	updates := newUpdates()
+	a.update = updates.update
+	a.sshTestConnection = nil
+	a.testSSHProfile()
+	if got := a.sshProfileFormNotice; got != "translated unavailable notice" {
+		t.Fatalf("test notice = %q", got)
+	}
+	a.sshSecretBackend = &fakeSSHKeychain{}
+	a.sshProfileDraft = sshProfileDraft{
+		Host: "example.com", Username: "git", Port: "22", AuthMode: sshAuthPassword, Password: "secret",
+	}
+	a.sshTestConnection = func(context.Context, sshworkspace.Profile, sshProfileSecrets) error {
+		return errors.New(payload)
+	}
+	a.testSSHProfile()
+	updates.waitForUpdate(t)
+	if got, want := a.sshProfileFormError, "translated failure: "+payload; got != want {
+		t.Fatalf("connection error = %q, want %q", got, want)
+	}
+}
+
 func TestSSHProfilePersistenceContainsNoSecrets(t *testing.T) {
 	dir := t.TempDir()
 	const password = "correct-horse-battery-staple"
@@ -124,6 +229,21 @@ func TestSSHProfilePersistenceContainsNoSecrets(t *testing.T) {
 	profileID := a.settings.SSHProfiles[0].ID
 	if got := string(backend.values[string(sshworkspace.PasswordSecretRef(profileID))]); got != password {
 		t.Fatalf("keychain password = %q", got)
+	}
+}
+
+func TestSSHKeychainMessagesTranslateAtTheirSource(t *testing.T) {
+	stubScopedTranslationCatalog(t, map[string]string{
+		"invalid SSH secret reference":       "translated invalid reference",
+		"SSH system keychain is unavailable": "translated unavailable keychain",
+	})
+	a := &app{sshSecretBackend: &fakeSSHKeychain{fail: true}, sshSessionSecrets: map[string]string{}}
+	if _, _, err := a.sshSecrets().Get(""); err == nil || err.Error() != "translated invalid reference" {
+		t.Fatalf("invalid reference error = %v", err)
+	}
+	ref := sshworkspace.PasswordSecretRef("prod")
+	if _, _, err := a.sshSecrets().Get(ref); err == nil || err.Error() != "translated unavailable keychain" {
+		t.Fatalf("keychain error = %v", err)
 	}
 }
 

@@ -4,6 +4,7 @@ var japanese = map[string]string{
 	// Keyboard navigation and commands.
 	"Check out the chosen remote branch":          "選択したリモートブランチをチェックアウト",
 	"Checkout this commit":                        "このコミットをチェックアウト",
+	"Checkout to this commit (detached)…":         "このコミットをチェックアウト（HEAD 分離状態）…",
 	"Cherry-pick %d commits onto %s?":             "%d 件のコミットを %s にチェリーピックしますか？",
 	"Cherry-pick copied commits":                  "コピーしたコミットをチェリーピック",
 	"Copied commits for cherry-pick":              "チェリーピックするコミットをコピーしました",

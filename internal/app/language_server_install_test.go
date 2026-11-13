@@ -202,6 +202,77 @@ func TestManagedLanguageServerInstallFailureDoesNotConfigureIt(t *testing.T) {
 	}
 }
 
+func TestLanguageServerInstallNotificationsUseStableTranslationFormats(t *testing.T) {
+	const payload = "server supplied install failure"
+	stubScopedTranslationCatalog(t, map[string]string{
+		"Install %s?": "Translated install %s?",
+		"Download and configure code intelligence for %s files.": "Translated configure %s files",
+		"Download":             "Translated download",
+		"Could not install %s": "Translated install failure: %s",
+		"TanGit's user data directory is unavailable.": "Translated unavailable data directory",
+		"Installing %s": "Translated installing %s",
+		"Downloading to TanGit's managed tools directory…": "Translated managed download",
+		"%s installed": "Translated installed %s",
+		"Code intelligence is now enabled for matching files.": "Translated code intelligence enabled",
+		payload: "must not be used",
+	})
+	originalLookPath := languageServerLookPath
+	languageServerLookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+	originalInstall := performLanguageServerInstall
+	t.Cleanup(func() {
+		languageServerLookPath = originalLookPath
+		performLanguageServerInstall = originalInstall
+	})
+
+	a := newApp(fakeOpener{})
+	updates := newUpdates()
+	a.update = updates.update
+	a.offerLanguageServerInstall("src/main.ts")
+	if len(a.pendingToasts) != 1 {
+		t.Fatalf("install prompts = %d, want 1", len(a.pendingToasts))
+	}
+	offer := a.pendingToasts[0]
+	if offer.title != "Translated install TypeScript Language Server?" ||
+		offer.description != "Translated configure .ts files" || offer.action != "Translated download" {
+		t.Fatalf("localized install offer = %#v", offer)
+	}
+
+	a.pendingToasts = nil
+	a.installLanguageServer("typescript")
+	unavailable := a.pendingToasts[0]
+	if unavailable.title != "Translated install failure: TypeScript Language Server" ||
+		unavailable.description != "Translated unavailable data directory" {
+		t.Fatalf("localized unavailable-data notification = %#v", unavailable)
+	}
+
+	a.pathUserData = t.TempDir()
+	performLanguageServerInstall = func(languageServerProfile, string) (languageServerInstallation, error) {
+		return languageServerInstallation{Path: "server"}, nil
+	}
+	a.pendingToasts = nil
+	a.installLanguageServer("typescript")
+	progress := a.pendingToasts[0]
+	if progress.title != "Translated installing TypeScript Language Server" || progress.description != "Translated managed download" {
+		t.Fatalf("localized install progress = %#v", progress)
+	}
+	updates.waitForUpdate(t)
+	success := a.pendingToasts[len(a.pendingToasts)-1]
+	if success.title != "Translated installed TypeScript Language Server" || success.description != "Translated code intelligence enabled" {
+		t.Fatalf("localized install success = %#v", success)
+	}
+
+	performLanguageServerInstall = func(languageServerProfile, string) (languageServerInstallation, error) {
+		return languageServerInstallation{}, errors.New(payload)
+	}
+	a.pendingToasts = nil
+	a.installLanguageServer("ruff")
+	updates.waitForUpdate(t)
+	failure := a.pendingToasts[len(a.pendingToasts)-1]
+	if failure.title != "Translated install failure: Ruff" || failure.description != payload {
+		t.Fatalf("localized install failure with raw payload = %#v", failure)
+	}
+}
+
 func TestLanguageServerCatalogUsesCompactActionsSearchAndScroll(t *testing.T) {
 	h := menuTestApp(t)
 	h.app.settingsPage = settingsPageEditor

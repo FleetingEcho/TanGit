@@ -33,6 +33,8 @@ type appToastAction struct {
 
 // notifyToast queues a rich notification. A nonempty id replaces the visible
 // notification in place, which keeps progress updates from accumulating.
+// Descriptions must already be presentation-ready: translate known static text
+// with tr/trf at the source, and leave dynamic paths and error payloads raw.
 func (a *app) notifyToast(toast appToast) {
 	toast.title = tr(toast.title)
 	toast.description = shorten(repository.RedactSecrets(toast.description), 320)
@@ -45,6 +47,8 @@ func (a *app) notifyToast(toast appToast) {
 
 // notify queues a toast as the result of what the user just did. kind picks
 // the color and icon: "success", "error", or anything else for an aside.
+// Descriptions stay as written: they may be Git, server, OS, or user payloads,
+// which must never be offered to the translation catalog as message keys.
 func (a *app) notify(kind, title, description string) {
 	a.pendingToasts = append(a.pendingToasts, appToast{
 		kind:        kind,
@@ -52,6 +56,13 @@ func (a *app) notify(kind, title, description string) {
 		description: shorten(repository.RedactSecrets(description), 220),
 		timeout:     4 * time.Second,
 	})
+}
+
+// notifyTranslated is the explicit boundary for a static, app-authored
+// description. Formatted descriptions should use trf at their call site so
+// only the known format string is translated, not its dynamic arguments.
+func (a *app) notifyTranslated(kind, title, description string) {
+	a.notify(kind, title, tr(description))
 }
 
 // notifyError reports a failed action, with the way to the command log that

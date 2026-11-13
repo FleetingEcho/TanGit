@@ -257,7 +257,7 @@ func showLanguageServerHover(document *codeDocument, start, end int, content str
 	document.hoverState = &editor.State{
 		Buffer: buffer, ReadOnly: true, FitContent: true, SoftWrap: true,
 		LineNumbers: editor.LineNumbersOff, NoFolding: true, NoActiveLine: true, NoScrollbars: true,
-		Label: "Hover details",
+		Label: tr("Hover details"),
 	}
 	document.hoverScroll = ui.ScrollState{}
 	document.state.ShowHover(start, end, content, nil)

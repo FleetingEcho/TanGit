@@ -451,6 +451,7 @@ func (a *app) beginBlame() {
 	repositoryGeneration := a.generation
 	a.blameGeneration++
 	blameGeneration := a.blameGeneration
+	blameLabel := tr("Git blame output")
 	a.blameLoading = true
 	a.blameError = ""
 	a.blameState = nil
@@ -460,7 +461,7 @@ func (a *app) beginBlame() {
 		var state *editor.State
 		if err == nil {
 			buffer := editor.NewBuffer(formatBlame(lines))
-			state = &editor.State{Buffer: buffer, ReadOnly: true, SoftWrap: false, NoIndentGuides: true, Label: "Git blame output"}
+			state = &editor.State{Buffer: buffer, ReadOnly: true, SoftWrap: false, NoIndentGuides: true, Label: blameLabel}
 		}
 		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation || blameGeneration != a.blameGeneration {
@@ -829,9 +830,9 @@ func (a *app) browse() {
 	}
 	options := mygo.OpenDialogOptions{
 		Parent:      a.window,
-		Title:       "Open Git Repository",
+		Title:       tr("Open Git Repository"),
 		DefaultPath: defaultPath,
-		ButtonLabel: "Open",
+		ButtonLabel: tr("Open"),
 		Directory:   true,
 	}
 	go func() {
