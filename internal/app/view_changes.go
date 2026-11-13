@@ -367,8 +367,48 @@ func (a *app) filesView(c *ui.Context) {
 // file in it, or one folded shut, leaves the room to the changes: there is
 // nothing above them to resize.
 func (a *app) changeSectionsBody(c *ui.Context, sections changeSections) {
+	// A sole expanded section is the workspace the user is actually using.
+	// Give it all the room between the other sections' folded headers rather
+	// than keeping empty split panes or capping its list at a handful of rows.
+	sole := changeSectionChanges
+	expanded := 0
+	if sections.mergeBase >= 0 && a.mergeExpanded {
+		sole, expanded = changeSectionMerge, expanded+1
+	}
+	if a.stagedExpanded {
+		sole, expanded = changeSectionStaged, expanded+1
+	}
+	if a.changesExpanded {
+		sole, expanded = changeSectionChanges, expanded+1
+	}
+	if expanded == 1 {
+		box := ui.Box(c).Grow(1).Label(tr("Changes sections"))
+		box.Children(func() {
+			ui.Column(c).Fill().Gap(10).Children(func() {
+				a.mergeSectionView(c, sections, sole == changeSectionMerge)
+				a.stagedSectionView(c, sections, sole == changeSectionStaged)
+				a.changesSectionView(c, sections, sole == changeSectionChanges)
+			})
+		})
+		return
+	}
+
 	mergeShown := len(sections.merge) > 0 && a.mergeExpanded
 	stagedShown := len(sections.staged) > 0 && a.stagedExpanded
+	if !a.changesExpanded && (mergeShown || stagedShown) {
+		// A folded Changes section must not leave an empty split pane at the
+		// bottom. Merge is the active recovery workspace, so it gets the
+		// remaining height first; without merge files, staged changes get it.
+		box := ui.Box(c).Grow(1).Label(tr("Changes sections"))
+		box.Children(func() {
+			ui.Column(c).Fill().Gap(10).Children(func() {
+				a.mergeSectionView(c, sections, mergeShown)
+				a.stagedSectionView(c, sections, !mergeShown && stagedShown)
+				a.changesSectionView(c, sections, false)
+			})
+		})
+		return
+	}
 	if !mergeShown && !stagedShown {
 		ui.Column(c).Grow(1).Gap(10).Children(func() {
 			a.mergeSectionView(c, sections, false)

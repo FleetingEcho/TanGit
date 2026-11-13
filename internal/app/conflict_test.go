@@ -3,12 +3,15 @@ package app
 import (
 	"errors"
 	"io/fs"
+	"math"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 
 	"lazygitapp/internal/repository"
 )
@@ -76,6 +79,75 @@ func TestConflictStateDiff3(t *testing.T) {
 	}
 	if got, want := state.text(), "common\n"; got != want {
 		t.Fatalf("base = %q, want %q", got, want)
+	}
+}
+
+// The two editable sides of a conflict carry the same deletion/addition
+// colors as a diff; unchanged lines keep the ordinary editor background.
+func TestConflictLineBackgroundsTintBothSides(t *testing.T) {
+	content := "before\n<<<<<<< HEAD\nours one\nours two\n||||||| base\nancestor\n=======\ntheirs\n>>>>>>> topic\nafter\n"
+	state := newConflictState("file.go", content, 0)
+	theme := ui.DarkTheme()
+	backgrounds := state.lineBackgrounds(theme)
+	at := func(line int) (ui.Color, bool) {
+		for _, background := range backgrounds {
+			if line >= background.First && line <= background.Last {
+				return background.Color, true
+			}
+		}
+		return ui.Color{}, false
+	}
+	assertTint := func(lines []int, want ui.Color) {
+		t.Helper()
+		for _, line := range lines {
+			got, ok := at(line)
+			if !ok || got.A == 0 || got.R != want.R || got.G != want.G || got.B != want.B {
+				t.Errorf("line %d background = %#v, %v; want an opaque tint of %#v", line, got, ok, want)
+			}
+		}
+	}
+	assertTint([]int{2, 3}, theme.Danger)
+	assertTint([]int{5}, theme.Warning)
+	assertTint([]int{7}, theme.Success)
+	for _, line := range []int{0, 9} {
+		if got, ok := at(line); ok {
+			t.Errorf("unchanged line %d unexpectedly has background %#v", line, got)
+		}
+	}
+}
+
+// The side-by-side review exposes the familiar + and - gutters rather than
+// MyGo's default color bars alone.
+func TestConflictReviewUsesClassicDiffIndicators(t *testing.T) {
+	a := &app{conflictState: newConflictState("file.go", "<<<<<<< HEAD\nold\n=======\nnew\n>>>>>>> topic\n", 0)}
+	a.refreshConflictDiff()
+	if a.conflictDiffState == nil {
+		t.Fatal("conflict review has no diff state")
+	}
+	if got := a.conflictDiffState.Indicators; got != editor.DiffClassic {
+		t.Fatalf("diff indicators = %v, want DiffClassic (%v)", got, editor.DiffClassic)
+	}
+}
+
+// A success badge is used over a bright green fill in the dark theme. Its
+// label must choose a contrasting foreground instead of the ordinary text.
+func TestConflictSuccessBadgeTextContrast(t *testing.T) {
+	theme := ui.DarkTheme()
+	foreground := conflictSuccessBadgeText(theme)
+	luminance := func(color ui.Color) float64 {
+		linear := func(channel uint8) float64 {
+			value := float64(channel) / 255
+			if value <= 0.04045 {
+				return value / 12.92
+			}
+			return math.Pow((value+0.055)/1.055, 2.4)
+		}
+		return 0.2126*linear(color.R) + 0.7152*linear(color.G) + 0.0722*linear(color.B)
+	}
+	fg, bg := luminance(foreground), luminance(theme.Success)
+	ratio := (math.Max(fg, bg) + 0.05) / (math.Min(fg, bg) + 0.05)
+	if ratio < 4.5 {
+		t.Fatalf("badge contrast = %.2f:1, want at least 4.5:1 (foreground %#v, background %#v)", ratio, foreground, theme.Success)
 	}
 }
 
@@ -152,34 +224,63 @@ func TestConflictPaneResolvesTheFile(t *testing.T) {
 		return nil
 	}
 
-	h, calls := changesTestApp(t, []repository.File{
+	h, calls := changesTestAppIn(t, []repository.File{
 		{Path: "conflict.txt", Status: "UU", Unstaged: true, HasMergeConflicts: true},
-	})
+	}, 1600, 900)
 	h.waitFor(t, "the conflict read", func() bool {
 		return !h.app.diffLoading && h.app.conflictState != nil
 	})
 	h.tester.Frame()
 
-	icon, found := h.tester.Find("Undo resolution")
+	badge, found := h.tester.Find("1 / 1")
 	if !found {
-		t.Fatal("conflict icon button is missing")
+		t.Fatal("compact conflict counter is missing")
 	}
-	for _, label := range []string{"Use current", "Use incoming", "Use both", "Mark resolved"} {
+	right := badge.X + badge.W
+	var navigationIcon ui.Rect
+	for _, label := range []string{
+		"Previous conflict", "Next conflict",
+		"Base", "Current", "Incoming", "Result",
+		"Use current", "Use incoming", "Use both", "Restore initial conflict", "Mark resolved",
+	} {
 		button, found := h.tester.Find(label)
 		if !found {
 			t.Fatalf("conflict action %q is missing", label)
 		}
-		if button.H != icon.H {
-			t.Errorf("%s height = %.1f, icon height = %.1f", label, button.H, icon.H)
+		if label != "Mark resolved" {
+			buttonCenter, badgeCenter := button.Y+button.H/2, badge.Y+badge.H/2
+			if buttonCenter != badgeCenter {
+				t.Errorf("%s center = %.1f, conflict counter center = %.1f; group actions should share one row", label, buttonCenter, badgeCenter)
+			}
 		}
-		if button.X+button.W > icon.X {
-			t.Errorf("%s ends at %.1f, after the icon group starts at %.1f", label, button.X+button.W, icon.X)
+		if button.X < right {
+			t.Errorf("%s starts at %.1f, before the previous group ends at %.1f", label, button.X, right)
 		}
+		switch label {
+		case "Previous conflict":
+			navigationIcon = button
+		case "Use current", "Use incoming", "Use both", "Restore initial conflict":
+			if button.W != navigationIcon.W || button.H != navigationIcon.H {
+				t.Errorf("Apply action %q is %.1f×%.1f, want the Hunk icon-button dimensions %.1f×%.1f", label, button.W, button.H, navigationIcon.W, navigationIcon.H)
+			}
+		}
+		right = button.X + button.W
 	}
+	if _, found := h.tester.Find("Undo resolution"); found {
+		t.Fatal("Undo should not reserve space before there is a resolution to undo")
+	}
+	currentButton, _ := h.tester.Find("Use current")
+	h.tester.Move(currentButton.X+currentButton.W/2, currentButton.Y+currentButton.H/2)
+	h.tester.Advance(time.Second)
+	if !h.tester.HasText("Alt+1") || !h.tester.HasText("Keep the current side's hunk") {
+		t.Fatalf("Use current icon does not show its complete tooltip: %q", h.texts())
+	}
+	h.tester.Move(0, 0)
+	h.tester.Advance(2 * time.Second)
 
 	for _, text := range []string{
-		"Conflict 1 of 1", "Use current", "Use incoming", "Use both",
-		"Undo resolution", "Open file in editor", "Mark resolved",
+		"Hunk", "View", "Apply", "1 / 1", "Use current", "Use incoming", "Use both",
+		"Restore initial conflict", "Open file in editor", "Mark resolved",
 	} {
 		if !slices.Contains(h.texts(), text) {
 			t.Fatalf("conflict control %q missing from %q", text, h.texts())
@@ -198,6 +299,13 @@ func TestConflictPaneResolvesTheFile(t *testing.T) {
 	}
 	if !slices.Contains(h.texts(), "No conflict markers") {
 		t.Fatalf("the toolbar does not say the conflicts are gone: %q", h.texts())
+	}
+	undo, found := h.tester.Find("Undo resolution")
+	if !found {
+		t.Fatal("Undo did not appear after a resolution")
+	}
+	if undo.W != navigationIcon.W || undo.H != navigationIcon.H {
+		t.Fatalf("Undo is %.1f×%.1f, want the Hunk icon-button dimensions %.1f×%.1f", undo.W, undo.H, navigationIcon.W, navigationIcon.H)
 	}
 
 	if err := h.tester.Click("Undo resolution"); err != nil {
@@ -223,6 +331,320 @@ func TestConflictPaneResolvesTheFile(t *testing.T) {
 	}
 }
 
+// A selected tab changes only its visual role. Constructing both a normal and
+// a primary button would draw two copies, as the Result regression showed.
+func TestConflictViewSelectorRendersOneButtonPerTab(t *testing.T) {
+	content := "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> topic\n"
+	originalRead := readWorkingFile
+	t.Cleanup(func() { readWorkingFile = originalRead })
+	readWorkingFile = func(string) ([]byte, error) { return []byte(content), nil }
+	h, _ := changesTestApp(t, []repository.File{{Path: "conflict.txt", Status: "UU", Unstaged: true, HasMergeConflicts: true}})
+	h.waitFor(t, "the conflict read", func() bool {
+		return !h.app.diffLoading && h.app.conflictState != nil
+	})
+	for tab := range 4 {
+		h.app.conflictStageTab = tab
+		h.tester.Frame()
+		for _, label := range []string{"Base", "Current", "Incoming", "Result"} {
+			count := 0
+			for _, text := range h.texts() {
+				if text == label {
+					count++
+				}
+			}
+			if count != 2 {
+				t.Errorf("tab %d renders %q %d times, want one visible text and one accessible label", tab, label, count)
+			}
+		}
+	}
+}
+
+// Switching an inline file's View changes only the content below the toolbar.
+// The Hunk, View and Apply groups and Mark resolved never change position.
+func TestConflictToolbarStaysFixedAcrossViewTabs(t *testing.T) {
+	content := "<<<<<<< HEAD\nours\n||||||| base\ncommon\n=======\ntheirs\n>>>>>>> topic\n"
+	originalRead, originalWrite := readWorkingFile, writeWorkingFile
+	writes := 0
+	t.Cleanup(func() {
+		readWorkingFile, writeWorkingFile = originalRead, originalWrite
+	})
+	readWorkingFile = func(string) ([]byte, error) { return []byte(content), nil }
+	writeWorkingFile = func(string, []byte) error { writes++; return nil }
+	h, _ := changesTestAppIn(t, []repository.File{{Path: "conflict.txt", Status: "UU", Unstaged: true, HasMergeConflicts: true}}, 1600, 900)
+	h.waitFor(t, "the conflict read", func() bool {
+		return !h.app.diffLoading && h.app.conflictState != nil
+	})
+	h.tester.Frame()
+
+	const (
+		count = "1 / 1"
+		mark  = "Mark resolved"
+	)
+	stable := []string{count, "Hunk", "View", "Apply", mark}
+	baseline := make(map[string]ui.Rect, len(stable))
+	for _, label := range stable {
+		rect, found := h.tester.Find(label)
+		if !found {
+			t.Fatalf("initial Result toolbar is missing %q", label)
+		}
+		baseline[label] = rect
+	}
+	for tab := range 4 {
+		h.app.conflictStageTab = tab
+		h.tester.Frame()
+		for _, label := range stable {
+			rect, found := h.tester.Find(label)
+			if !found {
+				t.Errorf("View tab %d lost %q", tab, label)
+				continue
+			}
+			if want := baseline[label]; rect.X != want.X || rect.Y != want.Y {
+				t.Errorf("View tab %d moved %q from (%.1f, %.1f) to (%.1f, %.1f)", tab, label, want.X, want.Y, rect.X, rect.Y)
+			}
+		}
+		for _, action := range []string{"Base", "Current", "Incoming", "Result", "Use current", "Use incoming", "Use both", "Use base", "Restore initial conflict"} {
+			if _, found := h.tester.Find(action); !found {
+				t.Errorf("View tab %d lost action %q", tab, action)
+			}
+		}
+		if tab != 3 {
+			before := h.app.conflictState.text()
+			_ = h.tester.Click("Use current") // disabled outside Result
+			h.tester.Frame()
+			if got := h.app.conflictState.text(); got != before || writes != 0 {
+				t.Fatalf("read-only View tab %d changed Result or wrote %d files", tab, writes)
+			}
+		}
+	}
+	h.app.conflictStageTab = 3
+	h.tester.Frame()
+	_ = h.tester.Click("Use current")
+	h.tester.Frame()
+	if writes != 1 {
+		t.Fatalf("returning to Result left Apply disabled; got %d writes, want 1", writes)
+	}
+}
+
+// Separators stay about two thirds of a toolbar group's height, centered
+// beside its actions, even when Apply wraps; they never span the container.
+func TestConflictToolbarSeparatorsKeepContentHeight(t *testing.T) {
+	content := "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> topic\n"
+	originalRead := readWorkingFile
+	t.Cleanup(func() { readWorkingFile = originalRead })
+	readWorkingFile = func(string) ([]byte, error) { return []byte(content), nil }
+	h, _ := changesTestApp(t, []repository.File{{Path: "conflict.txt", Status: "UU", Unstaged: true, HasMergeConflicts: true}})
+	h.waitFor(t, "the conflict read", func() bool {
+		return !h.app.diffLoading && h.app.conflictState != nil
+	})
+	for _, width := range []int{1280, 1120, 1040, 960, 880, 800, 720} {
+		h.tester.SetSize(width, 800)
+		h.tester.Frame()
+		for _, label := range []string{"Hunk separator", "View separator", "Apply separator"} {
+			separator, found := h.tester.Find(label)
+			if !found {
+				t.Fatalf("width %d: %s is missing", width, label)
+			}
+			if separator.H != 31 {
+				t.Errorf("width %d: %s height = %.1f, want its two-thirds size of 31", width, label, separator.H)
+			}
+		}
+	}
+}
+
+// A refresh that began before Undo may finish afterward with the previously
+// resolved bytes. That obsolete answer must not overwrite the restored file.
+func TestConflictUndoRejectsInflightResolvedRead(t *testing.T) {
+	original := "a\n<<<<<<< HEAD\n1\n=======\n2\n>>>>>>> t\nb\n<<<<<<< HEAD\n3\n=======\n4\n>>>>>>> t\n"
+	originalRead, originalWrite := readWorkingFile, writeWorkingFile
+	t.Cleanup(func() {
+		readWorkingFile, writeWorkingFile = originalRead, originalWrite
+	})
+	var mu sync.Mutex
+	current := original
+	blockRead := false
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var startOnce, releaseOnce sync.Once
+	releaseReads := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(releaseReads)
+	readWorkingFile = func(string) ([]byte, error) {
+		mu.Lock()
+		content, block := current, blockRead
+		mu.Unlock()
+		if block {
+			startOnce.Do(func() { close(started) })
+			<-release
+		}
+		return []byte(content), nil
+	}
+	writeWorkingFile = func(_ string, data []byte) error {
+		mu.Lock()
+		current = string(data)
+		mu.Unlock()
+		return nil
+	}
+
+	h, _ := changesTestApp(t, []repository.File{{Path: "conflict.txt", Status: "UU", Unstaged: true, HasMergeConflicts: true}})
+	h.waitFor(t, "the conflict read", func() bool {
+		return !h.app.diffLoading && h.app.conflictState != nil
+	})
+	h.app.resolveConflictSide(conflictIncoming)
+	h.tester.Frame()
+	resolved := h.app.conflictState.text()
+	if len(h.app.conflictState.regions) != 1 {
+		t.Fatalf("one hunk pick left %d conflicts, want 1", len(h.app.conflictState.regions))
+	}
+
+	mu.Lock()
+	blockRead = true
+	mu.Unlock()
+	h.app.refreshRemoteQuietDetails()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the stale quiet read did not start")
+	}
+	h.app.undoConflictResolution()
+	if got := h.app.conflictState.text(); got != original {
+		t.Fatalf("Undo before the stale reply produced %q, want the original conflict", got)
+	}
+	releaseReads()
+	h.waitFor(t, "the stale quiet reply", func() bool {
+		return !h.app.diffLoading && h.app.cancelDiff == nil
+	})
+	if got := h.app.conflictState.text(); got != original {
+		t.Fatalf("stale reply overwrote Undo with %q (previous resolution %q), want the original conflict", got, resolved)
+	}
+	if len(h.app.conflictState.regions) != 2 {
+		t.Fatalf("stale reply left %d conflicts, want both original conflicts", len(h.app.conflictState.regions))
+	}
+}
+
+// Restore initial conflict is a file-level reset, not just one undo: after
+// several picks it brings every original marker back. The reset is itself
+// undoable, so recovery never silently throws away the user's resolved state.
+func TestConflictPaneRestoresInitialConflict(t *testing.T) {
+	content := "a\n<<<<<<< HEAD\n1\n=======\n2\n>>>>>>> t\nb\n<<<<<<< HEAD\n3\n=======\n4\n>>>>>>> t\n"
+	originalRead, originalWrite := readWorkingFile, writeWorkingFile
+	t.Cleanup(func() {
+		readWorkingFile, writeWorkingFile = originalRead, originalWrite
+	})
+	readWorkingFile = func(string) ([]byte, error) { return []byte(content), nil }
+	var written []byte
+	writeWorkingFile = func(_ string, data []byte) error {
+		written = append([]byte(nil), data...)
+		return nil
+	}
+
+	h, _ := changesTestApp(t, []repository.File{
+		{Path: "conflict.txt", Status: "UU", Unstaged: true, HasMergeConflicts: true},
+	})
+	h.waitFor(t, "the conflict read", func() bool {
+		return !h.app.diffLoading && h.app.conflictState != nil
+	})
+	for range 2 {
+		if err := h.tester.Click("Use incoming"); err != nil {
+			t.Fatalf("resolve one hunk: %v", err)
+		}
+		h.tester.Frame()
+	}
+	resolved := "a\n2\nb\n4\n"
+	if got := h.app.conflictState.text(); got != resolved || len(h.app.conflictState.regions) != 0 {
+		t.Fatalf("two picks left text %q and regions %#v, want the fully resolved file", got, h.app.conflictState.regions)
+	}
+
+	if err := h.tester.Click("Restore initial conflict"); err != nil {
+		t.Fatalf("restore the initial conflict: %v", err)
+	}
+	h.tester.Frame()
+	if got := string(written); got != content {
+		t.Fatalf("restored file = %q, want the original conflict", got)
+	}
+	if len(h.app.conflictState.regions) != 2 || h.app.conflictState.selected != 0 {
+		t.Fatalf("restore left regions %#v and selected %d, want two regions at the first", h.app.conflictState.regions, h.app.conflictState.selected)
+	}
+
+	if err := h.tester.Click("Undo resolution"); err != nil {
+		t.Fatalf("undo the restore: %v", err)
+	}
+	h.tester.Frame()
+	if got := string(written); got != resolved {
+		t.Fatalf("undoing restore wrote %q, want the state before restore %q", got, resolved)
+	}
+}
+
+// A failed restore must leave both the resolved Result and its undo stack
+// intact; the UI must not claim an initial conflict that was never written.
+func TestConflictRestoreFailureKeepsCurrentResult(t *testing.T) {
+	content := "first\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> topic\nlast\n"
+	originalRead, originalWrite := readWorkingFile, writeWorkingFile
+	t.Cleanup(func() {
+		readWorkingFile, writeWorkingFile = originalRead, originalWrite
+	})
+	readWorkingFile = func(string) ([]byte, error) { return []byte(content), nil }
+	writeWorkingFile = func(string, []byte) error { return nil }
+	h, _ := changesTestApp(t, []repository.File{
+		{Path: "conflict.txt", Status: "UU", Unstaged: true, HasMergeConflicts: true},
+	})
+	h.waitFor(t, "the conflict read", func() bool {
+		return !h.app.diffLoading && h.app.conflictState != nil
+	})
+	if err := h.tester.Click("Use incoming"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	resolved := "first\ntheirs\nlast\n"
+	state := h.app.conflictState
+	if got := state.text(); got != resolved {
+		t.Fatalf("resolved Result = %q, want %q", got, resolved)
+	}
+	undoLen := len(state.undo)
+	writeWorkingFile = func(string, []byte) error { return fs.ErrPermission }
+	if err := h.tester.Click("Restore initial conflict"); err != nil {
+		t.Fatalf("attempt restore: %v", err)
+	}
+	h.tester.Frame()
+	if got := state.text(); got != resolved {
+		t.Fatalf("failed restore changed Result to %q, want %q", got, resolved)
+	}
+	if len(state.undo) != undoLen {
+		t.Fatalf("failed restore changed undo length from %d to %d", undoLen, len(state.undo))
+	}
+}
+
+// Ctrl+Z (Cmd+Z on macOS) is the conventional edit undo and should invoke
+// the same hunk-resolution undo as the toolbar, not an empty replacement
+// buffer's text history. Alt+Z remains available for compatibility.
+func TestConflictShortcutUndoResolution(t *testing.T) {
+	for _, modifiers := range []struct {
+		name string
+		mod  ui.Modifiers
+	}{{"command", ui.Cmd}, {"control", ui.Ctrl}} {
+		t.Run(modifiers.name, func(t *testing.T) {
+			content := "first\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> topic\nlast\n"
+			originalRead, originalWrite := readWorkingFile, writeWorkingFile
+			t.Cleanup(func() {
+				readWorkingFile, writeWorkingFile = originalRead, originalWrite
+			})
+			readWorkingFile = func(string) ([]byte, error) { return []byte(content), nil }
+			writeWorkingFile = func(string, []byte) error { return nil }
+			h, _ := changesTestApp(t, []repository.File{{Path: "conflict.txt", Status: "UU", Unstaged: true, HasMergeConflicts: true}})
+			h.waitFor(t, "the conflict read", func() bool {
+				return !h.app.diffLoading && h.app.conflictState != nil
+			})
+			if err := h.tester.Click("Use incoming"); err != nil {
+				t.Fatal(err)
+			}
+			h.tester.Frame()
+			h.tester.Key(modifiers.mod, ui.KeyZ)
+			h.tester.Frame()
+			if got := h.app.conflictState.text(); got != content {
+				t.Fatalf("undo shortcut wrote %q, want the original conflict", got)
+			}
+		})
+	}
+}
+
 // The toolbar walks the file's conflicts, and each pick moves the pane on to
 // the next one that is left.
 func TestConflictPaneMovesBetweenConflicts(t *testing.T) {
@@ -241,7 +663,7 @@ func TestConflictPaneMovesBetweenConflicts(t *testing.T) {
 		return !h.app.diffLoading && h.app.conflictState != nil
 	})
 	h.tester.Frame()
-	if !slices.Contains(h.texts(), "Conflict 1 of 2") {
+	if !slices.Contains(h.texts(), "1 / 2") {
 		t.Fatalf("the toolbar starts on the wrong conflict: %q", h.texts())
 	}
 
@@ -249,7 +671,7 @@ func TestConflictPaneMovesBetweenConflicts(t *testing.T) {
 		t.Fatalf("move to the next conflict: %v", err)
 	}
 	h.tester.Frame()
-	if !slices.Contains(h.texts(), "Conflict 2 of 2") {
+	if !slices.Contains(h.texts(), "2 / 2") {
 		t.Fatalf("moving down did not select the second conflict: %q", h.texts())
 	}
 	if h.app.conflictState.selected != 1 {
@@ -260,7 +682,7 @@ func TestConflictPaneMovesBetweenConflicts(t *testing.T) {
 		t.Fatalf("move to the previous conflict: %v", err)
 	}
 	h.tester.Frame()
-	if !slices.Contains(h.texts(), "Conflict 1 of 2") {
+	if !slices.Contains(h.texts(), "1 / 2") {
 		t.Fatalf("moving up did not select the first conflict: %q", h.texts())
 	}
 }
@@ -388,6 +810,58 @@ func TestConflictStateUsesTheFilesMarkerSize(t *testing.T) {
 	}
 	if regions := newConflictState("file.txt", content, 0).regions; len(regions) != 0 {
 		t.Fatalf("the default size found the 12-character markers: %#v", regions)
+	}
+}
+
+// Modify/delete has no text hunks, but its resolution toolbar must use the
+// same Hunk, View, Apply and right-side Mark resolved layout as inline text.
+func TestConflictSidesUsesGroupedResolutionToolbar(t *testing.T) {
+	content := "first\nsecond changed\nthird\n"
+	originalRead := readWorkingFile
+	t.Cleanup(func() { readWorkingFile = originalRead })
+	readWorkingFile = func(string) ([]byte, error) { return []byte(content), nil }
+	h, _ := changesTestAppIn(t, []repository.File{{Path: "conflict.txt", Status: "UD", Tracked: true, Staged: true, Unstaged: true, HasMergeConflicts: true}}, 1600, 900)
+	h.waitFor(t, "the modify/delete conflict", func() bool {
+		return !h.app.diffLoading && h.app.conflictSides != nil
+	})
+	h.tester.Frame()
+
+	stable := []string{"Deleted by them", "Hunk", "View", "Apply", "Mark resolved"}
+	baseline := make(map[string]ui.Rect, len(stable))
+	for _, label := range stable {
+		rect, found := h.tester.Find(label)
+		if !found {
+			t.Fatalf("modify/delete did not use the grouped toolbar: missing %q", label)
+		}
+		baseline[label] = rect
+	}
+	for _, action := range []string{"Use current", "Use incoming"} {
+		count := 0
+		for _, text := range h.texts() {
+			if text == action {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("%q appears %d times, want one icon button with an accessible label", action, count)
+		}
+	}
+	if _, found := h.tester.Find("Use both"); found {
+		t.Fatal("a modify/delete resolution offers the meaningless Use both action")
+	}
+	for tab := range 4 {
+		h.app.conflictStageTab = tab
+		h.tester.Frame()
+		for _, label := range stable {
+			rect, found := h.tester.Find(label)
+			if !found {
+				t.Errorf("View tab %d lost %q for modify/delete", tab, label)
+				continue
+			}
+			if want := baseline[label]; rect.X != want.X || rect.Y != want.Y {
+				t.Errorf("View tab %d moved %q from (%.1f, %.1f) to (%.1f, %.1f)", tab, label, want.X, want.Y, rect.X, rect.Y)
+			}
+		}
 	}
 }
 
@@ -788,10 +1262,10 @@ func TestAConflictedFileFitsItsControlsInTheDefaultWindow(t *testing.T) {
 		"Mark resolved",
 		"Previous conflict",
 		"Next conflict",
-		"Undo resolution",
 		"Use current",
 		"Use incoming",
 		"Use both",
+		"Restore initial conflict",
 	} {
 		r, ok := h.tester.Find(label)
 		if !ok {

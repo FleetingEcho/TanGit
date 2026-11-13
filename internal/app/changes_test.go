@@ -1168,6 +1168,69 @@ func TestEveryDiscardPathAsksFirst(t *testing.T) {
 	}
 }
 
+// When the other two sections are folded, their headers stay visible but
+// their former panes do not reserve empty space: Merge fills all the room.
+func TestOnlyExpandedMergeSectionFillsRemainingHeight(t *testing.T) {
+	files := make([]repository.File, 0, 5)
+	for _, path := range []string{"a.txt", "b.txt", "c.txt", "d.txt", "e.txt"} {
+		files = append(files, repository.File{Path: path, Status: "UU", Unstaged: true, HasMergeConflicts: true})
+	}
+	h, _ := changesTestApp(t, files)
+	h.app.stagedExpanded = false
+	h.app.changesExpanded = false
+	for range 3 {
+		h.tester.Frame()
+	}
+
+	body, ok := h.tester.Find("Changes sections")
+	if !ok {
+		t.Fatalf("the sections have no body: %q", h.texts())
+	}
+	mergeHeader, mergeOK := h.tester.Find("Merge Changes")
+	stagedHeader, stagedOK := h.tester.Find("Staged Changes")
+	changesHeader, changesOK := h.tester.Find("Changes")
+	if !mergeOK || !stagedOK || !changesOK {
+		t.Fatalf("a folded header disappeared: merge=%v staged=%v changes=%v", mergeOK, stagedOK, changesOK)
+	}
+	// Both following sections have a title and there are two 10-DIP gaps.
+	// The rest of the measured body belongs to the expanded Merge section.
+	got := stagedHeader.Y - mergeHeader.Y
+	want := body.H - stagedHeader.H - changesHeader.H - 20
+	if got < want-1.5 || got > want+1.5 {
+		t.Fatalf("Merge occupies %.1f DIPs, want %.1f (body=%.1f; folded headers=%.1f, %.1f)", got, want, body.H, stagedHeader.H, changesHeader.H)
+	}
+}
+
+// With several conflicts and one staged file, a folded Changes section is
+// only a footer header. Merge, not an empty bottom pane, receives its height.
+func TestMergeReclaimsHeightWhenChangesIsFolded(t *testing.T) {
+	files := []repository.File{{Path: "auto-merge.txt", Status: "M ", Staged: true, Tracked: true}}
+	for _, path := range []string{"a.txt", "b.txt", "c.txt", "d.txt", "e.txt"} {
+		files = append(files, repository.File{
+			Path: "conflict-lab/text/" + path, Status: "UU", Unstaged: true, HasMergeConflicts: true,
+		})
+	}
+	h, _ := changesTestApp(t, files)
+	h.app.fileTreeMode = true
+	h.app.changesExpanded = false
+	h.app.mergeExpanded = true
+	h.app.stagedExpanded = true
+	for range 3 {
+		h.tester.Frame()
+	}
+
+	body, ok := h.tester.Find("Changes sections")
+	if !ok {
+		t.Fatalf("the sections have no body: %q", h.texts())
+	}
+	mergeHeader, _ := h.tester.Find("Merge Changes")
+	stagedHeader, _ := h.tester.Find("Staged Changes")
+	mergeSpan := stagedHeader.Y - mergeHeader.Y
+	if mergeSpan <= body.H*0.55 {
+		t.Errorf("Merge occupies only %.1f of %.1f DIPs while Changes is folded", mergeSpan, body.H)
+	}
+}
+
 // The merge and staged sections share the panel's top with the changes, and
 // the line between them drags: giving one side more room takes it from the
 // other.
