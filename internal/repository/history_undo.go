@@ -63,6 +63,39 @@ func (s *gitSession) Redo(ctx context.Context) error {
 	return s.replayReflog(ctx, true)
 }
 
+// ReflogReplayDescription describes the operation a confirmation would replay.
+// The app's display snapshot is bounded, so an eligible action outside it has
+// no preview; Undo and Redo still re-read the complete reflog before acting.
+func ReflogReplayDescription(commits []Commit, operations []OperationRecord, redo bool) (string, bool) {
+	entries := make([]reflogEntry, 0, len(commits))
+	for _, commit := range commits {
+		entries = append(entries, reflogEntry{hash: commit.Hash, name: commit.Subject})
+	}
+	action, ok := findReflogAction(entries, redo)
+	if !ok {
+		return "", false
+	}
+	if action.kind == reflogRebase {
+		for _, record := range operations {
+			if record.Kind == OperationRebase && record.Status == OperationSucceeded &&
+				record.Summary != "" && record.HeadBefore == action.from && record.HeadAfter == action.to {
+				return record.Summary, true
+			}
+		}
+		return "completed rebase", true
+	}
+	for _, entry := range entries {
+		checkout := checkoutReflogPattern.FindStringSubmatch(entry.name)
+		if action.kind == reflogCheckout && len(checkout) > 0 && checkout[1] == action.from && checkout[2] == action.to {
+			return entry.name, true
+		}
+		if action.kind == reflogCommit && entry.hash == action.to && isCommitResetOrPull(entry.name) {
+			return entry.name, true
+		}
+	}
+	return "", false
+}
+
 func (s *gitSession) replayReflog(ctx context.Context, redo bool) error {
 	if err := ctx.Err(); err != nil {
 		return err

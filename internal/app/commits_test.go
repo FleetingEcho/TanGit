@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -66,6 +67,84 @@ func TestCommitRowMenuOffersTheActions(t *testing.T) {
 		"Cherry-pick onto current branch…",
 		"Revert commit…",
 	)
+}
+
+func TestUndoLatestCommitMenuActions(t *testing.T) {
+	tests := []struct {
+		name      string
+		menu      string
+		mode      repository.ResetMode
+		placement string
+	}{
+		{name: "staged", menu: "Undo latest commit and keep changes staged…", mode: repository.ResetSoft, placement: "staged"},
+		{name: "unstaged", menu: "Undo latest commit and keep changes unstaged…", mode: repository.ResetMixed, placement: "unstaged in Changes"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			h, calls := historyHarness(t)
+			h.app.snapshot.Head = "c2c2c2c2"
+			h.rightClick(t, "Second commit")
+			h.chooseMenuItem(t, test.menu)
+			if h.app.confirm == nil || !strings.Contains(h.app.confirm.detail, "Only this commit is removed") ||
+				!strings.Contains(h.app.confirm.detail, test.placement) {
+				t.Fatalf("unexpected latest-commit confirmation: %+v", h.app.confirm)
+			}
+			wantCall := "reset-" + string(test.mode) + ":c1c1c1c1"
+			if calls.has(wantCall) {
+				t.Fatal("the latest commit was reset before confirmation")
+			}
+			if err := h.tester.Click("Undo commit"); err != nil {
+				t.Fatal(err)
+			}
+			h.waitFor(t, "the latest-commit reset", func() bool { return calls.has(wantCall) })
+		})
+	}
+}
+
+func TestUndoLatestCommitMenuIsLimitedToAttachedHeadWithAParent(t *testing.T) {
+	h, _ := historyHarness(t)
+	h.app.snapshot.Head = "c2c2c2c2"
+	h.rightClick(t, "Initial commit")
+	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
+		if slices.Contains(h.texts(), label) {
+			t.Fatalf("a non-HEAD commit offers %q", label)
+		}
+	}
+	h.press(t, ui.KeyEscape)
+	h.app.snapshot.Head = "c1c1c1c1"
+	h.rightClick(t, "Initial commit")
+	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
+		if slices.Contains(h.texts(), label) {
+			t.Fatalf("a root commit offers %q", label)
+		}
+	}
+	h.press(t, ui.KeyEscape)
+	h.app.snapshot.Commits[1].Parents = []string{"c0c0c0c0"}
+	h.app.snapshot.Branches[0].DetachedHead = true
+	h.rightClick(t, "Initial commit")
+	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
+		if slices.Contains(h.texts(), label) {
+			t.Fatalf("detached HEAD offers %q", label)
+		}
+	}
+}
+
+func TestUndoLatestCommitWarnsAboutUnresolvedConflicts(t *testing.T) {
+	h, calls := historyHarness(t)
+	h.app.snapshot.Head = "c2c2c2c2"
+	h.app.snapshot.Files = append(h.app.snapshot.Files, repository.File{Path: "conflict.txt", HasMergeConflicts: true})
+	h.rightClick(t, "Second commit")
+	h.chooseMenuItem(t, "Undo latest commit and keep changes staged…")
+	if h.app.confirm != nil {
+		t.Fatal("unresolved conflicts opened a destructive confirmation")
+	}
+	h.tester.Frame()
+	if !h.tester.HasText("Cannot undo the latest commit") || !h.tester.HasText("Resolve the current merge conflicts in Changes, then try again.") {
+		t.Fatalf("unresolved conflicts produced no warning: %q", h.tester.Texts())
+	}
+	if calls.has("reset-soft:c1c1c1c1") {
+		t.Fatalf("unresolved conflicts reset the latest commit: %v", calls.all())
+	}
 }
 
 var safeCommitMenuItems = []string{

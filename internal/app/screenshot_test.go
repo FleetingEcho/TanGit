@@ -565,13 +565,25 @@ func TestScreenshot(t *testing.T) {
 		a.commitSelectionMode = true
 		a.commitSelection = map[string]bool{}
 		for i, commit := range a.visibleCommits() {
-			if i < 2 {
+			if i > 0 && i < 3 {
 				a.commitSelection[commit.Hash] = true
 			}
 		}
+		tt.Move(0, 0)
 		tt.Frame()
 		settleShot(t, tt, updated, func() bool { return !a.commitFilesLoading && !a.diffLoading })
 		saveScreenshot(t, dir, "batch-commits-light", tt)
+	})
+
+	t.Run("batch-commits-empty-dark", func(t *testing.T) {
+		a, tt, updated := newScreenshotHarness(t, true)
+		a.workspaceTab = sectionHistory
+		a.commitSelectionMode = true
+		a.commitSelection = map[string]bool{}
+		tt.Move(0, 0)
+		tt.Frame()
+		settleShot(t, tt, updated, func() bool { return !a.commitFilesLoading && !a.diffLoading })
+		saveScreenshot(t, dir, "batch-commits-empty-dark", tt)
 	})
 
 	t.Run("keyboard-diff-review-dark", func(t *testing.T) {
