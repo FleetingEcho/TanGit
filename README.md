@@ -10,6 +10,7 @@
 <p align="center">
   <a href="https://github.com/FleetingEcho/TanGit/releases">Download</a> ·
   <a href="#features">Features</a> ·
+  <a href="docs/guide.md#operation-recovery-history-and-assisted-review">Workflow guide</a> ·
   <a href="#get-started">Get started</a> ·
   <a href="#keyboard-shortcuts">Shortcuts</a> ·
   <a href="#architecture">Architecture</a> ·
@@ -52,7 +53,7 @@ keyboard navigation and visual tools for the work that needs a closer look.
 
 - **Turn mixed edits into clean commits.** Stage, unstage, or stash selected lines across separate hunks, keeping the rest of your changes untouched.
 - **Shape history visually.** Follow the commit graph and file history, then batch cherry-pick, squash, fix up, drop, or reorder commits.
-- **Resolve conflicts in place.** Compare base, current, and incoming versions; choose individual hunks, edit the result, and undo a choice before staging.
+- **Resolve conflicts in place.** Compare Base, Current, Incoming, and Result views; choose individual hunks, edit the result, and undo a choice before staging. Durable per-file recovery preserves the original unresolved file and index stages.
 - **Keep your development tools together.** Switch repository tabs, edit code with syntax highlighting and language-server assistance, run a shell in the built-in terminal, and open your configured editor with one click.
 - **Make the workspace yours.** Resize and expand panels, browse directory trees, and choose from 20 palettes, custom fonts, and six interface languages.
 
@@ -63,11 +64,12 @@ undo/redo operations, and reflog recovery help you manage changes deliberately.
 
 | | What you can do |
 | --- | --- |
-| **Changes & diffs** | Stage files or selected lines; review unified, side-by-side, image, and media diffs; export patches. Use Change Courier to preview and copy files, hunks, or lines to another worktree as unstaged changes. |
-| **History & graph** | Filter commits, inspect file history, cherry-pick batches, reword, squash, and reorder commits. Pause at a commit with **Edit**, or use **bisect** to find the commit that introduced a problem. Collect whole files, hunks, or lines into a Custom Patch, then safely apply, export, or send it to another worktree. |
-| **Branches & recovery** | Manage remotes, tags, stashes, worktrees, and submodules; inspect the reflog and undo eligible operations. Create, lock, repair, prune, and safely force-remove linked worktrees. Move unpushed commits to a new branch, push a whole stack, and prune stale upstreams. Safety Journal retains durable, revalidated recovery for destructive actions and patch applications. |
-| **Collaboration & automation** | Create pull requests and view checks with **GitHub CLI** (`gh`) or **GitLab CLI** (`glab`); push all tags or delete a remote tag; export `format-patch` series and apply mailbox patches with a three-way fallback. Add custom shell commands with optional keybindings, or run one-off commands with `:`. Background fetching and pruning are configurable. |
-| **Conflict resolution** | Review base, current, and incoming versions; choose hunks, edit the result, and stage the resolution. |
+| **Changes & diffs** | Stage files or selected lines; review unified, side-by-side, image, and media diffs; export patches. Stage, unstage, or discard the current textual hunk from its Changes toolbar using a repository-state-checked patch. Use Change Courier to preview and copy files, hunks, or lines to another worktree as unstaged changes. |
+| **History & graph** | Filter commits, inspect file history, cherry-pick batches, reword, squash, and reorder commits. Preview Git's real interactive **Rebase TODO**, edit it with compare-and-swap checks, or mark a full-SHA base for a targeted `--onto` rebase. Collect a Custom Patch to apply or export, or use its single-source history actions to remove changes, move them to the index or another commit, or create a commit before/after the source. |
+| **Branches & recovery** | Manage remotes, tags, stashes, worktrees, and submodules; inspect the reflog and undo eligible operations. **Sync stack…** previews frozen per-branch merge/rebase/update-ref plans, validates the plan before applying it, and optionally publishes each branch with its preview-OID lease. Safety Journal and per-file conflict recovery retain durable, revalidated recovery state. |
+| **Collaboration & automation** | Create pull requests and view checks with **GitHub CLI** (`gh`) or **GitLab CLI** (`glab`); export `format-patch` series and apply mailbox patches. Use durable Agent tasks and local CLI/RPC automation, or add custom shell commands. Background fetching and pruning are configurable. |
+| **Conflict resolution** | Read Git's live operation type, refs, SHAs, and progress; use the supported **Continue**, **Skip**, and **Abort** actions. Grouped **Hunk**, **View**, and **Apply** controls keep conflict navigation, stage views, side choices, and assistant access reachable in wide or compact layouts. **Mark resolved** stages only when you choose it. |
+| **Assisted review** | Conflict Assistant proposes region substitutions on a cloned Result. Change Splitter groups original diff identities and previews TanGit-generated, index-only patches. Both use an optional, provider-neutral `AssistCommand`; neither suggestion preview stages or commits automatically. |
 | **Editor workspace** | Edit with syntax highlighting and language-server assistance; manage files and tabs; use fzf Quick Open, advanced content search, and Markdown preview. |
 | **Your workspace** | Repository tabs, directory trees, resizable panels, expanded branch/diff views, a terminal, and external editors. |
 | **Your preferences** | Themes, fonts, six interface languages, configurable visible sections, and signed in-app updates. |
@@ -85,11 +87,55 @@ number to start multiple-line selection; Shift-click selects a range.
 - **Manage files without leaving Editor.** Create files and folders, rename or delete them, and drag items between folders. Drop native files and folders anywhere in the Explorer to copy them into a local workspace or upload them over SFTP, with byte/item progress and cancellation. Open tabs and unsaved buffers follow renames and moves, and a repository subfolder can become the workspace root.
 - **Work directly over SSH.** Configure Linux SSH workspaces from Home or Settings with agent, private-key, or password authentication. Git, editing, search, terminals, and recursive transfers run remotely without a mirror or server agent. Local items open in the host file manager; remote **Open in explorer** launches `Narwhal` on the remote desktop (`DISPLAY=:0`).
 
+## Recovery and assisted workflows
+
+The operation card above **Changes** describes the actual interrupted merge,
+rebase, pull-with-rebase, `am`, cherry-pick, or revert—not an operation guessed
+from the visible branch. The operation type and Git state determine which of
+**Continue**, **Skip**, and **Abort** is available. Any conflicts must be
+resolved and staged before Continue, which revalidates the reviewed operation
+fingerprint and unmerged index instead of acting on a stale card.
+
+**Recovery & checkpoints → Recovery** stores one file's original unresolved
+worktree bytes and index stages separately from its later state. Restore uses
+per-path before/after compare-and-swap checks and resumes its durable worktree
+and index steps. Newer work on that path stops restoration and is preserved;
+unrelated files are not part of the check.
+
+Conflict Assistant and Change Splitter run only after an explicit suggestion
+request. An empty `AssistCommand` means no external helper runs. The command is
+a user-trusted local helper launched through the platform shell, **not a
+sandbox** and not a built-in model service. Accepting conflict advice writes
+only the reviewed Result; applying a split group is a separate action that
+stages that group without changing the working tree or creating a commit.
+Late previews are invalidated when their source or owning dialog changes.
+
+History edits require one source commit, an immutable patch, and the expected
+HEAD. They can resume through the operation driver, but do not support merge
+sources/destinations, **New commit before original** on a root commit, or
+`commit.gpgsign=true`. Stack Sync publishes branches independently: one failed
+push does not roll back local updates or other remote branches, and there is no
+remote stack transaction.
+
+### Example: finish an interrupted rebase
+
+1. Read the operation type and current step, then open a conflict in **Changes**.
+2. Compare **Base**, **Current**, and **Incoming**; edit **Result** directly or use the grouped side/hunk actions. Optionally preview Conflict Assistant suggestions before accepting Result only.
+3. Choose **Mark resolved**, review the staged diff, and repeat for every conflicted file. Use durable conflict recovery if you need the original unresolved file and stages.
+4. In **Rebase TODO**, check the current and pending steps, then choose **Continue**. Choose **Skip** only if that operation offers it and you intend to discard the stopped step; **Abort** is the separate abandon path.
+5. Review the resulting history and ordinary Changes before committing anything else. A CAS mismatch means refresh and review again, not that newer work was overwritten.
+
+[Detailed workflows, constraints, and assistant protocol →](docs/guide.md#operation-recovery-history-and-assisted-review)
+
 ## Get started
 
 1. Install [Git](https://git-scm.com/) and download a [TanGit release](https://github.com/FleetingEcho/TanGit/releases).
 2. Use the **DMG** on macOS, the **setup executable** on Windows, or the matching **`.deb` / archive** on Linux.
 3. Open a local repository, choose **Open SSH** to work directly in a remote Linux repository, or choose **Clone** on Home to clone an HTTPS or SSH URL with real progress, optional branch selection, and automatic opening. Cloning uses your existing Git credential helpers or SSH agent; direct SSH profiles keep secrets in the OS keychain when available, with session-only fallback.
+
+Verification is tied to the tool versions and environments recorded in its logs;
+it is not evidence for every Git release or SSH deployment. **Git 2.32 has not
+been verified.** See [version and capability evidence](docs/verification.md#version-and-capability-evidence).
 
 Install [ripgrep](https://github.com/BurntSushi/ripgrep) for faster Editor content searches in large repositories. TanGit uses its built-in search when `rg` is unavailable and ranks Quick Open paths and content results with [fzf](https://github.com/junegunn/fzf).
 

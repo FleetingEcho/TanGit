@@ -66,6 +66,43 @@ both slices, and a successful Linux test does not prove macOS or Windows tests
 passed. The normal tests and race tests run on Ubuntu only; the other two
 platforms have the build/headless-smoke scope shown above.
 
+## Feature-specific evidence and limits
+
+The operation, recovery, and assisted-review behaviors described in the
+[workflow guide](guide.md#operation-recovery-history-and-assisted-review) have
+focused checks in the current test tree. The table identifies evidence to run
+and inspect; it is not a claim that a particular commit passed on a particular
+host without the corresponding log.
+
+| Area | Current source-level and headless checks | Scope that must not be inferred |
+| --- | --- | --- |
+| Real operation context and Continue/Skip/Abort | `internal/repository/operation_test.go` exercises Git operation metadata, actions, progress, and CAS refusal; `internal/app/operation_test.go` and the operation UI tests check operation-dependent controls | Every Git version, every unusual sequencer state, or every remote SSH transition; unsupported transitions are expected to fail closed |
+| Changes hunks and patch CAS | `internal/app/hunk_actions_test.go`, `hunk_actions_real_test.go`, and the repository patch request/import tests cover canonical hunk patches, explicit targets, stale previews, and real temporary repositories | Binary/mode-only hunk support, combined-conflict hunk staging, or arbitrary third-party patch compatibility |
+| Single-file durable recovery and conflict Result publication | `internal/repository/file_recovery_test.go`, `file_recovery_workflow_test.go`, `conflict_result_test.go`, and `internal/app/file_recovery_integration_test.go` cover exact file/index states, before/after CAS, interrupted progress, retries, and Result-only writes | Repository-wide transactions, recovery of symlinks/gitlinks/non-regular paths, or immunity to uncoordinated external Git processes |
+| Visual Rebase TODO and Custom Patch history | `internal/repository/rebase_plan_test.go`, `rebase_plan_safety_test.go`, `history_patch_test.go`, and related app tests cover full-todo identity, marked-base plans, operation CAS, replay/resume, and invalid-source refusal | New-before a root commit, multi-source history replay, merge source/destination editing, or `commit.gpgsign=true`; those are intentional current limitations |
+| Stack Sync plan/apply and publication | `internal/repository/stack_sync_test.go` uses local/bare repositories for expected-old-OID updates, frozen-plan invalidation, real `rebase.updateRefs` TODO ownership, preview-approved publication only, preview-OID lease rejection, and independent push outcomes | Remote stack atomicity, automatic rollback after later failures, or successful publication to external hosting providers |
+| Conflict Assistant and Change Splitter | `internal/agentassist` tests use real controlled helper processes and malformed/late/cross-source responses; app tests check source/index/operation digests, exact private preview consumption, group-only index changes, unchanged HEAD/worktree, and late-dialog invalidation | Correctness or safety of an arbitrary installed helper, model/provider quality, network behavior, or an OS sandbox boundary |
+| Grouped conflict and operation header layouts | `internal/app/responsive_clipping_test.go` and action-control tests exercise wide/compact groups, menus, disabled reasons, and parent geometry in MyGo's headless tester across specified sizes and themes | Manual visual approval on every native OS, font, display scale, or window size |
+| Agent task persistence and coordinated tools | `internal/agentwork`, `internal/agentcli`, and focused app agent tests cover revision guards, task/review identities, checkpoints, isolated integration, coordinated updates, and independent results | Provider-specific agent correctness, remote generic-terminal launch, or automatic review approval/integration |
+
+Run the complete required suite rather than selecting only these examples when
+validating a release candidate. A focused documentation/source check can use:
+
+```sh
+CGO_ENABLED=0 go test ./internal/repository ./internal/agentassist ./internal/agentwork ./internal/agentcli ./internal/app
+go test -race ./internal/repository ./internal/agentwork ./internal/agentcli ./internal/app
+```
+
+These focused checks do not expand the platform/version evidence above. In
+particular, **Git 2.32 remains unverified**, the configured CI Git is the logged
+hosted-image version, and no broad statement such as "all Git versions are
+supported" follows from them. OpenSSH required mode exercises the logged
+loopback client/server setup; it is not a test of every SSH server,
+authentication method, hosting service, or remote desktop layout. Controlled
+helper fixtures do not contact or certify a real model/service provider.
+Headless geometry checks do not replace manual native-GUI review where that
+distinction matters.
+
 ## Requiring local OpenSSH tests
 
 `internal/sshintegration.Start` starts an isolated sshd on an ephemeral
