@@ -514,6 +514,7 @@ var japanese = map[string]string{
 	"Resolve with the current side and stage it":                         "現在側を使って解決し、ステージ",
 	"Resolve with the incoming side and stage it":                        "取り込み側を使って解決し、ステージ",
 	"Pick a side, then Continue.":                                        "側を選択してから「続行」をクリックしてください。",
+	"Operation context":                                                  "操作コンテキスト",
 	"Git left conflict markers in this file. Choose a side, or edit them away and mark it resolved.": "Git がこのファイルに競合マーカーを残しています。側を選択するか、マーカーを編集で取り除いて解決済みにしてください。",
 	"A rebase or bisect is active in this worktree.":                                                 "このワークツリーではリベースまたは bisect が進行中です。",
 

@@ -514,6 +514,7 @@ var french = map[string]string{
 	"Resolve with the current side and stage it":                         "Résoudre avec la version actuelle et l’indexer",
 	"Resolve with the incoming side and stage it":                        "Résoudre avec la version entrante et l’indexer",
 	"Pick a side, then Continue.":                                        "Choisissez une version, puis cliquez sur Continuer.",
+	"Operation context":                                                  "Contexte d’opération",
 	"Git left conflict markers in this file. Choose a side, or edit them away and mark it resolved.": "Git a laissé des marqueurs de conflit dans ce fichier. Choisissez une version, ou supprimez les marqueurs dans l’éditeur et marquez le conflit comme résolu.",
 	"A rebase or bisect is active in this worktree.":                                                 "Un rebasage ou une bisection est en cours dans cet arbre de travail.",
 
