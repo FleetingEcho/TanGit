@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -131,6 +132,152 @@ func TestFailedActionOffersTheCommandLog(t *testing.T) {
 	}
 	if got := formatCommandLog(entries); !strings.Contains(got, "non-fast-forward") {
 		t.Fatalf("the command log does not hold Git's message: %q", got)
+	}
+}
+
+type rejectedPushSession struct{ fakeSession }
+
+func (s rejectedPushSession) Push(context.Context) error {
+	return fmt.Errorf("push: %w: ! [rejected] main -> main (non-fast-forward)", repository.ErrPushRejected)
+}
+
+func (s rejectedPushSession) Pull(context.Context) error {
+	s.calls.record("pull")
+	return nil
+}
+
+func TestRejectedPushOffersPullBeforeRetry(t *testing.T) {
+	calls := &callRecorder{}
+	session := rejectedPushSession{fakeSession{
+		snapshot: repository.Snapshot{
+			Root:   "/work/project",
+			Branch: "main",
+			Branches: []repository.Branch{
+				{Name: "main", Head: true, UpstreamRemote: "origin", UpstreamBranch: "main"},
+			},
+		},
+		calls:      calls,
+		commandLog: repository.NewCommandLog(),
+	}}
+	a := newApp(fixedSessionOpener{session: session})
+	a.workspaceTab = sectionChanges
+	h := &harness{app: a, updates: newUpdates()}
+	h.tester = ui.NewTester(a.view, 1280, 800)
+	a.update = h.updates.update
+	a.path = "/work/project"
+	openFixture(t, h.tester)
+	h.settle(t)
+
+	if err := h.tester.Click("Push"); err != nil {
+		t.Fatal(err)
+	}
+	h.confirmAttentionForTest(t)
+	h.waitFor(t, "the pull-first notification", func() bool {
+		return slices.Contains(h.texts(), "Pull first, then push")
+	})
+	for _, want := range []string{
+		"The remote branch has changes you do not have locally. Pull and resolve any conflicts, then push again.",
+		"Pull now",
+		"View log",
+	} {
+		if !slices.Contains(h.texts(), want) {
+			t.Errorf("rejected-push notification is missing %q: %q", want, h.texts())
+		}
+	}
+	if calls.has("pull") {
+		t.Fatal("the rejected push pulled without the user's approval")
+	}
+	entries := a.commandLogEntries()
+	if got := formatCommandLog(entries); !strings.Contains(got, "non-fast-forward") {
+		t.Fatalf("the command log lost Git's rejection details: %q", got)
+	}
+
+	if err := h.tester.Click("Pull now"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if a.confirm == nil || a.confirm.title != "Pull" {
+		t.Fatalf("Pull now did not open the normal Pull confirmation: %+v", a.confirm)
+	}
+	h.confirmAttentionForTest(t)
+	h.waitFor(t, "the pull", func() bool { return calls.has("pull") })
+}
+
+type divergedPullSession struct{ fakeSession }
+
+func (s divergedPullSession) Pull(context.Context) error {
+	return fmt.Errorf("pull: %w: fatal: Need to specify how to reconcile divergent branches", repository.ErrPullDiverged)
+}
+
+func (s divergedPullSession) PullWithStrategy(_ context.Context, strategy repository.PullStrategy) error {
+	s.calls.record(fmt.Sprintf("pull-strategy:%d", strategy))
+	return nil
+}
+
+func TestDivergedPullOffersMergeAndRebaseRecovery(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		action   string
+		title    string
+		strategy repository.PullStrategy
+	}{
+		{name: "merge", action: "Merge", title: "Pull with merge", strategy: repository.PullMerge},
+		{name: "rebase", action: "Rebase", title: "Pull with rebase", strategy: repository.PullRebase},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			calls := &callRecorder{}
+			session := divergedPullSession{fakeSession{
+				snapshot: repository.Snapshot{
+					Root:   "/work/project",
+					Branch: "main",
+					Branches: []repository.Branch{
+						{Name: "main", Head: true, UpstreamRemote: "origin", UpstreamBranch: "main"},
+					},
+				},
+				calls:      calls,
+				commandLog: repository.NewCommandLog(),
+			}}
+			a := newApp(fixedSessionOpener{session: session})
+			a.workspaceTab = sectionChanges
+			h := &harness{app: a, updates: newUpdates()}
+			h.tester = ui.NewTester(a.view, 1280, 800)
+			a.update = h.updates.update
+			a.path = "/work/project"
+			openFixture(t, h.tester)
+			h.settle(t)
+
+			if err := h.tester.Click("Pull"); err != nil {
+				t.Fatal(err)
+			}
+			h.confirmAttentionForTest(t)
+			h.waitFor(t, "the divergence recovery notification", func() bool {
+				return slices.Contains(h.texts(), "Choose how to pull")
+			})
+			for _, want := range []string{
+				"Your local and remote branches have diverged. Merge preserves both histories; rebase replays your local commits on top of the remote tip.",
+				"Merge",
+				"Rebase",
+				"View log",
+			} {
+				if !slices.Contains(h.texts(), want) {
+					t.Errorf("divergence notification is missing %q: %q", want, h.texts())
+				}
+			}
+			if len(calls.all()) != 0 {
+				t.Fatalf("divergence recovery ran before a strategy was chosen: %v", calls.all())
+			}
+
+			if err := h.tester.Click(test.action); err != nil {
+				t.Fatal(err)
+			}
+			h.tester.Frame()
+			if a.confirm == nil || a.confirm.title != test.title {
+				t.Fatalf("%s did not open its confirmation: %+v", test.action, a.confirm)
+			}
+			h.confirmAttentionForTest(t)
+			wantCall := fmt.Sprintf("pull-strategy:%d", test.strategy)
+			h.waitFor(t, "the strategy-specific pull", func() bool { return calls.has(wantCall) })
+		})
 	}
 }
 

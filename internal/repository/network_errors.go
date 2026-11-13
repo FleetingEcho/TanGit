@@ -12,6 +12,7 @@ import (
 var (
 	ErrAuthentication      = errors.New("authentication failed; check your Git credentials or SSH agent")
 	ErrNoUpstream          = errors.New("branch has no upstream")
+	ErrPullDiverged        = errors.New("divergent branches; choose merge or rebase")
 	ErrPushRejected        = errors.New("push rejected; fetch and integrate the remote changes first")
 	ErrPushLeaseRejected   = errors.New("force push with lease rejected; the remote changed since your last fetch")
 	ErrPromptCancelled     = errors.New("credential prompt cancelled")
@@ -29,7 +30,7 @@ func safeNetworkError(err error, forceWithLease bool) error {
 		return err
 	}
 	for _, kind := range []error{
-		ErrAuthentication, ErrNoUpstream, ErrPushRejected, ErrPushLeaseRejected,
+		ErrAuthentication, ErrNoUpstream, ErrPullDiverged, ErrPushRejected, ErrPushLeaseRejected,
 		ErrPromptCancelled, ErrHostKeyVerification,
 	} {
 		if errors.Is(err, kind) {
@@ -58,6 +59,8 @@ func safeNetworkError(err error, forceWithLease bool) error {
 		"prompt was cancelled", "prompt was canceled",
 	):
 		kind = ErrPromptCancelled
+	case containsAny(lower, "need to specify how to reconcile divergent branches"):
+		kind = ErrPullDiverged
 	case containsAny(lower,
 		"authentication failed", "authentication required", "could not read username",
 		"could not read password", "invalid username or password", "invalid username or token",
