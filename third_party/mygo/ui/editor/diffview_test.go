@@ -349,6 +349,196 @@ func TestDiffViewerActiveSide(t *testing.T) {
 	}
 }
 
+// A diff's find bar stays above the separators and hunk headers over its
+// editor, so that all of its controls can be used.
+func TestDiffFindBarAboveSeparators(t *testing.T) {
+	const header = "@@ -1,5 +1,5 @@ header"
+	files, err := ParsePatch("--- a/x\n+++ b/x\n" + header + "\n a\n-old\n+new\n b\n-old\n+new\n c\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, layout := range []DiffLayout{DiffSplit, DiffUnified} {
+		t.Run(strconv.Itoa(int(layout)), func(t *testing.T) {
+			d := &DiffState{Layout: layout}
+			d.SetPatch(files[0])
+			d.Find("new")
+			tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 900, 400)
+			tt.Frame()
+			bar, ok := tt.AccessByRole(ui.RoleToolbar, "Find")
+			if !ok {
+				t.Fatalf("no find bar in %q", tt.Texts())
+			}
+			if b := bar.Bounds; b.X < 0 || b.Y < 0 || b.X+b.W > 900 || b.Y+b.H > 400 {
+				t.Fatalf("the find bar is not wholly in the window: %v", b)
+			}
+			headerBox, ok := tt.AccessByRole(ui.RoleGroup, header)
+			if !ok || bar.Bounds.Y >= headerBox.Bounds.Y+headerBox.Bounds.H {
+				t.Fatalf("the fixture does not overlap the find bar and header: bar %v, header %v", bar.Bounds, headerBox.Bounds)
+			}
+			if err := tt.Click("Next match"); err != nil {
+				t.Fatalf("the separator covers Next match: %v", err)
+			}
+			if current := d.eds[1].find.current; current != 1 {
+				t.Fatalf("Next match selected %d, want 1", current)
+			}
+			if err := tt.Click("Close"); err != nil {
+				t.Fatalf("the separator covers Close: %v", err)
+			}
+			tt.Frame()
+			if d.eds[1].find.open {
+				t.Fatal("Close left the find bar open")
+			}
+
+			// Reopening in the overlay keeps the query's focus, typing and
+			// keyboard navigation, and Escape restores the editor's keyboard.
+			if !d.Run(Find) {
+				t.Fatal("Run(Find) did not reopen the bar")
+			}
+			tt.Frame()
+			tt.Type("new")
+			tt.Frame()
+			f := &d.eds[1].find
+			if f.query != "new" || len(f.matches) != 2 {
+				t.Fatalf("typing in the reopened bar: query %q, %d matches", f.query, len(f.matches))
+			}
+			before := f.current
+			tt.Key(0, ui.KeyEnter)
+			tt.Frame()
+			if !f.open || f.current == before {
+				t.Fatalf("Enter did not move to another match: open %v, current %d before %d", f.open, f.current, before)
+			}
+			tt.Key(ui.Shift, ui.KeyEnter)
+			tt.Frame()
+			if f.current != before {
+				t.Fatalf("Shift+Enter selected %d, want %d", f.current, before)
+			}
+			nextMods, nextKey := ui.Modifiers(0), ui.KeyF3
+			previousMods, previousKey := ui.Shift, ui.KeyF3
+			if isMac() {
+				nextMods, nextKey = ui.Cmd, ui.KeyG
+				previousMods, previousKey = ui.Shift|ui.Cmd, ui.KeyG
+			}
+			tt.Key(nextMods, nextKey)
+			tt.Frame()
+			if f.current == before {
+				t.Fatal("the find-next shortcut did not move to another match")
+			}
+			tt.Key(previousMods, previousKey)
+			tt.Frame()
+			if f.current != before {
+				t.Fatalf("the find-previous shortcut selected %d, want %d", f.current, before)
+			}
+			tt.Key(0, ui.KeyEscape)
+			tt.Frame()
+			if f.open {
+				t.Fatal("Escape left the find bar open")
+			}
+		})
+	}
+}
+
+// A diff's go to line bar also stays above the hunk header over its top.
+func TestDiffGoToLineAboveSeparators(t *testing.T) {
+	const header = "@@ -1,5 +1,5 @@ header"
+	files, err := ParsePatch("--- a/x\n+++ b/x\n" + header + "\n a\n-old\n+new\n b\n-old\n+new\n c\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, layout := range []DiffLayout{DiffSplit, DiffUnified} {
+		t.Run(strconv.Itoa(int(layout)), func(t *testing.T) {
+			d := &DiffState{Layout: layout}
+			d.SetPatch(files[0])
+			if !d.Run(GoToLine) {
+				t.Fatal("Run(GoToLine) did not open the bar")
+			}
+			tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 440, 400)
+			tt.Frame()
+			bar, ok := tt.AccessByRole(ui.RoleDialog, "Go to line")
+			if !ok {
+				t.Fatalf("no go to line bar in %q", tt.Texts())
+			}
+			if b := bar.Bounds; b.X < 0 || b.Y < 0 || b.X+b.W > 440 || b.Y+b.H > 400 {
+				t.Fatalf("the go to line bar is not wholly in the window: %v", b)
+			}
+			if err := tt.Click("Go to line"); err != nil {
+				t.Fatalf("the separator covers the go to line field: %v", err)
+			}
+			tt.Type("2")
+			tt.Key(0, ui.KeyEnter)
+			tt.Frame()
+			if d.eds[1].goTo.open || d.CursorPos().Line != 1 {
+				t.Fatalf("go to line left the bar open %v at line %d, want closed at line 1", d.eds[1].goTo.open, d.CursorPos().Line)
+			}
+		})
+	}
+}
+
+// Finding in one side of a split diff also highlights the matching text
+// in the other, including added lines, without opening another find bar.
+func TestDiffFindHighlightsBothSides(t *testing.T) {
+	for _, active := range []DiffSide{DiffOld, DiffNew} {
+		t.Run(strconv.Itoa(int(active)), func(t *testing.T) {
+			d := &DiffState{
+				Old: NewBuffer("old view\nold\n"), New: NewBuffer("new view\nadded view\nnew\n"),
+				Layout: DiffSplit, ExpandUnchanged: true, oldActive: active == DiffOld,
+			}
+			var count, current int
+			d.RenderFindBar = func(c *ui.Context, element ui.Element, f *FindBar) {
+				DefaultFindBar(c, element, f)
+				count, current = f.Matches()
+			}
+			d.Find("view")
+			tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 900, 400)
+			tt.Frame()
+			if d.eds[1-int(active)].find.open {
+				t.Fatal("the other side opened a second find bar")
+			}
+			for side, want := range []int{1, 2} {
+				ed := &d.eds[side]
+				f := &frame{first: 0, last: ed.view.text.LineCount() - 1}
+				ed.prepare(f)
+				if len(f.matches) != want {
+					t.Errorf("side %d has %d highlighted matches, want %d", side, len(f.matches), want)
+				}
+			}
+			if count != 3 || current != 0 {
+				t.Fatalf("the bar shows match %d of %d, want 1 of 3", current+1, count)
+			}
+			selectedSide := func() int {
+				t.Helper()
+				selected := -1
+				for side := range d.eds {
+					ed := &d.eds[side]
+					p := ed.primary()
+					if !p.empty() && ed.slice(p.start(), p.end()) == "view" {
+						if selected >= 0 {
+							t.Fatal("more than one side has a match selected")
+						}
+						selected = side
+					}
+				}
+				return selected
+			}
+			nextSides := []int{1, 1, 0}
+			if active == DiffNew {
+				nextSides = []int{1, 0, 1}
+			}
+			for i, wantSide := range nextSides {
+				if err := tt.Click("Next match"); err != nil {
+					t.Fatal(err)
+				}
+				tt.Frame()
+				if got := selectedSide(); got != wantSide {
+					t.Fatalf("next %d selected side %d, want %d", i+1, got, wantSide)
+				}
+				if count != 3 || current != (i+1)%3 {
+					t.Fatalf("after next %d, the bar shows match %d of %d", i+1, current+1, count)
+				}
+			}
+		})
+	}
+}
+
 // The caret is in a hunk on the lines it changes, and in a deletion on
 // the line of the side without its lines where they were; after the last
 // line of a hunk, it is after it.

@@ -174,14 +174,31 @@ func (ed *editor) prepare(f *frame) {
 	v := &ed.view
 	t := &v.text
 	a, z := t.LineStart(f.first), t.LineEnd(f.last)
-	if ed.find.open {
-		ed.find.search(ed)
-		m := ed.find.matches
+	find := &ed.find
+	if !find.open {
+		find = nil
+		if ds, ok := ed.o.decor.(*diffSide); ok {
+			find = ds.peerFind(ed)
+		}
+	}
+	if find != nil {
+		find.search(ed)
+		m := find.matches
 		i := sort.Search(len(m), func(i int) bool { return m[i].end >= a })
 		j := sort.Search(len(m), func(i int) bool { return m[i].start > z })
 		f.matches = m[i:j]
-		if ed.find.current < len(m) {
-			f.current = m[ed.find.current]
+		if find == &ed.peerFind {
+			// A passive side's current match is the one selected there,
+			// not its cache's default first match.
+			p := ed.primary()
+			for _, match := range m {
+				if p.start() == match.start && p.end() == match.end {
+					f.current = match
+					break
+				}
+			}
+		} else if find.current >= 0 && find.current < len(m) {
+			f.current = m[find.current]
 		}
 	}
 	for _, b := range ed.o.textBgs {
