@@ -244,6 +244,23 @@ func TestProgressiveOpenShowsCoreBeforeDetailsFinish(t *testing.T) {
 	}
 }
 
+func TestProgressiveOpenRemembersLinkedWorktreeIdentity(t *testing.T) {
+	a, updated, session := progressiveOpenFixture(t, nil)
+	session.details.Worktrees = []repository.Worktree{
+		{Name: "project", Path: "/work/project", Branch: "main", Main: true},
+		{Name: "progressive", Path: "/work/progressive", Branch: "feature", Current: true},
+	}
+	if len(a.recentRepositories) != 1 || a.recentRepositories[0].Worktree {
+		t.Fatalf("the core guessed the worktree identity: %+v", a.recentRepositories)
+	}
+
+	close(session.detailsRelease)
+	updated.waitForUpdate(t)
+	if len(a.recentRepositories) != 1 || !a.recentRepositories[0].Worktree {
+		t.Fatalf("details did not retain the linked-worktree badge: %+v", a.recentRepositories)
+	}
+}
+
 func TestProgressiveOpenDefaultsHistoryAndGraphToCurrentBranch(t *testing.T) {
 	a, updated, session := progressiveOpenFixture(t, nil)
 	close(session.detailsRelease)

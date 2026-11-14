@@ -124,7 +124,8 @@ func TestHighlightedCommandCopiesWithoutInsertedWhitespace(t *testing.T) {
 }
 
 func TestVisibleCommandLogRequestsRepaintForNewCommands(t *testing.T) {
-	a, _, _ := realCommandHarness(t)
+	a := newApp(&recordedOpener{})
+	a.update = newUpdates().update
 	a.openCommandLog()
 	invalidations := 0
 	previous := a.update

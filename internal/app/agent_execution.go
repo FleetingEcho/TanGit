@@ -12,6 +12,12 @@ import (
 // worktree. Test execution is an operation on the task, not a task lifecycle
 // transition: running or passing tests never implies review readiness.
 func (a *app) runAgentTests(taskID string) {
+	a.startAgentTests(taskID)
+}
+
+// startAgentTests reports whether a live test terminal was started or selected.
+// Batch coordination uses that result to keep capacity-limited work queued.
+func (a *app) startAgentTests(taskID string) bool {
 	var task agentwork.Task
 	found := false
 	for _, candidate := range a.agents.tasks {
@@ -22,20 +28,20 @@ func (a *app) runAgentTests(taskID string) {
 		}
 	}
 	if !found || task.Status == agentwork.StatusArchived || a.agents.mutating[taskID] {
-		return
+		return false
 	}
 	// Selecting an existing test terminal is a no-op for the durable result.
 	if a.selectAgentOperationTerminal(agentTestOperationID(taskID)) {
-		return
+		return true
 	}
 	store, err := a.ensureAgentStore()
 	if err != nil {
 		a.notify("error", "Could not run agent tests", safeError(err))
-		return
+		return false
 	}
 	requestPath, err := store.RequestFile(task.ID)
 	if err != nil {
-		return
+		return false
 	}
 	// Expand only trusted profile text, and perform no setup command or task
 	// status transition for this independent operation.
@@ -43,10 +49,10 @@ func (a *app) runAgentTests(taskID string) {
 	command := shellCommandForTerminal(expanded)
 	if len(command) == 0 {
 		a.notify("warning", "Agent test command is not configured", "Set a test command for this task in Settings → Commands.")
-		return
+		return false
 	}
 	if !a.openAgentTestTerminal(task, command, requestPath) {
-		return
+		return false
 	}
 	startedAt := time.Now().UTC()
 	a.mutateAgentTask(task.ID, func(current *agentwork.Task) error {
@@ -57,25 +63,116 @@ func (a *app) runAgentTests(taskID string) {
 		}
 		return nil
 	})
+	return true
 }
 
-func (a *app) agentTestTerminalExited(taskID string, code int) {
-	finishedAt := time.Now().UTC()
-	a.mutateAgentTask(taskID, func(task *agentwork.Task) error {
+// runAgentProfile starts the profile's development/run command independently
+// of agent execution and test reporting. Its terminal is still bound to the
+// exact task/worktree and carries the same resource-isolation environment.
+func (a *app) runAgentProfile(taskID string) {
+	var task agentwork.Task
+	found := false
+	for _, candidate := range a.agents.tasks {
+		if candidate.ID == taskID {
+			task = candidate.Clone()
+			found = true
+			break
+		}
+	}
+	if !found || task.Status == agentwork.StatusArchived {
+		return
+	}
+	if a.selectAgentOperationTerminal(agentRunOperationID(taskID)) {
+		return
+	}
+	store, err := a.ensureAgentStore()
+	if err != nil {
+		a.notify("error", "Could not run agent profile", safeError(err))
+		return
+	}
+	requestPath, err := store.RequestFile(task.ID)
+	if err != nil {
+		return
+	}
+	command := shellCommandForTerminal(a.expandAgentTaskCommand(task, task.Profile.RunCommand, requestPath))
+	if len(command) == 0 {
+		a.notify("warning", "Agent run command is not configured", "Add a run command and any required port, database, or cache resources to this task profile.")
+		return
+	}
+	a.openAgentRunTerminal(task, command, requestPath)
+}
+
+// agentTestCompletion preserves the difference between a process outcome and
+// a test that never reported one. Startup failure and manual termination are
+// failures without an invented process exit code.
+type agentTestCompletion struct {
+	generation uint64
+	exitCode   *int
+	detail     string
+	finishedAt time.Time
+}
+
+func agentTestExitCompletion(code int) agentTestCompletion {
+	return agentTestCompletion{exitCode: &code, finishedAt: time.Now().UTC()}
+}
+
+func agentTestFailureCompletion(detail string) agentTestCompletion {
+	return agentTestCompletion{detail: detail, finishedAt: time.Now().UTC()}
+}
+
+func (a *app) recordAgentTestCompletion(taskID string, completion agentTestCompletion) {
+	a.recordAgentTestCompletionAtGeneration(taskID, a.generation, completion)
+}
+
+func (a *app) recordAgentTestCompletionAtGeneration(taskID string, generation uint64, completion agentTestCompletion) {
+	completion.generation = generation
+	// A very fast process can finish before the initial Running write returns.
+	// Keep its outcome until that durable mutation releases the per-task lock.
+	if a.agents.mutating[taskID] {
+		if a.agents.testCompletions == nil {
+			a.agents.testCompletions = map[string]agentTestCompletion{}
+		}
+		if _, pending := a.agents.testCompletions[taskID]; !pending {
+			a.agents.testCompletions[taskID] = completion
+		}
+	} else {
+		a.persistAgentTestCompletion(taskID, completion)
+	}
+	a.finishAgentBatchTest(taskID, completion)
+}
+
+func (a *app) persistAgentTestCompletion(taskID string, completion agentTestCompletion) {
+	a.mutateAgentTaskAtGeneration(taskID, completion.generation, func(task *agentwork.Task) error {
 		result := agentwork.TestResult{}
 		if task.LastTest != nil {
 			result = task.LastTest.Clone()
 		}
 		result.Status = agentwork.TestStatusFailed
-		if code == 0 {
+		if completion.exitCode != nil && *completion.exitCode == 0 {
 			result.Status = agentwork.TestStatusPassed
 		}
-		result.ExitCode = &code
-		result.FinishedAt = finishedAt
+		result.ExitCode = nil
+		if completion.exitCode != nil {
+			code := *completion.exitCode
+			result.ExitCode = &code
+		}
+		result.FinishedAt = completion.finishedAt
 		task.LastTest = &result
 		// In particular, do not derive Status or ReadyForReview from a test exit.
 		return nil
 	})
+}
+
+func (a *app) flushAgentTestCompletion(taskID string) {
+	if a.agents.mutating[taskID] {
+		return
+	}
+	completion, pending := a.agents.testCompletions[taskID]
+	if !pending {
+		return
+	}
+	delete(a.agents.testCompletions, taskID)
+	a.persistAgentTestCompletion(taskID, completion)
 }
 
 const (

@@ -1903,6 +1903,38 @@ func TestResolveContinueAndAbortMerge(t *testing.T) {
 	}
 }
 
+func TestLinkedWorktreeSnapshotUsesItsOwnBranch(t *testing.T) {
+	mainDir, _ := newHistoryEditingSession(t)
+	writeHistoryCommit(t, mainDir, "base.txt", "base", "base")
+	linkedDir := filepath.Join(t.TempDir(), "feature-worktree")
+	runGit(t, mainDir, "worktree", "add", "-b", "feature", linkedDir, "main")
+
+	session, err := (Opener{}).Open(context.Background(), linkedDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := session.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Branch != "feature" {
+		t.Fatalf("linked-worktree branch = %q, want feature", snapshot.Branch)
+	}
+	foundCurrent := false
+	for _, worktree := range snapshot.Worktrees {
+		if !worktree.Current {
+			continue
+		}
+		foundCurrent = true
+		if worktree.Path != linkedDir || worktree.Main || worktree.Branch != "feature" {
+			t.Fatalf("current linked-worktree identity = %+v", worktree)
+		}
+	}
+	if !foundCurrent {
+		t.Fatalf("linked worktree is not current in %#v", snapshot.Worktrees)
+	}
+}
+
 func TestWorktreeLifecycle(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")

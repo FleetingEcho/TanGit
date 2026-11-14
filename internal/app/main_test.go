@@ -119,6 +119,15 @@ func (f fakeSession) Snapshot(context.Context) (repository.Snapshot, error) {
 	return f.snapshot, nil
 }
 
+func (f fakeSession) AgentTargetStatus(context.Context, string) (repository.AgentTargetStatus, error) {
+	return repository.AgentTargetStatus{}, nil
+}
+
+func (f fakeSession) CopyAgentIgnoredFiles(_ context.Context, sourceWorktree string, relativePaths []string) error {
+	f.calls.record("copy-agent-ignored:" + sourceWorktree + ":" + strings.Join(relativePaths, ","))
+	return nil
+}
+
 func (f fakeSession) ReviewedFiles(context.Context, []repository.File) (map[string]bool, error) {
 	if f.reviewErr != nil {
 		return nil, f.reviewErr
@@ -971,7 +980,7 @@ func TestViewOpensRepository(t *testing.T) {
 	if err := tt.Click("feature-tree"); err != nil {
 		t.Fatal(err)
 	}
-	if !tt.HasText("Open worktree") || !tt.HasText("Remove…") {
+	if !tt.HasText("Open worktree") || !tt.HasText("Remove worktree…") {
 		t.Fatalf("worktree actions not shown in texts %q", tt.Texts())
 	}
 	if err := tt.Click("New worktree…"); err != nil {

@@ -125,9 +125,11 @@ func TestCustomPatchCollectsPreviewsExportsAndApplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-dialog.done
-	h.waitFor(t, "the exported patch", func() bool {
-		_, err := os.Stat(destination)
-		return err == nil
+	// os.WriteFile exposes the new path before all of its bytes are visible.
+	// Wait for the write's completion callback rather than racing os.Stat with
+	// the write, so the comparison below always reads the complete export.
+	h.waitFor(t, "the export completion", func() bool {
+		return containsText(h.texts(), "Saved the diff")
 	})
 	exported, err := os.ReadFile(destination)
 	if err != nil {

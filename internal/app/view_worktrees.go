@@ -120,6 +120,14 @@ func (a *app) openSelectedWorktree() {
 	a.openWorktree(a.snapshot.Worktrees[a.selectedWorktree])
 }
 
+func (a *app) openSelectedWorktreeInTab() {
+	worktree, ok := a.selectedWorktreeValue()
+	if !ok || worktree.Missing || worktree.Current || a.openTab == nil {
+		return
+	}
+	a.openTab(a.worktreeOpenPath(worktree.Path))
+}
+
 func (a *app) selectedWorktreeValue() (repository.Worktree, bool) {
 	if a.selectedWorktree < 0 || a.selectedWorktree >= len(a.snapshot.Worktrees) {
 		return repository.Worktree{}, false
@@ -369,15 +377,32 @@ func (a *app) beginWorktreePrunePreview() {
 }
 
 func (a *app) beginPruneWorktrees() {
+	if a.actionBusy || a.session == nil || a.worktreePruneLoading || len(a.worktreePrunePreview) == 0 {
+		return
+	}
 	expire := strings.TrimSpace(a.worktreePruneExpire)
-	a.beginRepositoryActionMessage(tr("Pruned stale worktree records"), "",
-		func(ctx context.Context, session repository.Session) error {
-			return session.PruneWorktrees(ctx, expire)
-		}, func() {
-			a.showWorktreePruneForm = false
-			a.worktreePrunePreview = nil
-			a.worktreePruneError = ""
-		})
+	recordCount := len(a.worktreePrunePreview)
+	expiration := expire
+	if expiration == "" {
+		expiration = tr("Git's default expiration")
+	}
+	a.askConfirm(confirmRequest{
+		title:        "Prune Worktrees",
+		message:      "Permanently prune the previewed stale worktree records?",
+		detail:       trf("Git will remove %d administrative record%s using expiration %q. This does not delete valid worktrees or their files.", recordCount, pluralS(recordCount), expiration),
+		confirmLabel: "Prune records",
+		destructive:  true,
+		run: func() {
+			a.beginRepositoryActionMessage(tr("Pruned stale worktree records"), "",
+				func(ctx context.Context, session repository.Session) error {
+					return session.PruneWorktrees(ctx, expire)
+				}, func() {
+					a.showWorktreePruneForm = false
+					a.worktreePrunePreview = nil
+					a.worktreePruneError = ""
+				})
+		},
+	})
 }
 
 func (a *app) openSelectedWorktreeMoveForm() {
@@ -436,6 +461,10 @@ func (a *app) worktreeRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) 
 		if m.Item(tr("Open worktree")).Shortcut(0, ui.KeyO).Disabled(a.actionBusy).Chosen() {
 			a.selectWorktreeRow(row.Index)
 			a.openWorktree(worktree)
+		}
+		if a.openTab != nil && m.Item(tr("Open worktree in new tab")).Disabled(a.actionBusy).Chosen() {
+			a.selectWorktreeRow(row.Index)
+			a.openSelectedWorktreeInTab()
 		}
 	}
 	if !worktree.Missing {
@@ -629,7 +658,7 @@ func (a *app) worktreePruneFormModal(c *ui.Context) {
 					a.showWorktreePruneForm = false
 					a.worktreePruneToken++
 				}
-				if ui.PrimaryButton(c, tr("Prune shown records")).Disabled(a.actionBusy || a.worktreePruneLoading || len(a.worktreePrunePreview) == 0).Clicked() {
+				if ui.PrimaryButton(c, tr("Prune shown records…")).Disabled(a.actionBusy || a.worktreePruneLoading || len(a.worktreePrunePreview) == 0).Clicked() {
 					a.beginPruneWorktrees()
 				}
 			})
@@ -649,16 +678,10 @@ func (a *app) worktreesView(c *ui.Context) {
 						}, func() {
 							paneCollapseButton(c, &a.workspacePaneCollapsed[sectionWorktrees], "Collapse list pane")
 						})
-					ui.Row(c).Gap(8).Children(func() {
-						if ui.Button(c, tr("New temporary…")).Disabled(a.actionBusy).Clicked() {
-							a.beginTemporaryWorktree()
-						}
-						if ui.Button(c, tr("Repair metadata")).Disabled(a.actionBusy).Clicked() {
-							a.repairWorktrees()
-						}
-						if ui.Button(c, tr("Prune stale records…")).Disabled(a.actionBusy).Clicked() {
-							a.confirmPruneWorktrees()
-						}
+					ui.Row(c).Gap(6).Children(func() {
+						flatIconButton(c, "New temporary worktree…", "Create a temporary detached worktree", historyIcon, 14, 4, a.actionBusy, a.beginTemporaryWorktree)
+						flatIconButton(c, "Repair worktree metadata…", "Repair links after moving the repository or its worktrees", settingsIcon, 14, 4, a.actionBusy, a.repairWorktrees)
+						flatIconButton(c, "Prune stale worktree records…", "Preview and prune stale administrative records", trashIcon, 14, 4, a.actionBusy, a.confirmPruneWorktrees)
 					})
 					if len(a.snapshot.Worktrees) == 0 {
 						ui.Column(c).Grow(1).Center().Children(func() {
@@ -717,43 +740,32 @@ func (a *app) worktreesView(c *ui.Context) {
 						return
 					}
 					worktree := a.snapshot.Worktrees[a.selectedWorktree]
-					ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+					ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 						ui.Text(c, worktree.Name).FontSize(18).Bold().Grow(1)
 						if !worktree.Current && !worktree.Missing {
-							if ui.PrimaryButton(c, tr("Open worktree")).Disabled(a.actionBusy).Clicked() {
-								a.openSelectedWorktree()
-							}
-						}
-						if !worktree.Current && !worktree.Main {
-							if ui.Button(c, tr("Remove…")).Disabled(a.actionBusy).Clicked() {
-								a.confirmDeleteSelectedWorktree()
+							primaryIconButton(c, "Open worktree", "Open this worktree in TanGit (O)", folderOpenIcon, a.actionBusy, a.openSelectedWorktree)
+							if a.openTab != nil {
+								flatIconButton(c, "Open worktree in new tab", "Open this worktree in a separate TanGit tab, or focus its existing tab", plusIcon, 14, 4, a.actionBusy, a.openSelectedWorktreeInTab)
 							}
 						}
 						if !worktree.Main {
-							lockLabel := "Lock"
+							lockLabel, lockTooltip, lockGlyph := "Lock worktree…", "Protect this worktree from pruning, moving, or removal (L)", lockIcon
 							if worktree.Locked {
-								lockLabel = "Unlock"
+								lockLabel, lockTooltip, lockGlyph = "Unlock worktree", "Allow this worktree to be pruned, moved, or removed (L)", unlockIcon
 							}
-							if ui.Button(c, tr(lockLabel)).Disabled(a.actionBusy).Clicked() {
-								a.toggleSelectedWorktreeLock()
-							}
+							flatIconButton(c, lockLabel, lockTooltip, lockGlyph, 14, 4, a.actionBusy, a.toggleSelectedWorktreeLock)
+						}
+						if !worktree.Current && !worktree.Main {
+							flatIconButton(c, "Remove worktree…", "Remove this worktree after confirmation (D)", trashIcon, 14, 4, a.actionBusy, a.confirmDeleteSelectedWorktree)
 						}
 					})
 					ui.Text(c, worktree.Path).TextColor(theme.TextMuted).Selectable()
-					ui.Row(c).Gap(8).Children(func() {
-						if ui.Button(c, tr("Open in editor")).Disabled(a.actionBusy || worktree.Missing).Clicked() {
-							a.openSelectedWorktreeInEditor()
-						}
-						if ui.Button(c, tr("Terminal")).Disabled(a.actionBusy || worktree.Missing).Clicked() {
-							a.openSelectedWorktreeTerminal()
-						}
-						if ui.Button(c, tr("Compare")).Disabled(a.actionBusy || worktree.Head == "").Clicked() {
-							a.compareSelectedWorktree()
-						}
+					ui.Row(c).Gap(6).Children(func() {
+						flatIconButton(c, "Open worktree in editor", "Open this worktree in your editor", editIcon, 14, 4, a.actionBusy || worktree.Missing, a.openSelectedWorktreeInEditor)
+						flatIconButton(c, "Open worktree terminal", "Open a terminal in this worktree", terminalIcon, 14, 4, a.actionBusy || worktree.Missing, a.openSelectedWorktreeTerminal)
+						flatIconButton(c, "Compare worktree", "Compare the current worktree with this worktree's HEAD", compareIcon, 14, 4, a.actionBusy || worktree.Head == "", a.compareSelectedWorktree)
 						if !worktree.Current && !worktree.Main && !worktree.Missing {
-							if ui.Button(c, tr("Move…")).Disabled(a.actionBusy).Clicked() {
-								a.openSelectedWorktreeMoveForm()
-							}
+							flatIconButton(c, "Move worktree…", "Move this worktree to another path", moveWorktreeIcon, 14, 4, a.actionBusy, a.openSelectedWorktreeMoveForm)
 						}
 					})
 					if worktree.Current || worktree.Main {

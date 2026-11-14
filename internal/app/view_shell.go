@@ -121,6 +121,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.worktreeRepairFormModal(c)
 	a.worktreePruneFormModal(c)
 	a.submoduleFormModal(c)
+	a.homeWorktreesModal(c)
 	a.recentRenameModal(c)
 	a.codeFileFormModal(c)
 	a.terminalRenameModal(c)
@@ -497,7 +498,7 @@ func (a *app) recentSectionView(c *ui.Context) {
 				})
 				return
 			}
-			ui.GridView(c, &a.recentGrid, len(a.visibleRecent), 300, 128, func(i int) {
+			ui.GridView(c, &a.recentGrid, len(a.visibleRecent), 300, 152, func(i int) {
 				a.recentCardView(c, a.visibleRecent[i], services)
 			}).FillWidth()
 		})
@@ -537,7 +538,35 @@ func (a *app) recentCardView(c *ui.Context, i int, services ui.Services) {
 				}
 				ui.Text(c, repo.Path).TextColor(theme.TextMuted).
 					FontSize(theme.FontSize - 2).SingleLine().Tooltip(repo.Path)
+				if repo.Worktree && strings.TrimSpace(repo.RepositoryPath) != "" {
+					ownerPath := repo.RepositoryPath
+					owner := tr("Main worktree") + " · " + repoName(ownerPath)
+					ui.Text(c, owner).TextColor(theme.Text).
+						FontSize(theme.FontSize - 2).SingleLine().
+						Tooltip(tr("Main worktree") + ": " + ownerPath)
+				}
 			})
+			// Existing checkouts are one click away from the card, without
+			// opening the source repository first or replacing the whole card.
+			worktrees := ui.ButtonBase(c).Size(28, 28).Radius(theme.Radius).Center().
+				Label(tr("Open worktree") + " " + repo.Path).
+				Tooltip(tr("Choose a main or linked worktree to open"))
+			if worktrees.Hovered() {
+				worktrees.Background(theme.SurfacePressed)
+			}
+			worktrees.Children(func() {
+				ui.Icon(c, worktreesIcon).FontSize(17).TextColor(theme.TextMuted)
+			})
+			// Only the card whose menu is active owns the shared open state.
+			// Binding every card to it makes the next card steal and close the
+			// menu during the same frame, especially when the cards are compact.
+			menuOptions := ui.PopoverMenuButtonOptions{At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd}
+			if a.homeWorktrees.source == repo.Path {
+				menuOptions.Open = &a.homeWorktrees.menuOpen
+			}
+			worktrees.PopoverMenuButton(func(m *ui.Menu) {
+				a.homeWorktreeMenu(m, repo.Path)
+			}, menuOptions)
 			// The configured-editor action sits in the card's quiet top-right
 			// corner, apart from the click that opens the repository in TanGit.
 			editor := ui.ButtonBase(c).Size(28, 28).Radius(theme.Radius).Center().
@@ -553,6 +582,28 @@ func (a *app) recentCardView(c *ui.Context, i int, services ui.Services) {
 				a.launchEditor(repo.Path, 0)
 			}
 		})
+		identity := strings.TrimSpace(repo.Branch)
+		if identity == "(no branch)" {
+			identity = ""
+		}
+		if repo.Worktree {
+			if identity == "" {
+				identity = strings.TrimSpace(repo.WorktreeName)
+			}
+			if identity == "" {
+				identity = tr("Worktree")
+			} else {
+				identity = tr("Worktree") + " · " + identity
+			}
+		}
+		if identity != "" {
+			// Align the badge's visible label with the title and owner text. The
+			// 44px icon/gap offset less the badge's 6px inset leaves the labels
+			// together instead of putting the badge against the card's edge.
+			ui.Row(c).FillWidth().MinWidth(0).Padding(0, 0, 0, 38).Children(func() {
+				ui.Badge(c, identity).SingleLine().MaxWidth(240).MinWidth(0).Tooltip(identity)
+			})
+		}
 		ui.Box(c).Grow(1)
 		ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 			ui.Icon(c, historyIcon).FontSize(11).TextColor(theme.TextMuted)
@@ -595,6 +646,9 @@ func (a *app) recentCardView(c *ui.Context, i int, services ui.Services) {
 		}
 		if a.openTab != nil && m.Item(tr("Open in new tab")).Chosen() {
 			a.openTab(repo.Path)
+		}
+		if m.Item(tr("Open worktree")).Chosen() {
+			a.openHomeWorktrees(repo.Path)
 		}
 		if m.Item(tr("Copy path")).Chosen() {
 			a.notifyCopied(services, "repository path", repo.Path)
@@ -736,13 +790,34 @@ func (a *app) headerView(c *ui.Context) {
 			base = a.snapshot.Root
 		}
 		ui.Text(c, base).FontSize(16).Bold().Tooltip(a.snapshot.Root)
+		if a.openedLinkedWorktree() {
+			ui.Badge(c, tr("Linked worktree")).Tooltip(a.snapshot.Root)
+			if ownerPath := a.openedMainWorktreePath(); ownerPath != "" {
+				owner := tr("Main worktree") + " · " + repoName(ownerPath)
+				ui.Badge(c, owner).SingleLine().MaxWidth(240).MinWidth(0).
+					Label(tr("Main worktree") + ": " + ownerPath).Tooltip(owner + "\n" + ownerPath)
+			}
+		}
 
 		branch := a.snapshot.Branch
-		if branch == "" && a.snapshot.Head != "" {
-			branch = trf("detached %s", a.snapshot.Head)
+		branchTooltip := ""
+		// Git calls a detached HEAD "(no branch)". Name the checkout's actual
+		// kind instead, and keep its commit visible rather than losing detachment.
+		if a.snapshot.Head != "" && (branch == "" || branch == "(no branch)") {
+			shortHead := a.snapshot.Head
+			if len(shortHead) > 7 {
+				shortHead = shortHead[:7]
+			}
+			branch = trf("detached %s", shortHead)
+			branchTooltip = trf("detached %s", a.snapshot.Head)
+			if a.openedLinkedWorktree() {
+				branch = tr("Worktree") + " · " + branch
+			}
+		} else if branch == "" && a.openedLinkedWorktree() {
+			branch = tr("Worktree")
 		}
 		ui.Text(c, tr("●")).TextColor(theme.Success)
-		ui.Text(c, branch).Bold()
+		ui.Text(c, branch).Bold().Tooltip(branchTooltip)
 		if a.snapshot.ChangeCount() == 0 {
 			ui.Badge(c, tr("Clean"))
 		} else {

@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -92,6 +94,48 @@ func TestRepositoryEventsRefreshOnlyTheVisibleFocusedPage(t *testing.T) {
 	drainRefresh(t, updated, 1)
 	if a.refreshBusy {
 		t.Fatal("a blurred window started a filesystem-triggered read")
+	}
+}
+
+func TestLinkedWorktreeCodeAndCommitChangesRefreshTheVisiblePage(t *testing.T) {
+	parent := t.TempDir()
+	main := filepath.Join(parent, "main")
+	if err := os.Mkdir(main, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(t, main, "init", "--initial-branch=main")
+	runGitIn(t, main, "config", "user.name", "Worktree Watch Test")
+	runGitIn(t, main, "config", "user.email", "worktree-watch@example.com")
+	code := "package example\n\nconst Value = 1\n"
+	if err := os.WriteFile(filepath.Join(main, "code.go"), []byte(code), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(t, main, "add", "code.go")
+	runGitIn(t, main, "commit", "-m", "initial")
+	linked := filepath.Join(parent, "feature")
+	runGitIn(t, main, "worktree", "add", "-b", "feature", linked)
+
+	s, _, updated := newLiveShell(t, repository.Opener{})
+	a := openLiveRepo(t, s, updated, linked)
+	t.Cleanup(s.shutdown)
+	for a.repositoryDetailsLoading {
+		updated.waitForUpdate(t)
+	}
+	if !a.openedLinkedWorktree() {
+		t.Fatalf("opened %s without recognizing its linked-worktree identity: %+v", linked, a.snapshot.Worktrees)
+	}
+
+	if err := os.WriteFile(filepath.Join(linked, "code.go"), []byte(code+"const ExternalEdit = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for len(a.snapshot.Files) != 1 || a.snapshot.Files[0].Path != "code.go" {
+		updated.waitForUpdate(t)
+	}
+	oldHead := a.snapshot.HeadHash
+	runGitIn(t, linked, "add", "code.go")
+	runGitIn(t, linked, "commit", "-m", "external worktree update")
+	for a.snapshot.HeadHash == oldHead || len(a.snapshot.Files) != 0 {
+		updated.waitForUpdate(t)
 	}
 }
 

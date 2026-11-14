@@ -48,6 +48,7 @@ type terminalSessionState struct {
 	command     []string
 	environment []string
 	attempt     uint64
+	generation  uint64
 	startCancel context.CancelFunc
 	// Search belongs to this shell alone. Keeping the handle and latest status
 	// here preserves an independent find bar across splits and drag reordering.
@@ -324,6 +325,7 @@ func (a *app) startTerminalAt(index int) {
 	}
 	session.directory = terminalDisplayDirectory(dir)
 	generation := a.generation
+	session.generation = generation
 	ctx, cancel := context.WithCancel(context.Background())
 	session.startCancel = cancel
 	command := append([]string(nil), session.command...)
@@ -383,12 +385,16 @@ func (a *app) startTerminalAt(index int) {
 						return false
 					}
 					visible := a.terminalVisible()
-					taskID := current.agentTaskID
+					operationID := current.agentTaskID
+					// Closing is also a terminal-finalization path. Clear the operation
+					// here so this natural exit is recorded exactly once, with its real
+					// exit code rather than as a later manual close.
+					current.agentTaskID = ""
 					a.closeTerminalAt(currentIndex)
-					if taskID != "" {
-						a.agentTerminalExited(taskID, code)
+					if operationID != "" {
+						a.agentTerminalExitedAtGeneration(operationID, generation, code)
 					}
-					return visible
+					return visible || a.workspaceTab == sectionAgents
 				})
 			},
 		}
@@ -413,7 +419,7 @@ func (a *app) startTerminalAt(index int) {
 			_ = connection.Close()
 		}
 		a.updateChanged(func() bool {
-			_, current := a.terminalSessionByID(sessionID)
+			currentIndex, current := a.terminalSessionByID(sessionID)
 			if generation != a.generation || current == nil || attempt != current.attempt || current.pane != nil {
 				if pane != nil {
 					_ = pane.Close()
@@ -424,6 +430,17 @@ func (a *app) startTerminalAt(index int) {
 			current.loading = false
 			if err != nil {
 				current.err = safeError(err)
+				if current.agentTaskID != "" {
+					// Agent operations cannot remain Running just because asynchronous
+					// terminal construction failed. Remove the failed session, then
+					// record a failure with no invented process exit code.
+					visible := a.terminalVisible()
+					operationID := current.agentTaskID
+					current.agentTaskID = ""
+					a.closeTerminalAt(currentIndex)
+					a.agentTerminalFailedAtGeneration(operationID, generation, trf("Terminal startup failed: %s", safeError(err)))
+					return visible || a.workspaceTab == sectionAgents
+				}
 				return a.terminalVisible()
 			}
 			current.pane = pane
@@ -510,6 +527,15 @@ func (a *app) closeTerminalAt(index int) {
 		a.term.sessions[index].startCancel = nil
 	}
 	session := a.term.sessions[index]
+	// Close cleanup must finish before a completion can pump queued work into
+	// the released capacity. Natural exits clear agentTaskID first, so a manual
+	// close and its eventual late OnExit cannot finalize one operation twice.
+	defer func() {
+		if session.agentTaskID != "" {
+			a.agentTerminalFailedAtGeneration(session.agentTaskID, session.generation, tr("Terminal closed before the process reported an exit code."))
+		}
+		a.pumpAgentTestBatch()
+	}()
 	activeID := uint64(0)
 	if active := a.activeTerminal(); active != nil {
 		activeID = active.id

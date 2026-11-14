@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"context"
@@ -140,6 +141,9 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 		}
 		selected := a.captureSelection("")
 		a.snapshot = a.snapshot.WithDetails(details)
+		// The lightweight core has no worktree metadata. Now that the current
+		// checkout is known, retain its identity on its recent-repository card.
+		a.rememberOpened(a.path)
 		// The core has no branches, so its first default-filter attempt could
 		// not name the checked-out branch. Now that details supply it, start
 		// both commit pages on that branch as a full-snapshot open does.
@@ -156,6 +160,13 @@ func (a *app) setOpenError(path string, generation uint64, err error) {
 		return
 	}
 	a.cancelOpen = nil
+	if errors.Is(err, os.ErrNotExist) && a.recentWorktree(path) {
+		a.state = stateEmpty
+		a.errMessage = ""
+		a.offerInitPath = ""
+		a.notify("warning", tr("Open worktree"), tr("Repository folder no longer exists")+"\n"+path)
+		return
+	}
 	if errors.Is(err, repository.ErrNotRepository) {
 		if location, parseErr := workspace.Parse(path); parseErr == nil && location.IsRemote() {
 			a.state = stateEmpty
@@ -280,6 +291,10 @@ func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 	}
 	a.worktreeFilter = ""
 	a.resetAgentReview()
+	a.resetAgentOverlap()
+	a.resetAgentIntegration()
+	a.resetAgentUpdates()
+	a.resetAgentBatch()
 	a.agents.loadToken++
 	a.agents.tasks = nil
 	a.agents.loadedRepo = ""
@@ -288,6 +303,10 @@ func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 	a.agents.loading = false
 	a.agents.err = ""
 	a.agents.mutating = nil
+	// Pending terminal outcomes remain quarantined with their originating
+	// generation. Their old mutation callback must still persist them without
+	// admitting the old task into this repository's UI; dropping the entries
+	// here would strand the durable result as Running.
 	a.selectedWorktreeRow, a.selectedWorktree = -1, -1
 	if len(snapshot.Worktrees) > 0 {
 		a.selectedWorktreeRow, a.selectedWorktree = 0, 0

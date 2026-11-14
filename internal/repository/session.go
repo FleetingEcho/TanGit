@@ -280,6 +280,14 @@ const (
 
 type Session interface {
 	Snapshot(context.Context) (Snapshot, error)
+	// AgentTargetStatus captures this session's HEAD and base as commit IDs,
+	// then counts target-only and base-only commits without changing the
+	// checkout, scanning repository snapshots, or inferring task readiness.
+	AgentTargetStatus(context.Context, string) (AgentTargetStatus, error)
+	// CopyAgentIgnoredFiles copies only explicitly listed, validated Git-ignored
+	// regular files from a source worktree on the same host into this new task
+	// worktree. It never discovers files implicitly or overwrites destinations.
+	CopyAgentIgnoredFiles(ctx context.Context, sourceWorktree string, relativePaths []string) error
 	// RecentCommits reads up to limit commits reachable from any ref, newest
 	// first, skipping the newest skip, so History and the Graph page in
 	// below the page a snapshot carries.

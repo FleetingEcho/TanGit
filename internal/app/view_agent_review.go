@@ -20,6 +20,10 @@ func (a *app) agentReviewView(c *ui.Context) {
 				return
 			}
 			ui.Text(c, review.title).FontSize(18).Bold().Grow(1).SingleLine().Tooltip(review.title)
+			if current, total := agentBatchReviewCounts(a.agents.batch, review.taskID); current > 0 {
+				ui.Badge(c, trf("Review %d of %d", current, total))
+				flatIconButton(c, "Next review", "Finish inspecting this task and open the next selected review; no readiness is inferred", continueIcon, 14, 4, false, a.advanceAgentBatchReview)
+			}
 			_, canAccept := a.agentAcceptEligibility()
 			if ui.Button(c, tr("Accept commits")).Disabled(!canAccept).Clicked() {
 				a.confirmAcceptAgentCommits()

@@ -37,9 +37,12 @@ func (a *app) recordAgentActivity(taskID string, activity agentwork.Activity, mu
 		}
 		a.update(func() {
 			delete(a.agents.mutating, taskID)
+			a.flushAgentProcessCompletion(taskID)
+			a.flushAgentTestCompletion(taskID)
 			if generation != a.generation {
 				return
 			}
+			defer a.pumpAgentTestBatch()
 			if err != nil {
 				a.notify("error", "Could not record agent activity", safeError(err))
 				return

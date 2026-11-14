@@ -11,42 +11,90 @@ import (
 func (a *app) agentTaskFormModal(c *ui.Context) {
 	a.repositoryFormModal(c, &a.agents.formOpen, 760, "New Agent Task",
 		"Create a durable task and an isolated worktree for a coding agent.", fileBracesIcon, func() {
-			ui.TextInput(c, &a.agents.title).Label(tr("Task title")).Placeholder(tr("Add repository search")).AutoFocus()
-			ui.TextArea(c, &a.agents.request).Label(tr("Agent request")).Lines(4, 7).
-				Placeholder(tr("Describe the desired result and its acceptance criteria"))
-			ui.Select(c, &a.agents.base, a.worktreeRefOptions()).Label(tr("Base ref"))
-			ui.TextInput(c, &a.agents.branch).Label(tr("New branch")).Placeholder(tr("agent/repository-search"))
-			ui.Row(c).Gap(8).AlignItems(ui.End).Children(func() {
-				ui.TextInput(c, &a.agents.path).Label(tr("Worktree path")).Placeholder(tr("/path/to/agent-worktree")).Grow(1)
-				if ui.Button(c, tr("Use suggested path")).Clicked() {
-					a.agents.path = a.suggestedAgentTaskPath()
-				}
-			})
-			ui.Text(c, tr("Agent command templates may use {worktree}, {task}, {request}, {promptFile}, {base}, {branch}, and {sessionId}. Values are shell-quoted.")).TextColor(c.Theme().TextMuted)
-			ui.TextInput(c, &a.agents.launchCommand).Label(tr("Launch command")).Placeholder(tr("agent --prompt-file {promptFile}"))
-			ui.TextInput(c, &a.agents.resumeCommand).Label(tr("Resume command (optional)")).Placeholder(tr("agent resume {sessionId}"))
-			ui.Row(c).Gap(10).Children(func() {
-				ui.TextInput(c, &a.agents.setupCommand).Label(tr("Setup command (optional)")).Grow(1)
-				ui.TextInput(c, &a.agents.testCommand).Label(tr("Test command (optional)")).Grow(1)
-			})
-			ui.Checkbox(c, &a.agents.launchAfterAdd, tr("Launch after creating the worktree"))
-			ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
-				if ui.Button(c, tr("Cancel")).Disabled(a.actionBusy).Clicked() {
-					a.agents.formOpen = false
-				}
-				invalid := strings.TrimSpace(a.agents.title) == "" ||
-					strings.TrimSpace(a.agents.base) == "" ||
-					strings.TrimSpace(a.agents.branch) == "" || strings.TrimSpace(a.agents.branch) == "agent/" ||
-					strings.TrimSpace(a.agents.path) == "" ||
-					(a.agents.launchAfterAdd && strings.TrimSpace(a.agents.launchCommand) == "")
-				if ui.PrimaryButton(c, tr("Create agent task")).Disabled(a.actionBusy || invalid).Clicked() {
-					a.beginCreateAgentTask()
-				}
+			ui.Scroll(c).MaxHeight(620).FillWidth().Children(func() {
+				ui.Column(c).Gap(10).Children(func() {
+					ui.TextInput(c, &a.agents.title).Label(tr("Task title")).Placeholder(tr("Add repository search")).AutoFocus()
+					ui.TextArea(c, &a.agents.request).Label(tr("Agent request")).Lines(4, 7).
+						Placeholder(tr("Describe the desired result and its acceptance criteria"))
+					ui.Select(c, &a.agents.base, a.worktreeRefOptions()).Label(tr("Base ref"))
+					ui.TextInput(c, &a.agents.branch).Label(tr("New branch")).Placeholder(tr("agent/repository-search"))
+					ui.Row(c).Gap(8).AlignItems(ui.End).Children(func() {
+						ui.TextInput(c, &a.agents.path).Label(tr("Worktree path")).Placeholder(tr("/path/to/agent-worktree")).Grow(1)
+						if ui.Button(c, tr("Use suggested path")).Clicked() {
+							a.agents.path = a.suggestedAgentTaskPath()
+						}
+					})
+					ui.Text(c, tr("Workspace template")).Bold()
+					ui.Row(c).Gap(8).AlignItems(ui.End).Children(func() {
+						ui.Select(c, &a.agents.templateChoice, agentTemplateOptions(a.agents.templates)).Label(tr("Reusable profile")).Grow(1)
+						if ui.Button(c, tr("Apply")).Disabled(a.agents.templateChoice == agentManualProfile).Clicked() {
+							a.applySelectedAgentTemplate()
+						}
+						flatIconButton(c, "Delete selected workspace template…", "Delete the reusable profile without changing existing tasks", trashIcon, 14, 4,
+							a.agents.templateChoice == agentManualProfile || a.agents.templatesBusy, a.confirmDeleteAgentTemplate)
+					})
+					ui.Row(c).Gap(8).AlignItems(ui.End).Children(func() {
+						ui.TextInput(c, &a.agents.templateName).Label(tr("Template name")).Placeholder(tr("Go service with isolated database")).Grow(1)
+						if ui.Button(c, tr("Save profile as template")).Disabled(a.agents.templatesBusy || strings.TrimSpace(a.agents.templateName) == "").Clicked() {
+							a.saveAgentTemplate()
+						}
+					})
+					if len(a.agents.dependencies) > 0 {
+						ui.Text(c, tr("Prerequisite tasks (optional)")).Bold()
+						ui.Scroll(c).MaxHeight(90).FillWidth().Children(func() {
+							ui.Column(c).Gap(4).Children(func() {
+								for _, task := range a.agents.tasks {
+									if selected := a.agents.dependencies[task.ID]; selected != nil {
+										ui.Checkbox(c, selected, task.Title+" · "+agentShortHash(task.ID))
+									}
+								}
+							})
+						})
+					}
+					ui.Text(c, tr("Agent command templates may use {worktree}, {task}, {request}, {promptFile}, {base}, {branch}, {sessionId}, {port}, {database}, and {cacheDir}. Values are shell-quoted.")).TextColor(c.Theme().TextMuted)
+					ui.TextInput(c, &a.agents.launchCommand).Label(tr("Launch command")).Placeholder(tr("agent --prompt-file {promptFile}"))
+					ui.TextInput(c, &a.agents.resumeCommand).Label(tr("Resume command (optional)")).Placeholder(tr("agent resume {sessionId}"))
+					ui.Row(c).Gap(10).Children(func() {
+						ui.TextInput(c, &a.agents.setupCommand).Label(tr("Setup command (optional)")).Grow(1)
+						ui.TextInput(c, &a.agents.testCommand).Label(tr("Test command (optional)")).Grow(1)
+					})
+					ui.TextInput(c, &a.agents.runCommand).Label(tr("Development/run command (optional)")).Placeholder(tr("go run ./cmd/server --port {port}"))
+					ui.Row(c).Gap(10).Children(func() {
+						ui.TextArea(c, &a.agents.environment).Label(tr("Nonsecret environment (KEY=value per line)")).Lines(2, 4).Grow(1)
+						ui.TextArea(c, &a.agents.sparsePaths).Label(tr("Sparse checkout paths (optional)")).Lines(2, 4).Grow(1)
+					})
+					ui.TextArea(c, &a.agents.ignoredFiles).Label(tr("Ignored files to copy explicitly (optional)")).Lines(2, 3).
+						Placeholder(tr("One repository-relative file per line; never discovers or implicitly copies .env files"))
+					ui.Row(c).Gap(10).Children(func() {
+						ui.TextInput(c, &a.agents.developmentPort).Label(tr("Development port")).Placeholder(tr("0 or 1–65535"))
+						ui.TextInput(c, &a.agents.databaseName).Label(tr("Database name")).Placeholder(tr("task_search")).Grow(1)
+						ui.TextInput(c, &a.agents.cacheDirectory).Label(tr("Cache directory")).Placeholder(tr(".cache/agent")).Grow(1)
+					})
+					ui.Checkbox(c, &a.agents.launchAfterAdd, tr("Launch after creating the worktree"))
+					ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
+						if ui.Button(c, tr("Cancel")).Disabled(a.actionBusy).Clicked() {
+							a.agents.formOpen = false
+						}
+						_, profileErr := a.agentFormProfile()
+						invalid := profileErr != nil || strings.TrimSpace(a.agents.title) == "" ||
+							strings.TrimSpace(a.agents.base) == "" ||
+							strings.TrimSpace(a.agents.branch) == "" || strings.TrimSpace(a.agents.branch) == "agent/" ||
+							strings.TrimSpace(a.agents.path) == "" ||
+							(a.agents.launchAfterAdd && strings.TrimSpace(a.agents.launchCommand) == "")
+						if ui.PrimaryButton(c, tr("Create agent task")).Disabled(a.actionBusy || invalid).Clicked() {
+							a.beginCreateAgentTask()
+						}
+					})
+				})
 			})
 		})
 }
 
 func (a *app) agentsView(c *ui.Context) {
+	a.agentOverlapModal(c)
+	a.agentIntegrationModal(c)
+	a.agentUpdateModal(c)
+	a.agentBatchModal(c)
 	if a.agents.review.open {
 		a.agentReviewView(c)
 		return
@@ -60,10 +108,12 @@ func (a *app) agentsView(c *ui.Context) {
 						"Isolated coding-agent work with a durable task identity", a.actionBusy, a.beginNewAgentTask, func() {
 							paneCollapseButton(c, &a.workspacePaneCollapsed[sectionAgents], "Collapse list pane")
 						})
-					ui.Row(c).Gap(8).Children(func() {
-						if ui.Button(c, tr("Refresh tasks")).Clicked() {
-							a.refreshAgentTasks()
-						}
+					ui.Row(c).Gap(6).Children(func() {
+						flatIconButton(c, "Refresh tasks", "Reload durable Agent tasks", refreshIcon, 14, 4, a.agents.loading, a.refreshAgentTasks)
+						flatIconButton(c, "Analyze overlaps", "Compare committed and dirty results across active tasks", compareIcon, 14, 4, a.agents.loading || a.agents.overlap.loading, a.beginAgentOverlapAnalysis)
+						flatIconButton(c, "Integration dry run", "Merge explicitly selected captured commits in an isolated worktree", commitIcon, 14, 4, a.agents.loading || a.agentIntegration.running, a.beginAgentIntegrationDryRun)
+						flatIconButton(c, "Coordinated updates", "Fetch once, inspect target divergence, and rebase explicit tasks with checkpoints", refreshIcon, 14, 4, a.agents.loading || a.agents.updates.checking || a.agents.updates.running, a.beginAgentUpdateCenter)
+						flatIconButton(c, "Batch tests and reviews", "Queue explicit task tests and inspect selected results in a review queue", commandIcon, 14, 4, a.agents.loading, a.beginAgentBatchCenter)
 						if a.agents.loading {
 							ui.Text(c, tr("Loading…")).TextColor(theme.TextMuted)
 						}
@@ -116,6 +166,20 @@ func (a *app) agentsView(c *ui.Context) {
 					ui.Text(c, task.WorktreePath).TextColor(theme.TextMuted).Selectable()
 					ui.Textf(c, tr("Branch: %s"), task.Branch).Selectable()
 					ui.Textf(c, tr("Base: %s (%s)"), task.BaseRef, agentShortHash(task.BaseCommit)).Selectable()
+					if len(task.DependsOn) > 0 {
+						titles := make([]string, 0, len(task.DependsOn))
+						for _, dependencyID := range task.DependsOn {
+							title := agentShortHash(dependencyID)
+							for _, dependency := range a.agents.tasks {
+								if dependency.ID == dependencyID {
+									title = dependency.Title
+									break
+								}
+							}
+							titles = append(titles, title)
+						}
+						ui.Text(c, tr("Depends on: ")+strings.Join(titles, ", ")).TextColor(theme.TextMuted).Selectable()
+					}
 					for _, worktree := range a.snapshot.Worktrees {
 						if worktree.Path != task.WorktreePath {
 							continue
@@ -156,37 +220,33 @@ func (a *app) agentsView(c *ui.Context) {
 						ui.Text(c, tr("Updated: ")+agentTaskUpdated(task)).TextColor(theme.TextMuted)
 					}
 					busy := a.agents.mutating[task.ID] || a.actionBusy
-					ui.Row(c).Gap(8).Children(func() {
-						launchLabel := "Launch agent"
+					ui.Row(c).Gap(6).Children(func() {
+						launchLabel, launchTooltip := "Launch agent", "Launch this task in its explicit worktree"
 						if task.Status != agentwork.StatusReady {
-							launchLabel = "Resume agent"
+							launchLabel, launchTooltip = "Resume agent", "Resume this task in its explicit worktree"
 						}
 						canLaunch := task.Status != agentwork.StatusRunning && task.Status != agentwork.StatusArchived && task.Profile.LaunchCommand != ""
-						if ui.PrimaryButton(c, tr(launchLabel)).Disabled(busy || !canLaunch).Clicked() {
+						primaryIconButton(c, launchLabel, launchTooltip, continueIcon, busy || !canLaunch, func() {
 							a.launchAgentTask(task.ID, task.Status != agentwork.StatusReady)
-						}
-						if ui.Button(c, tr("Open worktree")).Disabled(a.actionBusy).Clicked() {
-							a.openSelectedAgentWorktree()
-						}
-						if ui.Button(c, tr("Review changes")).Disabled(a.actionBusy || task.Status == agentwork.StatusArchived).Clicked() {
+						})
+						flatIconButton(c, "Open worktree", "Open this task's worktree", folderOpenIcon, 14, 4, a.actionBusy, a.openSelectedAgentWorktree)
+						flatIconButton(c, "Review changes", "Review the fixed-Base final result", markReviewedIcon, 14, 4, a.actionBusy || task.Status == agentwork.StatusArchived, func() {
 							a.openAgentReview(task)
-						}
+						})
 						testRunning := task.LastTest != nil && task.LastTest.Status == agentwork.TestStatusRunning
-						if ui.Button(c, tr("Run tests")).Disabled(busy || testRunning || task.Profile.TestCommand == "").Clicked() {
-							a.runAgentTests(task.ID)
-						}
+						flatIconButton(c, "Run tests", "Run the profile's tests without changing review readiness", commandIcon, 14, 4,
+							busy || testRunning || task.Profile.TestCommand == "", func() { a.runAgentTests(task.ID) })
+						flatIconButton(c, "Run profile", "Run the development command with this task's resources", terminalIcon, 14, 4,
+							task.Status == agentwork.StatusArchived || task.Profile.RunCommand == "", func() { a.runAgentProfile(task.ID) })
 					})
-					ui.Row(c).Gap(8).Children(func() {
+					ui.Row(c).Gap(6).Children(func() {
 						canReview := task.Status == agentwork.StatusExited || task.Status == agentwork.StatusFailed
-						if ui.Button(c, tr("Mark ready for review")).Disabled(busy || !canReview).Clicked() {
-							a.setAgentTaskStatus(task, agentwork.StatusReadyForReview)
-						}
-						if ui.Button(c, tr("Mark done")).Disabled(busy || task.Status != agentwork.StatusReadyForReview).Clicked() {
-							a.setAgentTaskStatus(task, agentwork.StatusDone)
-						}
-						if ui.Button(c, tr("Archive task")).Disabled(busy || task.Status == agentwork.StatusArchived || task.Status == agentwork.StatusRunning).Clicked() {
-							a.confirmArchiveAgentTask(task)
-						}
+						flatIconButton(c, "Mark ready for review", "Explicitly mark this task ready; process exits and test results never do this automatically", markReviewedIcon, 14, 4,
+							busy || !canReview, func() { a.setAgentTaskStatus(task, agentwork.StatusReadyForReview) })
+						flatIconButton(c, "Mark done", "Mark a reviewed task done", commitIcon, 14, 4,
+							busy || task.Status != agentwork.StatusReadyForReview, func() { a.setAgentTaskStatus(task, agentwork.StatusDone) })
+						flatIconButton(c, "Archive task", "Archive only the task; preserve its worktree and changes", stashIcon, 14, 4,
+							busy || task.Status == agentwork.StatusArchived || task.Status == agentwork.StatusRunning, func() { a.confirmArchiveAgentTask(task) })
 					})
 					if task.Profile.LaunchCommand == "" {
 						ui.Text(c, tr("This task has no launch command. Create future tasks with launch, setup, and test commands to run agents directly.")).TextColor(theme.Warning)

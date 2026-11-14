@@ -10,6 +10,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"lazygitapp/internal/repository"
+	"lazygitapp/internal/workspace"
 )
 
 func TestRememberRecentMovesToFrontAndDropsDuplicates(t *testing.T) {
@@ -59,6 +60,57 @@ func TestRememberRecentSeparatesRemoteProfilesAndCanonicalizesRoots(t *testing.T
 	if len(references) != 2 {
 		t.Fatalf("identical roots on different SSH profiles were deduplicated: %+v", references)
 	}
+}
+
+func TestRememberOpenedKeepsRemoteWorktreeRepositoryIdentity(t *testing.T) {
+	a := newApp(fakeOpener{})
+	a.pathUserData = t.TempDir()
+	a.location = workspace.Location{Kind: workspace.SSH, ProfileID: "builder", Root: "/srv/feature"}
+	a.snapshot = repository.Snapshot{
+		Root: "/srv/feature", Branch: "feature",
+		Worktrees: []repository.Worktree{
+			{Name: "project", Path: "/srv/project", Branch: "main", Main: true},
+			{Name: "feature", Path: "/srv/feature", Branch: "feature", Current: true},
+		},
+	}
+	a.rememberOpened(a.location.String())
+	if len(a.recentRepositories) != 1 || a.recentRepositories[0].Path != "ssh://builder/srv/feature" ||
+		a.recentRepositories[0].RepositoryPath != "ssh://builder/srv/project" {
+		t.Fatalf("remote worktree ownership was not preserved: %+v", a.recentRepositories)
+	}
+}
+
+func TestRememberRecentStoresTheRealAbsoluteWorktreePath(t *testing.T) {
+	root := t.TempDir()
+	worktree := filepath.Join(root, "feature")
+	if err := os.Mkdir(worktree, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "feature-alias")
+	if err := os.Symlink(worktree, alias); err != nil {
+		t.Skipf("cannot create a worktree-path symlink: %v", err)
+	}
+	relative, err := filepath.Rel(mustWorkingDirectory(t), alias)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rememberRecent(nil, relative, 99)
+	real, err := filepath.EvalSymlinks(worktree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Path != real || !filepath.IsAbs(got[0].Path) {
+		t.Fatalf("worktree path is not its real absolute location: got %+v, want %q", got, real)
+	}
+}
+
+func mustWorkingDirectory(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }
 
 func TestRecentStoreRoundTrip(t *testing.T) {
@@ -319,6 +371,212 @@ func TestOpenedRepositoryIsRemembered(t *testing.T) {
 	}
 	if len(a.recentRepositories) != 1 || a.recentRepositories[0].Path != "/work/new-project" {
 		t.Fatalf("history not kept after an open: %+v", a.recentRepositories)
+	}
+}
+
+func TestLinkedWorktreeBadgeSurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+	first := newApp(fakeOpener{result: openResult{snapshot: repository.Snapshot{
+		Root: "/work/feature", Branch: "feature",
+		Worktrees: []repository.Worktree{
+			{Name: "project", Path: "/work/project", Branch: "main", Main: true},
+			{Name: "feature", Path: "/work/feature", Branch: "feature", Current: true},
+		},
+	}}})
+	first.pathUserData = dir
+	first.path = "/work/feature"
+	updated := newUpdates()
+	first.update = updated.update
+	first.beginOpen()
+	for range 8 {
+		if first.state == stateReady && len(updated.done) == 0 {
+			break
+		}
+		updated.waitForUpdate(t)
+	}
+	if first.state != stateReady {
+		t.Fatalf("linked worktree did not open: %q", first.errMessage)
+	}
+	if len(first.recentRepositories) != 1 || !first.recentRepositories[0].Worktree ||
+		first.recentRepositories[0].Branch != "feature" || first.recentRepositories[0].WorktreeName != "feature" ||
+		first.recentRepositories[0].RepositoryPath != "/work/project" {
+		t.Fatalf("linked-worktree identity was not remembered: %+v", first.recentRepositories)
+	}
+
+	second := newApp(fakeOpener{})
+	second.pathUserData = dir
+	second.loadHistory()
+	tt := ui.NewTester(second.view, 1280, 800)
+	tt.Frame()
+	if len(second.recentRepositories) != 1 || !second.recentRepositories[0].Worktree {
+		t.Fatalf("linked-worktree identity was not restored: %+v", second.recentRepositories)
+	}
+	badge, found := tt.Find("Worktree · feature")
+	if !found {
+		t.Fatalf("recent linked worktree has no branch badge: %v", tt.Texts())
+	}
+	path, found := tt.Find("/work/feature")
+	if !found || badge.Y <= path.Y {
+		t.Fatalf("worktree badge is not on the line beneath its path: path=%+v badge=%+v", path, badge)
+	}
+	owner, found := tt.Find("Main worktree · project")
+	if !found || owner.Y <= path.Y || owner.X != badge.X {
+		t.Fatalf("worktree card does not identify its owning repository cleanly: path=%+v owner=%+v badge=%+v texts=%v", path, owner, badge, tt.Texts())
+	}
+	if tt.HasText("Main worktree: /work/project") {
+		t.Fatalf("worktree card repeats the noisy owner path: %v", tt.Texts())
+	}
+}
+
+func TestLoadHistoryRecoversExistingWorktreeBadge(t *testing.T) {
+	repositories := t.TempDir()
+	mainRoot := filepath.Join(repositories, "project")
+	linkedRoot := filepath.Join(repositories, "feature")
+	linkedAlias := filepath.Join(repositories, "feature-alias")
+	linkedGitDir := filepath.Join(mainRoot, ".git", "worktrees", "feature")
+	write := func(path, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(mainRoot, ".git", "HEAD"), "ref: refs/heads/main\n")
+	write(filepath.Join(linkedRoot, ".git"), "gitdir: "+linkedGitDir+"\n")
+	write(filepath.Join(linkedGitDir, "commondir"), "../..\n")
+	write(filepath.Join(linkedGitDir, "HEAD"), "ref: refs/heads/feature\n")
+	if err := os.Symlink(linkedRoot, linkedAlias); err != nil {
+		t.Skipf("cannot create a worktree-path symlink: %v", err)
+	}
+
+	historyDir := t.TempDir()
+	old := []recentRepository{
+		{Path: mainRoot, LastOpened: 1},
+		{Path: linkedAlias, LastOpened: 2},
+	}
+	if err := saveRecentRepositories(historyDir, old); err != nil {
+		t.Fatal(err)
+	}
+	a := newApp(fakeOpener{})
+	a.pathUserData = historyDir
+	a.loadHistory()
+	if len(a.recentRepositories) != 2 || a.recentRepositories[0].Branch != "main" ||
+		a.recentRepositories[0].Worktree || !a.recentRepositories[1].Worktree ||
+		a.recentRepositories[1].Branch != "feature" || a.recentRepositories[1].WorktreeName != "feature" ||
+		a.recentRepositories[1].Path != linkedRoot || a.recentRepositories[1].RepositoryPath != mainRoot {
+		t.Fatalf("existing card identities were not recovered: %+v", a.recentRepositories)
+	}
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	if _, found := tt.Find("Worktree · feature"); !found {
+		t.Fatalf("older linked-worktree card has no badge: %v", tt.Texts())
+	}
+	if _, found := tt.Find(linkedRoot); !found {
+		t.Fatalf("worktree card does not show its real absolute path: %v", tt.Texts())
+	}
+	if _, found := tt.Find(linkedAlias); found {
+		t.Fatalf("worktree card still shows its alias instead of its real path: %v", tt.Texts())
+	}
+	if _, found := tt.Find("Main worktree · " + repoName(mainRoot)); !found {
+		t.Fatalf("worktree card does not show its owning repository: %v", tt.Texts())
+	}
+}
+
+func TestRecentCardIdentityBadgeIsBelowPath(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		repo recentRepository
+		want string
+	}{
+		{
+			name: "main repository branch",
+			repo: recentRepository{Path: "/work/project", Branch: "main", LastOpened: timeNow()},
+			want: "main",
+		},
+		{
+			name: "detached worktree name",
+			repo: recentRepository{Path: "/work/feature", Worktree: true, WorktreeName: "feature-tree", Branch: "(no branch)", LastOpened: timeNow()},
+			want: "Worktree · feature-tree",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, tt, _ := recentTester(t, test.repo)
+			path, pathFound := tt.Find(test.repo.Path)
+			badge, badgeFound := tt.Find(test.want)
+			if !pathFound || !badgeFound {
+				t.Fatalf("missing path or identity badge %q: %v", test.want, tt.Texts())
+			}
+			if badge.Y <= path.Y {
+				t.Fatalf("identity badge is not beneath the path: path=%+v badge=%+v", path, badge)
+			}
+		})
+	}
+}
+
+func TestRecentCardLongIdentityBadgeStaysInsideCard(t *testing.T) {
+	name := strings.Repeat("typography-window-", 12)
+	repo := recentRepository{
+		Path: "/work/long-feature", Worktree: true, WorktreeName: name,
+		Branch: "(no branch)", LastOpened: timeNow(),
+	}
+	_, tt, _ := recentTester(t, repo)
+	card, cardFound := tt.Find("Open " + repo.Path)
+	badge, badgeFound := tt.Find("Worktree · " + name)
+	if !cardFound || !badgeFound {
+		t.Fatalf("long identity badge is missing: %v", tt.Texts())
+	}
+	if badge.W > 240 || badge.X < card.X || badge.X+badge.W > card.X+card.W {
+		t.Fatalf("long identity badge escaped its card: card=%+v badge=%+v", card, badge)
+	}
+}
+
+func TestRecentWorktreeCardFooterHasBottomClearance(t *testing.T) {
+	repo := recentRepository{
+		Path: "/work/feature", Worktree: true, WorktreeName: "feature",
+		Branch: "(no branch)", RepositoryPath: "/work/project", LastOpened: timeNow(),
+	}
+	_, tt, _ := recentTester(t, repo)
+	card, cardFound := tt.Find("Open " + repo.Path)
+	footer, footerFound := tt.Find("Remove " + repo.Path + " from the recent list")
+	if !cardFound || !footerFound {
+		t.Fatalf("worktree card or footer is missing: %v", tt.Texts())
+	}
+	if footer.Y+footer.H+8 > card.Y+card.H {
+		t.Fatalf("worktree card footer touches its bottom border: card=%+v footer=%+v", card, footer)
+	}
+}
+
+func TestOpeningMissingRecentWorktreeOnlyNotifies(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "deleted-worktree")
+	a := newApp(repository.Opener{})
+	a.recentRepositories = []recentRepository{{
+		Path: missing, Worktree: true, WorktreeName: "deleted-worktree", LastOpened: timeNow(),
+	}}
+	updated := newUpdates()
+	a.update = updated.update
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	if err := tt.Click(missing); err != nil {
+		t.Fatal(err)
+	}
+	updated.waitForUpdate(t)
+	if a.state != stateEmpty || a.errMessage != "" || a.crash != "" {
+		t.Fatalf("missing worktree left Home in a failed state: state=%v err=%q crash=%q", a.state, a.errMessage, a.crash)
+	}
+	if len(a.pendingToasts) != 1 {
+		t.Fatalf("missing-worktree notifications = %+v", a.pendingToasts)
+	}
+	toast := a.pendingToasts[0]
+	if toast.kind != "warning" || toast.title != "Open worktree" ||
+		!strings.Contains(toast.description, "Repository folder no longer exists") {
+		t.Fatalf("missing-worktree notification = %+v", toast)
+	}
+	tt.Frame()
+	tt.Frame()
+	if !tt.HasText("Repository folder no longer exists") || tt.HasText("Could not open repository") {
+		t.Fatalf("missing-worktree result is not just a notification: %v", tt.Texts())
 	}
 }
 

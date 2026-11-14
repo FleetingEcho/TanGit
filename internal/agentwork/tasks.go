@@ -13,12 +13,16 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 const (
 	storeVersion          = 1
 	checkpointHistoryKeep = 24
 	activityHistoryKeep   = 100
+	maxProfilePaths       = 256
+	maxProfilePathLength  = 4096
+	maxDatabaseNameLength = 256
 )
 
 // Status describes what TanGit knows, not what it infers from terminal text.
@@ -49,15 +53,121 @@ func (s Status) valid() bool {
 	}
 }
 
+// Resources contains optional per-task development resources. Zero values mean
+// that a profile does not request a dedicated resource.
+type Resources struct {
+	DevelopmentPort int    `json:"developmentPort,omitempty"`
+	DatabaseName    string `json:"databaseName,omitempty"`
+	CacheDirectory  string `json:"cacheDirectory,omitempty"`
+}
+
 // Profile is a user-trusted command template. Placeholders are expanded as
-// quoted shell arguments by the UI's platform-aware command runner.
+// quoted shell arguments by the UI's platform-aware command runner. IgnoredFiles
+// is an explicit relative file list; agentwork never discovers or copies files.
 type Profile struct {
 	Name          string            `json:"name,omitempty"`
 	LaunchCommand string            `json:"launchCommand,omitempty"`
 	ResumeCommand string            `json:"resumeCommand,omitempty"`
+	RunCommand    string            `json:"runCommand,omitempty"`
 	SetupCommand  string            `json:"setupCommand,omitempty"`
 	TestCommand   string            `json:"testCommand,omitempty"`
 	Environment   map[string]string `json:"environment,omitempty"`
+	SparsePaths   []string          `json:"sparsePaths,omitempty"`
+	IgnoredFiles  []string          `json:"ignoredFiles,omitempty"`
+	Resources     Resources         `json:"resources,omitempty"`
+}
+
+// Clone returns a profile with no mutable maps or slices shared with p.
+func (p Profile) Clone() Profile {
+	clone := p
+	if p.Environment != nil {
+		clone.Environment = make(map[string]string, len(p.Environment))
+		for key, value := range p.Environment {
+			clone.Environment[key] = value
+		}
+	}
+	clone.SparsePaths = append([]string(nil), p.SparsePaths...)
+	clone.IgnoredFiles = append([]string(nil), p.IgnoredFiles...)
+	return clone
+}
+
+func containsControl(value string) bool {
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return true
+		}
+	}
+	return false
+}
+
+func validateRelativePath(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("path is required")
+	}
+	if len(path) > maxProfilePathLength {
+		return fmt.Errorf("path exceeds %d bytes", maxProfilePathLength)
+	}
+	if containsControl(path) {
+		return errors.New("path contains a control character")
+	}
+	if filepath.IsAbs(path) {
+		return fmt.Errorf("path %q must be relative", path)
+	}
+	clean := filepath.Clean(path)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("path %q escapes its root", path)
+	}
+	return nil
+}
+
+func validateRelativePaths(kind string, paths []string) error {
+	if len(paths) > maxProfilePaths {
+		return fmt.Errorf("agent profile %s exceeds %d entries", kind, maxProfilePaths)
+	}
+	for _, path := range paths {
+		if err := validateRelativePath(path); err != nil {
+			return fmt.Errorf("invalid agent profile %s entry %q: %w", kind, path, err)
+		}
+	}
+	return nil
+}
+
+func (p Profile) validate() error {
+	if err := validateRelativePaths("sparse paths", p.SparsePaths); err != nil {
+		return err
+	}
+	if err := validateRelativePaths("ignored files", p.IgnoredFiles); err != nil {
+		return err
+	}
+	if p.Resources.DevelopmentPort < 0 || p.Resources.DevelopmentPort > 65535 {
+		return fmt.Errorf("invalid agent development port %d", p.Resources.DevelopmentPort)
+	}
+	if len(p.Resources.DatabaseName) > maxDatabaseNameLength {
+		return fmt.Errorf("agent database name exceeds %d bytes", maxDatabaseNameLength)
+	}
+	if p.Resources.DatabaseName != "" && strings.TrimSpace(p.Resources.DatabaseName) == "" {
+		return errors.New("agent database name must not be blank")
+	}
+	if containsControl(p.Resources.DatabaseName) {
+		return errors.New("agent database name contains a control character")
+	}
+	if p.Resources.CacheDirectory != "" {
+		if strings.TrimSpace(p.Resources.CacheDirectory) == "" {
+			return errors.New("agent cache directory must not be blank")
+		}
+		if len(p.Resources.CacheDirectory) > maxProfilePathLength {
+			return fmt.Errorf("agent cache directory exceeds %d bytes", maxProfilePathLength)
+		}
+		if containsControl(p.Resources.CacheDirectory) {
+			return errors.New("agent cache directory contains a control character")
+		}
+		if !filepath.IsAbs(p.Resources.CacheDirectory) {
+			if err := validateRelativePath(p.Resources.CacheDirectory); err != nil {
+				return fmt.Errorf("invalid agent cache directory: %w", err)
+			}
+		}
+	}
+	return nil
 }
 
 // TestStatus is the recorded outcome of the most recent test command. It is
@@ -155,6 +265,7 @@ type Task struct {
 	Branch       string       `json:"branch"`
 	WorktreePath string       `json:"worktreePath"`
 	Profile      Profile      `json:"profile"`
+	DependsOn    []string     `json:"dependsOn,omitempty"`
 	Status       Status       `json:"status"`
 	SessionID    string       `json:"sessionId,omitempty"`
 	Summary      string       `json:"summary,omitempty"`
@@ -202,18 +313,17 @@ func (t Task) validate() error {
 	if !t.Status.valid() {
 		return fmt.Errorf("invalid agent task status %q", t.Status)
 	}
+	if err := t.Profile.validate(); err != nil {
+		return err
+	}
 	return nil
 }
 
-// Clone prevents callers from sharing mutable maps or nested result pointers.
+// Clone prevents callers from sharing mutable maps, slices or nested pointers.
 func (t Task) Clone() Task {
 	clone := t
-	if t.Profile.Environment != nil {
-		clone.Profile.Environment = make(map[string]string, len(t.Profile.Environment))
-		for key, value := range t.Profile.Environment {
-			clone.Profile.Environment[key] = value
-		}
-	}
+	clone.Profile = t.Profile.Clone()
+	clone.DependsOn = append([]string(nil), t.DependsOn...)
 	if t.ExitCode != nil {
 		code := *t.ExitCode
 		clone.ExitCode = &code
@@ -225,6 +335,77 @@ func (t Task) Clone() Task {
 	clone.Checkpoints = append([]Checkpoint(nil), t.Checkpoints...)
 	clone.Activity = append([]Activity(nil), t.Activity...)
 	return clone
+}
+
+// TaskOrder returns the explicit task graph in dependency-first order. Tasks
+// without an ordering constraint are ordered by ID. Archived tasks participate
+// in the graph just like active tasks; callers decide which tasks to execute.
+func TaskOrder(tasks []Task) ([]Task, error) {
+	byID := make(map[string]Task, len(tasks))
+	ids := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		if !validTaskID(task.ID) {
+			return nil, fmt.Errorf("invalid agent task ID %q", task.ID)
+		}
+		if _, exists := byID[task.ID]; exists {
+			return nil, fmt.Errorf("agent task store contains duplicate ID %s", task.ID)
+		}
+		byID[task.ID] = task
+		ids = append(ids, task.ID)
+	}
+
+	dependents := make(map[string][]string, len(tasks))
+	remaining := make(map[string]int, len(tasks))
+	for _, task := range tasks {
+		seen := make(map[string]bool, len(task.DependsOn))
+		for _, dependencyID := range task.DependsOn {
+			if !validTaskID(dependencyID) {
+				return nil, fmt.Errorf("agent task %s has invalid dependency ID %q", task.ID, dependencyID)
+			}
+			if dependencyID == task.ID {
+				return nil, fmt.Errorf("agent task %s cannot depend on itself", task.ID)
+			}
+			if seen[dependencyID] {
+				return nil, fmt.Errorf("agent task %s has duplicate dependency %s", task.ID, dependencyID)
+			}
+			seen[dependencyID] = true
+			dependency, exists := byID[dependencyID]
+			if !exists {
+				return nil, fmt.Errorf("agent task %s depends on missing task %s", task.ID, dependencyID)
+			}
+			if dependency.RepositoryID != task.RepositoryID {
+				return nil, fmt.Errorf("agent task %s depends on task %s from another repository", task.ID, dependencyID)
+			}
+			dependents[dependencyID] = append(dependents[dependencyID], task.ID)
+		}
+		remaining[task.ID] = len(task.DependsOn)
+	}
+
+	slices.Sort(ids)
+	ready := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if remaining[id] == 0 {
+			ready = append(ready, id)
+		}
+	}
+	ordered := make([]Task, 0, len(tasks))
+	for len(ready) > 0 {
+		id := ready[0]
+		ready = ready[1:]
+		ordered = append(ordered, byID[id].Clone())
+		slices.Sort(dependents[id])
+		for _, dependentID := range dependents[id] {
+			remaining[dependentID]--
+			if remaining[dependentID] == 0 {
+				position, _ := slices.BinarySearch(ready, dependentID)
+				ready = slices.Insert(ready, position, dependentID)
+			}
+		}
+	}
+	if len(ordered) != len(tasks) {
+		return nil, errors.New("agent task dependency graph contains a cycle")
+	}
+	return ordered, nil
 }
 
 type diskStore struct {
@@ -365,6 +546,9 @@ func (s *Store) Create(task Task) (Task, error) {
 		return Task{}, err
 	}
 	disk.Tasks = append(disk.Tasks, task)
+	if _, err := TaskOrder(disk.Tasks); err != nil {
+		return Task{}, err
+	}
 	requestPath, _ := s.RequestFile(id)
 	if err := os.MkdirAll(filepath.Dir(requestPath), 0o700); err != nil {
 		return Task{}, fmt.Errorf("create agent task directory: %w", err)
@@ -478,6 +662,11 @@ func (s *Store) Update(taskID string, mutate func(*Task) error) (Task, error) {
 	}
 	for _, activity := range activities {
 		updated.Activity = appendActivity(updated.Activity, activity)
+	}
+	candidate := append([]Task(nil), disk.Tasks...)
+	candidate[index] = updated
+	if _, err := TaskOrder(candidate); err != nil {
+		return Task{}, err
 	}
 
 	oldRequestPath, _ := s.RequestFile(taskID)
@@ -656,6 +845,9 @@ func (s *Store) read() (diskStore, error) {
 				return diskStore{}, fmt.Errorf("agent task %s contains an incomplete checkpoint %s", task.ID, checkpoint.ID)
 			}
 		}
+	}
+	if _, err := TaskOrder(disk.Tasks); err != nil {
+		return diskStore{}, err
 	}
 	return disk, nil
 }

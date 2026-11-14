@@ -18,6 +18,16 @@ type recentRepository struct {
 	// folder's name, "" while it has none. It is the user's name for the
 	// card alone: the folder, and the repository in it, keep their own.
 	Name string `json:"name,omitempty"`
+	// Worktree remembers that this checkout is linked to another main
+	// worktree, so the homepage can distinguish it without opening it first.
+	Worktree bool `json:"worktree,omitempty"`
+	// Branch and WorktreeName retain the identity shown beneath the card's
+	// path. A detached worktree has no branch, so its own name is the fallback.
+	Branch       string `json:"branch,omitempty"`
+	WorktreeName string `json:"worktreeName,omitempty"`
+	// RepositoryPath identifies the main worktree that owns this linked
+	// checkout. It is distinct from Path, which remains the checkout itself.
+	RepositoryPath string `json:"repositoryPath,omitempty"`
 }
 
 // recentNameLimit bounds a card's name, in characters, so a long one cannot
@@ -118,15 +128,16 @@ func saveRecentRepositories(dir string, repositories []recentRepository) error {
 // rather than to one opening of it. It copies, so the caller's slice is never
 // shared with the app's.
 func rememberRecent(repositories []recentRepository, path string, now int64) []recentRepository {
-	path = cleanRecentPath(path)
+	// Local cards name the checkout itself: make the path absolute and resolve
+	// aliases, so a linked worktree never appears under an application's alias.
+	path = cleanRepoPath(path)
 	if path == "" || path == "." {
 		return repositories
 	}
-	_, remote := canonicalRemoteReference(path)
 	out := make([]recentRepository, 0, len(repositories)+1)
 	out = append(out, recentRepository{Path: path, LastOpened: now})
 	for _, r := range repositories {
-		if r.Path == path || remote && cleanRecentPath(r.Path) == path {
+		if cleanRepoPath(r.Path) == path {
 			out[0].Name = r.Name
 			continue
 		}
@@ -257,6 +268,77 @@ func (a *app) dataDir() string {
 	return a.pathUserData
 }
 
+// recentIdentity is the small amount of Git metadata a recent card needs.
+// Reading HEAD and commondir avoids opening every repository just to label it.
+type recentIdentity struct {
+	worktree       bool
+	branch         string
+	worktreeName   string
+	repositoryPath string
+}
+
+// localRecentIdentity recovers cards written before their branch and worktree
+// identity was stored. A linked worktree has a .git file whose private Git
+// directory names its common directory; a submodule's .git file does not.
+func localRecentIdentity(path string) (recentIdentity, bool) {
+	if _, remote := canonicalRemoteReference(path); remote {
+		return recentIdentity{}, false
+	}
+	root := filepath.Clean(path)
+	dotGit := filepath.Join(root, ".git")
+	info, err := os.Stat(dotGit)
+	if err != nil {
+		return recentIdentity{}, false
+	}
+	gitDir := dotGit
+	identity := recentIdentity{}
+	if !info.IsDir() {
+		content, err := os.ReadFile(dotGit)
+		if err != nil {
+			return recentIdentity{}, false
+		}
+		line, _, _ := strings.Cut(string(content), "\n")
+		target, found := strings.CutPrefix(strings.TrimSpace(line), "gitdir:")
+		if !found || strings.TrimSpace(target) == "" {
+			return recentIdentity{}, false
+		}
+		target = strings.TrimSpace(target)
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(root, target)
+		}
+		gitDir = filepath.Clean(target)
+		commonContent, commonErr := os.ReadFile(filepath.Join(gitDir, "commondir"))
+		if commonErr == nil && strings.TrimSpace(string(commonContent)) != "" {
+			identity.worktree = true
+			identity.worktreeName = repoName(root)
+			commonGitDir := strings.TrimSpace(string(commonContent))
+			if !filepath.IsAbs(commonGitDir) {
+				commonGitDir = filepath.Join(gitDir, commonGitDir)
+			}
+			commonGitDir = filepath.Clean(commonGitDir)
+			// In Git's normal non-bare layout the shared directory is the main
+			// worktree's .git directory. This recovers the owner without a Git
+			// subprocess or a full repository snapshot.
+			if filepath.Base(commonGitDir) == ".git" {
+				identity.repositoryPath = cleanRepoPath(filepath.Dir(commonGitDir))
+			}
+		}
+	}
+	content, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
+	if err != nil {
+		return recentIdentity{}, false
+	}
+	head := strings.TrimSpace(string(content))
+	if head == "" {
+		return recentIdentity{}, false
+	}
+	identity.branch = strings.TrimPrefix(head, "ref: refs/heads/")
+	if identity.branch == head {
+		identity.branch = ""
+	}
+	return identity, true
+}
+
 // loadHistory reads the stored history once the data directory is known. The
 // directory can be unavailable before a window exists, so it is called again
 // then; historyLoaded keeps the file from being re-read on every frame.
@@ -269,6 +351,30 @@ func (a *app) loadHistory() {
 		return
 	}
 	a.recentRepositories = loadRecentRepositories(dir)
+	changed := false
+	for i := range a.recentRepositories {
+		repo := &a.recentRepositories[i]
+		path := cleanRepoPath(repo.Path)
+		if repo.Path != path {
+			repo.Path = path
+			changed = true
+		}
+		identity, ok := localRecentIdentity(path)
+		if !ok {
+			continue
+		}
+		if repo.Worktree != identity.worktree || repo.Branch != identity.branch ||
+			repo.WorktreeName != identity.worktreeName || repo.RepositoryPath != identity.repositoryPath {
+			repo.Worktree = identity.worktree
+			repo.Branch = identity.branch
+			repo.WorktreeName = identity.worktreeName
+			repo.RepositoryPath = identity.repositoryPath
+			changed = true
+		}
+	}
+	if changed {
+		_ = saveRecentRepositories(dir, a.recentRepositories)
+	}
 	a.historyLoaded = true
 }
 
@@ -276,6 +382,27 @@ func (a *app) loadHistory() {
 // stores it. Failures are silent: the picker simply starts empty next time.
 func (a *app) rememberOpened(path string) {
 	a.recentRepositories = rememberRecent(a.recentRepositories, path, timeNow())
+	want := cleanRepoPath(path)
+	worktreeName := ""
+	for _, worktree := range a.snapshot.Worktrees {
+		if worktree.Current {
+			worktreeName = worktree.Name
+		}
+	}
+	linked := a.openedLinkedWorktree()
+	repositoryPath := a.openedMainWorktreePath()
+	if !linked {
+		repositoryPath = ""
+	}
+	for i := range a.recentRepositories {
+		if cleanRecentPath(a.recentRepositories[i].Path) == want {
+			a.recentRepositories[i].Worktree = linked
+			a.recentRepositories[i].Branch = a.snapshot.Branch
+			a.recentRepositories[i].WorktreeName = worktreeName
+			a.recentRepositories[i].RepositoryPath = repositoryPath
+			break
+		}
+	}
 	_ = saveRecentRepositories(a.dataDir(), a.recentRepositories)
 }
 
@@ -289,6 +416,18 @@ func (a *app) forgetRecent(path string) {
 	}
 	a.recentRepositories = kept
 	_ = saveRecentRepositories(a.dataDir(), a.recentRepositories)
+}
+
+// recentWorktree reports the identity already remembered for this card. It
+// lets a deleted linked checkout fail gently without guessing from its name.
+func (a *app) recentWorktree(path string) bool {
+	want := cleanRecentPath(path)
+	for _, repo := range a.recentRepositories {
+		if cleanRecentPath(repo.Path) == want {
+			return repo.Worktree
+		}
+	}
+	return false
 }
 
 // openRecent fills the path field with the repository and opens it through
