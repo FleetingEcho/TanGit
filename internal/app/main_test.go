@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"path/filepath"
@@ -1186,6 +1187,31 @@ func TestLaunchPathOpensRealRepository(t *testing.T) {
 			}
 			if a.path != want {
 				t.Fatalf("opened root = %q, want %q", a.path, want)
+			}
+		})
+	}
+}
+
+func TestHeadlessAgentCommandDispatch(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		args     []string
+		handled  bool
+		code     int
+		contains string
+	}{
+		{name: "desktop", args: []string{"/work/repository"}, handled: false},
+		{name: "agent help", args: []string{"agent", "help"}, handled: true, code: 0, contains: "tangit agent"},
+		{name: "usage error", args: []string{"agent"}, handled: true, code: 2, contains: "tangit agent"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code, handled := runAgentCommand(context.Background(), test.args, strings.NewReader(""), &stdout, &stderr)
+			if handled != test.handled || code != test.code {
+				t.Fatalf("runAgentCommand() = (%d, %v), want (%d, %v)", code, handled, test.code, test.handled)
+			}
+			if test.contains != "" && !strings.Contains(stdout.String()+stderr.String(), test.contains) {
+				t.Fatalf("output %q does not contain %q", stdout.String()+stderr.String(), test.contains)
 			}
 		})
 	}

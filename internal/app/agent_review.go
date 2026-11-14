@@ -23,21 +23,22 @@ const (
 // substitutes the repository tab's session: commits, dirty files and the final
 // base-to-worktree result all come from the same explicit task target.
 type agentReviewState struct {
-	open      bool
-	taskID    string
-	title     string
-	feedback  string
-	base      string
-	head      string
-	worktree  string
-	target    repository.Session
-	cancel    context.CancelFunc
-	token     uint64
-	loading   bool
-	err       string
-	mode      agentReviewMode
-	options   repository.DiffOptions
-	listWidth float32
+	open         bool
+	taskID       string
+	title        string
+	feedback     string
+	checkpointID string
+	base         string
+	head         string
+	worktree     string
+	target       repository.Session
+	cancel       context.CancelFunc
+	token        uint64
+	loading      bool
+	err          string
+	mode         agentReviewMode
+	options      repository.DiffOptions
+	listWidth    float32
 
 	finalFiles  []repository.CommitFile
 	commits     []repository.Commit
@@ -67,6 +68,9 @@ func (a *app) openAgentReview(task agentwork.Task) {
 	a.agents.review.title = task.Title
 	a.agents.review.base = task.BaseCommit
 	a.agents.review.worktree = task.WorktreePath
+	if len(task.Checkpoints) > 0 {
+		a.agents.review.checkpointID = task.Checkpoints[len(task.Checkpoints)-1].ID
+	}
 	a.agents.review.options = repository.DiffOptions{ContextLines: 3}
 	a.agents.review.selectedFile = -1
 	a.agents.review.selectedCommit = -1
@@ -93,6 +97,7 @@ func (a *app) resetAgentReview() {
 	review.taskID = ""
 	review.title = ""
 	review.feedback = ""
+	review.checkpointID = ""
 	review.base = ""
 	review.head = ""
 	review.worktree = ""
@@ -436,6 +441,15 @@ func (a *app) sendAgentReviewFile() {
 		return
 	}
 	a.openChangeCourier(review.diffPatch, trf("Agent review · %s", path))
+}
+
+func (a *app) selectedAgentCheckpoint(task agentwork.Task) (agentwork.Checkpoint, bool) {
+	for _, checkpoint := range task.Checkpoints {
+		if checkpoint.ID == a.agents.review.checkpointID {
+			return checkpoint, true
+		}
+	}
+	return agentwork.Checkpoint{}, false
 }
 
 func (a *app) agentReviewTask() (agentwork.Task, bool) {

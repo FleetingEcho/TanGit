@@ -127,6 +127,20 @@ func (a *app) agentsView(c *ui.Context) {
 					if task.LastTest != nil {
 						ui.Textf(c, tr("Last test: %s"), tr(agentTestStatusLabel(task.LastTest.Status))).Selectable()
 					}
+					if len(task.Activity) > 0 {
+						ui.Text(c, tr("Recent activity")).Bold()
+						for index := max(0, len(task.Activity)-3); index < len(task.Activity); index++ {
+							activity := task.Activity[index]
+							row := ui.Row(c).Gap(8).AlignItems(ui.Center)
+							if tooltip := agentActivityTooltip(activity); tooltip != "" {
+								row.Tooltip(tooltip)
+							}
+							row.Children(func() {
+								ui.Text(c, agentActivityTimestamp(activity)).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted)
+								ui.Text(c, agentActivitySummary(activity)).FontSize(theme.FontSize - 1).Grow(1).SingleLine().Ellipsis("…")
+							})
+						}
+					}
 					if task.Request != "" {
 						ui.Text(c, tr("Request")).Bold()
 						ui.Text(c, task.Request).Selectable()

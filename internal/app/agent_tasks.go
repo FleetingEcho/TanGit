@@ -23,6 +23,7 @@ type agentUIState struct {
 	loadToken      uint64
 	err            string
 	mutating       map[string]bool
+	checkpointBusy map[string]bool
 
 	formOpen       bool
 	title          string
@@ -219,7 +220,11 @@ func (a *app) mutateAgentTask(taskID string, mutate func(*agentwork.Task) error,
 	generation := a.generation
 	go func() {
 		defer a.recoverBackground()
-		updated, err := store.Update(taskID, mutate)
+		previous, err := store.Get(taskID)
+		var updated agentwork.Task
+		if err == nil {
+			updated, err = store.Update(taskID, mutate)
+		}
 		a.update(func() {
 			delete(a.agents.mutating, taskID)
 			if generation != a.generation {
@@ -240,6 +245,7 @@ func (a *app) mutateAgentTask(taskID string, mutate func(*agentwork.Task) error,
 			if !found {
 				a.agents.tasks = append([]agentwork.Task{updated.Clone()}, a.agents.tasks...)
 			}
+			a.notifyAgentAttentions(agentTaskAttentions(previous, updated))
 			if len(success) > 0 && success[0] != nil {
 				success[0](updated.Clone())
 			}
@@ -305,7 +311,14 @@ func (a *app) launchAgentTask(taskID string, resume bool) {
 	if !a.openAgentTerminal(task, command, requestPath) {
 		return
 	}
-	a.mutateAgentTask(task.ID, func(current *agentwork.Task) error {
+	kind := agentwork.ActivityLaunch
+	if resume {
+		kind = agentwork.ActivityResume
+	}
+	a.recordAgentActivity(task.ID, agentwork.Activity{
+		Kind: kind, Command: agentActivityCommand(command), SessionID: task.SessionID,
+		Reference: a.agentTerminalReference(task.ID),
+	}, func(current *agentwork.Task) error {
 		current.Status = agentwork.StatusRunning
 		current.ExitCode = nil
 		return nil
