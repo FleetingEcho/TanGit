@@ -923,10 +923,11 @@ func newApp(opener repositoryOpener) *app {
 		// The branches column is narrower, so its two panes start smaller.
 		branchCommitFilesHeight: 110,
 		branchCommitFilesWidth:  300,
-		// The branches column shows branch names, the commits column the
-		// subjects, so both stay narrow and leave the commit its room.
+		// Give commit metadata (subject/hash/author/time) enough horizontal room
+		// to read without cramping CJK labels or burying names in the diff stats.
+		// The splitter remains available for further manual adjustment.
 		branchListWidth:    240,
-		branchCommitsWidth: 280,
+		branchCommitsWidth: 360,
 		branchHeaderHeight: 160,
 		// The Graph lays its lanes out from left to right, so the list pane
 		// takes the larger share of the workspace.
