@@ -95,6 +95,23 @@ The shortcut is narrow: quiet mode, same key/generation and same kind/full patch
 
 There was no `SparseBuildDiffState` symbol at baseline. The measured initial builder and long-hunk scroll path did not justify introducing a new sparse public state model with lazy-geometry semantics. **No speculative `SparseBuildDiffState` rewrite or lazy-visible diff annotation change was added.**
 
+## Implementation and regression-test entry points
+
+The retained streaming readers are in
+[`internal/repository/commit_stats.go`](../internal/repository/commit_stats.go)
+and [`internal/repository/session.go`](../internal/repository/session.go);
+cache/cancellation and parser regressions are checked in
+[`internal/repository/commit_stats_test.go`](../internal/repository/commit_stats_test.go).
+The request cancellation, monotonic A-B-A guards, and quiet unchanged-patch
+reuse are in [`internal/app/actions.go`](../internal/app/actions.go) and
+[`internal/app/view_history.go`](../internal/app/view_history.go), with
+publication/state regressions in
+[`internal/app/performance_regression_test.go`](../internal/app/performance_regression_test.go).
+These links identify the measured code paths; they do not widen the benchmark
+results above into a general application or `CoreSnapshot` speed claim. For
+the ordinary History/Graph/Changes behavior, see
+[Large repositories and refresh](guide.md#large-repositories-and-refresh).
+
 ## Verification
 
 Final successful checks (logs retained under `docs/performance/`):
@@ -111,10 +128,10 @@ An earlier unfiltered repository run reached four credential-dependent failures 
 
 ## Raw evidence index
 
-- `baseline-repository.txt`, `baseline-app.txt`: saved baseline benchmark runs with commands and variant order.
-- `baseline-repository-pprof.txt`, `baseline-app-pprof.txt`, `baseline-focused-pprof.txt`: CPU/allocation and focused list/diff baseline profiles.
-- `after-repository.txt`, `after-app.txt`, corresponding `*-pprof.txt`: final complete benchmark/profile captures.
-- `ab-repository-interleaved.txt`, `ab-app-interleaved.txt`, `ab-core-balanced.txt`: final old/new comparisons with explicit order in each header.
-- `test-first-red-app.txt`, `test-first-red-repository.txt`: pre-implementation red results.
-- `rejected-combined-read.txt`: rejected combined CommitFiles candidate; not the response implementation.
-- `go-test-nonssh.txt`, `race-target.txt`, `mygo-vet.txt`, `verification-status.txt`: final verification results.
+- [`baseline-repository.txt`](performance/baseline-repository.txt), [`baseline-app.txt`](performance/baseline-app.txt): saved baseline benchmark runs with commands and variant order.
+- [`baseline-repository-pprof.txt`](performance/baseline-repository-pprof.txt), [`baseline-app-pprof.txt`](performance/baseline-app-pprof.txt), [`baseline-focused-pprof.txt`](performance/baseline-focused-pprof.txt): CPU/allocation and focused list/diff baseline profiles.
+- [`after-repository.txt`](performance/after-repository.txt), [`after-app.txt`](performance/after-app.txt), corresponding [`after-repository-pprof.txt`](performance/after-repository-pprof.txt) and [`after-app-pprof.txt`](performance/after-app-pprof.txt): final complete benchmark/profile captures.
+- [`ab-repository-interleaved.txt`](performance/ab-repository-interleaved.txt), [`ab-app-interleaved.txt`](performance/ab-app-interleaved.txt), [`ab-core-balanced.txt`](performance/ab-core-balanced.txt): final old/new comparisons with explicit order in each header.
+- [`test-first-red-app.txt`](performance/test-first-red-app.txt), [`test-first-red-repository.txt`](performance/test-first-red-repository.txt): pre-implementation red results.
+- [`rejected-combined-read.txt`](performance/rejected-combined-read.txt): rejected combined CommitFiles candidate; not the final implementation.
+- [`go-test-nonssh.txt`](performance/go-test-nonssh.txt), [`race-target.txt`](performance/race-target.txt), [`mygo-vet.txt`](performance/mygo-vet.txt), [`verification-status.txt`](performance/verification-status.txt): final verification results for that captured performance revision, with the non-SSH scope stated above.

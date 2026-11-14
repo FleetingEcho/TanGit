@@ -53,7 +53,7 @@ TanGit将Lazygit的 Git 引擎带到了原生桌面界面中，
 
 - **把混合修改整理成清晰的提交。** 跨多个差异块选择需要的行，单独暂存、取消暂存或储藏，其余修改保持不动。
 - **直观地整理提交历史。** 沿着提交图和文件历史追踪变化，再批量拣选、压缩、修正、丢弃或重排提交。
-- **在审查差异的地方解决冲突。** 在 Base、Current、Incoming 和 Result 视图间对照，逐块选择、编辑结果，暂存前还能撤销选择。持久的单文件恢复会保留最初的冲突文件与索引阶段。
+- **在审查差异的地方解决冲突。** 在 Base、Current、Incoming 和 Result 视图间对照，逐块选择、编辑结果，暂存前还能撤销选择。启用 **Guided** 后可查看随现场更新的操作清单和各版本说明。持久的单文件恢复会保留最初的冲突文件与索引阶段。
 - **让开发工具围绕仓库工作。** 切换仓库标签页，使用语法高亮和语言服务器辅助编写代码，在内置终端运行 shell，一键打开配置好的编辑器。
 - **把工作区调成顺手的样子。** 调整面板大小、展开详情、按目录浏览文件，还能选择 20 种配色、自定义字体和六种界面语言。
 
@@ -95,6 +95,30 @@ Shift 点击可选择连续范围。
 才能执行 **Continue**；TanGit 还会重新核对之前审阅的操作指纹与未合并索引，
 避免对已经变化的现场继续操作。
 
+如果需要更明确的操作顺序，可在 **Settings → Behavior → Conflict and hunk
+buttons** 中选择第三项 **Guided**；它与 **Icons**、**Icons + labels** 一样会保存为偏好设置。
+操作区域会列出 **Read conflict**、**Choose or edit Result**、**Mark resolved**、
+**Review staged** 和 **Continue**，并根据当前 Git 状态、所选文件及 Result 显示
+**Earlier / Current / Next** 或 **Available**。这些标记表示当前所处位置，并非保存下来的
+“已完成”记录，也不会替你解决冲突、暂存或继续操作。若当前文件没有持久恢复记录，
+面板会明确说明没有可用恢复，不会凭空出现 **Restore unresolved…** 或 **Retry…** 按钮。
+详见[引导式冲突处理（英文）](docs/guide.md#guided-conflict-mode)。
+
+在本地仓库中选择 **Continue** 会先打开 **Continue preflight**。可在 **Settings → Behavior**
+中把 **Required check command** 配成 `go test ./...`，再按需把 **Optional check command**
+配成 `golangci-lint run`。Required 留空会直接阻止 Continue，Optional 也不会执行；
+Required 通过后才会运行 Optional，Optional 留空则记为 skipped。只有 Optional 的状态为
+**failed**，且其余检查都通过时，才能明确选择 **Override optional failure and continue**。
+取消、现场已变化或无法读取，以及 checkpoint 失败都不能用 override 绕过。这里执行的是
+具有当前用户完整权限的可信本地 shell 命令，**不是沙箱**，可以联网和读写文件。SSH 工作区
+会禁用 Continue，而不是拿本地命令去检查远程工作树。
+
+命令结束后，TanGit 会比较操作指纹、规范的索引记录，以及已跟踪文件和普通非忽略的
+未跟踪文件内容，列出发生变化的路径；检测到内容变化时，必须先成功创建 checkpoint。
+被忽略的文件、仓库外的写入和网络副作用不在这次比较范围内。无论是正常继续，还是
+选择覆盖 Optional 失败，最后都会重新比较现场，再交给操作驱动按预期指纹执行 CAS。
+[拒绝规则与完整示例（英文）→](docs/guide.md#continue-preflight-and-trusted-checks)
+
 **Recovery & checkpoints → Recovery** 按单个文件分别保存最初的冲突工作区内容、
 索引阶段和后续状态。恢复会以该路径的 before/after 状态做 CAS 校验，续接持久化的
 文件与索引恢复步骤；如果发现同一路径已有较新的修改，就停止覆盖并保留这些工作，
@@ -116,10 +140,11 @@ Conflict Assistant 和 Change Splitter 只有在你主动请求建议时才运�
 1. 先查看操作类型和当前步骤，再到 **Changes** 打开冲突文件。
 2. 对照 **Base**、**Current**、**Incoming**，直接编辑 **Result**，或使用分组后的版本／差异块操作。需要时先预览 Conflict Assistant 的建议，再只接受 Result。
 3. 选择 **Mark resolved**，检查暂存差异，并对其余冲突文件重复处理。若需要回到最初的冲突现场，可使用单文件持久恢复。
-4. 到 **Rebase TODO** 核对当前与待执行步骤后选择 **Continue**。只有当前操作确实提供 **Skip**，且你准备丢弃停下的一步时才使用它；放弃整个操作则选择 **Abort**。
+4. 到 **Rebase TODO** 核对当前与待执行步骤后选择 **Continue**。先查看 Required／Optional 的输出、检查命令造成的文件／索引变更和 checkpoint 结果，再选择 **Continue operation**；只有确实需要接受 Optional 失败时才使用专门的 override。只有当前操作确实提供 **Skip**，且你准备丢弃停下的一步时才使用它；放弃整个操作则选择 **Abort**。
 5. 最后检查生成的历史和剩余更改，再继续其他提交。若 CAS 校验失败，应刷新并重新审阅；这不表示 TanGit 覆盖了较新的工作。
 
-[详细操作、约束与助手协议（英文）→](docs/guide.md#operation-recovery-history-and-assisted-review)
+[详细操作、约束与助手协议（英文）→](docs/guide.md#operation-recovery-history-and-assisted-review) ·
+[大型仓库的刷新行为与实测范围（英文）→](docs/guide.md#large-repositories-and-refresh)
 
 ## 快速开始
 
