@@ -284,6 +284,8 @@ func (a *app) primaryKeyboardPane() string {
 		return "tags"
 	case sectionWorktrees:
 		return "worktrees"
+	case sectionAgents:
+		return "agent-tasks"
 	case sectionSubmodules:
 		return "submodules"
 	case sectionReflog:
