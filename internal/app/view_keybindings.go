@@ -287,7 +287,7 @@ func (a *app) visibleKeyBindingGroups() []keyBindingGroup {
 				custom := a.customPatchActive()
 				group.bindings = nil
 				for _, command := range diffKeyboardCommands() {
-					if command.selection && !a.keyboardDiffCanSelect {
+					if command.selection && !a.keyboardDiffCanSelect || command.changesHunk && !a.keyboardDiffCanMutateHunks {
 						continue
 					}
 					label := command.label

@@ -342,27 +342,55 @@ func (a *app) addCustomPatchSelectedLines() {
 	a.beginAddCustomPatchFile(commit, file, lines)
 }
 
-func customPatchHunkIdentities(file editor.FilePatch, wanted int) []patch.LineIdentity {
-	if wanted < 0 || wanted >= len(file.Hunks) {
+// customPatchHunkIdentities names every change in one original @@ hunk.
+// customPatchHunkRunIdentities uses the same traversal for the editor's
+// CurrentHunk target: its contiguous change runs may subdivide one @@ block.
+// Keeping both on this single walker avoids a second screen-line algorithm.
+func customPatchHunkIdentities(file editor.FilePatch, wantedHunk int) []patch.LineIdentity {
+	return customPatchIdentities(file, wantedHunk, -1)
+}
+
+func customPatchHunkRunIdentities(file editor.FilePatch, wantedRun int) []patch.LineIdentity {
+	return customPatchIdentities(file, -1, wantedRun)
+}
+
+func customPatchIdentities(file editor.FilePatch, wantedHunk, wantedRun int) []patch.LineIdentity {
+	if wantedHunk < -1 || wantedHunk >= len(file.Hunks) || wantedRun < -1 || wantedHunk >= 0 && wantedRun >= 0 {
 		return nil
 	}
-	hunk := file.Hunks[wanted]
-	oldLine, newLine := hunk.OldStart, hunk.NewStart
 	var lines []patch.LineIdentity
-	for _, text := range hunk.Lines {
-		if text == "" || text[0] == '\\' {
-			continue
-		}
-		switch text[0] {
-		case ' ':
-			oldLine++
-			newLine++
-		case '-':
-			lines = append(lines, patch.LineIdentity{LineNumber: oldLine, IsDeletion: true})
-			oldLine++
-		case '+':
-			lines = append(lines, patch.LineIdentity{LineNumber: newLine})
-			newLine++
+	run := -1
+	inRun := false
+	for hunkIndex, hunk := range file.Hunks {
+		oldLine, newLine := hunk.OldStart, hunk.NewStart
+		inRun = false
+		for _, text := range hunk.Lines {
+			if text == "" || text[0] == '\\' {
+				continue
+			}
+			switch text[0] {
+			case ' ':
+				inRun = false
+				oldLine++
+				newLine++
+			case '-', '+':
+				if !inRun {
+					run++
+					inRun = true
+				}
+				selected := wantedHunk == hunkIndex || wantedRun == run
+				if selected && text[0] == '-' {
+					lines = append(lines, patch.LineIdentity{LineNumber: oldLine, IsDeletion: true})
+				}
+				if selected && text[0] == '+' {
+					lines = append(lines, patch.LineIdentity{LineNumber: newLine})
+				}
+				if text[0] == '-' {
+					oldLine++
+				} else {
+					newLine++
+				}
+			}
 		}
 	}
 	return lines

@@ -233,6 +233,9 @@ func (s screenshotSession) ApplyWorkingTreePatch(context.Context, string, bool) 
 func (s screenshotSession) PreviewPatch(_ context.Context, path string) (repository.PatchPreview, error) {
 	return repository.PatchPreview{Path: path, Clean: true}, nil
 }
+func (s screenshotSession) PreviewPatchRequest(_ context.Context, request repository.PatchRequest) (repository.PatchPreview, error) {
+	return repository.PatchPreview{Text: request.Text, Target: request.Target, Reverse: request.Reverse, ThreeWay: request.ThreeWay, Clean: true}, nil
+}
 func (s screenshotSession) ApplyPatch(context.Context, repository.PatchPreview) error { return nil }
 func (s screenshotSession) DiscardFiles(context.Context, []repository.File) error     { return nil }
 func (s screenshotSession) WorkSnapshots(context.Context) ([]repository.WorkSnapshot, error) {
