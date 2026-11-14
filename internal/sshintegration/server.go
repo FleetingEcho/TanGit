@@ -1,6 +1,8 @@
 package sshintegration
 
 import (
+	"fmt"
+	"os"
 	"sync"
 	"testing"
 
@@ -24,13 +26,33 @@ type Server struct {
 	close     func()
 }
 
+const requireOpenSSHEnvironment = "TANGIT_TEST_REQUIRE_OPENSSH"
+
 // Start launches /usr/sbin/sshd without root privileges. It skips the calling
 // test when OpenSSH, ssh-keygen, a supported POSIX platform, or required host
-// privilege-separation facilities are unavailable. Configuration and key
-// errors caused by this package are fatal rather than skipped.
+// privilege-separation facilities are unavailable. Setting
+// TANGIT_TEST_REQUIRE_OPENSSH=1 makes those environment limitations fatal so a
+// required CI job cannot pass by skipping its OpenSSH coverage. Configuration
+// and key errors caused by this package are fatal rather than skipped.
 func Start(t testing.TB) *Server {
 	t.Helper()
 	return startOpenSSH(t)
+}
+
+type openSSHUnavailableReporter interface {
+	Helper()
+	Skip(args ...any)
+	Fatalf(format string, args ...any)
+}
+
+func openSSHUnavailable(t openSSHUnavailableReporter, format string, args ...any) {
+	t.Helper()
+	reason := fmt.Sprintf(format, args...)
+	if os.Getenv(requireOpenSSHEnvironment) == "1" {
+		t.Fatalf("%s=1 requires local OpenSSH integration, but the environment is unsuitable: %s", requireOpenSSHEnvironment, reason)
+		return
+	}
+	t.Skip(reason)
 }
 
 // Close terminates the server process group and waits for sshd to exit.
