@@ -16,14 +16,18 @@ type workspaceSearchOptions struct {
 	CaseSensitive bool
 	WholeWord     bool
 	RegularExpr   bool
-	// PreferNative bypasses ripgrep even when it is installed. The zero value
-	// keeps the automatic ripgrep-with-Go-fallback behavior for existing callers.
+	// PreferNative bypasses indexed search and ripgrep even when available. The
+	// zero value keeps the automatic indexed/ripgrep/Go fallback behavior.
 	PreferNative bool
-	Include      string
-	Exclude      string
-	// Folder is the literal repository-relative scope chosen by Search in
-	// folder. Include remains the editable glob text shown in the search panel.
+	// IndexDirectory is an explicitly built local Zoekt index. Empty keeps the
+	// ordinary on-demand backends; remote searches never populate this field.
+	IndexDirectory string
+	Include        string
+	Exclude        string
+	// Folder and File are literal repository-relative scopes chosen by the
+	// context menu. Include remains editable glob text in the search panel.
 	Folder string
+	File   string
 	// ExcludedDirectories is an immutable, normalized snapshot of the user's
 	// configured folder names, excluded before either backend scans any file.
 	ExcludedDirectories []string
@@ -176,6 +180,9 @@ func (options workspaceSearchOptions) pathIncluded(name string) bool {
 	name = path.Clean(filepathToSlash(name))
 	if workspaceSearchDirectoryExcluded(name, options.ExcludedDirectories) {
 		return false
+	}
+	if file := path.Clean(filepathToSlash(strings.TrimSpace(options.File))); file != "." && file != "" {
+		return name == file && workspaceSearchPathIncluded(name, "", options.Exclude)
 	}
 	folder := path.Clean(filepathToSlash(strings.TrimSpace(options.Folder)))
 	if folder != "." && folder != "" && !strings.HasPrefix(name, folder+"/") {

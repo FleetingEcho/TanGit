@@ -64,16 +64,15 @@ func searchRemoteWorkspaceFilesystem(ctx context.Context, client remoteWorkspace
 				return matches, nil
 			}
 			line := strings.TrimSuffix(string(rawLine), "\r")
-			column, _, found := workspaceSearchLineRange(line, options, expression)
-			if !found {
-				continue
-			}
-			matches = append(matches, workspaceSearchMatch{
-				Path: cleaned, Line: lineIndex + 1, Column: column + 1,
-				Text: workspaceSearchSnippet(line, column),
-			})
-			if len(matches) == limit {
-				return matches, nil
+			for _, match := range workspaceSearchLineAllRanges(line, options, expression) {
+				column := match[0]
+				matches = append(matches, workspaceSearchMatch{
+					Path: cleaned, Line: lineIndex + 1, Column: column + 1,
+					Text: workspaceSearchSnippet(line, column),
+				})
+				if len(matches) == limit {
+					return matches, nil
+				}
 			}
 		}
 	}
@@ -176,15 +175,14 @@ func searchRemoteWorkspaceRipgrepBatch(ctx context.Context, client remoteWorkspa
 			}
 			line := strings.TrimSuffix(message.Data.Lines.String(), "\n")
 			line = strings.TrimSuffix(line, "\r")
-			column, _, found := workspaceSearchLineRange(line, options, expression)
-			if !found {
-				continue
+			for _, match := range workspaceSearchLineAllRanges(line, options, expression) {
+				column := match[0]
+				matches = append(matches, workspaceSearchMatch{
+					Path: logicalPath, Line: message.Data.LineNumber, Column: column + 1,
+					Text: workspaceSearchSnippet(line, column),
+				})
+				matchFiles = append(matchFiles, filename)
 			}
-			matches = append(matches, workspaceSearchMatch{
-				Path: logicalPath, Line: message.Data.LineNumber, Column: column + 1,
-				Text: workspaceSearchSnippet(line, column),
-			})
-			matchFiles = append(matchFiles, filename)
 		case "end":
 			if !knownPath {
 				continue

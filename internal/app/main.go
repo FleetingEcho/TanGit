@@ -138,12 +138,20 @@ type app struct {
 	localTransfers localTransferUIState
 
 	// pathUserData caches the per-user directory the history is stored in,
-	// "" until a window exists to resolve it from.
+	// "" until a window exists to resolve it from. pathCache holds reproducible
+	// data such as Zoekt shards outside every repository working tree.
 	pathUserData       string
+	pathCache          string
 	recentRepositories []recentRepository
-	// historyLoaded records that the data directory was resolved and its
-	// history read, so a frame never re-reads the file.
-	historyLoaded bool
+	// historyLoading and historyLoaded keep filesystem reads away from
+	// picker creation and rendering. Results join the UI-owned history only
+	// through update, preserving renames and openings made while it reads.
+	// recentNameOverrides also retains a cross-tab rename whose target card has
+	// not arrived from that tab's delayed history read yet.
+	historyLoading      bool
+	historyLoaded       bool
+	historyRevision     uint64
+	recentNameOverrides map[string]string
 	// recentFilter narrows the cards by their display name or path.
 	// visibleRecent holds original history indices for the filtered grid, so
 	// opening, renaming, and removing a match always affect the right entry.

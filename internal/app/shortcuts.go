@@ -213,6 +213,7 @@ func (a *app) registerShortcuts(c *ui.Context) {
 	if a.workspaceTab == sectionCode {
 		c.OnShortcut(ui.Cmd, ui.KeyP, a.focusCodeQuickOpen)
 		c.OnShortcut(ui.Cmd|ui.Shift, ui.KeyF, a.focusCodeSearch)
+		c.OnShortcut(ui.Cmd|ui.Shift, ui.KeyH, a.focusCodeReplace)
 		c.OnShortcut(ui.Cmd, ui.KeyW, func() { a.closeCodeFile(a.code.active) })
 	}
 	c.OnShortcut(0, ui.KeyF3, func() { a.navigateActiveSearch(1) })

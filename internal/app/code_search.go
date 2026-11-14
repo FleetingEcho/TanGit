@@ -34,14 +34,15 @@ const (
 	workspaceSearchBackendNone workspaceSearchBackend = iota
 	workspaceSearchBackendGo
 	workspaceSearchBackendRipgrep
+	workspaceSearchBackendZoekt
 )
 
 var workspaceSearchLookPath = exec.LookPath
 var workspaceSearchReadFile = readWorkspaceSearchFile
 
-// searchWorkspaceFiles searches paths in their supplied order. Ripgrep does
-// the file scanning and Unicode-aware matching when it is available; the Go
-// scanner keeps content search working on systems without it.
+// searchWorkspaceFiles searches paths in their supplied order. An explicitly
+// built Zoekt index supplies fresh candidate files when available; ripgrep and
+// the Go scanner retain cold-search and no-index behavior.
 func searchWorkspaceFiles(ctx context.Context, root string, paths []string, query string, caseSensitive bool, limit int) []workspaceSearchMatch {
 	matches, _, _ := searchWorkspaceFilesWithOptions(ctx, root, paths, workspaceSearchOptions{
 		Query: query, CaseSensitive: caseSensitive,
@@ -57,6 +58,14 @@ func searchWorkspaceFilesWithOptions(ctx context.Context, root string, paths []s
 		return nil, workspaceSearchBackendNone, err
 	}
 	if !options.PreferNative {
+		if options.IndexDirectory != "" {
+			if matches, ok := searchWorkspaceFilesZoekt(ctx, root, paths, options, limit); ok {
+				return matches, workspaceSearchBackendZoekt, nil
+			}
+			if ctx.Err() != nil {
+				return nil, workspaceSearchBackendNone, nil
+			}
+		}
 		if executable, err := workspaceSearchLookPath("rg"); err == nil {
 			if matches, ok := searchWorkspaceFilesRipgrepWithOptions(ctx, executable, root, paths, options, limit); ok {
 				return matches, workspaceSearchBackendRipgrep, nil
@@ -125,18 +134,17 @@ func searchWorkspaceFilesGoWithOptions(ctx context.Context, root string, paths [
 				return matches, nil
 			}
 			line := strings.TrimSuffix(string(rawLine), "\r")
-			column, _, found := workspaceSearchLineRange(line, options, expression)
-			if !found {
-				continue
-			}
-			matches = append(matches, workspaceSearchMatch{
-				Path:   cleaned,
-				Line:   lineIndex + 1,
-				Column: column + 1,
-				Text:   workspaceSearchSnippet(line, column),
-			})
-			if len(matches) == limit {
-				return matches, nil
+			for _, match := range workspaceSearchLineAllRanges(line, options, expression) {
+				column := match[0]
+				matches = append(matches, workspaceSearchMatch{
+					Path:   cleaned,
+					Line:   lineIndex + 1,
+					Column: column + 1,
+					Text:   workspaceSearchSnippet(line, column),
+				})
+				if len(matches) == limit {
+					return matches, nil
+				}
 			}
 		}
 	}
@@ -321,20 +329,18 @@ func searchWorkspaceFilesRipgrepBatch(ctx context.Context, executable, resolvedR
 			}
 			line := strings.TrimSuffix(message.Data.Lines.String(), "\n")
 			line = strings.TrimSuffix(line, "\r")
-			// Ripgrep locates candidate lines, then the shared matcher chooses
-			// the exact range. This keeps ASCII RE2 classes, Unicode whole-word
-			// boundaries identical with native search.
-			column, _, found := workspaceSearchLineRange(line, options, expression)
-			if !found {
-				continue
+			// Return each match on the line, as VS Code does, while retaining
+			// the shared literal/regex and Unicode word-boundary semantics.
+			for _, match := range workspaceSearchLineAllRanges(line, options, expression) {
+				column := match[0]
+				matches = append(matches, workspaceSearchMatch{
+					Path:   logicalPath,
+					Line:   message.Data.LineNumber,
+					Column: column + 1,
+					Text:   workspaceSearchSnippet(line, column),
+				})
+				matchFiles = append(matchFiles, filename)
 			}
-			matches = append(matches, workspaceSearchMatch{
-				Path:   logicalPath,
-				Line:   message.Data.LineNumber,
-				Column: column + 1,
-				Text:   workspaceSearchSnippet(line, column),
-			})
-			matchFiles = append(matchFiles, filename)
 		case "end":
 			if !knownPath {
 				continue

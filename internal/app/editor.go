@@ -439,13 +439,26 @@ func (a *app) editorButton(c *ui.Context) {
 	a.editorLaunchButton(c, "Open in editor", "Open this repository in your editor", a.snapshot.Root, 0)
 }
 
-// repositoryExternalEditorButton offers direct workspace launches independently
-// of the configured editor. Picking an IDE here is an action, not a preference.
 func (a *app) repositoryExternalEditorButton(c *ui.Context) {
-	a.repositoryExternalEditorButtonWithText(c, "")
+	if a.snapshot.Root == "" || a.location.IsRemote() {
+		return
+	}
+	theme := c.Theme()
+	button := ui.ButtonBase(c).Padding(4).Radius(theme.Radius).
+		Label(tr("Open repository in external editor")).
+		Tooltip(tr("Open this repository in VS Code, Zed, or another editor"))
+	button.Children(func() {
+		ui.Icon(c, externalLinkIcon).FontSize(14).TextColor(theme.TextMuted)
+	})
+	if button.Hovered() {
+		button.Background(theme.SurfaceHover)
+	}
+	button.PopoverMenuButton(a.repositoryExternalEditorMenu)
 }
 
-func (a *app) repositoryExternalEditorButtonWithText(c *ui.Context, text string) {
+// repositoryExternalEditorMenu offers direct workspace launches independently
+// of the configured editor. Picking an IDE here is an action, not a preference.
+func (a *app) repositoryExternalEditorMenu(m *ui.Menu) {
 	if a.snapshot.Root == "" || a.location.IsRemote() {
 		return
 	}
@@ -453,42 +466,22 @@ func (a *app) repositoryExternalEditorButtonWithText(c *ui.Context, text string)
 	if folder, ok := normalizedCodeSearchFolder(a.code.searchFolder); ok && folder != "" {
 		workspacePath = filepath.Join(workspacePath, filepath.FromSlash(folder))
 	}
-	theme := c.Theme()
-	button := ui.ButtonBase(c).Padding(4).Radius(theme.Radius)
-	button.Label(tr("Open repository in external editor")).
-		Tooltip(tr("Open this repository in VS Code, Zed, or another editor"))
-	if text != "" {
-		button.Label(tr(text))
+	if m.Item("VS Code").Chosen() {
+		a.launchEditorCommand(vsCodeEditorCommand, workspacePath, 0)
 	}
-	button.Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
-			ui.Icon(c, externalLinkIcon).FontSize(14).TextColor(theme.TextMuted)
-			if text != "" {
-				ui.Text(c, tr(text))
-			}
-		})
-	})
-	if button.Hovered() {
-		button.Background(theme.SurfaceHover)
+	if m.Item("Zed").Chosen() {
+		a.launchEditorCommand(editorPresets[2].Command, workspacePath, 0)
 	}
-	button.PopoverMenuButton(func(m *ui.Menu) {
-		if m.Item("VS Code").Chosen() {
-			a.launchEditorCommand(vsCodeEditorCommand, workspacePath, 0)
+	for _, editor := range a.settings.ExternalEditors {
+		if m.Item(editor.Name).Chosen() {
+			a.launchEditorCommand(editor.Command, workspacePath, 0)
 		}
-		if m.Item("Zed").Chosen() {
-			a.launchEditorCommand(editorPresets[2].Command, workspacePath, 0)
-		}
-		for _, editor := range a.settings.ExternalEditors {
-			if m.Item(editor.Name).Chosen() {
-				a.launchEditorCommand(editor.Command, workspacePath, 0)
-			}
-		}
-		m.Separator()
-		if m.Item(tr("Customize editor…")).Chosen() {
-			a.settingsPage = settingsPageEditor
-			a.openSettings()
-		}
-	})
+	}
+	m.Separator()
+	if m.Item(tr("Customize editor…")).Chosen() {
+		a.settingsPage = settingsPageEditor
+		a.openSettings()
+	}
 }
 
 // fileEditorButton opens the selected file in the chosen editor, from the
