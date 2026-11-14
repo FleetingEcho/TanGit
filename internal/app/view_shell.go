@@ -940,20 +940,28 @@ func (a *app) headerViewWithID(c *ui.Context, keyboardID string) {
 				if conflicts > 0 {
 					continueTooltip = trf("Resolve conflicts before continuing (%d remaining)", conflicts)
 				}
-				iconTextButtonState(c, "Continue", continueTooltip, continueIcon, false,
-					a.actionBusy || conflicts > 0, func() {
-						if a.actionBusy || hasConflictedFiles(a.snapshot.Files) {
-							return
-						}
-						a.confirmContinueOperation()
-					})
-				iconTextButton(c, "Abort…", "Abort the interrupted operation", abortIcon, false,
-					func() {
-						if a.actionBusy {
-							return
-						}
-						a.confirmAbortOperation()
-					})
+				if a.operationCan(repository.OperationActionContinue) {
+					iconTextButtonState(c, "Continue", continueTooltip, continueIcon, false,
+						a.actionBusy || conflicts > 0, func() {
+							if a.actionBusy || hasConflictedFiles(a.snapshot.Files) {
+								return
+							}
+							a.confirmContinueOperation()
+						})
+				}
+				if a.operationCan(repository.OperationActionSkip) {
+					iconTextButtonState(c, "Skip…", "Skip the stopped step and continue the remaining operation", skipIcon, false,
+						a.actionBusy, a.confirmSkipOperation)
+				}
+				if a.operationCan(repository.OperationActionAbort) {
+					iconTextButton(c, "Abort…", "Abort the interrupted operation", abortIcon, false,
+						func() {
+							if a.actionBusy {
+								return
+							}
+							a.confirmAbortOperation()
+						})
+				}
 			}
 			// Labeled actions lead the toolbar; optional icon-only actions follow.
 			editorOnly := a.editorOnlyWorkspace()

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -68,10 +69,13 @@ type OperationRecord struct {
 	UndoKind    string        `json:"undo_kind,omitempty"`
 	Snapshot    *WorkSnapshot `json:"snapshot,omitempty"`
 	Error       string        `json:"error,omitempty"`
-	// RebasePaused marks an edit-stop waiting for ContinueOperation. Its undo
-	// is finalized only after the rebase returns to the branch, not against
-	// the temporary detached HEAD.
+	// RebasePaused is the legacy active-rebase marker used by edit-stops and
+	// conflict pauses. Its undo is finalized only after the rebase returns to
+	// the branch, not against the temporary detached HEAD.
 	RebasePaused bool `json:"rebase_paused,omitempty"`
+	// ActiveOperation keeps journal provenance while Git is paused. It is
+	// cleared only after the matching operation has actually finished.
+	ActiveOperation OperationType `json:"active_operation,omitempty"`
 
 	patchFile string
 }
@@ -79,7 +83,7 @@ type OperationRecord struct {
 // CanUndo is only a UI hint. Repository preflights remain authoritative.
 func (r OperationRecord) CanUndo() bool {
 	recoverable := r.Status == OperationSucceeded || (r.Status == OperationFailed && r.Partial)
-	return recoverable && r.UndoneAt == 0 && r.UndoKind != "" && !r.RebasePaused
+	return recoverable && r.UndoneAt == 0 && r.UndoKind != "" && !r.RebasePaused && r.ActiveOperation == OperationTypeNone
 }
 
 func (s *gitSession) journalDir() string {
@@ -621,50 +625,86 @@ func (s *gitSession) UndoOperation(ctx context.Context, id string) error {
 	return s.markOperationUndone(record)
 }
 
-// finalizePausedRebaseJournal completes the intentional pause introduced by
-// EditCommit. A continuation must validate against the branch that just got
-// its rewritten history back, not against the temporary detached HEAD.
-func (s *gitSession) finalizePausedRebaseJournal(ctx context.Context, action string) error {
+func normalizedOperationType(type_ OperationType) OperationType {
+	if type_ == OperationTypePullRebase {
+		return OperationTypeRebase
+	}
+	return type_
+}
+
+// finishStartedJournalOperation distinguishes a conflict pause from a failed
+// command. The original Git error is retained for the caller, while the
+// journal stays active and cannot offer Undo at a transient detached HEAD.
+func (s *gitSession) finishStartedJournalOperation(record OperationRecord, type_ OperationType, actionErr error) error {
+	if actionErr != nil {
+		state, stateErr := s.OperationState(context.Background())
+		if stateErr == nil && normalizedOperationType(state.Type) == normalizedOperationType(type_) && state.OrigSHA == record.HeadBefore {
+			record.ActiveOperation = type_
+			record.RebasePaused = normalizedOperationType(type_) == OperationTypeRebase
+			if finishErr := s.completeJournalOperation(record, nil); finishErr != nil {
+				return errors.Join(actionErr, finishErr)
+			}
+			return actionErr
+		}
+	}
+	return s.completeJournalOperation(record, actionErr)
+}
+
+// finalizeActiveOperationJournal closes only a record matching the operation
+// which just left Git metadata. Continue and skip finalize successful recovery;
+// abort leaves an interrupted, non-undoable record.
+func (s *gitSession) finalizeActiveOperationJournal(ctx context.Context, finished OperationType, action string) error {
 	records, err := s.Operations(ctx)
 	if err != nil {
 		return err
 	}
 	for _, record := range records {
-		if !record.RebasePaused {
+		active := record.ActiveOperation
+		if active == OperationTypeNone && record.RebasePaused {
+			active = OperationTypeRebase
+		}
+		if active == OperationTypeNone || normalizedOperationType(active) != normalizedOperationType(finished) {
 			continue
 		}
+		record.ActiveOperation = OperationTypeNone
+		record.RebasePaused = false
 		switch action {
-		case "continue":
+		case "continue", "skip":
 			branch, head, identityErr := s.currentOperationIdentity()
 			if identityErr != nil {
-				return fmt.Errorf("finish rebase recovery: %w", identityErr)
+				return fmt.Errorf("finish operation recovery: %w", identityErr)
 			}
 			if record.Branch != "" && branch != record.Branch {
-				return fmt.Errorf("rebase finished on %s instead of the original branch %s", branch, record.Branch)
+				return fmt.Errorf("operation finished on %s instead of the original branch %s", branch, record.Branch)
 			}
-			afterState, stateErr := s.resetRepositoryState(record.HeadBefore, head)
+			var afterState string
+			var stateErr error
+			if record.UndoKind == UndoResetHead {
+				afterState, stateErr = s.resetRepositoryState(record.HeadBefore, head)
+			} else {
+				afterState, stateErr = s.patchRepositoryState()
+			}
 			if stateErr != nil {
-				return fmt.Errorf("finish rebase recovery: %w", stateErr)
+				return fmt.Errorf("finish operation recovery: %w", stateErr)
 			}
 			record.BranchAfter, record.HeadAfter = branch, head
 			record.AfterState = afterState
 			record.Status = OperationSucceeded
 			record.Error = ""
-			record.RebasePaused = false
 			record.FinishedAt = time.Now().Unix()
 		case "abort":
-			record.RebasePaused = false
 			record.Status = OperationInterrupted
-			record.Message = "The paused edit was aborted."
+			record.Message = fmt.Sprintf("The active %s was aborted.", active)
+			record.FinishedAt = time.Now().Unix()
 		default:
-			return fmt.Errorf("unsupported paused-rebase recovery action %q", action)
+			return fmt.Errorf("unsupported active-operation recovery action %q", action)
 		}
 		name, pathErr := s.operationPath(record.ID)
 		if pathErr != nil {
 			return pathErr
 		}
 		if err := s.writeOperationRecord(name, record); err != nil {
-			return fmt.Errorf("finish rebase recovery: %w", err)
+			return fmt.Errorf("finish operation recovery: %w", err)
 		}
 		return nil
 	}
