@@ -166,8 +166,10 @@ go tool mygo vet .
 CGO_ENABLED=0 go test ./...
 ```
 
-Use `go test -race ./...` when changing shared state. Wrap new UI strings in
-`tr(...)` and add translations to every catalog in `internal/app/i18n*.go`.
+Use `go test -race ./...` when changing shared state. See
+[Verification](verification.md) for the CI matrix, required OpenSSH mode, smoke
+scope, and the limits of local checks. Wrap new UI strings in `tr(...)` and add
+translations to every catalog in `internal/app/i18n*.go`.
 
 ## Publishing signed updates
 
