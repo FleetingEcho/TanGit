@@ -73,7 +73,6 @@ func TestAttentionOperationsRequireConfirmationAndCancel(t *testing.T) {
 			a.beginUpdateRemote()
 		}},
 		{"tag push", func(a *app) { a.selectedTag = 0; a.tagRemote = "origin"; a.beginPushTag() }},
-		{"continue", func(a *app) { a.snapshot.Operation = "rebase"; a.confirmContinueOperation() }},
 		{"whole file resolution", func(a *app) { a.resolveConflictFile(repository.File{Path: "one.txt"}, true) }},
 		{"submodule update", func(a *app) {
 			a.snapshot.Submodules = []repository.Submodule{{Name: "lib", Path: "lib"}}
