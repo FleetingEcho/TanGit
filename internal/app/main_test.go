@@ -227,8 +227,26 @@ func (f fakeSession) PreviewPatch(_ context.Context, path string) (repository.Pa
 	return repository.PatchPreview{Path: path, Clean: true}, nil
 }
 
+func (f fakeSession) PreviewPatchRequest(_ context.Context, request repository.PatchRequest) (repository.PatchPreview, error) {
+	return repository.PatchPreview{
+		Text: request.Text, Target: request.Target, Reverse: request.Reverse,
+		ThreeWay: request.ThreeWay, Clean: true,
+	}, nil
+}
+
 func (f fakeSession) ApplyPatch(_ context.Context, preview repository.PatchPreview) error {
-	f.calls.record("apply-patch-file:" + preview.Path)
+	switch preview.Target {
+	case repository.PatchIndex:
+		f.calls.record("apply-patch:" + strconv.FormatBool(preview.Reverse) + ":" + preview.Text)
+	case repository.PatchWorktree:
+		if preview.Reverse {
+			f.calls.record("apply-worktree:true:" + preview.Text)
+		} else {
+			f.calls.record("apply-patch-file:" + preview.Path)
+		}
+	case repository.PatchBoth:
+		f.calls.record("apply-both:" + strconv.FormatBool(preview.Reverse) + ":" + preview.Text)
+	}
 	return nil
 }
 

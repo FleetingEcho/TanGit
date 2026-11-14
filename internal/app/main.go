@@ -48,24 +48,25 @@ type repositoryOpener interface {
 
 type app struct {
 	// Keyboard state belongs to the UI thread; only stable handles survive builds.
-	keyboardDiffCanSelect bool
-	keyboardTextFocus     bool
-	keyboardFocusVisible  bool
-	keyboardModalWasOpen  bool
-	keyboardModalReturn   string
-	keyboardLastPane      string
-	keyboardCurrentGroup  string
-	keybindingsScope      string
-	keyboardPrevious      []keyboardPane
-	keyboardLastList      *ui.ListState
-	keyboardLineAnchor    int
-	keyboardCopied        []repository.Commit
-	keyboardPanes         []keyboardPane
-	keyboardHandles       map[string]*ui.Handle
-	keyboardFocus         string
-	keyboardSection       int
-	keyboardSectionKnown  bool
-	keyboardMoved         map[*ui.ListState]bool
+	keyboardDiffCanSelect      bool
+	keyboardDiffCanMutateHunks bool
+	keyboardTextFocus          bool
+	keyboardFocusVisible       bool
+	keyboardModalWasOpen       bool
+	keyboardModalReturn        string
+	keyboardLastPane           string
+	keyboardCurrentGroup       string
+	keybindingsScope           string
+	keyboardPrevious           []keyboardPane
+	keyboardLastList           *ui.ListState
+	keyboardLineAnchor         int
+	keyboardCopied             []repository.Commit
+	keyboardPanes              []keyboardPane
+	keyboardHandles            map[string]*ui.Handle
+	keyboardFocus              string
+	keyboardSection            int
+	keyboardSectionKnown       bool
+	keyboardMoved              map[*ui.ListState]bool
 
 	opener repositoryOpener
 	update func(func())

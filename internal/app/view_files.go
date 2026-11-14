@@ -363,7 +363,9 @@ func (a *app) beginLineAction() {
 		return
 	}
 	a.beginRepositoryAction(file.Path, func(ctx context.Context, session repository.Session) error {
-		return session.ApplyCachedPatch(ctx, patchText, reverse)
+		return previewAndApplyPatch(ctx, session, repository.PatchRequest{
+			Text: patchText, Target: repository.PatchIndex, Reverse: reverse,
+		})
 	}, nil)
 }
 
@@ -647,11 +649,11 @@ func (a *app) fileDetailsView(c *ui.Context) {
 			return
 		}
 		a.requestFileDiff()
+		a.changedFileAndHunkNavigationControls(c)
 		if file.HasMergeConflicts {
 			a.conflictPane(c, theme)
 			return
 		}
-		a.changedFileNavigationControls(c)
 		if a.blameLoading {
 			loadingPane(c, "Loading blame", "Loading blame…")
 			return
