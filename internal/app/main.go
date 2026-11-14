@@ -655,6 +655,29 @@ type app struct {
 	worktreeBase            string
 	worktreeBranch          string
 	worktreeDetach          bool
+	worktreeForce           bool
+	worktreeTrack           bool
+	worktreeGuessRemote     bool
+	worktreeLock            bool
+	worktreeLockReason      string
+	worktreeOrphan          bool
+	worktreeNoCheckout      bool
+	worktreeSparsePaths     string
+	worktreeTemporary       bool
+	showWorktreeMoveForm    bool
+	worktreeMovePath        string
+	worktreeMoveForce       bool
+	showWorktreeLockForm    bool
+	worktreeLockTarget      string
+	worktreeLockTargetName  string
+	showWorktreeRepairForm  bool
+	worktreeRepairPaths     string
+	showWorktreePruneForm   bool
+	worktreePruneExpire     string
+	worktreePrunePreview    []string
+	worktreePruneError      string
+	worktreePruneLoading    bool
+	worktreePruneToken      uint64
 	showSubmoduleForm       bool
 	submoduleName           string
 	submodulePath           string

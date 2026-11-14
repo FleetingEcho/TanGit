@@ -79,4 +79,15 @@ func TestParseSessionWorktrees(t *testing.T) {
 	if named[0].Name != "shared" || named[1].Name != "shared-2" || named[2].Name != "other" {
 		t.Fatalf("unique names = %q, %q, %q", named[0].Name, named[1].Name, named[2].Name)
 	}
+
+	metadata := parseWorktreeMetadata("worktree /repo/main\nHEAD 111111\nbranch refs/heads/main\n\nworktree /repo/locked\nHEAD 222222\nlocked External drive\n\nworktree /repo/gone\nHEAD 333333\nprunable gitdir file points to non-existent location\n\n")
+	if got := metadata["/repo/locked"]; !got.Locked || got.LockReason != "External drive" {
+		t.Fatalf("locked metadata = %#v", got)
+	}
+	if got := metadata["/repo/gone"]; !got.Prunable || got.PruneReason != "gitdir file points to non-existent location" {
+		t.Fatalf("prunable metadata = %#v", got)
+	}
+	if got := metadata["/repo/main"]; got != (worktreeMetadata{}) {
+		t.Fatalf("ordinary metadata = %#v", got)
+	}
 }

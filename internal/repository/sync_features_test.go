@@ -365,7 +365,7 @@ func TestPullAndFastForwardProtectCheckedOutLinkedWorktrees(t *testing.T) {
 		"fast-forward": session.FastForwardBranch,
 	} {
 		if err := run(context.Background(), "topic"); err == nil ||
-			!strings.Contains(err.Error(), "checked out in "+linked) {
+			!strings.Contains(filepath.ToSlash(err.Error()), "checked out in "+filepath.ToSlash(linked)) {
 			t.Fatalf("%s updated a linked worktree without updating its files: %v", name, err)
 		}
 		if got := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "refs/heads/topic")); got != localTip {

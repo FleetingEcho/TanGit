@@ -566,11 +566,51 @@ func (f fakeSession) AbortOperation(context.Context) error {
 	return nil
 }
 
-func (f fakeSession) CreateWorktree(context.Context, string, string, string, bool) error {
+func (f fakeSession) CreateWorktree(context.Context, repository.WorktreeCreateOptions) error {
 	return nil
 }
 
-func (f fakeSession) DeleteWorktree(context.Context, string, bool) error {
+func (f fakeSession) DeleteWorktree(_ context.Context, path string, force bool) error {
+	f.calls.record("delete-worktree:" + path + ":" + strconv.FormatBool(force))
+	return nil
+}
+
+func (f fakeSession) MoveWorktree(_ context.Context, oldPath, newPath string, force bool) error {
+	f.calls.record("move-worktree:" + oldPath + ":" + newPath + ":" + strconv.FormatBool(force))
+	return nil
+}
+
+func (f fakeSession) FetchWorktree(_ context.Context, path string) error {
+	f.calls.record("fetch-worktree:" + path)
+	return nil
+}
+
+func (f fakeSession) PullWorktree(_ context.Context, path string) error {
+	f.calls.record("pull-worktree:" + path)
+	return nil
+}
+
+func (f fakeSession) LockWorktree(_ context.Context, path string, reason string) error {
+	f.calls.record("lock-worktree:" + path + ":" + reason)
+	return nil
+}
+
+func (f fakeSession) UnlockWorktree(_ context.Context, path string) error {
+	f.calls.record("unlock-worktree:" + path)
+	return nil
+}
+
+func (f fakeSession) PreviewPruneWorktrees(context.Context, string) ([]string, error) {
+	return []string{"Removing stale worktree record"}, nil
+}
+
+func (f fakeSession) PruneWorktrees(context.Context, string) error {
+	f.calls.record("prune-worktrees")
+	return nil
+}
+
+func (f fakeSession) RepairWorktrees(context.Context, []string) error {
+	f.calls.record("repair-worktrees")
 	return nil
 }
 
