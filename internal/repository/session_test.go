@@ -969,6 +969,82 @@ func TestFetchPullAndPush(t *testing.T) {
 	}
 }
 
+func newDivergedPullSession(t *testing.T) (string, Session, string, string) {
+	t.Helper()
+	// A user's global pull policy must not hide the unset-configuration case.
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	dir, session := newHistoryEditingSession(t)
+	writeHistoryCommit(t, dir, "base.txt", "base\n", "base")
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	runGit(t, dir, "init", "--bare", remote)
+	runGit(t, dir, "remote", "add", "origin", remote)
+	if err := session.Push(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(t.TempDir(), "other")
+	runGit(t, dir, "clone", "--branch", "main", remote, other)
+	runGit(t, other, "config", "user.name", "Remote Test")
+	runGit(t, other, "config", "user.email", "remote@example.com")
+	writeHistoryCommit(t, dir, "local.txt", "local\n", "local")
+	localTip := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
+	writeHistoryCommit(t, other, "remote.txt", "remote\n", "remote")
+	remoteTip := strings.TrimSpace(gitOutput(t, other, "rev-parse", "HEAD"))
+	runGit(t, other, "push", "origin", "main")
+	return dir, session, localTip, remoteTip
+}
+
+func TestPullDivergenceHasTypedRecovery(t *testing.T) {
+	dir, session, localTip, _ := newDivergedPullSession(t)
+	err := session.Pull(context.Background())
+	if !errors.Is(err, ErrPullDiverged) {
+		t.Fatalf("divergent pull error = %v, want ErrPullDiverged", err)
+	}
+	if !strings.Contains(err.Error(), "Need to specify how to reconcile divergent branches") {
+		t.Fatalf("divergent pull lost Git's diagnostic: %v", err)
+	}
+	if got := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD")); got != localTip {
+		t.Fatalf("rejected pull moved HEAD to %s, want %s", got, localTip)
+	}
+}
+
+func TestPullWithStrategyReconcilesDivergentBranches(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		strategy PullStrategy
+	}{
+		{name: "merge", strategy: PullMerge},
+		{name: "rebase", strategy: PullRebase},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir, session, localTip, remoteTip := newDivergedPullSession(t)
+			if err := session.Pull(context.Background()); !errors.Is(err, ErrPullDiverged) {
+				t.Fatalf("initial pull error = %v, want ErrPullDiverged", err)
+			}
+			if err := session.PullWithStrategy(context.Background(), test.strategy); err != nil {
+				t.Fatalf("PullWithStrategy(%v): %v", test.strategy, err)
+			}
+			runGit(t, dir, "merge-base", "--is-ancestor", remoteTip, "HEAD")
+			switch test.strategy {
+			case PullMerge:
+				parents := strings.Fields(gitOutput(t, dir, "rev-list", "--parents", "-n", "1", "HEAD"))
+				if len(parents) != 3 || parents[1] != localTip || parents[2] != remoteTip {
+					t.Fatalf("merge HEAD and parents = %v, want local %s then remote %s", parents, localTip, remoteTip)
+				}
+			case PullRebase:
+				if got := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD^")); got != remoteTip {
+					t.Fatalf("rebased local commit parent = %s, want remote tip %s", got, remoteTip)
+				}
+				if got := gitOutput(t, dir, "log", "-1", "--format=%s"); got != "local\n" {
+					t.Fatalf("rebased tip subject = %q, want local commit", got)
+				}
+			}
+			// Recovery applies to this pull only; it never edits pull.rebase.
+			runGitExpectFailure(t, dir, "config", "--local", "--get", "pull.rebase")
+		})
+	}
+}
+
 func TestFetchRemoteLeavesOtherRemoteTrackingRefsUntouched(t *testing.T) {
 	origin := filepath.Join(t.TempDir(), "origin.git")
 	mirror := filepath.Join(t.TempDir(), "mirror.git")

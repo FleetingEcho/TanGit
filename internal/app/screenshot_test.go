@@ -288,11 +288,14 @@ func (s screenshotSession) MergeBranch(context.Context, string) error          {
 func (s screenshotSession) Fetch(context.Context) error                        { return nil }
 func (s screenshotSession) FetchRemote(context.Context, string) error          { return nil }
 func (s screenshotSession) Pull(context.Context) error                         { return nil }
-func (s screenshotSession) Push(context.Context) error                         { return nil }
-func (s screenshotSession) PullBranch(context.Context, string) error           { return nil }
-func (s screenshotSession) FastForwardBranch(context.Context, string) error    { return nil }
-func (s screenshotSession) RebaseOntoBranch(context.Context, string) error     { return nil }
-func (s screenshotSession) ForceCheckoutBranch(context.Context, string) error  { return nil }
+func (s screenshotSession) PullWithStrategy(context.Context, repository.PullStrategy) error {
+	return nil
+}
+func (s screenshotSession) Push(context.Context) error                        { return nil }
+func (s screenshotSession) PullBranch(context.Context, string) error          { return nil }
+func (s screenshotSession) FastForwardBranch(context.Context, string) error   { return nil }
+func (s screenshotSession) RebaseOntoBranch(context.Context, string) error    { return nil }
+func (s screenshotSession) ForceCheckoutBranch(context.Context, string) error { return nil }
 func (s screenshotSession) SetUpstream(context.Context, string, string, string) error {
 	return nil
 }

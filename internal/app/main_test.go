@@ -385,6 +385,10 @@ func (f fakeSession) Pull(context.Context) error {
 	return nil
 }
 
+func (f fakeSession) PullWithStrategy(context.Context, repository.PullStrategy) error {
+	return nil
+}
+
 func (f fakeSession) Push(context.Context) error {
 	return nil
 }
