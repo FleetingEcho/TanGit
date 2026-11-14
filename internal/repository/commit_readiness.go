@@ -25,7 +25,12 @@ func (s *gitSession) commitReadiness(amend bool) error {
 		return fmt.Errorf("resolve merge conflicts before committing")
 	}
 	if command := commandBlockingCommit(s.workingTreeState()); command != "" {
-		return fmt.Errorf("finish or abort the %s in progress first", command)
+		// An interactive rebase edit-stop is deliberately amendable at HEAD;
+		// continue with the ordinary staged changes. Other interrupted
+		// operations still must be finished or aborted first.
+		if !amend || command != "rebase" {
+			return fmt.Errorf("finish or abort the %s in progress first", command)
+		}
 	}
 	for _, identity := range []string{"GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"} {
 		output, err := s.cmd.New([]string{"git", "var", identity}).RunWithOutput()

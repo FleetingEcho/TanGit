@@ -73,6 +73,25 @@ func (a *app) notifyError(err error) {
 	if err == nil {
 		return
 	}
+	if errors.Is(err, repository.ErrPullRequestMissing) {
+		a.notifyPullRequestMissing()
+		return
+	}
+	if errors.Is(err, repository.ErrPullRequestSetup) {
+		tool := "gh"
+		if strings.Contains(strings.ToLower(err.Error()), "glab") {
+			tool = "glab"
+		}
+		a.notifyToast(appToast{
+			kind:        "error",
+			title:       trf("Set up %s for pull requests", tool),
+			description: trf("Install %s or sign in with '%s auth login', then retry. The CLI output is in the command log.", tool, tool),
+			action:      "View log",
+			onAction:    a.openGitCommandLog,
+			timeout:     12 * time.Second,
+		})
+		return
+	}
 	if errors.Is(err, repository.ErrPullDiverged) {
 		a.notifyToast(appToast{
 			kind:        "error",
@@ -82,7 +101,7 @@ func (a *app) notifyError(err error) {
 			onAction:    func() { a.confirmPullStrategy(repository.PullMerge) },
 			moreActions: []appToastAction{
 				{label: "Rebase", onAction: func() { a.confirmPullStrategy(repository.PullRebase) }},
-				{label: "View log", onAction: a.openCommandLog},
+				{label: "View log", onAction: a.openGitCommandLog},
 			},
 			timeout: 12 * time.Second,
 		})
@@ -95,7 +114,7 @@ func (a *app) notifyError(err error) {
 			description: tr("The remote branch has changes you do not have locally. Pull and resolve any conflicts, then push again."),
 			action:      "Pull now",
 			onAction:    a.confirmPull,
-			moreActions: []appToastAction{{label: "View log", onAction: a.openCommandLog}},
+			moreActions: []appToastAction{{label: "View log", onAction: a.openGitCommandLog}},
 			timeout:     12 * time.Second,
 		})
 		return
@@ -105,7 +124,7 @@ func (a *app) notifyError(err error) {
 		title:       tr("Git action failed"),
 		description: shorten(safeError(err), 220),
 		action:      tr("View log"),
-		onAction:    a.openCommandLog,
+		onAction:    a.openGitCommandLog,
 		timeout:     8 * time.Second,
 	})
 }
@@ -244,4 +263,18 @@ func toastLook(theme *ui.Theme, kind string) (*ui.SVG, ui.Color) {
 	default:
 		return appIcon, theme.Accent
 	}
+}
+
+// notifyPullRequestMissing keeps a non-existent PR distinct from a missing
+// or unauthenticated CLI and gives the user a useful next action.
+func (a *app) notifyPullRequestMissing() {
+	a.notifyToast(appToast{
+		kind:        "info",
+		title:       tr("No pull request for this branch"),
+		description: tr("Create one to start a review and see its checks."),
+		action:      "Create pull request",
+		onAction:    a.openCreatePullRequestForm,
+		moreActions: []appToastAction{{label: "View log", onAction: a.openGitCommandLog}},
+		timeout:     10 * time.Second,
+	})
 }

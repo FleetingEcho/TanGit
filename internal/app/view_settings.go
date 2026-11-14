@@ -22,12 +22,21 @@ const (
 	settingsPageBehavior
 	settingsPageEditor
 	settingsPageWorkspace
+	settingsPageCommands
 	settingsPageUpdates
 	settingsPageSSHProfiles
 )
 
 func (a *app) openSettings() {
 	a.loadGoLanguageServerDraft()
+	a.settingsOpen = true
+}
+
+// openSettingsSection opens settings on a specific page, used by the
+// commands menu's way into the custom command editor.
+func (a *app) openSettingsSection(page int) {
+	a.loadGoLanguageServerDraft()
+	a.settingsPage = page
 	a.settingsOpen = true
 }
 
@@ -180,6 +189,7 @@ func (a *app) settingsBody(c *ui.Context) {
 				a.settingsPageButton(c, settingsPageBehavior, commitIcon, "Behavior")
 				a.settingsPageButton(c, settingsPageEditor, fileCodeIcon, "Editor")
 				a.settingsPageButton(c, settingsPageWorkspace, worktreesIcon, "Workspace")
+				a.settingsPageButton(c, settingsPageCommands, commandIcon, "Commands")
 				a.settingsPageButton(c, settingsPageSSHProfiles, remotesIcon, "SSH profiles")
 				a.settingsPageButton(c, settingsPageUpdates, updateIcon, "Updates")
 			})
@@ -195,6 +205,8 @@ func (a *app) settingsBody(c *ui.Context) {
 					a.editorSettings(c)
 				case settingsPageWorkspace:
 					a.workspaceSettings(c)
+				case settingsPageCommands:
+					a.commandsSettings(c)
 				case settingsPageSSHProfiles:
 					a.sshProfileSettings(c)
 				case settingsPageUpdates:
@@ -390,6 +402,47 @@ func (a *app) behaviorSettings(c *ui.Context) {
 			untracked := ui.Checkbox(c, &a.settings.IgnoreUntracked, tr("Ignore untracked files")).
 				Label(tr("Ignore untracked files"))
 			if untracked.Changed() {
+				a.applySettingsChange()
+				c.Invalidate()
+			}
+			a.hotkeysSwitch(c)
+			ui.Divider(c)
+			ui.Text(c, tr("Background fetch")).Bold()
+			ui.Text(c, tr("Fetches every remote while the window is open so branches, ahead/behind counts and tags stay current. Your working tree is not touched.")).
+				TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).MaxWidth(480)
+			fetchOn := a.settings.AutoFetchInterval > 0
+			fetchBox := ui.Checkbox(c, &fetchOn, tr("Fetch remotes in the background")).
+				Label(tr("Fetch remotes in the background"))
+			if fetchBox.Changed() {
+				if fetchOn {
+					a.settings.AutoFetchInterval = 5
+				} else {
+					a.settings.AutoFetchInterval = 0
+				}
+				a.settings.AutoFetchConfigured = true
+				a.applySettingsChange()
+				c.Invalidate()
+			}
+			if fetchOn {
+				for _, minutes := range []int{1, 5, 15, 30, 60} {
+					active := a.settings.AutoFetchInterval == minutes
+					var chip ui.Element
+					label := trf("%d min", minutes)
+					if active {
+						chip = ui.PrimaryButton(c, label)
+					} else {
+						chip = ui.Button(c, label)
+					}
+					if chip.Clicked() {
+						a.settings.AutoFetchInterval = minutes
+						a.settings.AutoFetchConfigured = true
+						a.settingsChanged(c)
+					}
+				}
+			}
+			prune := ui.Checkbox(c, &a.settings.FetchPrune, tr("Prune stale remote-tracking branches on fetch")).
+				Label(tr("Prune stale remote-tracking branches on fetch"))
+			if prune.Changed() {
 				a.applySettingsChange()
 				c.Invalidate()
 			}

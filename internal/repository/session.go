@@ -94,6 +94,10 @@ type Snapshot struct {
 	Worktrees     []Worktree
 	Submodules    []Submodule
 	Reflog        []Commit
+	// Bisect reports an in-progress or finished bisect, or nil when none is
+	// running. It is read on every snapshot so the banner and menus can
+	// react without a separate probe.
+	Bisect *BisectState
 }
 
 type Commit struct {
@@ -307,6 +311,22 @@ type Session interface {
 	PullWithStrategy(context.Context, PullStrategy) error
 	Push(context.Context) error
 	ForcePushWithLease(context.Context) error
+	// PushFollowTags pushes the branch like Push and also carries tags
+	// pointing at the commits being pushed (--follow-tags).
+	PushFollowTags(context.Context) error
+	// PushAllTags publishes every tag to the remote the current branch
+	// would push to.
+	PushAllTags(context.Context) error
+	// StackedBranches returns the local branches below the current one in a
+	// stacked workflow: ancestors of HEAD that are ahead of their upstream,
+	// oldest first. Empty when the branch has no stack below it.
+	StackedBranches(context.Context) ([]string, error)
+	// PushStack pushes the given branches in order, oldest first, using the
+	// same upstream and force rules as Push (never forced).
+	PushStack(context.Context, []string) error
+	// FetchPrune fetches every remote and prunes remote-tracking branches
+	// whose upstream disappeared.
+	FetchPrune(context.Context) error
 	CherryPickCommits(context.Context, []Commit) error
 	EditCommitRange(context.Context, []Commit, CommitRangeAction) error
 	// PullBranch brings the latest upstream changes into the named local
@@ -387,6 +407,9 @@ type Session interface {
 	CreateTag(context.Context, string, string, string, bool) error
 	DeleteTag(context.Context, string) error
 	PushTag(context.Context, string, string) error
+	// DeleteRemoteTag deletes the tag on the given remote. The local tag is
+	// left untouched.
+	DeleteRemoteTag(context.Context, string, string) error
 	CherryPickCommit(context.Context, Commit) error
 	RevertCommit(context.Context, Commit) error
 	// UndoLatestCommit removes exactly the approved HEAD commit, refusing if
@@ -405,6 +428,47 @@ type Session interface {
 	AddSubmodule(context.Context, string, string, string) error
 	UpdateSubmodule(context.Context, string) error
 	DeleteSubmodule(context.Context, string) error
+	// UpdateSubmodules updates several submodules at once; empty paths
+	// updates all of them. Recursive also updates nested submodules;
+	// remote checks out the remote-tracking tip instead of the recorded sha.
+	UpdateSubmodules(context.Context, []string, bool, bool) error
+	// SyncSubmodules re-syncs the remote URLs recorded in the index into
+	// each submodule's configuration.
+	SyncSubmodules(context.Context, []string) error
+	// BisectStart begins a bisect at badRef, optionally seeding goodRef as
+	// known-good. BisectMark marks ref (or the commit under test) good, bad
+	// or skipped; it returns the first bad commit when the bisect completes.
+	// BisectReset ends the session and returns to the original HEAD.
+	BisectStart(context.Context, string, string) error
+	BisectMark(context.Context, string, string) (string, error)
+	BisectReset(context.Context) error
+	// MoveUnpushedCommits creates newBranch at HEAD and resets the current
+	// branch back to its fork point from the upstream (or the default
+	// branch), moving the unpushed commits onto newBranch. It returns how
+	// many commits moved.
+	MoveUnpushedCommits(context.Context, string) (int, error)
+	// EditCommit pauses an interactive rebase on the commit so the user can
+	// change it; ContinueOperation resumes afterwards.
+	EditCommit(context.Context, Commit) error
+	// ExportPatches writes one mailbox-format patch per commit into the
+	// directory (created if needed) and returns the written paths, oldest
+	// first.
+	ExportPatches(context.Context, []Commit, string) ([]string, error)
+	// AmPatch applies a mailbox-format patch (or a git am mailbox) with a
+	// three-way fallback, preserving authorship.
+	AmPatch(context.Context, string, []byte) error
+	// PullRequestTool returns the configured hosting CLI, gh or glab.
+	PullRequestTool(context.Context) (string, error)
+	// CreatePullRequest creates a PR/MR with optional draft status.
+	CreatePullRequest(context.Context, string, string, string, string, bool) (string, error)
+	// OpenPullRequest views the branch's existing request in the browser.
+	OpenPullRequest(context.Context, string) (string, error)
+	// CheckPullRequestReady verifies the host CLI is installed and
+	// authenticated before a pull-request workflow begins.
+	CheckPullRequestReady(context.Context) error
+	// PullRequestChecks returns the PR checks or pipeline report. Output
+	// remains useful even when checks fail and the CLI returns an error.
+	PullRequestChecks(context.Context, string) (string, error)
 	BlameFile(context.Context, File) ([]BlameLine, error)
 	// BlameWorkingTreeFile attributes saved working-tree lines, including new
 	// or changed lines that have no commit identity yet.
@@ -526,6 +590,9 @@ func (Opener) Open(ctx context.Context, path string) (Session, error) {
 	// The focus callback schedules a refresh, so a snapshot's own Git commands
 	// can keep the app in an endless refresh/console-flash loop.
 	osCommand.Cmd = backgroundCmdBuilder(osCommand.Cmd)
+	osCommand.Cmd = osCommand.Cmd.CloneWithNewRunner(func(runner oscommands.ICmdObjRunner) oscommands.ICmdObjRunner {
+		return &registeredCommandRunner{run: runner, log: commandLog}
+	})
 	version, err := git_commands.GetGitVersion(osCommand)
 	if err != nil {
 		return nil, fmt.Errorf("read Git version: %w", err)
@@ -727,6 +794,10 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 		}
 		headHash = strings.TrimSpace(headHash)
 	}
+	// Bisect state rides along with every snapshot so the History view can
+	// show or hide its banner without a separate probe. A read failure must
+	// not fail the snapshot: treat it as "no bisect".
+	bisectState, _ := s.BisectState(ctx)
 	return Snapshot{
 		Root:      s.git.RepoPaths.WorktreePath(),
 		Branch:    branchInfo.DisplayName,
@@ -734,6 +805,7 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 		HeadHash:  headHash,
 		Files:     files,
 		Operation: operation,
+		Bisect:    bisectState,
 	}, nil
 }
 
@@ -1411,22 +1483,35 @@ func (s *gitSession) pull(ctx context.Context, strategy PullStrategy) error {
 }
 
 func (s *gitSession) Push(ctx context.Context) error {
-	return s.push(ctx, false)
+	return s.push(ctx, false, false)
 }
 
 func (s *gitSession) ForcePushWithLease(ctx context.Context) error {
-	return s.push(ctx, true)
+	return s.push(ctx, true, false)
 }
 
-func (s *gitSession) push(ctx context.Context, force bool) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
+// PushFollowTags pushes the current branch and carries the tags that point
+// at the pushed commits, like git push --follow-tags.
+func (s *gitSession) PushFollowTags(ctx context.Context) error {
+	return s.push(ctx, false, true)
+}
+
+func (s *gitSession) push(ctx context.Context, force bool, followTags bool) error {
 	branch, err := s.currentBranch()
 	if err != nil {
 		return err
 	}
+	return s.pushBranchRef(ctx, branch, force, followTags)
+}
 
+// pushBranchRef pushes branch to its resolved remote, setting the upstream
+// when it has none. Every push path funnels through here so the resolution
+// rules stay identical.
+func (s *gitSession) pushBranchRef(ctx context.Context, branch *models.Branch, force bool, followTags bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	name := branch.Name
 	remote := branch.PushRemote
 	target := branch.PushBranch
 	setUpstream := false
@@ -1439,20 +1524,182 @@ func (s *gitSession) push(ctx context.Context, force bool) error {
 			}
 			remote = remotes[0].Name
 		}
-		target = branch.Name
+		target = name
 		setUpstream = true
 	}
 	if target == "" {
-		target = branch.Name
+		target = name
 	}
 
-	if err := s.git.Sync.Push(nil, git_commands.PushOpts{
-		ForceWithLease: force,
-		SetUpstream:    setUpstream,
-		Remote:         remote,
-		Refspecs:       []string{fmt.Sprintf("refs/heads/%s:refs/heads/%s", branch.Name, target)},
-	}); err != nil {
+	args := []string{"git", "push"}
+	if force {
+		args = append(args, "--force-with-lease")
+	}
+	if followTags {
+		args = append(args, "--follow-tags")
+	}
+	if setUpstream {
+		args = append(args, "--set-upstream")
+	}
+	args = append(args, remote, fmt.Sprintf("refs/heads/%s:refs/heads/%s", name, target))
+	err := s.cmd.New(args).StreamOutput().PromptOnCredentialRequest(nil).Run()
+	if err != nil {
+		// StreamOutput preserves mixed stdout/stderr and avoids classifying a
+		// local hook failure from an otherwise uninformative exit status.
 		return fmt.Errorf("push: %w", safeNetworkError(err, force))
+	}
+	return nil
+}
+
+// PushStack pushes the given branches oldest first, then reports success.
+// It is used for stacked branches: the caller passes ancestors of the current
+// branch that have unpushed commits. Every push reports progress through the
+// command log; a failure stops the stack and reports which branch could not be
+// pushed.
+func (s *gitSession) PushStack(ctx context.Context, branches []string) error {
+	for _, name := range branches {
+		branch, err := s.localBranch(name)
+		if err != nil {
+			return fmt.Errorf("push stack: %w", err)
+		}
+		if err := s.pushBranchRef(ctx, branch, false, false); err != nil {
+			return fmt.Errorf("push %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// stackedBranch is one ancestor of HEAD with unpushed commits.
+type stackedBranch struct {
+	name  string
+	depth int
+}
+
+// StackedBranches lists local branches beneath the current one in a stacked
+// workflow: ancestors of HEAD that track an upstream and are ahead of it.
+// The result is ordered oldest first so a caller can push the whole stack in
+// one go. Branches without an upstream are skipped: without one there is no
+// notion of "unpushed" to check.
+func (s *gitSession) StackedBranches(ctx context.Context) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	current, err := s.currentBranch()
+	if err != nil {
+		return nil, nil
+	}
+	currentName := current.Name
+	output, err := s.cmd.New([]string{"git", "for-each-ref", "--format", "%(refname:short)%09%(upstream:short)", "refs/heads"}).DontLog().RunWithOutput()
+	if err != nil {
+		return nil, fmt.Errorf("list branches: %w", err)
+	}
+	type candidate struct {
+		name   string
+		behind int
+	}
+	var candidates []candidate
+	for _, line := range strings.Split(output, "\n") {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		name, upstream, ok := strings.Cut(line, "\t")
+		name = strings.TrimSpace(name)
+		upstream = strings.TrimSpace(upstream)
+		if !ok || name == "" || name == currentName || upstream == "" {
+			continue
+		}
+		// Skip branches whose upstream is gone: there is nothing to be
+		// ahead of.
+		count, err := s.cmd.New([]string{"git", "rev-list", "--count", upstream + ".." + name}).DontLog().RunWithOutput()
+		if err != nil {
+			continue
+		}
+		ahead, err := strconv.Atoi(strings.TrimSpace(count))
+		if err != nil || ahead == 0 {
+			continue
+		}
+		// Only branches contained in HEAD are part of this stack.
+		if err := s.cmd.New([]string{"git", "merge-base", "--is-ancestor", name, "HEAD"}).DontLog().Run(); err != nil {
+			continue
+		}
+		depth, err := s.cmd.New([]string{"git", "rev-list", "--count", name + "..HEAD"}).DontLog().RunWithOutput()
+		if err != nil {
+			continue
+		}
+		d, err := strconv.Atoi(strings.TrimSpace(depth))
+		if err != nil {
+			continue
+		}
+		candidates = append(candidates, candidate{name: name, behind: d})
+	}
+	// Deeper ancestors first: their distance from HEAD is larger.
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].behind > candidates[j].behind })
+	names := make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		names = append(names, c.name)
+	}
+	return names, nil
+}
+
+// PushAllTags publishes every tag to the remote the current branch would
+// push to.
+func (s *gitSession) PushAllTags(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	remote, err := s.pushRemoteName()
+	if err != nil {
+		return err
+	}
+	if out, err := s.cmd.New([]string{"git", "push", remote, "--tags"}).PromptOnCredentialRequest(nil).RunWithOutput(); err != nil {
+		return fmt.Errorf("push tags: %w%s", err, commandOutputSummary(out))
+	}
+	return nil
+}
+
+// DeleteRemoteTag removes the tag from the remote without touching the
+// local tag.
+func (s *gitSession) DeleteRemoteTag(ctx context.Context, remote string, name string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	remote = strings.TrimSpace(remote)
+	name = strings.TrimSpace(name)
+	if remote == "" || name == "" {
+		return fmt.Errorf("remote tag: remote and tag name are required")
+	}
+	if out, err := s.cmd.New([]string{"git", "push", remote, ":refs/tags/" + name}).PromptOnCredentialRequest(nil).RunWithOutput(); err != nil {
+		return fmt.Errorf("delete remote tag %s: %w%s", name, err, commandOutputSummary(out))
+	}
+	return nil
+}
+
+// pushRemoteName resolves the remote the current branch would push to.
+func (s *gitSession) pushRemoteName() (string, error) {
+	branch, err := s.currentBranch()
+	if err == nil {
+		if branch.PushRemote != "" {
+			return branch.PushRemote, nil
+		}
+		if branch.UpstreamRemote != "" {
+			return branch.UpstreamRemote, nil
+		}
+	}
+	remotes := s.git.Loaders.RemoteLoader.GetRemotes()
+	if len(remotes) == 0 {
+		return "", fmt.Errorf("repository has no remotes")
+	}
+	return remotes[0].Name, nil
+}
+
+// FetchPrune fetches every remote and prunes remote-tracking branches whose
+// upstreams disappeared.
+func (s *gitSession) FetchPrune(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := s.cmd.New([]string{"git", "fetch", "--all", "--prune", "--no-write-fetch-head"}).PromptOnCredentialRequest(nil).Run(); err != nil {
+		return fmt.Errorf("fetch: %w", safeNetworkError(err, false))
 	}
 	return nil
 }
@@ -1491,13 +1738,7 @@ func (s *gitSession) PullBranch(ctx context.Context, name string) error {
 	if !s.git.Branch.IsAncestor(branch.Name, upstream) {
 		return fmt.Errorf("pull: %s cannot fast-forward to %s; check it out and pull to merge", branch.Name, upstream)
 	}
-	// Moving the ref of a branch that is not checked out brings its
-	// commits in without touching the working tree.
-	update := fmt.Sprintf("update refs/heads/%s %s\n", branch.Name, upstream)
-	if err := s.git.Branch.UpdateBranchRefs(update, "pull: fast-forward "+branch.Name); err != nil {
-		return fmt.Errorf("pull: %w", err)
-	}
-	return nil
+	return s.fastForwardNonCheckoutBranch(branch.Name, upstream)
 }
 
 func (s *gitSession) FastForwardBranch(ctx context.Context, name string) error {
@@ -1522,11 +1763,59 @@ func (s *gitSession) FastForwardBranch(ctx context.Context, name string) error {
 		}
 		return nil
 	}
-	update := fmt.Sprintf("update refs/heads/%s %s\n", branch.Name, upstream)
-	if err := s.git.Branch.UpdateBranchRefs(update, "fast-forward "+branch.Name); err != nil {
+	return s.fastForwardNonCheckoutBranch(branch.Name, upstream)
+}
+
+// fastForwardNonCheckoutBranch updates only a branch which is not checked
+// out in a linked worktree. Otherwise updating the ref alone would leave the
+// other worktree's index and files behind. The old expected tip makes the ref
+// operation conditional as well, so a concurrent branch advance is preserved.
+func (s *gitSession) fastForwardNonCheckoutBranch(name, upstream string) error {
+	checkedOut, err := s.linkedWorktreeFor(name)
+	if err != nil {
+		return err
+	}
+	if checkedOut != "" {
+		return fmt.Errorf("branch %s is checked out in %s; update it there", name, checkedOut)
+	}
+	oldTip, err := s.gitText("rev-parse", "--verify", "refs/heads/"+name)
+	if err != nil {
 		return fmt.Errorf("fast-forward: %w", err)
 	}
+	newTip, err := s.gitText("rev-parse", "--verify", strings.TrimSpace(upstream))
+	if err != nil {
+		return fmt.Errorf("fast-forward: %w", err)
+	}
+	if !s.git.Branch.IsAncestor(strings.TrimSpace(oldTip), strings.TrimSpace(newTip)) {
+		return fmt.Errorf("fast-forward: %s has diverged from %s", name, upstream)
+	}
+	output, err := s.cmd.New([]string{"git", "update-ref", "refs/heads/" + name,
+		strings.TrimSpace(newTip), strings.TrimSpace(oldTip)}).RunWithOutput()
+	if err != nil {
+		return fmt.Errorf("fast-forward: %w: %s", err, strings.TrimSpace(output))
+	}
 	return nil
+}
+
+// linkedWorktreeFor returns the path of a different worktree whose checked
+// out branch is name. Session paths keep local and SSH layouts distinct;
+// there is deliberately no host-filesystem probe for remote worktrees.
+func (s *gitSession) linkedWorktreeFor(branch string) (string, error) {
+	worktrees, err := s.sessionWorktrees()
+	if err != nil {
+		return "", fmt.Errorf("list linked worktrees: %w", err)
+	}
+	current := strings.TrimSpace(strings.TrimSuffix(s.git.RepoPaths.WorktreePath(), "/"))
+	for _, worktree := range worktrees {
+		if worktree.Branch != branch {
+			continue
+		}
+		path := strings.TrimSpace(strings.TrimSuffix(worktree.Path, "/"))
+		if path != "" && path != current {
+			return path, nil
+		}
+	}
+	return "", nil
 }
 
 // fetchUpstream refreshes the remote-tracking ref a branch tracks and
@@ -2573,7 +2862,7 @@ func (s *gitSession) finishOperation(ctx context.Context, action string) error {
 	if err := s.finishGitOperation(operation, action); err != nil {
 		return fmt.Errorf("%s %s: %w", action, operation, err)
 	}
-	return nil
+	return s.finalizePausedRebaseJournal(ctx, action)
 }
 
 func (s *gitSession) CreateWorktree(ctx context.Context, path string, base string, branch string, detach bool) error {
@@ -2629,6 +2918,59 @@ func (s *gitSession) UpdateSubmodule(ctx context.Context, path string) error {
 		return fmt.Errorf("update submodule: %w", err)
 	}
 	return nil
+}
+
+// UpdateSubmodules updates many submodules in one git call. Empty paths
+// updates every submodule. A remote update checks out the remote-tracking
+// tip of each submodule's default branch instead of the recorded sha.
+func (s *gitSession) UpdateSubmodules(ctx context.Context, paths []string, recursive bool, remote bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	args := []string{"git", "submodule", "update", "--init"}
+	if recursive {
+		args = append(args, "--recursive")
+	}
+	if remote {
+		args = append(args, "--remote")
+	}
+	paths = trimmedPaths(paths)
+	if len(paths) > 0 {
+		args = append(args, "--")
+		args = append(args, paths...)
+	}
+	if out, err := s.cmd.New(args).PromptOnCredentialRequest(nil).RunWithOutput(); err != nil {
+		return fmt.Errorf("update submodules: %w%s", err, commandOutputSummary(out))
+	}
+	return nil
+}
+
+// SyncSubmodules re-reads .gitmodules and rewrites the submodule URLs recorded
+// in each submodule's config, picking up URL changes.
+func (s *gitSession) SyncSubmodules(ctx context.Context, paths []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	args := []string{"git", "submodule", "sync", "--recursive"}
+	paths = trimmedPaths(paths)
+	if len(paths) > 0 {
+		args = append(args, "--")
+		args = append(args, paths...)
+	}
+	if out, err := s.cmd.New(args).RunWithOutput(); err != nil {
+		return fmt.Errorf("sync submodules: %w%s", err, commandOutputSummary(out))
+	}
+	return nil
+}
+
+func trimmedPaths(paths []string) []string {
+	result := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if trimmed := strings.TrimSpace(path); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func (s *gitSession) DeleteSubmodule(ctx context.Context, path string) error {

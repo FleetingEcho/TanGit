@@ -1177,3 +1177,104 @@ func (f fakeSession) EditCommitRange(_ context.Context, commits []repository.Com
 	f.calls.record("batch-edit:" + string(action))
 	return nil
 }
+
+// These stubs keep the shared test session current with the expanded
+// repository Session interface. Individual feature tests assert the recorded
+// calls; most UI tests only need the shared snapshot.
+func (f fakeSession) PushFollowTags(context.Context) error {
+	f.calls.record("push-follow-tags")
+	return nil
+}
+
+func (f fakeSession) PushAllTags(context.Context) error {
+	f.calls.record("push-all-tags")
+	return nil
+}
+
+func (f fakeSession) StackedBranches(context.Context) ([]string, error) {
+	return nil, nil
+}
+
+func (f fakeSession) PushStack(_ context.Context, branches []string) error {
+	f.calls.record("push-stack:" + strings.Join(branches, ","))
+	return nil
+}
+
+func (f fakeSession) FetchPrune(context.Context) error {
+	f.calls.record("fetch-prune")
+	return nil
+}
+
+func (f fakeSession) DeleteRemoteTag(_ context.Context, remote, name string) error {
+	f.calls.record("delete-remote-tag:" + remote + ":" + name)
+	return nil
+}
+
+func (f fakeSession) UpdateSubmodules(_ context.Context, paths []string, recursive, remote bool) error {
+	f.calls.record("update-submodules:" + strings.Join(paths, ",") +
+		":recursive=" + strconv.FormatBool(recursive) + ":remote=" + strconv.FormatBool(remote))
+	return nil
+}
+
+func (f fakeSession) SyncSubmodules(_ context.Context, paths []string) error {
+	f.calls.record("sync-submodules:" + strings.Join(paths, ","))
+	return nil
+}
+
+func (f fakeSession) BisectStart(_ context.Context, badRef, goodRef string) error {
+	f.calls.record("bisect-start:" + badRef + ":" + goodRef)
+	return nil
+}
+
+func (f fakeSession) BisectMark(_ context.Context, term, ref string) (string, error) {
+	f.calls.record("bisect-mark:" + term + ":" + ref)
+	return "", nil
+}
+
+func (f fakeSession) BisectReset(context.Context) error {
+	f.calls.record("bisect-reset")
+	return nil
+}
+
+func (f fakeSession) MoveUnpushedCommits(_ context.Context, name string) (int, error) {
+	f.calls.record("move-unpushed:" + name)
+	return 0, nil
+}
+
+func (f fakeSession) EditCommit(_ context.Context, commit repository.Commit) error {
+	f.calls.record("edit-commit:" + commit.Hash)
+	return nil
+}
+
+func (f fakeSession) ExportPatches(_ context.Context, commits []repository.Commit, directory string) ([]string, error) {
+	f.calls.record("export-patches:" + directory)
+	return nil, nil
+}
+
+func (f fakeSession) AmPatch(_ context.Context, name string, content []byte) error {
+	f.calls.record("am-patch:" + name)
+	return nil
+}
+
+func (f fakeSession) PullRequestTool(context.Context) (string, error) {
+	return "gh", nil
+}
+
+func (f fakeSession) CreatePullRequest(_ context.Context, title, body, head, base string, draft bool) (string, error) {
+	f.calls.record("create-pr:" + strings.Join([]string{title, body, head, base, strconv.FormatBool(draft)}, "|"))
+	return "https://example.com/pull/42", nil
+}
+
+func (f fakeSession) OpenPullRequest(_ context.Context, branch string) (string, error) {
+	f.calls.record("open-pr:" + branch)
+	return "https://example.com/pull/42", nil
+}
+
+func (f fakeSession) PullRequestChecks(_ context.Context, branch string) (string, error) {
+	f.calls.record("pr-checks:" + branch)
+	return "build  passed  42s", nil
+}
+
+func (f fakeSession) CheckPullRequestReady(context.Context) error {
+	return nil
+}

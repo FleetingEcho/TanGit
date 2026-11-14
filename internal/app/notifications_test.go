@@ -303,6 +303,9 @@ func TestCommandLogModalShowsAndClearsCommands(t *testing.T) {
 	if err := h.tester.Click("Command log"); err != nil {
 		t.Fatal(err)
 	}
+	if err := h.tester.Click("Background Git commands"); err != nil {
+		t.Fatal(err)
+	}
 	h.tester.Frame()
 	h.settle(t)
 	texts := h.texts()
@@ -324,6 +327,11 @@ func TestCommandLogModalShowsAndClearsCommands(t *testing.T) {
 	if !a.commandLogOpen {
 		t.Fatal("Ctrl+L did not open the command log")
 	}
+	if err := h.tester.Click("Background Git commands"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	h.settle(t)
 
 	// Clear drops the commands, and the pane says so.
 	if err := h.tester.Click("Clear"); err != nil {
@@ -334,7 +342,7 @@ func TestCommandLogModalShowsAndClearsCommands(t *testing.T) {
 	if entries := log.Entries(); len(entries) != 0 {
 		t.Fatalf("Clear left %d commands", len(entries))
 	}
-	if !slices.Contains(h.texts(), "No Git commands yet") {
+	if !slices.Contains(h.texts(), "No commands in this section yet.") {
 		t.Fatalf("the cleared log shows no empty state: %q", h.texts())
 	}
 }
@@ -391,6 +399,9 @@ func TestCommandLogTextCanBeCopied(t *testing.T) {
 	a.commandLog = log
 
 	if err := h.tester.Click("Command log"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.tester.Click("Background Git commands"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -186,6 +187,15 @@ type app struct {
 	customEditorFormName    string
 	customEditorFormCommand string
 	customEditorFormError   string
+	// customCommandForm drafts a user-defined shell command in Settings.
+	// Index -1 adds a new command; anything else edits that entry.
+	customCommandFormOpen     bool
+	customCommandFormEdit     int
+	customCommandFormName     string
+	customCommandFormCommand  string
+	customCommandFormKey      string
+	customCommandFormContexts []string
+	customCommandFormError    string
 	// The Go language-server draft backs stable Settings controls while the
 	// persisted profile keeps arguments as a safe array rather than a shell command.
 	goLanguageServerEnabled       bool
@@ -233,8 +243,28 @@ type app struct {
 	keybindingFilter       string
 	// commandLogOpen shows every Git command the session ran and what it
 	// printed; commandLog is that record, nil until a repository opens.
-	commandLogOpen bool
-	commandLog     *repository.CommandLog
+	// openExternalURL launches external URLs in the user's desktop browser,
+	// never on an SSH server. Header capture binds this to a live UI service.
+	openExternalURL   func(string)
+	commandLogOpen    bool
+	commandLog        *repository.CommandLog
+	commandLogVisible atomic.Bool
+	// Custom shell jobs have one owner and a real context so closing a
+	// repository cannot leave a job running against a different checkout.
+	customCommandSeq     uint64
+	customCommandRunning bool
+	customCommandCancel  context.CancelFunc
+	customCommandDone    chan struct{}
+	// commandLogUser selects the user's commands instead of background Git
+	// commands; commandLogQuery filters the selected section, highlighted.
+	commandLogUser  bool
+	commandLogQuery string
+	// commandPromptOpen shows the one-off shell command line that ':' opens;
+	// commandPromptText holds what the user typed into it.
+	commandPromptOpen bool
+	commandPromptText string
+	// lastAutoFetch throttles background fetches per app instance.
+	lastAutoFetch time.Time
 	// confirm is the question a destructive action asked, drawn over the
 	// window until the user answers it.
 	confirm *confirmRequest
@@ -561,59 +591,74 @@ type app struct {
 	snapshotSeq              uint64
 	cancelRepositoryWatch    context.CancelFunc
 
-	showCommitForm         bool
-	commitSummary          string
-	commitBody             string
-	commitAmend            bool
-	showBranchForm         bool
-	newBranchName          string
-	newBranchBase          string
-	showRenameForm         bool
-	renameBranch           string
-	showRemoteForm         bool
-	remoteOriginalName     string
-	remoteOriginalURL      string
-	remoteName             string
-	remoteURL              string
-	showRemoteWebURLForm   bool
-	remoteWebOriginalName  string
-	remoteWebURL           string
-	remoteWebURLError      string
-	showRemoteCheckoutForm bool
-	remoteLocalBranch      string
-	showStashForm          bool
-	stashSelection         []repository.File
-	stashPatch             string
-	stashRemovalPatch      string
-	stashMessage           string
-	stashIncludeUntracked  bool
-	checkpointName         string
-	showStashRenameForm    bool
-	stashRename            string
-	stashDiffState         *editor.DiffState
-	stashDiffMedia         *mediaReview
-	stashDiffHash          string
-	stashDiffPath          string
-	stashDiffOptions       repository.DiffOptions
-	stashDiffPatch         string
-	stashDiffLoading       bool
-	stashDiffError         string
-	showTagForm            bool
-	tagName                string
-	tagRef                 string
-	tagMessage             string
-	tagAnnotated           bool
-	showTagPushForm        bool
-	tagRemote              string
-	showWorktreeForm       bool
-	worktreePath           string
-	worktreeBase           string
-	worktreeBranch         string
-	worktreeDetach         bool
-	showSubmoduleForm      bool
-	submoduleName          string
-	submodulePath          string
-	submoduleURL           string
+	showCommitForm          bool
+	commitSummary           string
+	commitBody              string
+	commitAmend             bool
+	showBranchForm          bool
+	newBranchName           string
+	newBranchBase           string
+	showMoveCommitsForm     bool
+	moveCommitsName         string
+	showRenameForm          bool
+	renameBranch            string
+	showRemoteForm          bool
+	remoteOriginalName      string
+	remoteOriginalURL       string
+	remoteName              string
+	remoteURL               string
+	showRemoteWebURLForm    bool
+	remoteWebOriginalName   string
+	remoteWebURL            string
+	remoteWebURLError       string
+	showRemoteCheckoutForm  bool
+	remoteLocalBranch       string
+	showStashForm           bool
+	showPRForm              bool
+	prTitle                 string
+	prBody                  string
+	prBase                  string
+	prDraft                 bool
+	prError                 string
+	prChecksOpen            bool
+	prChecksText            string
+	prChecksError           string
+	prChecksLoading         bool
+	prChecksToken           uint64
+	prSetupBusy             bool
+	stashSelection          []repository.File
+	stashPatch              string
+	stashRemovalPatch       string
+	stashMessage            string
+	stashIncludeUntracked   bool
+	checkpointName          string
+	showStashRenameForm     bool
+	stashRename             string
+	stashDiffState          *editor.DiffState
+	stashDiffMedia          *mediaReview
+	stashDiffHash           string
+	stashDiffPath           string
+	stashDiffOptions        repository.DiffOptions
+	stashDiffPatch          string
+	stashDiffLoading        bool
+	stashDiffError          string
+	showTagForm             bool
+	showTagRemoteDeleteForm bool
+	tagName                 string
+	tagRef                  string
+	tagMessage              string
+	tagAnnotated            bool
+	showTagPushForm         bool
+	tagRemote               string
+	showWorktreeForm        bool
+	worktreePath            string
+	worktreeBase            string
+	worktreeBranch          string
+	worktreeDetach          bool
+	showSubmoduleForm       bool
+	submoduleName           string
+	submodulePath           string
+	submoduleURL            string
 
 	// The commit actions that need a name: a tag or a branch created at a
 	// commit picked from the history, opened as a small modal.
@@ -629,6 +674,13 @@ type app struct {
 	// edits only the message of the selected historical commit. The token drops
 	// a slower message read after the form closes or switches to another commit.
 	showCommitRewordForm   bool
+	showBisectForm         bool
+	bisectBadCommit        repository.Commit
+	showExportPatchForm    bool
+	exportPatchDir         string
+	exportPatchCommits     []repository.Commit
+	bisectGoodRef          string
+	bisectFormError        string
 	commitRewordCommit     repository.Commit
 	commitRewordSummary    string
 	commitRewordBody       string
