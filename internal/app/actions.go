@@ -12,6 +12,7 @@ import (
 
 	"lazygitapp/internal/repository"
 	"lazygitapp/internal/workspace"
+	"time"
 )
 
 func (a *app) beginOpen() {
@@ -185,8 +186,11 @@ func (a *app) setOpenError(path string, generation uint64, err error) {
 func (a *app) installOpenedRepository(session repository.Session, snapshot repository.Snapshot) {
 	a.state = stateReady
 	a.session = session
-	a.commandLog = session.CommandLog()
+	a.attachRepositoryCommandLog(session.CommandLog())
+	a.commandLogVisible.Store(false)
 	a.commandLogOpen = false
+	a.lastAutoFetch = time.Time{}
+	a.prSetupBusy = false
 	a.confirm = nil
 	a.commitSelectionMode = false
 	a.commitSelection = nil
@@ -545,7 +549,9 @@ func (a *app) beginRepositoryActionMessage(
 
 	a.invalidateCodeBlameForRepositoryMutation()
 	session := a.session
+	commandLog := a.commandLog
 	repositoryGeneration := a.generation
+	actionStart := commandLog.Marker()
 	// The lists keep their place by what they show, not by index: an action
 	// or a refresh that moves a row must not move the user's choice with it.
 	selected := a.captureSelection(keepPath)
@@ -561,6 +567,8 @@ func (a *app) beginRepositoryActionMessage(
 		defer a.recoverBackground()
 		ctx := context.Background()
 		err := action(ctx, session)
+		actionEnd := commandLog.Marker()
+		snapshotFailed := false
 		var snapshot repository.Snapshot
 		read := false
 		if err == nil {
@@ -568,6 +576,7 @@ func (a *app) beginRepositoryActionMessage(
 			snapshot, snapshotErr = session.Snapshot(ctx)
 			if snapshotErr != nil {
 				err = snapshotErr
+				snapshotFailed = true
 			} else {
 				read = true
 			}
@@ -621,7 +630,11 @@ func (a *app) beginRepositoryActionMessage(
 			if err != nil {
 				a.actionError = safeError(err)
 				if a.commandLog != nil {
-					a.commandLog.Note(safeError(err))
+					if snapshotFailed {
+						commandLog.FailRange(actionEnd, commandLog.Marker(), safeError(err))
+					} else {
+						commandLog.FailRange(actionStart, actionEnd, safeError(err))
+					}
 				}
 				a.notifyError(err)
 				return
@@ -1005,6 +1018,24 @@ func (a *app) prepareShutdown(done func(bool)) {
 // shutdown releases everything the open repository held, leaving the app on
 // the picker, so another repository can be opened without restarting.
 func (a *app) shutdown() {
+	a.generation++
+	if a.customCommandCancel != nil {
+		a.customCommandCancel()
+		a.customCommandCancel = nil
+	}
+	if done := a.customCommandDone; done != nil {
+		// Cancellation and joining are different operations. The UI must not
+		// return from shutdown while context cancellation is still unwinding
+		// a descendant. Every successful job closes this channel before exit.
+		select {
+		case <-done:
+		case <-time.After(4 * time.Second):
+			a.commandLog.Note(tr("The command did not stop in time; shutdown reached its wait limit."))
+		}
+	}
+	a.customCommandDone = nil
+	a.customCommandRunning = false
+	a.customCommandSeq++
 	a.stopRepositoryWatch()
 	if a.cancelOpen != nil {
 		a.cancelOpen()
@@ -1026,6 +1057,8 @@ func (a *app) shutdown() {
 	a.branchFullscreen = false
 	a.closeAllForms()
 	a.resetRepositoryState(repository.Snapshot{})
+	a.commandLog.SetListener(nil)
+	a.commandLogVisible.Store(false)
 	closeRepositorySession(a.session)
 	a.session = nil
 	a.location = workspace.Location{}

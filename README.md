@@ -64,8 +64,9 @@ undo/redo operations, and reflog recovery help you manage changes deliberately.
 | | What you can do |
 | --- | --- |
 | **Changes & diffs** | Stage files or selected lines; review unified, side-by-side, image, and media diffs; export patches. Use Change Courier to preview and copy files, hunks, or lines to another worktree as unstaged changes. |
-| **History & graph** | Filter commits, inspect file history, cherry-pick batches, reword, squash, and reorder commits. Collect whole files, hunks, or lines into a Custom Patch, then safely apply, export, or send it to another worktree. |
-| **Branches & recovery** | Manage remotes, tags, stashes, worktrees, and submodules; inspect the reflog and undo eligible operations. Safety Journal retains durable, revalidated recovery for destructive actions and patch applications. |
+| **History & graph** | Filter commits, inspect file history, cherry-pick batches, reword, squash, and reorder commits. Pause at a commit with **Edit**, or use **bisect** to find the commit that introduced a problem. Collect whole files, hunks, or lines into a Custom Patch, then safely apply, export, or send it to another worktree. |
+| **Branches & recovery** | Manage remotes, tags, stashes, worktrees, and submodules; inspect the reflog and undo eligible operations. Move unpushed commits to a new branch, push a whole stack, and prune stale upstreams. Safety Journal retains durable, revalidated recovery for destructive actions and patch applications. |
+| **Collaboration & automation** | Create pull requests and view checks with **GitHub CLI** (`gh`) or **GitLab CLI** (`glab`); push all tags or delete a remote tag; export `format-patch` series and apply mailbox patches with a three-way fallback. Add custom shell commands with optional keybindings, or run one-off commands with `:`. Background fetching and pruning are configurable. |
 | **Conflict resolution** | Review base, current, and incoming versions; choose hunks, edit the result, and stage the resolution. |
 | **Editor workspace** | Edit with syntax highlighting and language-server assistance; manage files and tabs; use fzf Quick Open, advanced content search, and Markdown preview. |
 | **Your workspace** | Repository tabs, directory trees, resizable panels, expanded branch/diff views, a terminal, and external editors. |
@@ -126,11 +127,13 @@ quitting Neovim returns to the shell in the project or file's directory.
 | `Ctrl+B` / `B` | Add the chosen commit or historical file / review Custom Patch |
 | `A` / `Space` in a historical diff | Add the current hunk / selected changed lines to Custom Patch |
 | `p` / `P` | Pull / push |
-| `r` | Reword a commit in History or Graph |
+| `r` / `e` | Reword / pause a rebase to edit a commit |
+| `b` | Start a bisect, or mark the current test as bad; `g` good, `k` skip, `R` reset |
 | `z` / `Z` | Undo / redo eligible operations |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Switch repository tabs |
 | `Ctrl+P` / `Ctrl+Shift+F` | Quick open / workspace content search in Editor |
 | ``Ctrl+` `` / `Ctrl+,` | Terminal / Settings |
+| `:` / `Ctrl+L` | Run a one-off shell command / command log |
 
 Uppercase letters mean **Shift + letter**. Git shortcuts follow the focused
 panel; text fields retain normal typing. Attention-requiring actions ask for

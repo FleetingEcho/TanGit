@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"strings"
+	"time"
 
 	"lazygitapp/internal/repository"
 )
@@ -24,10 +26,62 @@ func (a *app) confirmAttention(title, target, detail string, run func()) {
 }
 
 func (a *app) confirmPush() {
+	if a.actionBusy || a.session == nil {
+		return
+	}
+	session := a.session
+	generation := a.generation
+	a.actionBusy = true
+	go func() {
+		defer a.recoverBackground()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		stack, _ := session.StackedBranches(ctx)
+		a.update(func() {
+			if generation != a.generation {
+				return
+			}
+			a.actionBusy = false
+			a.confirmPushCandidates(stack)
+		})
+	}()
+}
+
+func (a *app) confirmPushCandidates(stack []string) {
+	if len(stack) > 0 {
+		detail := trf("This pushes %d stacked branch%s below %s first, then %s itself.", len(stack), pluralS(len(stack)), a.snapshot.Branch, a.snapshot.Branch) +
+			"\n\n" + strings.Join(stack, " → ") + " → " + a.snapshot.Branch +
+			"\n\n" + tr("Each push publishes that branch's unpushed commits. Nothing is force-pushed.")
+		a.confirmAttention("Push", a.snapshot.Branch, detail, func() {
+			a.beginRepositoryActionMessage(trf("Pushed %s and %d stacked branch%s", a.snapshot.Branch, len(stack), pluralS(len(stack))), "", func(ctx context.Context, s repository.Session) error {
+				if err := s.PushStack(ctx, stack); err != nil {
+					return err
+				}
+				return s.Push(ctx)
+			}, nil)
+		})
+		return
+	}
 	a.confirmAttention("Push", a.snapshot.Branch,
 		"This publishes local commits to the remote branch. Review the destination and commits before continuing.", func() {
 			a.beginRepositoryActionMessage(tr("Pushed the branch"), "", func(ctx context.Context, s repository.Session) error { return s.Push(ctx) }, nil)
 		})
+}
+
+// confirmPushFollowTags pushes the branch carrying the tags that point at the
+// pushed commits, like git push --follow-tags.
+func (a *app) confirmPushFollowTags() {
+	a.confirmAttention("Push with tags", a.snapshot.Branch,
+		"This publishes the branch like a normal push, and also pushes the tags that point at the commits being pushed.", func() {
+			a.beginRepositoryActionMessage(tr("Pushed the branch with its tags"), "", func(ctx context.Context, s repository.Session) error { return s.PushFollowTags(ctx) }, nil)
+		})
+}
+
+func pluralS(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func (a *app) confirmPull() {

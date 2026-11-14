@@ -58,6 +58,14 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		c.OnShortcut(0, ui.KeyEscape, a.closeCommandLog)
 		return
 	}
+	if a.commandPromptOpen {
+		c.OnShortcut(0, ui.KeyEscape, a.closeCommandPrompt)
+		return
+	}
+	if a.prChecksOpen {
+		c.OnShortcut(0, ui.KeyEscape, func() { a.prChecksOpen = false; a.prChecksToken++ })
+		return
+	}
 	if a.settingsOpen {
 		c.OnShortcut(0, ui.KeyEscape, a.closeSettings)
 		return
@@ -131,6 +139,13 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		c.OnShortcut(0, ui.KeyEscape, a.stopLineSelection)
 		return
 	}
+	// Custom commands are registered before the Code save shortcuts too.
+	// The switch disables both the defaults and user-defined bindings.
+	if a.settings.DisableShortcuts {
+		return
+	}
+	a.registerCustomCommandKeys(c)
+
 	// Saving belongs to editing, including while the file explorer has focus.
 	if a.workspaceTab == sectionCode && a.state == stateReady {
 		c.OnShortcut(ui.Cmd, ui.KeyS, func() { a.saveCodeDocument(a.activeCodeDocument()) })
@@ -138,11 +153,6 @@ func (a *app) registerShortcuts(c *ui.Context) {
 			c.OnShortcut(ui.Ctrl, ui.KeyS, func() { a.saveCodeDocument(a.activeCodeDocument()) })
 		}
 		c.OnShortcut(ui.Cmd|ui.Shift, ui.KeyS, a.saveCodeEdits)
-	}
-	// The hotkeys switch turns every action shortcut off. The
-	// header icons still reach each action, and the dialogs keep Escape.
-	if a.settings.DisableShortcuts {
-		return
 	}
 	// Preferences and the shortcut reference are always reachable, on the
 	// picker as in the workspace, and so is the command log.
@@ -197,6 +207,8 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		return
 	}
 
+	// Custom bindings take precedence not just over Git commands but also F5,
+	// Ctrl+L, section digits and navigation globals registered below.
 	c.OnShortcut(0, ui.KeyF5, a.beginRefresh)
 	if a.workspaceTab == sectionCode {
 		c.OnShortcut(ui.Cmd, ui.KeyP, a.focusCodeQuickOpen)
@@ -217,6 +229,7 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		c.OnShortcut(ui.Alt, ui.KeyK, func() { a.changedFileNavigation(-1) })
 	}
 	c.OnShortcut(0, ui.KeySlash, a.focusActiveSearch)
+	c.OnShortcut(ui.Shift, ui.KeySemicolon, a.openCommandPrompt)
 	c.OnShortcut(ui.Ctrl, ui.KeyZ, a.confirmUndo)
 	c.OnShortcut(ui.Ctrl|ui.Shift, ui.KeyZ, a.confirmRedo)
 	// The digits number the sections that show, so 1 is always the first

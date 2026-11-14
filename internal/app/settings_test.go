@@ -313,6 +313,7 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 		DiffWrap:                  true,
 		IgnoreUntracked:           true,
 		DisableShortcuts:          true,
+		AutoFetchConfigured:       true,
 		Language:                  "zh-Hans",
 		EditorCommand:             "zed {{filename}}",
 		ExternalEditors:           []editorPreset{{Name: "Fleet", Command: "fleet {{filename}}"}},

@@ -166,3 +166,24 @@ func (a *app) confirmSelectedAmendCommit() {
 		a.confirmAmendCommit(commit)
 	}
 }
+
+// confirmEditCommit starts a rebase paused at the commit. The existing
+// operation toolbar provides Continue and Abort, and the commit's changes can
+// be edited or amended while Git waits.
+func (a *app) confirmEditCommit(commit repository.Commit) {
+	if a.actionBusy || a.session == nil {
+		return
+	}
+	a.askConfirm(confirmRequest{
+		title:        "Edit Commit",
+		message:      trf("Pause a rebase at %s?", commit.ShortHash),
+		detail:       commit.Subject + "\n\n" + tr("Git rewrites the newer commits, then stops with this commit checked out. Edit or amend it, then Continue the rebase. Abort restores your original history."),
+		confirmLabel: "Edit commit",
+		run: func() {
+			a.beginRepositoryActionMessage(trf("Paused rebase at %s", commit.ShortHash), "",
+				func(ctx context.Context, session repository.Session) error {
+					return session.EditCommit(ctx, commit)
+				}, nil)
+		},
+	})
+}

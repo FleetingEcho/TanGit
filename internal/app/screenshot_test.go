@@ -161,6 +161,7 @@ func screenshotSnapshot() repository.Snapshot {
 }
 
 type screenshotSession struct {
+	fakeSession
 	snapshot repository.Snapshot
 }
 

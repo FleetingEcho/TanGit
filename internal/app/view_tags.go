@@ -153,6 +153,9 @@ func (a *app) tagRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) {
 		a.selectedTag, a.selectedTagRow = item.source, row.Index
 		a.confirmDeleteTag(tag)
 	}
+	if m.Item(tr("Delete remote tag…")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Chosen() {
+		a.openDeleteRemoteTag(tag)
+	}
 }
 
 func (a *app) tagFormModal(c *ui.Context) {
@@ -254,6 +257,12 @@ func (a *app) tagsView(c *ui.Context) {
 						if ui.Button(c, tr("Delete tag…")).Disabled(a.actionBusy).Clicked() {
 							a.confirmDeleteSelectedTag()
 						}
+						if ui.Button(c, tr("Delete remote tag…")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Clicked() {
+							a.openDeleteRemoteTag(tag)
+						}
+						if ui.Button(c, tr("Push all tags…")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Clicked() {
+							a.beginPushAllTags()
+						}
 					})
 					if a.showTagPushForm {
 						ui.Row(c).Gap(8).AlignItems(ui.End).Children(func() {
@@ -266,10 +275,71 @@ func (a *app) tagsView(c *ui.Context) {
 							}
 						})
 					}
+					if a.showTagRemoteDeleteForm {
+						ui.Row(c).Gap(8).AlignItems(ui.End).Children(func() {
+							ui.TextInput(c, &a.tagRemote).Label(tr("Remote name")).Grow(1)
+							if ui.Button(c, tr("Cancel delete")).Disabled(a.actionBusy).Clicked() {
+								a.showTagRemoteDeleteForm = false
+							}
+							if ui.PrimaryButton(c, tr("Delete remote tag")).Disabled(a.actionBusy || strings.TrimSpace(a.tagRemote) == "").Clicked() {
+								a.confirmDeleteRemoteTag()
+							}
+						})
+					}
 					ui.Column(c).Grow(1).Center().Children(func() {
 						ui.Text(c, tr("Tags point to immutable repository history.")).TextColor(theme.TextMuted)
 					})
 				})
 			})
+	})
+}
+
+// beginPushAllTags publishes every local tag to the current branch's push
+// remote. The confirmation spells out that the set is broader than the
+// selected tag, because this is the bulk action.
+func (a *app) beginPushAllTags() {
+	a.confirmAttention("Push All Tags", a.snapshot.Branch,
+		"This publishes every local tag to the remote. Tags are immutable references other users may already depend on.", func() {
+			a.beginRepositoryActionMessage(tr("Pushed all tags"), "",
+				func(ctx context.Context, session repository.Session) error {
+					return session.PushAllTags(ctx)
+				}, nil)
+		})
+}
+
+// openDeleteRemoteTag shows the same remote field the push form uses, but for
+// deleting the advertised remote reference only.
+func (a *app) openDeleteRemoteTag(tag repository.Tag) {
+	a.selectedTag = selectedTagIndex(a.snapshot.Tags, tag.Name)
+	a.syncTagRow()
+	if a.tagRemote == "" && len(a.snapshot.Remotes) > 0 {
+		a.tagRemote = a.snapshot.Remotes[0].Name
+	}
+	a.showTagRemoteDeleteForm = true
+}
+
+func (a *app) confirmDeleteRemoteTag() {
+	if a.selectedTag < 0 || a.selectedTag >= len(a.snapshot.Tags) {
+		return
+	}
+	tag := a.snapshot.Tags[a.selectedTag]
+	remote := strings.TrimSpace(a.tagRemote)
+	if remote == "" || a.actionBusy || a.session == nil {
+		return
+	}
+	a.askConfirm(confirmRequest{
+		title:        "Delete Remote Tag",
+		message:      trf("Delete tag %s from %s?", tag.Name, remote),
+		detail:       tr("The tag is deleted only on the remote. Your local tag remains."),
+		confirmLabel: "Delete remote tag",
+		destructive:  true,
+		run: func() {
+			a.beginRepositoryActionMessage(trf("Deleted tag %s from %s", tag.Name, remote), "",
+				func(ctx context.Context, session repository.Session) error {
+					return session.DeleteRemoteTag(ctx, remote, tag.Name)
+				}, func() {
+					a.showTagRemoteDeleteForm = false
+				})
+		},
 	})
 }

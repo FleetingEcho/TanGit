@@ -27,7 +27,7 @@ type keyBindingGroup struct {
 // keyBindingGroups is the shortcut reference in the order the app presents
 // its parts: the gestures that work everywhere, the window-wide navigation,
 // then each workspace section, and finally the forms.
-func keyBindingGroups() []keyBindingGroup {
+func keyBindingGroups(customCommands ...customCommandSetting) []keyBindingGroup {
 	groups := []keyBindingGroup{
 		{
 			title: "Everywhere",
@@ -36,6 +36,7 @@ func keyBindingGroups() []keyBindingGroup {
 				{"F1", "Open the complete shortcut list"},
 				{"?", "Show shortcuts for the current page"},
 				{"Ctrl+,", "Open settings"},
+				{":", "Run a one-off shell command"},
 				{"Ctrl+L", "Show the command log"},
 				{"Ctrl+` / Ctrl+~", "Toggle the terminal"},
 				{"Ctrl+F", "Search the active terminal"},
@@ -139,6 +140,17 @@ func keyBindingGroups() []keyBindingGroup {
 		keyBindingGroup{title: "Historical files", icon: historyIcon, bindings: replacements["Historical files"]},
 		keyBindingGroup{title: "Diff review", icon: selectLinesIcon, bindings: diffBindings},
 	)
+	if len(customCommands) > 0 {
+		bindings := make([]keyBinding, 0, len(customCommands))
+		for _, command := range customCommands {
+			keys := customCommandDisplayKey(command.Key)
+			if keys == "" {
+				keys = "menu"
+			}
+			bindings = append(bindings, keyBinding{keys, command.Name})
+		}
+		groups = append(groups, keyBindingGroup{title: "Custom commands", icon: commandIcon, bindings: bindings})
+	}
 	return groups
 
 }
@@ -242,7 +254,7 @@ func (a *app) keybindingsFilterField(c *ui.Context) {
 // global commands remain visible because they work alongside its row actions;
 // F1 bypasses this filter and still lists every section.
 func (a *app) visibleKeyBindingGroups() []keyBindingGroup {
-	groups := keyBindingGroups()
+	groups := keyBindingGroups(a.settings.CustomCommands...)
 	if !a.keybindingsCurrentOnly {
 		return groups
 	}
@@ -262,6 +274,12 @@ func (a *app) visibleKeyBindingGroups() []keyBindingGroup {
 	}
 	visible := make([]keyBindingGroup, 0, 4)
 	for i, group := range groups {
+		if group.title == "Custom commands" {
+			// Custom commands can fire on any page; keep them visible in the
+			// current-page view too.
+			visible = append(visible, group)
+			continue
+		}
 		if i < 2 || (a.state != stateReady && group.title == "Home") ||
 			(a.state == stateReady && (group.title == "Workspace" || group.title == active)) {
 			if group.title == "Diff review" {

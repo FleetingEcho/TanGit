@@ -120,6 +120,9 @@ func (a *app) commitRowMenuWithHistory(m *ui.Menu, commit repository.Commit, ser
 	}
 	m.Separator()
 	if historyEditable {
+		if m.Item(tr("Edit commit (pause rebase)…")).Shortcut(0, ui.KeyE).Disabled(a.actionBusy).Chosen() {
+			a.confirmEditCommit(commit)
+		}
 		if m.Item(tr("Reword commit…")).Disabled(a.actionBusy).Chosen() {
 			a.openCommitRewordForm(commit)
 		}
@@ -175,11 +178,29 @@ func (a *app) commitRowMenuWithHistory(m *ui.Menu, commit repository.Commit, ser
 		}
 	}
 	m.Separator()
+	if m.Item(tr("Export as mailbox patch…")).Disabled(a.actionBusy).Chosen() {
+		a.openExportPatchForm([]repository.Commit{commit})
+	}
+	m.Separator()
 	if m.Item(tr("Create a tag here…")).Disabled(a.actionBusy).Chosen() {
 		a.openCommitTagForm(commit)
 	}
 	if m.Item(tr("Create a branch here…")).Disabled(a.actionBusy).Chosen() {
 		a.openCommitBranchForm(commit)
+	}
+	m.Separator()
+	if a.snapshot.Bisect != nil && a.snapshot.Bisect.Active {
+		if m.Item(tr("Mark commit good (bisect)")).Disabled(a.actionBusy).Chosen() {
+			a.confirmBisectMark("good", commit.Hash)
+		}
+		if m.Item(tr("Mark commit bad (bisect)")).Shortcut(0, ui.KeyB).Disabled(a.actionBusy).Chosen() {
+			a.confirmBisectMark("bad", commit.Hash)
+		}
+		if m.Item(tr("Skip commit (bisect)")).Shortcut(0, ui.KeyK).Disabled(a.actionBusy).Chosen() {
+			a.confirmBisectMark("skip", commit.Hash)
+		}
+	} else if m.Item(tr("Start bisect from this commit…")).Shortcut(0, ui.KeyB).Disabled(a.actionBusy).Chosen() {
+		a.openBisectStartForm(commit)
 	}
 	m.Separator()
 	if m.Item(tr("Cherry-pick onto current branch…")).Disabled(a.actionBusy).Chosen() {

@@ -88,7 +88,7 @@ func OpenSSHWorkspace(ctx context.Context, client *sshworkspace.Client, location
 		logCmd: commandLog.logCommand, newWriter: commandLog.newWriter,
 	}
 	osCommand.Cmd = osCommand.Cmd.CloneWithNewRunner(func(oscommands.ICmdObjRunner) oscommands.ICmdObjRunner {
-		return runner
+		return &registeredCommandRunner{run: runner, log: commandLog}
 	})
 	version, err := git_commands.GetGitVersion(osCommand)
 	if err != nil {

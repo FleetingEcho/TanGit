@@ -699,6 +699,9 @@ func (a *app) changesHeader(c *ui.Context) {
 				if m.Item(tr("Apply patch…")).Disabled(a.actionBusy || a.session == nil).Chosen() {
 					a.beginPatchImport()
 				}
+				if m.Item(tr("Apply mailbox patch…")).Disabled(a.actionBusy || a.session == nil).Chosen() {
+					a.beginMailboxPatchImport()
+				}
 				m.Separator()
 				if m.Item(tr("Commit with a description…")).Disabled(a.actionBusy || !hasStagedFiles(a.snapshot.Files)).Chosen() {
 					a.showCommitForm = true

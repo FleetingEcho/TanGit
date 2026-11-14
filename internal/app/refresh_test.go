@@ -836,3 +836,34 @@ func TestSwitchingPagesRefreshesThePageComingIn(t *testing.T) {
 		t.Errorf("the page leaving was read %d times, want 0", got)
 	}
 }
+
+// A bisect started or continued from a terminal is not a working-tree edit.
+// Its metadata must still invalidate the workspace or the banner and its
+// good/bad/skip controls remain stale until some unrelated repaint.
+func TestQuietRefreshRepaintsBisectState(t *testing.T) {
+	opener := &liveOpener{snapshot: repository.Snapshot{Root: "/work/repo", Branch: "main"}}
+	s, _, updated := newLiveShell(t, opener)
+	a := openLiveRepo(t, s, updated, "/work/repo")
+	a.workspaceTab = sectionHistory
+	repaint := false
+	a.updateChanged = func(fn func() bool) {
+		a.update(func() { repaint = fn() })
+	}
+
+	opener.set(repository.Snapshot{
+		Root:   "/work/repo",
+		Branch: "main",
+		Bisect: &repository.BisectState{
+			Active: true, Current: "abc123", Start: "main",
+			NewTerm: "bad", OldTerm: "good", Bad: []string{"abc123"},
+		},
+	})
+	a.requestQuietRefresh()
+	drainRefresh(t, updated, 1)
+	if !repaint {
+		t.Fatal("external bisect did not invalidate the workspace")
+	}
+	if a.snapshot.Bisect == nil || !a.snapshot.Bisect.Active || a.snapshot.Bisect.Current != "abc123" {
+		t.Fatalf("bisect state did not reach the workspace: %+v", a.snapshot.Bisect)
+	}
+}

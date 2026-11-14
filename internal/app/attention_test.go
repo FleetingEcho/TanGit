@@ -10,6 +10,9 @@ import (
 
 func (h *harness) confirmAttentionForTest(t *testing.T) {
 	t.Helper()
+	h.waitFor(t, "operation confirmation", func() bool {
+		return h.app.confirm != nil && !h.app.actionBusy
+	})
 	if h.app.confirm == nil {
 		t.Fatal("operation did not ask for confirmation")
 	}
@@ -81,8 +84,16 @@ func TestAttentionOperationsRequireConfirmationAndCancel(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			h, calls := historyHarness(t)
+			if tc.name == "push" {
+				// Await the selected commit's background data, not repository
+				// mutations: only later calls count toward this guarantee.
+				h.waitFor(t, "commit details", func() bool { return h.app.commitDiffState != nil })
+			}
 			before := len(calls.all())
 			tc.run(h.app)
+			if tc.name == "push" {
+				h.waitFor(t, "push confirmation", func() bool { return h.app.confirm != nil })
+			}
 			if h.app.confirm == nil {
 				t.Fatal("operation did not ask for confirmation")
 			}

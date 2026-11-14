@@ -9,14 +9,6 @@ import (
 	"lazygitapp/internal/repository"
 )
 
-func (a *app) openCommandLog() {
-	a.commandLogOpen = true
-}
-
-func (a *app) closeCommandLog() {
-	a.commandLogOpen = false
-}
-
 // commandLogModal is the command log, as Lazygit's log panel: every Git
 // command the session ran, newest first, with the output of the ones that
 // print any and the error of the ones that failed. It is where a failed
@@ -26,19 +18,21 @@ func (a *app) commandLogModal(c *ui.Context) {
 		return
 	}
 	theme := c.Theme()
-	entries := a.commandLogEntries()
+	entries := a.commandLogVisibleEntries()
 	ui.Overlay(c, func() {
 		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 			Justify(ui.Center).AlignItems(ui.Center).
 			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
 		a.registerTerminalModalShortcuts(back)
 		back.Children(func() {
-			panel := ui.Column(c).Width(820).MaxWidthPercent(94).MaxHeightPercent(92).
+			panel := ui.Column(c).Width(820).MaxWidthPercent(94).HeightPercent(92).MaxHeightPercent(92).
 				Padding(22).Gap(14).Background(theme.Background).
 				Border(1, theme.Border).Radius(theme.Radius + 4).
 				Role(ui.RoleDialog).Label(tr("Command log")).
 				Children(func() {
 					a.commandLogHeader(c, len(entries))
+					ui.Divider(c)
+					a.commandLogTools(c)
 					ui.Divider(c)
 					ui.Scroll(c).Grow(1).Children(func() {
 						a.commandLogBody(c, entries)
@@ -69,7 +63,7 @@ func (a *app) commandLogHeader(c *ui.Context, count int) {
 		ui.Icon(c, logIcon).FontSize(20).TextColor(theme.Accent)
 		ui.Column(c).Gap(2).Grow(1).Children(func() {
 			ui.Text(c, tr("Command log")).FontSize(19).Bold()
-			ui.Text(c, tr("Every Git command this repository ran, with what it printed.")).
+			ui.Text(c, tr("Git, hosting and custom commands run in this workspace, with what they printed.")).
 				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		})
 		ui.Badge(c, fmt.Sprintf("%d", count))
@@ -82,11 +76,25 @@ func (a *app) commandLogHeader(c *ui.Context, count int) {
 func (a *app) commandLogBody(c *ui.Context, entries []repository.CommandEntry) {
 	theme := c.Theme()
 	if len(entries) == 0 {
+		query := strings.TrimSpace(a.commandLogQuery)
+		message := tr("No commands in this section yet.")
+		hint := tr("Your configured and one-off commands appear in Your commands.")
+		if !a.commandLogUser {
+			hint = tr("Git actions from TanGit appear in Background Git commands.")
+		}
+		if query != "" {
+			message = tr("No commands match your search.")
+			hint = tr("Try a different search or switch sections.")
+		}
 		ui.Column(c).Grow(1).Center().Gap(8).Padding(30).Children(func() {
 			ui.Icon(c, logIcon).FontSize(26).TextColor(theme.TextMuted)
-			ui.Text(c, tr("No Git commands yet")).Bold()
-			ui.Text(c, tr("Stage, commit, fetch, or push, and what Git ran shows here.")).
-				TextColor(theme.TextMuted).TextAlign(ui.Center)
+			ui.Text(c, message).Bold()
+			ui.Text(c, hint).TextColor(theme.TextMuted).TextAlign(ui.Center).MaxWidth(360)
+			if query != "" {
+				if ui.Button(c, tr("Clear search")).Clicked() {
+					a.commandLogQuery = ""
+				}
+			}
 		})
 		return
 	}
@@ -113,17 +121,22 @@ func (a *app) commandLogEntry(c *ui.Context, entry repository.CommandEntry) {
 				ui.Text(c, entry.At.Format("15:04:05")).TextColor(theme.TextMuted).
 					FontSize(theme.FontSize - 1).Width(60)
 			}
+			if entry.Running {
+				ui.Text(c, tr("running")).TextColor(theme.Warning).Bold().
+					FontSize(theme.FontSize - 1)
+			}
 			if entry.Failed {
 				ui.Text(c, tr("failed")).TextColor(theme.Danger).Bold().
 					FontSize(theme.FontSize - 1)
 			}
-			ui.Text(c, "$ "+entry.Command).FontSize(theme.FontSize - 1).
-				TextColor(theme.Text).SingleLine().Grow(1)
+			commandLogHighlighted(c, "$ "+entry.Command, a.commandLogQuery, theme.Text)
 		})
 		if output := strings.TrimRight(entry.Output, "\n"); output != "" {
 			ui.Box(c).FillWidth().Padding(7, 9).Radius(theme.Radius-1).
 				Background(theme.Surface).Border(1, theme.Border).Children(func() {
-				ui.Text(c, output).FontSize(theme.FontSize - 1).TextColor(color)
+				for line := range strings.SplitSeq(output, "\n") {
+					commandLogHighlighted(c, line, a.commandLogQuery, color)
+				}
 			})
 		}
 	})

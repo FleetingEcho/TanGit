@@ -77,6 +77,22 @@ func (a *app) submoduleRowMenu(m *ui.Menu, row ui.ListRow) {
 		a.selectSubmoduleRow(row.Index)
 		a.updateSelectedSubmodule()
 	}
+	if m.Item(tr("Update recursively")).Disabled(a.actionBusy).Chosen() {
+		a.updateSubmodules([]string{submodule.Path}, true, false)
+	}
+	if m.Item(tr("Update to remote tracking branch")).Disabled(a.actionBusy).Chosen() {
+		a.updateSubmodules([]string{submodule.Path}, false, true)
+	}
+	if m.Item(tr("Sync URL from .gitmodules")).Disabled(a.actionBusy).Chosen() {
+		a.syncSubmodules([]string{submodule.Path})
+	}
+	m.Separator()
+	if m.Item(tr("Update all recursively")).Disabled(a.actionBusy).Chosen() {
+		a.updateSubmodules(nil, true, false)
+	}
+	if m.Item(tr("Sync all submodule URLs")).Disabled(a.actionBusy).Chosen() {
+		a.syncSubmodules(nil)
+	}
 	m.Separator()
 	if m.Item(tr("Delete submodule…")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
 		a.selectSubmoduleRow(row.Index)
@@ -161,8 +177,19 @@ func (a *app) submodulesView(c *ui.Context) {
 						if ui.PrimaryButton(c, tr("Initialize / update")).Disabled(a.actionBusy).Clicked() {
 							a.updateSelectedSubmodule()
 						}
+						if ui.Button(c, tr("Update to remote")).Disabled(a.actionBusy).Clicked() {
+							a.updateSubmodules([]string{submodule.Path}, false, true)
+						}
 						if ui.Button(c, tr("Delete…")).Disabled(a.actionBusy).Clicked() {
 							a.confirmDeleteSelectedSubmodule()
+						}
+					})
+					ui.Row(c).Gap(8).Children(func() {
+						if ui.Button(c, tr("Update all recursively")).Disabled(a.actionBusy).Clicked() {
+							a.updateSubmodules(nil, true, false)
+						}
+						if ui.Button(c, tr("Sync all URLs")).Disabled(a.actionBusy).Clicked() {
+							a.syncSubmodules(nil)
 						}
 					})
 					ui.Column(c).Grow(1).Center().Children(func() {
@@ -171,4 +198,28 @@ func (a *app) submodulesView(c *ui.Context) {
 				})
 			})
 	})
+}
+
+func (a *app) updateSubmodules(paths []string, recursive, remote bool) {
+	if a.actionBusy || a.session == nil {
+		return
+	}
+	message := tr("Updated submodules")
+	if remote {
+		message = tr("Updated submodules to their remote tracking branches")
+	}
+	a.beginRepositoryActionMessage(message, "",
+		func(ctx context.Context, session repository.Session) error {
+			return session.UpdateSubmodules(ctx, paths, recursive, remote)
+		}, nil)
+}
+
+func (a *app) syncSubmodules(paths []string) {
+	if a.actionBusy || a.session == nil {
+		return
+	}
+	a.beginRepositoryActionMessage(tr("Synchronized submodule URLs"), "",
+		func(ctx context.Context, session repository.Session) error {
+			return session.SyncSubmodules(ctx, paths)
+		}, nil)
 }
