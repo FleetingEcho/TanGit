@@ -29,6 +29,10 @@ const (
 
 func (a *app) openSettings() {
 	a.loadGoLanguageServerDraft()
+	a.autoFetchChoice = a.settings.AutoFetchInterval
+	if backgroundFetchCustomInterval(a.autoFetchChoice) {
+		a.autoFetchChoice = backgroundFetchCustomChoice
+	}
 	a.settingsOpen = true
 }
 
@@ -36,6 +40,10 @@ func (a *app) openSettings() {
 // commands menu's way into the custom command editor.
 func (a *app) openSettingsSection(page int) {
 	a.loadGoLanguageServerDraft()
+	a.autoFetchChoice = a.settings.AutoFetchInterval
+	if backgroundFetchCustomInterval(a.autoFetchChoice) {
+		a.autoFetchChoice = backgroundFetchCustomChoice
+	}
 	a.settingsPage = page
 	a.settingsOpen = true
 }
@@ -382,6 +390,22 @@ func (a *app) typographySettings(c *ui.Context) {
 	})
 }
 
+var backgroundFetchIntervals = []int{1, 5, 15, 30, 60}
+
+const backgroundFetchCustomChoice = -1
+
+func backgroundFetchCustomInterval(minutes int) bool {
+	if minutes <= 0 {
+		return false
+	}
+	for _, preset := range backgroundFetchIntervals {
+		if minutes == preset {
+			return false
+		}
+	}
+	return true
+}
+
 func (a *app) behaviorSettings(c *ui.Context) {
 	settingsSection(c, func() {
 		settingsGroup(c, commitIcon, "Behavior", "Diff reading, files, and keyboard controls")
@@ -416,6 +440,7 @@ func (a *app) behaviorSettings(c *ui.Context) {
 			if fetchBox.Changed() {
 				if fetchOn {
 					a.settings.AutoFetchInterval = 5
+					a.autoFetchChoice = 5
 				} else {
 					a.settings.AutoFetchInterval = 0
 				}
@@ -424,21 +449,7 @@ func (a *app) behaviorSettings(c *ui.Context) {
 				c.Invalidate()
 			}
 			if fetchOn {
-				for _, minutes := range []int{1, 5, 15, 30, 60} {
-					active := a.settings.AutoFetchInterval == minutes
-					var chip ui.Element
-					label := trf("%d min", minutes)
-					if active {
-						chip = ui.PrimaryButton(c, label)
-					} else {
-						chip = ui.Button(c, label)
-					}
-					if chip.Clicked() {
-						a.settings.AutoFetchInterval = minutes
-						a.settings.AutoFetchConfigured = true
-						a.settingsChanged(c)
-					}
-				}
+				a.backgroundFetchIntervalChoice(c)
 			}
 			prune := ui.Checkbox(c, &a.settings.FetchPrune, tr("Prune stale remote-tracking branches on fetch")).
 				Label(tr("Prune stale remote-tracking branches on fetch"))
@@ -449,6 +460,66 @@ func (a *app) behaviorSettings(c *ui.Context) {
 			ui.Divider(c)
 			a.hotkeysSwitch(c)
 		})
+	})
+}
+
+// backgroundFetchIntervalChoice replaces a column of preset buttons with one
+// selector. Custom keeps the persisted interval in minutes and exposes a
+// bounded numeric editor, so a user's existing non-preset value round-trips.
+func (a *app) backgroundFetchIntervalChoice(c *ui.Context) {
+	theme := c.Theme()
+	selects := ui.SelectBase(c, &a.autoFetchChoice)
+	selects.Trigger.Width(170).Padding(6, 10).Gap(8).
+		Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius).
+		Label(tr("Background fetch interval")).
+		Tooltip(tr("Choose a preset or enter a custom interval in minutes")).
+		Children(func() {
+			label := tr("Custom…")
+			if a.autoFetchChoice != backgroundFetchCustomChoice {
+				label = trf("%d min", a.settings.AutoFetchInterval)
+			}
+			ui.Text(c, label).Grow(1).SingleLine()
+		})
+	selects.Popup(func(panel ui.Element) {
+		panel.Padding(4).Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius)
+		for _, minutes := range backgroundFetchIntervals {
+			label := trf("%d min", minutes)
+			item := selects.Item(minutes).Padding(6, 10).
+				Label(tr("Background fetch interval") + ": " + label)
+			if item.Highlighted() {
+				item.Background(theme.SurfaceHover)
+			}
+			item.Children(func() { ui.Text(c, label) })
+		}
+		custom := selects.Item(backgroundFetchCustomChoice).Padding(6, 10).
+			Label(tr("Custom fetch interval"))
+		if custom.Highlighted() {
+			custom.Background(theme.SurfaceHover)
+		}
+		custom.Children(func() { ui.Text(c, tr("Custom…")) })
+	})
+	if selects.Trigger.Changed() {
+		if a.autoFetchChoice != backgroundFetchCustomChoice {
+			a.settings.AutoFetchInterval = a.autoFetchChoice
+		}
+		a.settings.AutoFetchConfigured = true
+		a.settingsChanged(c)
+	}
+
+	ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
+		// The trigger and menu were built above so their change is applied
+		// before deciding whether the custom field belongs in this frame.
+		if a.autoFetchChoice == backgroundFetchCustomChoice {
+			minutes := float64(a.settings.AutoFetchInterval)
+			input := ui.NumberInput(c, &minutes, 1, 24*60, 1).Width(140).
+				Label(tr("Custom fetch interval in minutes"))
+			if input.Changed() {
+				a.settings.AutoFetchInterval = int(minutes)
+				a.settings.AutoFetchConfigured = true
+				a.settingsChanged(c)
+			}
+			ui.Text(c, tr("min")).TextColor(theme.TextMuted)
+		}
 	})
 }
 
@@ -642,6 +713,43 @@ func (a *app) searchExclusionSettings(c *ui.Context) {
 	})
 }
 
+// settingsChoiceChip is the common enabled/disabled button used by Workspace
+// selectors. A checkbox role preserves its accessible state without drawing a
+// second, visually unrelated checkbox control beside the label.
+func settingsChoiceChip(c *ui.Context, label, tooltip string, shown bool) ui.Element {
+	theme := c.Theme()
+	chip := ui.ButtonBase(c).Height(28).Padding(3, 8).Gap(6).Radius(theme.Radius).
+		Role(ui.RoleCheckBox).Checked(shown).
+		Background(theme.Surface).Border(1, theme.Border).TextColor(theme.TextMuted).
+		Label(label).Tooltip(tooltip)
+	if shown {
+		chip.Background(theme.Accent.Alpha(0.16)).Border(1, theme.Accent.Alpha(0.45)).TextColor(theme.Accent)
+	}
+	if chip.Hovered() {
+		if shown {
+			chip.Background(theme.Accent.Alpha(0.24))
+		} else {
+			chip.Background(theme.SurfaceHover)
+		}
+	}
+	return chip
+}
+
+// workspaceChoiceCard gives each related group of toggle buttons its own
+// visual boundary and enough room to scan its heading independently.
+func workspaceChoiceCard(c *ui.Context, title, hint string, build func()) {
+	theme := c.Theme()
+	ui.Column(c).FillWidth().Gap(12).Padding(14).
+		Background(theme.Surface.Alpha(0.55)).Border(1, theme.Border).Radius(theme.Radius + 4).
+		Children(func() {
+			ui.Column(c).Gap(3).Children(func() {
+				ui.Text(c, tr(title)).Bold()
+				ui.Text(c, tr(hint)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+			})
+			build()
+		})
+}
+
 // toolbarActionChoices edits one toolbar without requiring a visible action.
 // Every button defaults on, including when older settings have no saved list.
 func (a *app) toolbarActionChoices(c *ui.Context, actions []toolbarAction, hidden []string, labelFormat string, update func([]string)) {
@@ -649,34 +757,73 @@ func (a *app) toolbarActionChoices(c *ui.Context, actions []toolbarAction, hidde
 		for _, action := range actions {
 			action := action
 			visible := toolbarActionVisible(hidden, action.id)
-			toggle := ui.Checkbox(c, &visible, tr(action.label)).
-				Label(trf(labelFormat, tr(action.label)))
-			if toggle.Changed() {
-				update(setToolbarActionVisible(hidden, actions, action.id, visible))
+			c.Key("toolbar-action:" + action.id)
+			chip := settingsChoiceChip(c, trf(labelFormat, tr(action.label)), trf(labelFormat, tr(action.label)), visible)
+			chip.Children(func() {
+				ui.Icon(c, toolbarActionIcon(action.id)).FontSize(14)
+				ui.Text(c, tr(action.label)).SingleLine()
+			})
+			chip.OnClick(func() {
+				update(setToolbarActionVisible(hidden, actions, action.id, !visible))
 				a.settingsChanged(c)
-			}
+			})
 		}
 	})
+}
+
+func toolbarActionIcon(id string) *ui.SVG {
+	switch id {
+	case "fetch":
+		return fetchIcon
+	case "pull":
+		return pullIcon
+	case "push":
+		return pushIcon
+	case "refresh":
+		return refreshIcon
+	case "editor":
+		return fileCodeIcon
+	case "theme":
+		return themeIcon
+	case "settings":
+		return settingsIcon
+	case "commands":
+		return commandIcon
+	case "pull-requests":
+		return externalLinkIcon
+	case "terminal":
+		return terminalIcon
+	case "keyboard-shortcuts":
+		return keyboardIcon
+	case "command-log":
+		return logIcon
+	default:
+		return settingsIcon
+	}
 }
 
 func (a *app) workspaceSettings(c *ui.Context) {
 	settingsSection(c, func() {
 		settingsGroup(c, worktreesIcon, "Workspace sections", "The tabs the sidebar lists")
-		settingRow(c, "Sidebar tabs", "Click to toggle; drag to reorder", func() {
-			a.workspaceSectionChips(c)
+		workspaceChoiceCard(c, "Sidebar tabs", "Click to toggle; drag to reorder", func() {
+			ui.Row(c).Gap(10).Wrap().Children(func() {
+				a.workspaceSectionChips(c)
+			})
+			ui.Text(c, tr("Keep the tools you use close at hand. At least one section always stays visible.")).
+				TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).MaxWidth(480)
 		})
-		ui.Text(c, tr("Keep the tools you use close at hand. At least one section always stays visible.")).
-			TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).MaxWidth(480)
 		ui.Divider(c)
 		settingsGroup(c, settingsIcon, "Toolbar buttons", "Choose which global actions stay visible")
-		settingRow(c, "Header toolbar", "Repository, editor, and application actions", func() {
-			a.toolbarActionChoices(c, headerToolbarActions, a.settings.HiddenHeaderActions, "Show %s in header", func(hidden []string) {
-				a.settings.HiddenHeaderActions = hidden
+		ui.Column(c).FillWidth().Gap(16).Children(func() {
+			workspaceChoiceCard(c, "Header toolbar", "Repository, editor, and application actions", func() {
+				a.toolbarActionChoices(c, headerToolbarActions, a.settings.HiddenHeaderActions, "Show %s in header", func(hidden []string) {
+					a.settings.HiddenHeaderActions = hidden
+				})
 			})
-		})
-		settingRow(c, "Status bar", "Command, pull request, terminal, and help actions", func() {
-			a.toolbarActionChoices(c, statusToolbarActions, a.settings.HiddenStatusActions, "Show %s in status bar", func(hidden []string) {
-				a.settings.HiddenStatusActions = hidden
+			workspaceChoiceCard(c, "Status bar", "Command, pull request, terminal, and help actions", func() {
+				a.toolbarActionChoices(c, statusToolbarActions, a.settings.HiddenStatusActions, "Show %s in status bar", func(hidden []string) {
+					a.settings.HiddenStatusActions = hidden
+				})
 			})
 		})
 		ui.Divider(c)
@@ -755,21 +902,8 @@ func (a *app) workspaceSectionChips(c *ui.Context) {
 		shown := a.sectionVisible(section)
 		last := shown && len(visible) == 1
 		c.Key("workspace-section:" + id)
-		chip := ui.ButtonBase(c).Height(28).Padding(3, 8).Gap(6).Radius(theme.Radius).
-			Role(ui.RoleCheckBox).Checked(shown).
-			Background(theme.Surface).Border(1, theme.Border).TextColor(theme.TextMuted).
-			Label(trf("Show %s", tr(workspaceSections[section]))).
-			Tooltip(tr("Click to toggle; drag to reorder")).Drag(workspaceSectionDrag{id: id})
-		if shown {
-			chip.Background(theme.Accent.Alpha(0.16)).Border(1, theme.Accent.Alpha(0.45)).TextColor(theme.Accent)
-		}
-		if chip.Hovered() {
-			if shown {
-				chip.Background(theme.Accent.Alpha(0.24))
-			} else {
-				chip.Background(theme.SurfaceHover)
-			}
-		}
+		chip := settingsChoiceChip(c, trf("Show %s", tr(workspaceSections[section])),
+			tr("Click to toggle; drag to reorder"), shown).Drag(workspaceSectionDrag{id: id})
 		if last {
 			chip.Tooltip(tr("The workspace keeps at least one section"))
 		}
