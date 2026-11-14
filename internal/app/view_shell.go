@@ -716,8 +716,8 @@ func (a *app) appView(c *ui.Context, overlayTopInset float32) {
 	a.fileHistoryDrawer(c, overlayTopInset)
 }
 
-// mainArea docks the terminal below the workspace. Maximizing temporarily
-// gives it the whole content area without changing the height restored later.
+// mainArea docks the terminal on any workspace edge. Maximizing temporarily
+// gives it the whole content area without changing the size restored later.
 func (a *app) mainArea(c *ui.Context) {
 	target := float32(0)
 	if a.term.panelOpen {
@@ -727,38 +727,79 @@ func (a *app) mainArea(c *ui.Context) {
 		}
 	}
 	box := ui.Box(c)
-	height := box.Animate("terminal-height", target, 200*time.Millisecond)
+	size := box.Animate("terminal-size", target, 200*time.Millisecond)
+	dock := a.terminalDock()
+	terminalFirst := dock == terminalDockTop || dock == terminalDockLeft
 
 	switch {
-	case !a.term.panelOpen || height <= 0.5:
+	case !a.term.panelOpen || size <= 0.5:
 		// Hiding must not shrink the live shell along with the animation. Once
 		// its view is gone MyGo retains the last grid until it is shown again.
 		a.workspaceView(c)
-	case a.term.panelMaximized && box.Settled("terminal-height"):
+	case a.term.panelMaximized && box.Settled("terminal-size"):
 		a.terminalPaneView(c)
-	case box.Settled("terminal-height"):
-		a.term.shown = 100 - a.term.percent
-		paneSplitVerticalPercent(c, &a.term.shown, func() {
-			a.workspaceView(c)
-		}, func() {
-			a.terminalPaneView(c)
-		}).Grow(1)
-		if a.term.shown != 100-a.term.percent {
-			a.term.percent = 100 - a.term.shown
-			box.Jump("terminal-height", a.term.percent)
+	case box.Settled("terminal-size"):
+		if terminalFirst {
+			a.term.shown = a.term.percent
+		} else {
+			a.term.shown = 100 - a.term.percent
+		}
+		workspace := func() { a.workspaceView(c) }
+		terminal := func() { a.terminalPaneView(c) }
+		first, second := workspace, terminal
+		if terminalFirst {
+			first, second = terminal, workspace
+		}
+		if dock == terminalDockLeft || dock == terminalDockRight {
+			paneSplitPercent(c, &a.term.shown, first, second).Grow(1)
+		} else {
+			paneSplitVerticalPercent(c, &a.term.shown, first, second).Grow(1)
+		}
+		restored := 100 - a.term.shown
+		if terminalFirst {
+			restored = a.term.shown
+		}
+		if a.term.percent != restored {
+			a.term.percent = restored
+			box.Jump("terminal-size", a.term.percent)
 		}
 	default:
-		ui.Column(c).Grow(1).Children(func() {
-			ui.Column(c).Grow(1).Children(func() {
-				a.workspaceView(c)
-			})
-			ui.Divider(c)
-			// Animate empty dock space on the way in. Mounting terminal.View at
-			// every fractional height would make fish/zsh print a new prompt for
-			// each PTY resize, including their one-row intermediate layouts.
-			ui.Column(c).FillWidth().HeightPercent(height)
-		})
+		// Animate an empty dock on the way in. Mounting terminal.View at every
+		// fractional size would make fish/zsh redraw prompts for each PTY resize.
+		a.terminalDockOpeningView(c, dock, size)
 	}
+}
+
+// terminalDockOpeningView reserves the animated edge before mounting the live
+// terminal. Empty sizing keeps hidden and intermediate PTY dimensions stable.
+func (a *app) terminalDockOpeningView(c *ui.Context, dock string, size float32) {
+	horizontal := dock == terminalDockLeft || dock == terminalDockRight
+	terminalFirst := dock == terminalDockTop || dock == terminalDockLeft
+	if horizontal {
+		ui.Row(c).Grow(1).Children(func() {
+			if terminalFirst {
+				ui.Row(c).FillHeight().WidthPercent(size)
+				ui.Divider(c)
+			}
+			ui.Column(c).Grow(1).Children(func() { a.workspaceView(c) })
+			if !terminalFirst {
+				ui.Divider(c)
+				ui.Row(c).FillHeight().WidthPercent(size)
+			}
+		})
+		return
+	}
+	ui.Column(c).Grow(1).Children(func() {
+		if terminalFirst {
+			ui.Column(c).FillWidth().HeightPercent(size)
+			ui.Divider(c)
+		}
+		ui.Column(c).Grow(1).Children(func() { a.workspaceView(c) })
+		if !terminalFirst {
+			ui.Divider(c)
+			ui.Column(c).FillWidth().HeightPercent(size)
+		}
+	})
 }
 
 // workspaceView is the section sidebar beside the active section, its width

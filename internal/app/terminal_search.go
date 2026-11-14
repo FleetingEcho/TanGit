@@ -10,10 +10,19 @@ import (
 // openTerminalSearch reveals and focuses only the active shell's find bar.
 // The handle lives in the session, so a split or a drag cannot redirect focus.
 func (a *app) openTerminalSearch() {
-	session := a.activeTerminal()
+	if session := a.activeTerminal(); session != nil {
+		a.openTerminalSearchByID(session.id)
+	}
+}
+
+// openTerminalSearchByID makes the clicked card's search independent of which
+// shell was active before the pointer reached its toolbar.
+func (a *app) openTerminalSearchByID(id uint64) {
+	index, session := a.terminalSessionByID(id)
 	if session == nil || session.pane == nil {
 		return
 	}
+	a.term.active = index
 	session.searchOpen = true
 	session.searchHandle.Focus()
 }

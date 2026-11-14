@@ -432,6 +432,108 @@ func TestTerminalDockStaysSharedAcrossWorkspacePages(t *testing.T) {
 	requireTerminalRunning(t, first)
 }
 
+func TestTerminalDockMenuMovesEditorWithoutReplacingSessions(t *testing.T) {
+	h, peers, first := monitoredTerminalTestApp(t)
+	second := splitMonitoredTerminal(t, h, peers, false)
+	firstPane := h.app.term.sessions[0].pane
+	secondPane := h.app.term.sessions[1].pane
+	layout := h.app.term.layout
+	h.app.activeTerminal().searchOpen = true
+	h.app.activeTerminal().searchText = "needle"
+	h.app.setWorkspaceTab(sectionCode)
+	h.tester.Frame()
+
+	for _, step := range []struct {
+		dock  string
+		label string
+	}{
+		{terminalDockRight, "Right"},
+		{terminalDockTop, "Top"},
+		{terminalDockLeft, "Left"},
+		{terminalDockBottom, "Bottom"},
+	} {
+		if err := h.tester.Click("Terminal position"); err != nil {
+			t.Fatalf("open %s dock menu: %v", step.dock, err)
+		}
+		h.tester.Frame()
+		if err := h.tester.Click(step.label); err != nil {
+			t.Fatalf("choose %s dock: %v; texts=%q", step.dock, err, h.texts())
+		}
+		h.tester.Advance(250 * time.Millisecond)
+		h.tester.Frame()
+		if got := h.app.terminalDock(); got != step.dock {
+			t.Fatalf("dock = %q, want %q", got, step.dock)
+		}
+		pane, found := h.tester.Find("Terminal pane")
+		if !found || pane.W <= 0 || pane.H <= 0 {
+			t.Fatalf("%s dock has no visible terminal: %+v", step.dock, pane)
+		}
+		switch step.dock {
+		case terminalDockRight:
+			if pane.X <= 640 || pane.H <= 400 {
+				t.Errorf("right dock does not sit beside Editor: %+v", pane)
+			}
+		case terminalDockLeft:
+			if pane.X >= 100 || pane.H <= 400 {
+				t.Errorf("left dock does not sit beside Editor: %+v", pane)
+			}
+		case terminalDockTop:
+			if pane.Y >= 300 || pane.W <= 900 {
+				t.Errorf("top dock does not sit above Editor: %+v", pane)
+			}
+		case terminalDockBottom:
+			if pane.Y <= 400 || pane.W <= 900 {
+				t.Errorf("bottom dock does not sit below Editor: %+v", pane)
+			}
+		}
+		if h.app.workspaceTab != sectionCode || h.app.term.layout != layout ||
+			h.app.term.sessions[0].pane != firstPane || h.app.term.sessions[1].pane != secondPane ||
+			!h.app.activeTerminal().searchOpen || h.app.activeTerminal().searchText != "needle" {
+			t.Fatalf("moving to %s replaced terminal state: %+v", step.dock, h.app.term)
+		}
+		for _, peer := range []monitoredTerminalPeer{first, second} {
+			requireTerminalRunning(t, peer)
+		}
+	}
+	if h.app.settings.TerminalDock != terminalDockBottom {
+		t.Fatalf("a toolbar move changed the persisted default to %q", h.app.settings.TerminalDock)
+	}
+}
+
+func TestTerminalDockResizeUsesTheDockAxis(t *testing.T) {
+	for _, dock := range terminalDockChoices {
+		t.Run(dock, func(t *testing.T) {
+			h, _, first := monitoredTerminalTestApp(t)
+			h.app.setTerminalDock(dock)
+			h.tester.Advance(250 * time.Millisecond)
+			h.tester.Frame()
+			pane, found := h.tester.Find("Terminal pane")
+			if !found {
+				t.Fatal("terminal pane is missing before resizing")
+			}
+			before := h.app.term.percent
+			var x, y, dx, dy float32
+			switch dock {
+			case terminalDockBottom:
+				x, y, dy = pane.X+100, pane.Y-islandGap/2, -60
+			case terminalDockTop:
+				x, y, dy = pane.X+100, pane.Y+pane.H+islandGap/2, 60
+			case terminalDockLeft:
+				x, y, dx = pane.X+pane.W+islandGap/2, pane.Y+100, 60
+			case terminalDockRight:
+				x, y, dx = pane.X-islandGap/2, pane.Y+100, -60
+			}
+			dragTo(t, h.tester, x, y, dx, dy)
+			h.tester.Advance(250 * time.Millisecond)
+			h.tester.Frame()
+			if h.app.term.percent <= before {
+				t.Fatalf("drag did not grow the %s dock: %.2f -> %.2f", dock, before, h.app.term.percent)
+			}
+			requireTerminalRunning(t, first)
+		})
+	}
+}
+
 func TestTerminalTopLevelTabsShareHeaderAndCloseWithConfirmation(t *testing.T) {
 	h, peers, first := monitoredTerminalTestApp(t)
 	if err := h.tester.Click("New terminal tab"); err != nil {
@@ -578,45 +680,52 @@ func TestTerminalTopLevelTabRenameAndContextMenu(t *testing.T) {
 }
 
 func TestTerminalHideAndRestoreKeepShellDimensionsStable(t *testing.T) {
-	h, _, first := monitoredTerminalTestApp(t)
-	pane := h.app.term.sessions[0].pane
-	wantCols, wantRows := pane.Size()
-	if wantCols <= 1 || wantRows <= 1 {
-		t.Fatalf("the initial terminal has no useful grid: %dx%d", wantCols, wantRows)
-	}
-	requireSize := func(stage string) {
-		t.Helper()
-		if cols, rows := pane.Size(); cols != wantCols || rows != wantRows {
-			t.Fatalf("%s resized the hidden shell from %dx%d to %dx%d", stage, wantCols, wantRows, cols, rows)
-		}
-	}
+	for _, dock := range terminalDockChoices {
+		t.Run(dock, func(t *testing.T) {
+			h, _, first := monitoredTerminalTestApp(t)
+			h.app.setTerminalDock(dock)
+			h.tester.Advance(250 * time.Millisecond)
+			h.tester.Frame()
+			pane := h.app.term.sessions[0].pane
+			wantCols, wantRows := pane.Size()
+			if wantCols <= 1 || wantRows <= 1 {
+				t.Fatalf("the initial terminal has no useful grid: %dx%d", wantCols, wantRows)
+			}
+			requireSize := func(stage string) {
+				t.Helper()
+				if cols, rows := pane.Size(); cols != wantCols || rows != wantRows {
+					t.Fatalf("%s resized the hidden shell from %dx%d to %dx%d", stage, wantCols, wantRows, cols, rows)
+				}
+			}
 
-	for cycle := 1; cycle <= 3; cycle++ {
-		if err := h.tester.Click("Hide terminal"); err != nil {
-			t.Fatal(err)
-		}
-		for step := 0; step < 14; step++ {
-			h.tester.Advance(20 * time.Millisecond)
-			h.tester.Frame()
-			requireSize(fmt.Sprintf("hide cycle %d frame %d", cycle, step))
-			if _, mounted := h.tester.Find("Terminal pane"); mounted {
-				t.Fatalf("hide cycle %d frame %d left the terminal mounted", cycle, step)
+			for cycle := 1; cycle <= 3; cycle++ {
+				if err := h.tester.Click("Hide terminal"); err != nil {
+					t.Fatal(err)
+				}
+				for step := 0; step < 14; step++ {
+					h.tester.Advance(20 * time.Millisecond)
+					h.tester.Frame()
+					requireSize(fmt.Sprintf("hide cycle %d frame %d", cycle, step))
+					if _, mounted := h.tester.Find("Terminal pane"); mounted {
+						t.Fatalf("hide cycle %d frame %d left the terminal mounted", cycle, step)
+					}
+				}
+				requireTerminalRunning(t, first)
+				h.app.openTerminal()
+				for step := 0; step < 14; step++ {
+					h.tester.Advance(20 * time.Millisecond)
+					h.tester.Frame()
+					requireSize(fmt.Sprintf("restore cycle %d frame %d", cycle, step))
+					if _, mounted := h.tester.Find("Terminal pane"); step < 8 && mounted {
+						t.Fatalf("restore cycle %d frame %d mounted the terminal in an animated dock", cycle, step)
+					}
+				}
+				if _, mounted := h.tester.Find("Terminal pane"); !mounted {
+					t.Fatalf("restore cycle %d did not remount the settled terminal", cycle)
+				}
+				requireTerminalRunning(t, first)
 			}
-		}
-		requireTerminalRunning(t, first)
-		h.app.openTerminal()
-		for step := 0; step < 14; step++ {
-			h.tester.Advance(20 * time.Millisecond)
-			h.tester.Frame()
-			requireSize(fmt.Sprintf("restore cycle %d frame %d", cycle, step))
-			if _, mounted := h.tester.Find("Terminal pane"); step < 8 && mounted {
-				t.Fatalf("restore cycle %d frame %d mounted the terminal in an animated dock", cycle, step)
-			}
-		}
-		if _, mounted := h.tester.Find("Terminal pane"); !mounted {
-			t.Fatalf("restore cycle %d did not remount the settled terminal", cycle)
-		}
-		requireTerminalRunning(t, first)
+		})
 	}
 }
 
