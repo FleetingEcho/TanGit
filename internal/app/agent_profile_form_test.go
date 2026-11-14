@@ -51,6 +51,7 @@ func configureAgentProfileTaskForm(h *harness) {
 	h.app.agents.setupCommand = "setup"
 	h.app.agents.testCommand = "test --port {port}"
 	h.app.agents.runCommand = "run --database {database}"
+	h.app.agents.assistCommand = "advisor {requestFile} {responseFile} {artifactDir}"
 	h.app.agents.environment = "LOG_LEVEL=debug\nFEATURE_FLAG=enabled"
 	h.app.agents.sparsePaths = "cmd/service\n internal/shared "
 	h.app.agents.ignoredFiles = ".env\n.cache/config.json"
@@ -100,7 +101,7 @@ func TestAgentTaskCreationPersistsFullProfileAndInitializesExplicitSetup(t *test
 	}
 	profile := created.Profile
 	if profile.LaunchCommand != "agent --prompt {promptFile}" || profile.RunCommand != "run --database {database}" ||
-		profile.Environment["LOG_LEVEL"] != "debug" || profile.Resources.DevelopmentPort != 4310 ||
+		profile.AssistCommand != "advisor {requestFile} {responseFile} {artifactDir}" || profile.Environment["LOG_LEVEL"] != "debug" || profile.Resources.DevelopmentPort != 4310 ||
 		profile.Resources.DatabaseName != "task_service" || profile.Resources.CacheDirectory != ".cache/service" ||
 		!slices.Equal(profile.IgnoredFiles, []string{".env", ".cache/config.json"}) {
 		t.Fatalf("created profile = %#v", profile)
@@ -150,8 +151,8 @@ func TestAgentWorkspaceTemplateCRUDAndApply(t *testing.T) {
 	h.app.beginNewAgentTask()
 	h.app.agents.templateChoice = "Go isolated service"
 	h.app.applySelectedAgentTemplate()
-	if h.app.agents.runCommand != "run --database {database}" || h.app.agents.developmentPort != "4310" ||
-		h.app.agents.environment != "FEATURE_FLAG=enabled\nLOG_LEVEL=debug" ||
+	if h.app.agents.runCommand != "run --database {database}" || h.app.agents.assistCommand != "advisor {requestFile} {responseFile} {artifactDir}" ||
+		h.app.agents.developmentPort != "4310" || h.app.agents.environment != "FEATURE_FLAG=enabled\nLOG_LEVEL=debug" ||
 		h.app.agents.ignoredFiles != ".env\n.cache/config.json" {
 		t.Fatalf("applied form does not contain template: %#v", h.app.agents)
 	}
