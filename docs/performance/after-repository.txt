@@ -1,0 +1,54 @@
+revision=20f5d271cd68d7ae67fa729164a15ed374b55100
+branch=perf/large-repo-evidence-45cc31a
+go=go version go1.27.3 linux/amd64
+git=git version 2.43.0
+command=go test ./internal/repository -run ^$ -bench ^BenchmarkLargeRepository/ -benchtime=5x -count=3 -cpuprofile after-repository-cpu.pprof -memprofile after-repository-mem.pprof
+variant_order=ParseNumstat12k split_original then streaming (after-only component pair), remaining source order; -count repetitions precede next sibling; same fixture as baseline
+goos: linux
+goarch: amd64
+pkg: lazygitapp/internal/repository
+cpu: Intel(R) Core(TM) Ultra 7 265
+BenchmarkLargeRepository/ParseNumstat12k/split_original-20         	       5	   1193795 ns/op	 251.33 MB/s	    300031 diff_bytes	     12002 files	 2082163 B/op	   12086 allocs/op
+BenchmarkLargeRepository/ParseNumstat12k/split_original-20         	       5	   1244358 ns/op	 241.11 MB/s	    300031 diff_bytes	     12002 files	 2081048 B/op	   12085 allocs/op
+BenchmarkLargeRepository/ParseNumstat12k/split_original-20         	       5	   1405565 ns/op	 213.46 MB/s	    300031 diff_bytes	     12002 files	 2082163 B/op	   12086 allocs/op
+BenchmarkLargeRepository/ParseNumstat12k/streaming-20              	       5	    844093 ns/op	 355.45 MB/s	    300031 diff_bytes	     12002 files	 1308328 B/op	      81 allocs/op
+BenchmarkLargeRepository/ParseNumstat12k/streaming-20              	       5	    718937 ns/op	 417.33 MB/s	    300031 diff_bytes	     12002 files	 1308331 B/op	      81 allocs/op
+BenchmarkLargeRepository/ParseNumstat12k/streaming-20              	       5	    874864 ns/op	 342.95 MB/s	    300031 diff_bytes	     12002 files	 1308328 B/op	      81 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 586797562 ns/op	     12000 snapshot_files	11484249 B/op	   13396 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 585369189 ns/op	     12000 snapshot_files	11469094 B/op	   13363 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 612231063 ns/op	     12000 snapshot_files	11478032 B/op	   13368 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  71024278 ns/op	        20.00 page_commits	 2097832 B/op	    3182 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  72626440 ns/op	        20.00 page_commits	 2112403 B/op	    3185 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  69928708 ns/op	        20.00 page_commits	 2117600 B/op	    3186 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  12624788 ns/op	        20.00 returned_commits	         0 skip	   87651 B/op	     579 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  12615913 ns/op	        20.00 returned_commits	         0 skip	   80016 B/op	     577 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  13072787 ns/op	        20.00 returned_commits	         0 skip	   80019 B/op	     577 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_100-20              	       5	  12817457 ns/op	        20.00 returned_commits	       100.0 skip	  141385 B/op	    1479 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_100-20              	       5	  11839031 ns/op	        20.00 returned_commits	       100.0 skip	  140822 B/op	    1478 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_100-20              	       5	  12081868 ns/op	        20.00 returned_commits	       100.0 skip	  140921 B/op	    1478 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_300-20              	       5	  13168298 ns/op	        20.00 returned_commits	       300.0 skip	  266460 B/op	    3281 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_300-20              	       5	  13149869 ns/op	        20.00 returned_commits	       300.0 skip	  266464 B/op	    3281 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_300-20              	       5	  12440308 ns/op	        20.00 returned_commits	       300.0 skip	  282000 B/op	    3288 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  17776958 ns/op	        20.00 returned_commits	       480.0 skip	  381196 B/op	    4904 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  18643595 ns/op	        20.00 returned_commits	       480.0 skip	  380748 B/op	    4904 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  17717028 ns/op	        20.00 returned_commits	       480.0 skip	  372985 B/op	    4901 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  30097625 ns/op	     12002 commit_files	 5918003 B/op	   12433 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  29515880 ns/op	     12002 commit_files	 5917721 B/op	   12432 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  29850256 ns/op	     12002 commit_files	 5917507 B/op	   12431 allocs/op
+BenchmarkLargeRepository/LongHunk_GitReadOnly-20                            	       5	   6689087 ns/op	 195.83 MB/s	   1309914 diff_bytes	 5564406 B/op	     187 allocs/op
+BenchmarkLargeRepository/LongHunk_GitReadOnly-20                            	       5	   6444404 ns/op	 203.26 MB/s	   1309914 diff_bytes	 5562720 B/op	     184 allocs/op
+BenchmarkLargeRepository/LongHunk_GitReadOnly-20                            	       5	   6073110 ns/op	 215.69 MB/s	   1309914 diff_bytes	 5562729 B/op	     185 allocs/op
+BenchmarkLargeRepository/LongHunk_ParsePatchOnly-20                         	       5	    381654 ns/op	3432.20 MB/s	         1.000 parsed_hunks	 1452608 B/op	      24 allocs/op
+BenchmarkLargeRepository/LongHunk_ParsePatchOnly-20                         	       5	    531177 ns/op	2466.06 MB/s	         1.000 parsed_hunks	 1452608 B/op	      24 allocs/op
+BenchmarkLargeRepository/LongHunk_ParsePatchOnly-20                         	       5	    377647 ns/op	3468.62 MB/s	         1.000 parsed_hunks	 1452608 B/op	      24 allocs/op
+BenchmarkLargeRepository/LongHunk_MyGoSetPatchOnly-20                       	       5	   2091500 ns/op	 626.30 MB/s	 7982780 B/op	    1540 allocs/op
+BenchmarkLargeRepository/LongHunk_MyGoSetPatchOnly-20                       	       5	   1942580 ns/op	 674.32 MB/s	 7891428 B/op	    1045 allocs/op
+BenchmarkLargeRepository/LongHunk_MyGoSetPatchOnly-20                       	       5	   1703252 ns/op	 769.07 MB/s	 7891524 B/op	    1046 allocs/op
+BenchmarkLargeRepository/LongHunk_MyGoScrollingFrame-20                     	       5	   1880284 ns/op	      8000 hunk_lines_per_side	      1800 viewport_dip	  393438 B/op	     396 allocs/op
+BenchmarkLargeRepository/LongHunk_MyGoScrollingFrame-20                     	       5	   2039828 ns/op	      8000 hunk_lines_per_side	      1800 viewport_dip	   18958 B/op	     322 allocs/op
+BenchmarkLargeRepository/LongHunk_MyGoScrollingFrame-20                     	       5	   2148574 ns/op	      8000 hunk_lines_per_side	      1800 viewport_dip	   18136 B/op	     321 allocs/op
+BenchmarkLargeRepository/LongHunk_ParseCancelledContextCost-20              	       5	       246.2 ns/op	       240.0 cancel_check_ns
+BenchmarkLargeRepository/LongHunk_ParseCancelledContextCost-20              	       5	       582.6 ns/op	       506.0 cancel_check_ns
+BenchmarkLargeRepository/LongHunk_ParseCancelledContextCost-20              	       5	       400.0 ns/op	       351.0 cancel_check_ns
+PASS
+ok  	lazygitapp/internal/repository	11.903s

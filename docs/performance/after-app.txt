@@ -1,0 +1,27 @@
+revision=20f5d271cd68d7ae67fa729164a15ed374b55100
+command=go test ./internal/app -run ^$ -bench "^(BenchmarkPrincipalCommitListFrame|BenchmarkCommitDiffLongHunk)/" -benchtime=20x -count=3 -cpuprofile after-app-cpu.pprof -memprofile after-app-mem.pprof
+variant_order=same_position_control,scroll_distinct; ParsePatchOnly,BuildDiffState,RepeatedBuildSamePatch(original cost control),QuietRefreshSamePatch(after-only product path); -count repetitions precede next sibling
+goos: linux
+goarch: amd64
+pkg: lazygitapp/internal/app
+cpu: Intel(R) Core(TM) Ultra 7 265
+BenchmarkPrincipalCommitListFrame/same_position_control-20         	      20	    775244 ns/op	         0 last_first_row	        28.00 last_last_row	        29.00 lazy_visible_rows	     20000 total_commits	   53936 B/op	     558 allocs/op
+BenchmarkPrincipalCommitListFrame/same_position_control-20         	      20	    768118 ns/op	         0 last_first_row	        28.00 last_last_row	        29.00 lazy_visible_rows	     20000 total_commits	   53936 B/op	     558 allocs/op
+BenchmarkPrincipalCommitListFrame/same_position_control-20         	      20	    680249 ns/op	         0 last_first_row	        28.00 last_last_row	        29.00 lazy_visible_rows	     20000 total_commits	   53936 B/op	     558 allocs/op
+BenchmarkPrincipalCommitListFrame/scroll_distinct-20               	      20	  10402162 ns/op	     19066 last_first_row	     19094 last_last_row	        29.00 lazy_visible_rows	     20000 total_commits	 4101146 B/op	   18412 allocs/op
+BenchmarkPrincipalCommitListFrame/scroll_distinct-20               	      20	  10290218 ns/op	     19066 last_first_row	     19094 last_last_row	        29.00 lazy_visible_rows	     20000 total_commits	 4101117 B/op	   18412 allocs/op
+BenchmarkPrincipalCommitListFrame/scroll_distinct-20               	      20	  10243784 ns/op	     19066 last_first_row	     19094 last_last_row	        29.00 lazy_visible_rows	     20000 total_commits	 4100887 B/op	   18411 allocs/op
+BenchmarkCommitDiffLongHunk/ParsePatchOnly-20                      	      20	    483268 ns/op	2710.53 MB/s	 1452608 B/op	      24 allocs/op
+BenchmarkCommitDiffLongHunk/ParsePatchOnly-20                      	      20	    474490 ns/op	2760.68 MB/s	 1452608 B/op	      24 allocs/op
+BenchmarkCommitDiffLongHunk/ParsePatchOnly-20                      	      20	    469307 ns/op	2791.17 MB/s	 1452608 B/op	      24 allocs/op
+BenchmarkCommitDiffLongHunk/BuildDiffState_ParsePlusMyGo-20        	      20	   3502571 ns/op	 373.99 MB/s	         1.000 diff_state_hunks	13407543 B/op	    1294 allocs/op
+BenchmarkCommitDiffLongHunk/BuildDiffState_ParsePlusMyGo-20        	      20	   3195267 ns/op	 409.95 MB/s	         1.000 diff_state_hunks	13384840 B/op	    1171 allocs/op
+BenchmarkCommitDiffLongHunk/BuildDiffState_ParsePlusMyGo-20        	      20	   3344366 ns/op	 391.68 MB/s	         1.000 diff_state_hunks	13384729 B/op	    1171 allocs/op
+BenchmarkCommitDiffLongHunk/RepeatedBuildSamePatch-20              	      20	   6805170 ns/op	 192.49 MB/s	         2.000 builds/op	26769400 B/op	    2341 allocs/op
+BenchmarkCommitDiffLongHunk/RepeatedBuildSamePatch-20              	      20	   6693742 ns/op	 195.69 MB/s	         2.000 builds/op	26769559 B/op	    2342 allocs/op
+BenchmarkCommitDiffLongHunk/RepeatedBuildSamePatch-20              	      20	   6940455 ns/op	 188.74 MB/s	         2.000 builds/op	26769357 B/op	    2341 allocs/op
+BenchmarkCommitDiffLongHunk/QuietRefreshSamePatch_GitExcluded-20   	      20	      1058 ns/op	   1309914 diff_bytes	         1.000 same_state	     512 B/op	       5 allocs/op
+BenchmarkCommitDiffLongHunk/QuietRefreshSamePatch_GitExcluded-20   	      20	      1286 ns/op	   1309914 diff_bytes	         1.000 same_state	     512 B/op	       5 allocs/op
+BenchmarkCommitDiffLongHunk/QuietRefreshSamePatch_GitExcluded-20   	      20	       939.7 ns/op	   1309914 diff_bytes	         1.000 same_state	     512 B/op	       5 allocs/op
+PASS
+ok  	lazygitapp/internal/app	1.699s
