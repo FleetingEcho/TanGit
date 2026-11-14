@@ -641,6 +641,71 @@ func TestScreenshot(t *testing.T) {
 		saveScreenshot(t, dir, "01-empty-light", tt)
 	})
 
+	t.Run("home-populated-light", func(t *testing.T) {
+		a := newApp(fakeOpener{})
+		a.settings.Theme = "System"
+		a.recentRepositories = []recentRepository{
+			{Path: "/home/zteng/work/client/fsoc-ui", Branch: "connector-tools-test", LastOpened: timeNow()},
+			{Path: "/home/zteng/work/Tools/test_lg/lazygitApp", Branch: "main", LastOpened: timeNow() - 14*3600},
+			{
+				Path:     "/home/zteng/.local/share/opencode/worktree/tangit-typography-window",
+				Worktree: true, WorktreeName: "tangit-typography-window", RepositoryPath: "/home/zteng/work/Tools/test_lg/lazygitApp",
+				LastOpened: timeNow() - 14*3600,
+			},
+			{Path: "/home/zteng/work/client/admin-console", Branch: "feature/campaign", LastOpened: timeNow() - 23*3600},
+		}
+		tt := ui.NewTester(a.view, 1280, 800)
+		tt.SetDark(false)
+		tt.Frame()
+		saveScreenshot(t, dir, "01a-home-populated-light", tt)
+	})
+
+	t.Run("home-editor-light", func(t *testing.T) {
+		a := newApp(fakeOpener{})
+		a.settings.Theme = "System"
+		a.pickerOpenMode = int(openAllowPlainEditor)
+		a.recentRepositories = []recentRepository{
+			{Path: "/work/client/project", Branch: "main", LastOpened: timeNow()},
+			{Path: "/work/notes", LastOpened: timeNow(), EditorOnly: true},
+			{Path: "/work/writing", Name: "Writing", LastOpened: timeNow() - 3600, EditorOnly: true},
+		}
+		tt := ui.NewTester(a.view, 1280, 800)
+		tt.SetDark(false)
+		tt.Frame()
+		saveScreenshot(t, dir, "01b-home-editor-light", tt)
+	})
+
+	t.Run("home-editor-dark", func(t *testing.T) {
+		a := newApp(fakeOpener{})
+		a.settings.Theme = "System"
+		a.pickerOpenMode = int(openAllowPlainEditor)
+		tt := ui.NewTester(a.view, 1280, 800)
+		tt.SetDark(true)
+		tt.Frame()
+		saveScreenshot(t, dir, "01b-home-editor-dark", tt)
+	})
+
+	t.Run("plain-editor-dark", func(t *testing.T) {
+		root := filepath.Join(t.TempDir(), "Plain Notes")
+		writeCodeTestFile(t, root, "README.md", "# Plain Notes\n\nEdit, search, and save without Git.\n")
+		writeCodeTestFile(t, root, "notes/today.txt", "A local workspace\n")
+		writeCodeTestFile(t, root, "notes/ideas.txt", "No repository required\n")
+		a := newApp(fakeOpener{})
+		a.settings.Theme = "System"
+		updated := newUpdates()
+		a.update = updated.update
+		a.installOpenedRepository(nil, repository.Snapshot{Root: root})
+		t.Cleanup(a.shutdown)
+		tt := ui.NewTester(a.view, 1280, 800)
+		tt.SetDark(true)
+		h := &harness{app: a, tester: tt, updates: updated}
+		openCodePageForTest(t, h, 3)
+		a.openCodeFile("README.md", 0)
+		waitForCodeDocument(t, h, "README.md")
+		tt.Frame()
+		saveScreenshot(t, dir, "01c-plain-editor-dark", tt)
+	})
+
 	t.Run("changes-light", func(t *testing.T) {
 		a, tt := newScreenshotApp(t, false)
 		a.reviewedFiles["ui/appevents.go"] = true
@@ -910,9 +975,10 @@ func TestScreenshot(t *testing.T) {
 		if err := tt.Click("Maximize terminal"); err != nil {
 			t.Fatal(err)
 		}
-		tt.Advance(250 * time.Millisecond)
 		tt.Frame()
 		saveScreenshot(t, dir, "74-terminal-maximized-light", tt)
+		tt.Advance(250 * time.Millisecond)
+		tt.Frame()
 		if err := tt.Click("Restore terminal size"); err != nil {
 			t.Fatal(err)
 		}
@@ -998,7 +1064,23 @@ func TestScreenshot(t *testing.T) {
 		tt.Frame()
 		a.openSettingsSection(settingsPageWorkspace)
 		tt.Frame()
+		saveScreenshot(t, dir, "89-toolbar-visibility-settings-light", tt)
+		tt.Scroll(700, 480, 0, 500)
+		tt.Frame()
 		saveScreenshot(t, dir, "89-terminal-position-settings-light", tt)
+		a.closeSettings()
+		a.settings.HiddenHeaderActions = []string{"pull", "push", "theme"}
+		a.settings.HiddenStatusActions = []string{"commands", "pull-requests", "keyboard-shortcuts"}
+		tt.Frame()
+		saveScreenshot(t, dir, "90-toolbar-visibility-light", tt)
+		for _, action := range headerToolbarActions {
+			a.settings.HiddenHeaderActions = append(a.settings.HiddenHeaderActions, action.id)
+		}
+		for _, action := range statusToolbarActions {
+			a.settings.HiddenStatusActions = append(a.settings.HiddenStatusActions, action.id)
+		}
+		tt.Frame()
+		saveScreenshot(t, dir, "91-toolbar-all-hidden-light", tt)
 	})
 
 	t.Run("terminal-split-dark", func(t *testing.T) {
@@ -1906,7 +1988,7 @@ func TestScreenshot(t *testing.T) {
 		saveScreenshot(t, dir, "38-picker-names-light", tt)
 	})
 
-	// The pencil on a card opens one modal that names the card alone; the
+	// The card's More menu opens one modal that names the card alone; the
 	// folder's own name is offered as the placeholder.
 	t.Run("picker-rename-light", func(t *testing.T) {
 		a := newApp(screenshotOpener{snapshot: repository.Snapshot{}})

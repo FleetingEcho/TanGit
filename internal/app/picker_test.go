@@ -30,8 +30,8 @@ func TestPickerUsesASolidThemeBackground(t *testing.T) {
 	}
 }
 
-// The launch card and the repository history are one aligned column at both
-// desktop and narrow widths, and the launch card starts near the top.
+// The flat launcher and repository history share one aligned column at both
+// desktop and narrow widths, and the launcher starts near the top.
 func TestPickerLaunchAndRecentSectionsAreAligned(t *testing.T) {
 	for _, width := range []int{1280, 720} {
 		t.Run(fmt.Sprintf("%dpx", width), func(t *testing.T) {
@@ -48,9 +48,9 @@ func TestPickerLaunchAndRecentSectionsAreAligned(t *testing.T) {
 			if !found {
 				t.Fatal("the repository history is missing")
 			}
-			// The heading sits inside the launch card's border and 22-DIP
-			// padding; the history heading starts at the shared column's left edge.
-			if got := hero.X - recent.X; got != 23 {
+			// Without separate card padding, both headings start at the shared
+			// content column's left edge.
+			if got := hero.X - recent.X; got != 0 {
 				t.Fatalf("the sections have different widths or alignment: launch inset=%v hero=%+v recent=%+v", got, hero, recent)
 			}
 			if hero.Y >= 180 {
@@ -147,22 +147,43 @@ func TestPickerShowsOnlyTheLoadingPageWhileOpening(t *testing.T) {
 	close(release)
 }
 
-// A card's trash button takes that repository out of the history, beside the
-// context menu that does the same.
-func TestRecentCardTrashRemovesTheEntry(t *testing.T) {
+func TestRecentCardMoreMenuKeepsRepositoryActions(t *testing.T) {
+	a, tt, _ := recentTester(t, recentRepository{Path: "/work/project", LastOpened: timeNow()})
+	a.openTab = func(string) {}
+	tt.Frame()
+	if err := tt.Click("More actions /work/project"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, action := range []string{
+		"Open", "Open in editor", "Open in new tab", "Open worktree",
+		"Copy path", "Rename…", "Remove from list",
+	} {
+		if !tt.HasText(action) {
+			t.Errorf("the More menu lost %q: %v", action, tt.Menu())
+		}
+	}
+}
+
+// A card's More menu keeps removal available without a permanent trash icon.
+func TestRecentCardMoreMenuRemovesTheEntry(t *testing.T) {
 	a, tt, _ := recentTester(t,
 		recentRepository{Path: "/w/keep", LastOpened: timeNow()},
 		recentRepository{Path: "/w/hide", LastOpened: timeNow()},
 	)
-	if err := tt.Click("Remove /w/hide from the recent list"); err != nil {
-		t.Fatalf("click the trash button: %v", err)
+	if err := tt.Click("More actions /w/hide"); err != nil {
+		t.Fatalf("open the card actions: %v", err)
+	}
+	tt.Frame()
+	if err := tt.ChooseMenuItem("Remove from list"); err != nil {
+		t.Fatalf("remove from the card actions: %v", err)
 	}
 	// The removal is deferred to the next build pass.
 	tt.Frame()
 	tt.Frame()
 	texts := strings.Join(tt.Texts(), " ")
 	if strings.Contains(texts, "/w/hide") {
-		t.Fatalf("the trash button did not remove the entry: %v", tt.Texts())
+		t.Fatalf("the More menu did not remove the entry: %v", tt.Texts())
 	}
 	if !strings.Contains(texts, "/w/keep") {
 		t.Fatalf("the other entry went with it: %v", tt.Texts())

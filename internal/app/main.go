@@ -103,6 +103,9 @@ type app struct {
 	cloneProgress          repository.CloneProgress
 	cloneGeneration        uint64
 	cancelClone            context.CancelFunc
+	// pickerOpenMode is Home's transient Git/Editor choice. It is request
+	// policy, not the active workspace's identity and not a persisted setting.
+	pickerOpenMode int
 	// offerInitPath is the folder the picker offers to initialize, because
 	// it holds no Git repository yet.
 	offerInitPath string
@@ -163,7 +166,7 @@ type app struct {
 
 	// pathCopiedAt is when the status bar's path was put on the clipboard,
 	// zero while the bar shows the path itself. It shows "Copied" in its
-	// place for two seconds, then the path again.
+	// place for half a second, then the path again.
 	pathCopiedAt time.Time
 
 	// settings is the persisted preferences the settings modal edits.
@@ -291,7 +294,8 @@ type app struct {
 	// pendingForget is a repository whose entry the picker's context menu
 	// removed, applied at the top of the next build pass: a menu must not
 	// rewrite the list a pass is reading.
-	pendingForget string
+	pendingForget           string
+	pendingForgetEditorOnly bool
 	// pendingRename is the name a card was given, and the repository it
 	// belongs to, applied at the top of the next build pass for the same
 	// reason.
@@ -950,7 +954,8 @@ func newApp(opener repositoryOpener) *app {
 	// card insets, leaving a lip at the corners where the two disagree.
 	a.recentGrid.Key = func(item int) any {
 		if item >= 0 && item < len(a.visibleRecent) {
-			return a.recentRepositories[a.visibleRecent[item]].Path
+			repo := a.recentRepositories[a.visibleRecent[item]]
+			return recentKey(repo.Path, repo.EditorOnly)
 		}
 		return item
 	}

@@ -327,6 +327,8 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 		VisibleSections:        []string{"changes", "graph"},
 		SectionOrder:           normalizeSectionOrder([]string{"graph", "changes"}),
 		TerminalDock:           terminalDockRight,
+		HiddenHeaderActions:    []string{"pull", "theme"},
+		HiddenStatusActions:    []string{"commands", "command-log"},
 		RemoteWebURLs: map[string]map[string]string{
 			"/work/project": {"origin": "https://example.com/team/project"},
 		},
@@ -426,6 +428,8 @@ func TestSettingsChooseDefaultTerminalDockWithoutRelocatingExistingSessions(t *t
 	if err := h.tester.Click("Workspace settings"); err != nil {
 		t.Fatal(err)
 	}
+	h.tester.Frame()
+	h.tester.Scroll(700, 400, 0, 500)
 	h.tester.Frame()
 	if err := h.tester.Click("Default terminal position: Right"); err != nil {
 		t.Fatalf("choose the right-side default: %v; texts=%q", err, h.texts())

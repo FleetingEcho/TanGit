@@ -210,7 +210,7 @@ func (a *app) keyboardActionGroup(c *ui.Context) string {
 // global workspace shortcuts. Callers must invoke it before global keys, after
 // modal and text-input early returns so typing and dialogs remain intact.
 func (a *app) registerCustomCommandKeys(c *ui.Context) {
-	if c.FocusTakesText() || a.state != stateReady || a.terminalVisible() || a.fileEditing {
+	if c.FocusTakesText() || a.state != stateReady || a.editorOnlyWorkspace() || a.terminalVisible() || a.fileEditing {
 		return
 	}
 	if a.workspaceTab == sectionChanges && a.conflictState != nil && a.conflictStageTab == 3 {
@@ -231,7 +231,7 @@ func (a *app) registerCustomCommandKeys(c *ui.Context) {
 }
 
 func (a *app) registerGitCommands(c *ui.Context) {
-	if c.FocusTakesText() {
+	if c.FocusTakesText() || a.editorOnlyWorkspace() {
 		return
 	}
 	group := a.keyboardActionGroup(c)

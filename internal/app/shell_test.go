@@ -100,8 +100,7 @@ func TestShellStartsOnThePicker(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Home", "Open a repository", "New tab", "Check for updates",
-		"tangit <path>", "Terminal: open a repository path directly in TanGit",
-		"Minimize window", "Maximize window", "Full screen", "Close window",
+		"tangit <path>", "Minimize window", "Maximize window", "Full screen", "Close window",
 	} {
 		if _, found := tt.Find(want); !found {
 			t.Errorf("the window chrome lost %q: %v", want, tt.Texts())

@@ -342,7 +342,11 @@ func TestFilteredRecentRenameAndRemoveTargetTheOriginalCard(t *testing.T) {
 	}
 	tt.Type("Beta")
 	tt.Frame()
-	if err := tt.Click("Rename /work/second"); err != nil {
+	if err := tt.Click("More actions /work/second"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.ChooseMenuItem("Rename…"); err != nil {
 		t.Fatal(err)
 	}
 	if a.renameRecentPath != "/work/second" || !a.showRenameRecent {
@@ -350,7 +354,11 @@ func TestFilteredRecentRenameAndRemoveTargetTheOriginalCard(t *testing.T) {
 	}
 	tt.Key(0, ui.KeyEscape)
 	tt.Frame()
-	if err := tt.Click("Remove /work/second from the recent list"); err != nil {
+	if err := tt.Click("More actions /work/second"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.ChooseMenuItem("Remove from list"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -597,19 +605,19 @@ func TestRecentCardLongIdentityBadgeStaysInsideCard(t *testing.T) {
 	}
 }
 
-func TestRecentWorktreeCardFooterHasBottomClearance(t *testing.T) {
+func TestRecentWorktreeCardMetadataHasBottomClearance(t *testing.T) {
 	repo := recentRepository{
 		Path: "/work/feature", Worktree: true, WorktreeName: "feature",
 		Branch: "(no branch)", RepositoryPath: "/work/project", LastOpened: timeNow(),
 	}
 	_, tt, _ := recentTester(t, repo)
 	card, cardFound := tt.Find("Open " + repo.Path)
-	footer, footerFound := tt.Find("Remove " + repo.Path + " from the recent list")
+	footer, footerFound := tt.Find("Worktree · feature")
 	if !cardFound || !footerFound {
-		t.Fatalf("worktree card or footer is missing: %v", tt.Texts())
+		t.Fatalf("worktree card or metadata is missing: %v", tt.Texts())
 	}
 	if footer.Y+footer.H+8 > card.Y+card.H {
-		t.Fatalf("worktree card footer touches its bottom border: card=%+v footer=%+v", card, footer)
+		t.Fatalf("worktree card metadata touches its bottom border: card=%+v footer=%+v", card, footer)
 	}
 }
 
@@ -854,24 +862,28 @@ func TestRememberRecentKeepsTheCardName(t *testing.T) {
 	}
 }
 
-// A card's name is the card's alone: the pencil on it opens a modal that
-// names it, and the repository's path is untouched.
-func TestRecentCardNameIsRenamedFromThePencil(t *testing.T) {
+// A card's name is the card's alone: its More menu opens a modal that names
+// it, and the repository's path is untouched.
+func TestRecentCardNameIsRenamedFromMoreMenu(t *testing.T) {
 	dir := t.TempDir()
 	a, tt, _ := recentTester(t,
 		recentRepository{Path: "/w/client/project", LastOpened: timeNow()},
 		recentRepository{Path: "/w/other/project", LastOpened: timeNow() - 60},
 	)
 	a.pathUserData = dir
-	if err := tt.Click("Rename /w/client/project"); err != nil {
+	if err := tt.Click("More actions /w/client/project"); err != nil {
+		t.Fatalf("open the card actions: %v", err)
+	}
+	tt.Frame()
+	if err := tt.ChooseMenuItem("Rename…"); err != nil {
 		t.Fatalf("open the rename modal: %v", err)
 	}
 	tt.Frame()
 	if !a.showRenameRecent {
-		t.Fatal("the pencil opened no rename modal")
+		t.Fatal("the More menu opened no rename modal")
 	}
 	if a.state != stateEmpty {
-		t.Fatalf("the pencil must name the card, not open it: state=%v", a.state)
+		t.Fatalf("renaming must name the card, not open it: state=%v", a.state)
 	}
 	for _, want := range []string{"Rename repository", "Card name", "Save name"} {
 		if !tt.HasText(want) {
@@ -914,7 +926,11 @@ func TestRecentRenameEscapeLeavesTheNameAlone(t *testing.T) {
 	a, tt, _ := recentTester(t,
 		recentRepository{Path: "/w/project", LastOpened: timeNow(), Name: "Old name"},
 	)
-	if err := tt.Click("Rename /w/project"); err != nil {
+	if err := tt.Click("More actions /w/project"); err != nil {
+		t.Fatalf("open the card actions: %v", err)
+	}
+	tt.Frame()
+	if err := tt.ChooseMenuItem("Rename…"); err != nil {
 		t.Fatalf("open the rename modal: %v", err)
 	}
 	tt.Frame()
@@ -1004,7 +1020,11 @@ func TestRecentRenameSavesOnEnter(t *testing.T) {
 	a, tt, _ := recentTester(t,
 		recentRepository{Path: "/w/project", LastOpened: timeNow()},
 	)
-	if err := tt.Click("Rename /w/project"); err != nil {
+	if err := tt.Click("More actions /w/project"); err != nil {
+		t.Fatalf("open the card actions: %v", err)
+	}
+	tt.Frame()
+	if err := tt.ChooseMenuItem("Rename…"); err != nil {
 		t.Fatalf("open the rename modal: %v", err)
 	}
 	tt.Frame()

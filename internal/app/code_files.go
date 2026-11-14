@@ -1,6 +1,7 @@
 package app
 
 import (
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -68,6 +69,71 @@ func listCodeEmptyDirectories(root string) []string {
 	}
 	sort.Strings(directories)
 	return directories
+}
+
+// listPlainCodeFiles indexes a folder without consulting Git. WalkDir never
+// follows symbolic links; .git is excluded so a nested administrative folder
+// cannot become editable through the plain-folder workspace. Empty directories
+// are returned separately because the Explorer synthesizes them beside files.
+var listPlainCodeFiles = func(root string) ([]string, []string, error) {
+	var paths, directories []string
+	nonEmpty := make(map[string]bool)
+	err := filepath.WalkDir(root, func(filename string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if filename == root {
+			return nil
+		}
+		relative, err := filepath.Rel(root, filename)
+		if err != nil {
+			return err
+		}
+		name := filepath.ToSlash(relative)
+		if !validCodeRelativePath(name) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		parent := filepath.ToSlash(filepath.Dir(relative))
+		if parent != "." {
+			nonEmpty[parent] = true
+		}
+		if strings.EqualFold(entry.Name(), ".git") {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.IsDir() {
+			directories = append(directories, name)
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode().IsRegular() {
+			paths = append(paths, name)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	emptyDirectories := make([]string, 0, len(directories))
+	for _, directory := range directories {
+		if !nonEmpty[directory] {
+			emptyDirectories = append(emptyDirectories, directory)
+		}
+	}
+	sort.Strings(paths)
+	sort.Strings(emptyDirectories)
+	return paths, emptyDirectories, nil
 }
 
 func bytesCount(data []byte, value byte) int {

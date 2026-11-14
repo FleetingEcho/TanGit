@@ -10,7 +10,9 @@
 After setup, run `tangit .` or `tangit "path/to/repository"`.
 Relative paths use your current directory. Git must be on `PATH`. The command
 returns immediately. If TanGit is already running, it focuses that window and
-opens the repository in a new tab, or selects its existing tab.
+opens the path in a new tab, or selects its existing tab. A Git repository opens
+the full workspace; a plain folder opens the Editor-only workspace without
+running `git init`.
 
 ### macOS
 
@@ -77,6 +79,7 @@ their package installer.
 | Task | Steps |
 | --- | --- |
 | Clone and open a repository | On Home, choose **Clone** or press `C`. Enter an HTTPS, SSH, or scp-like URL, optionally choose a branch, and select a native destination parent. **Clone and open** shows Git's real progress and opens the completed repository. Escape cancels Git without deleting the destination. Credential-bearing URLs are rejected; authentication uses your configured Git credential helpers or SSH agent. |
+| Open a plain folder | At the top of Home, switch **Open mode** to **Editor**, then enter or browse to a folder. The workspace shows only **Editor**, with the file tree, content search and replace, editing and saving, structural file operations, and the local terminal. TanGit does not initialize Git or change your saved section visibility. **Recent folders** is independent of **Recent repositories**, including when the same path appears in both; Editor recents persist across restarts. If the selected folder already belongs to a Git repository, it opens the full Git workspace instead. |
 | Open an SSH workspace | On Home, choose **Open SSH**, then select or edit a profile. Agent, private-key, and password authentication are supported; secrets use the OS keychain when available and otherwise remain session-only. Unknown host keys require confirmation and changed keys are rejected. Git, files, search, terminals, and transfers execute directly on the remote Linux host without a local mirror or server agent. |
 | Stage selected lines | Click diff line numbers, then **Stage**. Shift-click selects a range; Escape clears the selection. |
 | Build a Custom Patch | In History or Graph, use `Ctrl+B` on a commit or historical file to add canonical whole-file patches. In its diff, select changed lines and press `Space`, or press `A` for the current hunk. Press `B` to review the basket, preview the combined patch, then export it, apply it atomically to the working tree without staging, or send it to another worktree. This never rewrites history. Different commits cannot contribute changes to the same old/new path; additions, deletions, renames, binary files, and mode-only changes require whole-file selection. |
@@ -100,8 +103,12 @@ their package installer.
 | Recover work | Use Reflog to inspect earlier states and create a branch, check out, or reset after confirmation. In **Saved work → Safety Journal**, review discards, resets, rebases, branch deletions, dropped stashes, and patch applications. Successful operations offer immediate notification Undo and remain listed durably. Undo uses the exact operation's pinned object, saved work, or patch bytes and stops if HEAD or newer working-tree changes no longer match. Interrupted or failed entries stay visible without an unsafe Undo action. |
 | Adjust the workspace | Drag dividers; use expand/shrink icons for full-window views. The folder button toggles directory grouping. |
 
-All workspace sections are visible by default; choose which ones to show in **Settings → Workspace sections**. Use
-**Settings → Updates** to check the installed version and available updates.
+All workspace sections are visible by default; choose which ones to show in **Settings → Workspace sections**.
+The Header and Status bar buttons are also all visible by default and can be hidden independently under
+**Settings → Workspace → Toolbar buttons**, including hiding every button in either group. The repository path
+and its copy button always remain in the Status bar. Hiding a button only removes that entry point; it does not
+stop terminal sessions, background refresh, or other activity.
+Use **Settings → Updates** to check the installed version and available updates.
 The Editor virtualizes large file trees, rebuilds them only when their contents or folding changes, and renders only the active editor tab.
 
 ## Keyboard
