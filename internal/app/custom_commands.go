@@ -38,6 +38,7 @@ var customCommandContexts = []struct {
 	{"stash", "Stash"},
 	{"tags", "Tags"},
 	{"worktrees", "Worktrees"},
+	{"agents", "Agent tasks"},
 	{"submodules", "Submodules"},
 	{"reflog", "Reflog"},
 	{"compare", "Compare refs"},
@@ -65,6 +66,8 @@ func keyboardGroupContext(group string) string {
 		return "tags"
 	case "Worktrees":
 		return "worktrees"
+	case "Agent tasks":
+		return "agents"
 	case "Submodules":
 		return "submodules"
 	case "Reflog":

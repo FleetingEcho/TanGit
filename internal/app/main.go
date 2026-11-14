@@ -18,6 +18,7 @@ import (
 	"github.com/jesseduffield/lazygit/pkg/app/daemon"
 	"github.com/sirupsen/logrus"
 
+	"lazygitapp/internal/agentwork"
 	"lazygitapp/internal/repository"
 	"lazygitapp/internal/sshworkspace"
 	"lazygitapp/internal/workspace"
@@ -123,6 +124,9 @@ type app struct {
 
 	// term owns the bottom panel's shells, tabs, splits and restored height.
 	term terminalState
+	// agents links durable tasks to this repository family's worktrees.
+	agents     agentUIState
+	agentStore *agentwork.Store
 
 	// remoteTransfers owns this page's lazy transfer manager and all of its
 	// callbacks. The shell closes it before replacing or shutting down a page.

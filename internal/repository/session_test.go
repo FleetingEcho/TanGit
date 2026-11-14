@@ -1919,6 +1919,13 @@ func TestWorktreeLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	linked := filepath.Join(t.TempDir(), "feature-worktree")
+	resolvedBase, err := session.ResolveCommit(context.Background(), "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "main")); resolvedBase != want {
+		t.Fatalf("resolved base = %q, want %q", resolvedBase, want)
+	}
 	if err := session.CreateWorktree(context.Background(), WorktreeCreateOptions{Path: linked, Base: "main", Branch: "feature"}); err != nil {
 		t.Fatal(err)
 	}

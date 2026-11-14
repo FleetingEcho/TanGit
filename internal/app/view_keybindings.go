@@ -97,6 +97,7 @@ func keyBindingGroups(customCommands ...customCommandSetting) []keyBindingGroup 
 		{title: "Stash", icon: stashIcon},
 		{title: "Tags", icon: tagsIcon},
 		{title: "Worktrees", icon: worktreesIcon},
+		{title: "Agent tasks", icon: fileBracesIcon},
 		{title: "Submodules", icon: submodulesIcon},
 
 		{

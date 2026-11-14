@@ -363,6 +363,18 @@ func (s screenshotSession) AbortOperation(context.Context) error    { return nil
 func (s screenshotSession) CreateWorktree(context.Context, repository.WorktreeCreateOptions) error {
 	return nil
 }
+func (s screenshotSession) ResolveCommit(context.Context, string) (string, error) {
+	return "0123456789abcdef0123456789abcdef01234567", nil
+}
+func (s screenshotSession) CommitRange(context.Context, string, string, int, int) ([]repository.Commit, error) {
+	return nil, nil
+}
+func (s screenshotSession) FinalFiles(context.Context, string, repository.DiffOptions) ([]repository.CommitFile, error) {
+	return nil, nil
+}
+func (s screenshotSession) FinalFileDiff(context.Context, string, repository.CommitFile, repository.DiffOptions) (repository.Diff, error) {
+	return repository.Diff{}, nil
+}
 func (s screenshotSession) DeleteWorktree(context.Context, string, bool) error { return nil }
 func (s screenshotSession) MoveWorktree(context.Context, string, string, bool) error {
 	return nil

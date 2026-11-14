@@ -175,6 +175,7 @@ var sectionIcons = []*ui.SVG{
 	stashIcon,
 	tagsIcon,
 	worktreesIcon,
+	fileBracesIcon,
 	submodulesIcon,
 	reflogIcon,
 	compareIcon,

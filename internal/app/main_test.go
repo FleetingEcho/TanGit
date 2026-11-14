@@ -570,6 +570,23 @@ func (f fakeSession) CreateWorktree(context.Context, repository.WorktreeCreateOp
 	return nil
 }
 
+func (f fakeSession) ResolveCommit(_ context.Context, ref string) (string, error) {
+	f.calls.record("resolve-commit:" + ref)
+	return f.snapshot.HeadHash, nil
+}
+
+func (f fakeSession) CommitRange(context.Context, string, string, int, int) ([]repository.Commit, error) {
+	return append([]repository.Commit(nil), f.snapshot.Commits...), nil
+}
+
+func (f fakeSession) FinalFiles(context.Context, string, repository.DiffOptions) ([]repository.CommitFile, error) {
+	return nil, nil
+}
+
+func (f fakeSession) FinalFileDiff(context.Context, string, repository.CommitFile, repository.DiffOptions) (repository.Diff, error) {
+	return repository.Diff{}, nil
+}
+
 func (f fakeSession) DeleteWorktree(_ context.Context, path string, force bool) error {
 	f.calls.record("delete-worktree:" + path + ":" + strconv.FormatBool(force))
 	return nil

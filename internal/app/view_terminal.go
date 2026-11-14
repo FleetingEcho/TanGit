@@ -32,15 +32,21 @@ const terminalSessionLimit = 6
 // name is the user's label; shell and directory provide its default identity,
 // while title remains the shell's latest OSC-reported title.
 type terminalSessionState struct {
-	id          uint64
-	groupID     uint64
-	pane        *terminal.Terminal
-	loading     bool
-	err         string
-	name        string
-	shell       string
-	directory   string
-	title       string
+	id        uint64
+	groupID   uint64
+	pane      *terminal.Terminal
+	loading   bool
+	err       string
+	name      string
+	shell     string
+	directory string
+	title     string
+	// Agent launches retain their explicit task/worktree target and command
+	// for this live terminal. They never redirect a user's ordinary shell.
+	agentTaskID string
+	worktree    string
+	command     []string
+	environment []string
 	attempt     uint64
 	startCancel context.CancelFunc
 	// Search belongs to this shell alone. Keeping the handle and latest status
@@ -304,6 +310,9 @@ func (a *app) startTerminalAt(index int) {
 	session.loading = true
 	session.err = ""
 	dir := a.snapshot.Root
+	if session.agentTaskID != "" {
+		dir = session.worktree
+	}
 	remote := a.location.IsRemote()
 	var remoteClient remoteWorkspaceClient
 	var remoteErr error
@@ -317,11 +326,15 @@ func (a *app) startTerminalAt(index int) {
 	generation := a.generation
 	ctx, cancel := context.WithCancel(context.Background())
 	session.startCancel = cancel
+	command := append([]string(nil), session.command...)
+	environment := append([]string(nil), session.environment...)
 	go func() {
 		defer a.recoverBackground()
 		defer cancel()
 		options := terminal.Options{
-			Dir: dir,
+			Command: command,
+			Dir:     dir,
+			Env:     environment,
 			OnSearch: func(status terminal.SearchStatus) {
 				a.updateChanged(func() bool {
 					_, current := a.terminalSessionByID(sessionID)
@@ -363,14 +376,18 @@ func (a *app) startTerminalAt(index int) {
 					return a.terminalVisible()
 				})
 			},
-			OnExit: func(int) {
+			OnExit: func(code int) {
 				a.updateChanged(func() bool {
 					currentIndex, current := a.terminalSessionByID(sessionID)
 					if generation != a.generation || current == nil || attempt != current.attempt {
 						return false
 					}
 					visible := a.terminalVisible()
+					taskID := current.agentTaskID
 					a.closeTerminalAt(currentIndex)
+					if taskID != "" {
+						a.agentTerminalExited(taskID, code)
+					}
 					return visible
 				})
 			},

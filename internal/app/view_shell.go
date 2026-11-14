@@ -25,6 +25,7 @@ const (
 	sectionStash
 	sectionTags
 	sectionWorktrees
+	sectionAgents
 	sectionSubmodules
 	sectionReflog
 	sectionCompare
@@ -33,7 +34,7 @@ const (
 
 var workspaceSections = []string{
 	"Editor", "Changes", "History", "Graph", "Branches", "Remotes", "Stash", "Tags",
-	"Worktrees", "Submodules", "Reflog", "Compare refs",
+	"Worktrees", "Agent tasks", "Submodules", "Reflog", "Compare refs",
 }
 
 // workspaceSectionIDs are the stable names of the sections the settings
@@ -41,7 +42,7 @@ var workspaceSections = []string{
 // sections are ever reordered.
 var workspaceSectionIDs = []string{
 	"code", "changes", "history", "graph", "branches", "remotes", "stash", "tags",
-	"worktrees", "submodules", "reflog", "compare",
+	"worktrees", "agents", "submodules", "reflog", "compare",
 }
 
 // defaultVisibleSections shows every workspace section on a fresh install.
@@ -114,6 +115,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.remoteWebURLFormModal(c)
 	a.tagFormModal(c)
 	a.worktreeFormModal(c)
+	a.agentTaskFormModal(c)
 	a.worktreeMoveFormModal(c)
 	a.worktreeLockFormModal(c)
 	a.worktreeRepairFormModal(c)
@@ -956,6 +958,9 @@ func (a *app) setWorkspaceTab(tab int) {
 	// the chosen commit across by hash rather than by position.
 	selectedHash := commitHashAt(a.visibleCommits(), a.selectedCommit)
 	a.workspaceTab = tab
+	if tab == sectionAgents && a.agents.loadedRepo != a.agentRepositoryID() && !a.agents.loading {
+		a.refreshAgentTasks()
+	}
 	a.syncNavSelection()
 	a.showCommitForm = false
 	if isCommitSection(previous) && isCommitSection(tab) {
@@ -984,6 +989,14 @@ func (a *app) sectionCount(section int) int {
 		return len(a.snapshot.Tags)
 	case sectionWorktrees:
 		return len(a.snapshot.Worktrees)
+	case sectionAgents:
+		count := 0
+		for _, task := range a.agents.tasks {
+			if agentTaskActive(task) {
+				count++
+			}
+		}
+		return count
 	case sectionSubmodules:
 		return len(a.snapshot.Submodules)
 	}
@@ -1024,6 +1037,8 @@ func (a *app) workspaceContentView(c *ui.Context) {
 		a.tagsView(c)
 	case sectionWorktrees:
 		a.worktreesView(c)
+	case sectionAgents:
+		a.agentsView(c)
 	case sectionSubmodules:
 		a.submodulesView(c)
 	case sectionReflog:
