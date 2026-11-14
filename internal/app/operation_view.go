@@ -61,8 +61,11 @@ func (a *app) operationContextView(c *ui.Context) {
 	card.Children(func() {
 		// Adjust on the Changes pane's own width rather than the window's.
 		// Compact space is spent on the operation and its resolution.
-		compact := card.Bounds().W > 0 && card.Bounds().W < 360
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Padding(8, 10).
+		paneWidth := a.measuredPaneWidth(c, card)
+		compact := paneWidth <= 0 || paneWidth < 360
+		guidedDetail := normalizeConflictActionStyle(a.settings.ConflictActionStyle) == conflictActionStyleGuided &&
+			!a.guidedOperationGuideHidden
+		ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(10).Padding(8, 10).
 			Background(theme.Accent.Alpha(0.09)).Border(1, theme.Accent.Alpha(0.28)).Radius(theme.Radius).
 			Tooltip(tooltip).Children(func() {
 			ui.Icon(c, branchIcon).FontSize(16).TextColor(theme.Accent)
@@ -77,10 +80,10 @@ func (a *app) operationContextView(c *ui.Context) {
 					context = shortOperationSHA(state.OntoSHA)
 				}
 			}
-			ui.Column(c).Gap(2).Grow(1).Children(func() {
+			ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(7).Wrap().Children(func() {
 					ui.Text(c, strings.ToUpper(string(state.Type))).Bold().TextColor(theme.Accent)
-					if progress := operationProgress(*state); progress != "" {
+					if progress := operationProgress(*state); progress != "" && !guidedDetail {
 						ui.Badge(c, progress)
 					}
 					if state.HistoryPatch != nil {
@@ -91,9 +94,14 @@ func (a *app) operationContextView(c *ui.Context) {
 					}
 				})
 				if context != "" {
-					ui.Text(c, context).SingleLine().TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Tooltip(tooltip)
+					contextLine := ui.Text(c, context).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Tooltip(tooltip)
+					if guidedDetail {
+						contextLine.MinWidth(0).MaxWidthPercent(100)
+					} else {
+						contextLine.SingleLine()
+					}
 				}
-				if conflicts := conflictedFileCount(a.snapshot.Files); conflicts > 0 {
+				if conflicts := conflictedFileCount(a.snapshot.Files); conflicts > 0 && !guidedDetail {
 					ui.Textf(c, tr("%d conflict%s to resolve"), conflicts, plural(conflicts)).
 						Bold().TextColor(theme.Danger).FontSize(theme.FontSize - 1)
 					// Keep the guidance on its own line instead of squeezing it
@@ -117,5 +125,8 @@ func (a *app) operationContextView(c *ui.Context) {
 				})
 			}
 		})
+		if normalizeConflictActionStyle(a.settings.ConflictActionStyle) == conflictActionStyleGuided {
+			a.guidedOperationGuide(c)
+		}
 	})
 }
