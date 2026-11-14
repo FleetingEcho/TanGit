@@ -56,6 +56,10 @@ type DiffState struct {
 	// FitContent makes the viewer as high as its lines, as a file of a
 	// list of them, rather than scrolling them itself.
 	FitContent bool
+	// ScrollPastEnd lets the lines scroll up until the last is at the top,
+	// as State's do unless NoScrollPastEnd, so that GoToHunk can bring a
+	// change near the end to the middle of the view too.
+	ScrollPastEnd bool
 	// KeepScrollbars and NoScrollbars are those of State: the scroll
 	// bars stay with the pointer away, or are taken away with their room.
 	KeepScrollbars bool
@@ -123,7 +127,6 @@ type DiffState struct {
 	// oldActive is set while the old side of a split view has the
 	// keyboard, and stays after it goes, until the new side has it.
 	oldActive bool
-	findNav   diffFindNav
 	prepared  diffPrepared
 	// blocksV counts the blocks prepare made, and built is the geometry
 	// the separators and buttons were built for, which a frame changing
@@ -344,6 +347,13 @@ func (d *DiffState) GoToHunk(i int) {
 	ed.setSels([]sel{ed.newSel(off, off)}, revealCenter)
 }
 
+// Focus gives the keyboard to the editor of the active side when the
+// viewer is next built, so that its caret shows, as after GoToHunk from
+// a button.
+func (d *DiffState) Focus() {
+	d.editorOf(d.ActiveSide()).refocus = true
+}
+
 // ScrollY returns how far the diff's rows are scrolled up, in DIPs, as the
 // last frame laid them out, however they were scrolled: by the wheel, the
 // keys, the scroll bar, GoToHunk or SetScrollY. It is the new side's, which
@@ -485,16 +495,12 @@ func (d *DiffState) Run(cmd Command) bool {
 }
 
 // Find opens the find bar of the active side's editor (ActiveSide) with
-// query, and selects its first match after the caret. A split view highlights,
-// counts and navigates the query in both sides, without opening another bar.
+// query, and selects its first match after the caret.
 func (d *DiffState) Find(query string) {
 	ed := d.editorOf(d.ActiveSide())
 	f := &ed.find
 	f.open, f.query, f.stale = true, query, true
-	if d.stepFind(ed, 1) {
-		// stepFind already chose the match that update would select.
-		f.typed, f.scrollTo = query, false
-	}
+	f.step(ed, 1)
 }
 
 // ActiveSide returns the side that has the keyboard, or had it last: the
@@ -570,9 +576,11 @@ func (d *DiffState) sideOptions(old bool) options {
 		readOnly: old || !d.Editable, font: d.Font, lineHeight: d.LineHeight, tabSize: d.TabSize,
 		wrap: d.Wrap, lineNumbers: LineNumbersOn, whitespace: WhitespaceNone, autoClose: true,
 		theme: d.Theme, bindings: d.Bindings, fitContent: d.FitContent, minDigits: digits,
+		scrollPastEnd:  d.ScrollPastEnd && !d.FitContent,
 		keepScrollbars: d.KeepScrollbars, hideScrollbars: d.NoScrollbars,
 		renderFindBar: d.RenderFindBar, renderGoToLine: d.RenderGoToLine,
 	}
+	o.scrollMargin = defaultScrollMargin
 	if d.NoLineNumbers {
 		o.lineNumbers = LineNumbersOff
 	}

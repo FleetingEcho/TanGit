@@ -453,7 +453,7 @@ func coreSearchField(c *context, query *string) *node {
 		in := coreTextInputBase(c, query).Grow(1).MinWidth(t.Space(15)).Placeholder(c.texts().Search())
 		in.search = true
 		if *query != "" {
-			clear := coreButtonBase(c).Size(t.Space(4), t.Space(4)).Radius(t.Space(2)).Background(t.TextMuted.Alpha(0.5)).Label(c.texts().Clear()).Tooltip(c.texts().Clear())
+			clear := coreButtonBase(c).Size(t.Space(4), t.Space(4)).Radius(t.Space(2)).Background(t.TextMuted.Alpha(0.5)).Label(c.texts().Clear())
 			clear.flags &^= flagFocusable // as AppKit's: no stop of Tab
 			clear.flags |= flagKeepFocus
 			clear.role = RoleButton

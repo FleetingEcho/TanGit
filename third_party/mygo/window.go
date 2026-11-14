@@ -60,6 +60,10 @@ type Rectangle struct{ X, Y, Width, Height int }
 // WindowOptions configures NewWindow. The zero value is a visible,
 // resizable 800x600 window centered on screen.
 type WindowOptions struct {
+	// OwnScene opens the window as a window of the system's own on iPad, beside
+	// the app's others, which ios.multipleWindows in mygo.json allows. Elsewhere
+	// it's a window as any: on a phone or Android, over the one before.
+	OwnScene bool
 	// Title of the window. Defaults to the application name. The title
 	// follows the page's <title> unless an OnPageTitleUpdated listener
 	// prevents it.
@@ -370,6 +374,9 @@ type Window struct {
 	destroyed atomic.Bool
 	shown     bool
 	readyShow bool
+	// loads counts the loads the app asked the page for, so that a failed
+	// load knows whether its listeners started another. Main thread only.
+	loads int
 	// showLater tells that NewWindow left showing the window of native UI
 	// to the main loop's next turn (settleShow), and framing that its
 	// content draws a frame. Main thread only.
@@ -644,6 +651,7 @@ func newWindow(opts WindowOptions, bg, tint *background, native uintptr, flyout 
 	popts := w.platformOptions(&opts)
 	popts.BackgroundColor = w.backgroundColor()
 	popts.Surface = opts.Content != nil
+	popts.OwnScene = opts.OwnScene
 	if opts.Transparent {
 		// Backends keep transparent windows clear; so do theme changes.
 		w.background = nil
@@ -1105,18 +1113,6 @@ func (w *Window) IsMaximized() bool { return get(w, platform.Window.IsMaximized)
 
 // Restore restores a minimized window.
 func (w *Window) Restore() { w.do(platform.Window.Restore) }
-
-// startDrag restores full screen before moving a window from a custom drag
-// region, as dragging a native title bar does. Main thread only.
-func (w *Window) startDrag() {
-	if w.native == nil {
-		return
-	}
-	if w.native.IsFullScreen() {
-		w.native.SetFullScreen(false)
-	}
-	w.native.StartDrag()
-}
 
 // SetFullScreen enters or leaves full screen.
 func (w *Window) SetFullScreen(v bool) {
@@ -1580,6 +1576,7 @@ func (p *Page) LoadURL(rawURL string) error {
 	}
 	p.w.page(func(n platform.Window) {
 		p.w.html = nil
+		p.w.loads++
 		n.LoadURL(resolved)
 	})
 	return nil
@@ -1598,6 +1595,7 @@ func (p *Page) LoadFile(path string) error {
 	}
 	p.w.page(func(n platform.Window) {
 		p.w.html = nil
+		p.w.loads++
 		n.LoadFile(abs, filepath.Dir(abs))
 	})
 	return nil
@@ -1676,6 +1674,7 @@ type htmlDocument struct {
 // thread only.
 func (w *Window) loadHTML(n platform.Window, html, baseURL string) {
 	w.html = &htmlDocument{html: html, baseURL: baseURL}
+	w.loads++
 	n.LoadHTML(html, baseURL)
 }
 
@@ -1694,10 +1693,12 @@ func (d *htmlDocument) isAt(url string) bool {
 }
 
 // Reload reloads the page.
-func (p *Page) Reload() { p.w.page(func(n platform.Window) { n.Reload(false) }) }
+func (p *Page) Reload() { p.w.page(func(n platform.Window) { p.w.loads++; n.Reload(false) }) }
 
 // ReloadIgnoringCache reloads the page bypassing the cache.
-func (p *Page) ReloadIgnoringCache() { p.w.page(func(n platform.Window) { n.Reload(true) }) }
+func (p *Page) ReloadIgnoringCache() {
+	p.w.page(func(n platform.Window) { p.w.loads++; n.Reload(true) })
+}
 
 // Stop stops loading the page.
 func (p *Page) Stop() { p.w.page(platform.Window.StopLoading) }
@@ -2117,7 +2118,9 @@ func (w *Window) OnHide(fn func()) (off func()) { return w.onHide.add(fn, false)
 
 // OnReadyToShow is called once, when the first page is ready to be
 // displayed. Create the window with Hidden and call Show here to avoid a
-// visual flash. A window showing Content is ready once it drew its first
+// visual flash. A page that failed to load makes the window ready too,
+// unless an OnDidFailLoad listener loaded another, which the window then
+// waits for. A window showing Content is ready once it drew its first
 // frame, which a hidden window draws while hidden.
 func (w *Window) OnReadyToShow(fn func()) (off func()) { return w.onReadyToShow.add(fn, false) }
 
@@ -2386,7 +2389,15 @@ func (h *windowHandler) LoadFinished() {
 
 func (h *windowHandler) LoadFailed(url string, code int, desc string) {
 	h.w.themeColorSettled()
+	loads := h.w.loads
 	fire1(&h.w.onDidFailLoad, &LoadError{URL: url, Code: code, Description: desc})
+	// A page that failed to load never reports DOM ready, and its load
+	// never finishes: a window shown from OnReadyToShow would stay hidden
+	// for good. A listener that loaded another page instead, as one of
+	// the app's saying what went wrong, leaves the window to that page.
+	if h.w.loads == loads {
+		h.w.readyToShow()
+	}
 }
 
 func (h *windowHandler) TitleChanged(title string) {
