@@ -24,6 +24,17 @@ func (a *app) beginOpen() {
 		return
 	}
 
+	// Check a remembered local worktree before reclaiming its existing tab.
+	// Otherwise a deleted checkout would just activate that tab's stale page,
+	// bypassing the gentle error handling below. Remote paths are not local
+	// filesystem paths and must continue through their SSH opener.
+	if _, remote := canonicalRemoteReference(path); !remote && a.recentWorktree(path) {
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			a.showMissingRecentWorktree(path)
+			return
+		}
+	}
+
 	// A window with tabs takes the open over when the repository already has
 	// a page, or when the window is full: the hook reports it, and nothing of
 	// this page's own read starts.
@@ -154,6 +165,16 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 	})
 }
 
+// showMissingRecentWorktree keeps the picker useful when its checkout was
+// removed outside TanGit. The recent card remains available for cleanup.
+func (a *app) showMissingRecentWorktree(path string) {
+	a.state = stateEmpty
+	a.path = ""
+	a.errMessage = ""
+	a.offerInitPath = ""
+	a.notify("warning", tr("Open worktree"), tr("Repository folder no longer exists")+"\n"+path)
+}
+
 // setOpenError handles a failed initial or core read on the UI loop.
 func (a *app) setOpenError(path string, generation uint64, err error) {
 	if generation != a.generation {
@@ -161,10 +182,7 @@ func (a *app) setOpenError(path string, generation uint64, err error) {
 	}
 	a.cancelOpen = nil
 	if errors.Is(err, os.ErrNotExist) && a.recentWorktree(path) {
-		a.state = stateEmpty
-		a.errMessage = ""
-		a.offerInitPath = ""
-		a.notify("warning", tr("Open worktree"), tr("Repository folder no longer exists")+"\n"+path)
+		a.showMissingRecentWorktree(path)
 		return
 	}
 	if errors.Is(err, repository.ErrNotRepository) {
