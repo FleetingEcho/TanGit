@@ -132,6 +132,10 @@ func (a *app) requestAgentChanges(feedback string) {
 	}, func(updated agentwork.Task) {
 		command := a.agentTaskCommand(updated, true, requestPath)
 		if a.openAgentTerminal(updated, command, requestPath) {
+			a.recordAgentActivity(updated.ID, agentwork.Activity{
+				Kind: agentwork.ActivityResume, Command: agentActivityCommand(command), SessionID: updated.SessionID,
+				Reference: a.agentTerminalReference(updated.ID),
+			}, nil)
 			return
 		}
 		// A refused terminal start must not strand the task as Running or leave

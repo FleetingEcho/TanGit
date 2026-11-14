@@ -2,6 +2,7 @@ package agentwork
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -174,6 +175,239 @@ func TestTaskStorePersistsLastTestAcrossRestartAndClonesIt(t *testing.T) {
 	}
 	if again.LastTest.Status != TestStatusPassed || *again.LastTest.ExitCode != 0 {
 		t.Fatalf("Get shared its test result with the caller: %#v", again.LastTest)
+	}
+}
+
+func TestTaskCheckpointStorePersistsAcrossRestartAndClonesHistory(t *testing.T) {
+	store := testStore(t)
+	created, err := store.Create(validTask("local:/repo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	capturedAt := time.Date(2026, 11, 13, 20, 0, 0, 0, time.FixedZone("test", -7*3600))
+	store.now = func() time.Time { return capturedAt }
+	updated, err := store.RecordCheckpoint(created.ID, Checkpoint{
+		ID: "caller-cannot-choose-this", BaseCommit: "caller-cannot-choose-this-either",
+		SnapshotID: "snapshot-one", HeadCommit: "head-one", Reason: "  Before accept  ",
+		CreatedAt: capturedAt.Add(-24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(updated.Checkpoints) != 1 {
+		t.Fatalf("checkpoints = %#v", updated.Checkpoints)
+	}
+	checkpoint := updated.Checkpoints[0]
+	if !validTaskID(checkpoint.ID) || checkpoint.SnapshotID != "snapshot-one" ||
+		checkpoint.BaseCommit != created.BaseCommit || checkpoint.HeadCommit != "head-one" ||
+		checkpoint.Reason != "Before accept" || !checkpoint.CreatedAt.Equal(capturedAt) ||
+		checkpoint.CreatedAt.Location() != time.UTC {
+		t.Fatalf("recorded checkpoint = %#v", checkpoint)
+	}
+	if len(updated.Activity) != 1 || updated.Activity[0].Kind != ActivityCheckpoint ||
+		!validTaskID(updated.Activity[0].ID) || updated.Activity[0].CheckpointID != checkpoint.ID ||
+		updated.Activity[0].SnapshotID != checkpoint.SnapshotID || !updated.Activity[0].CreatedAt.Equal(capturedAt) {
+		t.Fatalf("checkpoint activity = %#v", updated.Activity)
+	}
+
+	updated.Checkpoints[0].SnapshotID = "changed by caller"
+	if _, err := store.Update(created.ID, func(task *Task) error {
+		task.Checkpoints[0].HeadCommit = "rewritten by task update"
+		task.Activity[0].SnapshotID = "rewritten by task update"
+		task.Status = StatusRunning
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	restarted := &Store{dir: store.dir, now: time.Now}
+	read, err := restarted.Get(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(read.Checkpoints) != 1 || read.Checkpoints[0].ID != checkpoint.ID ||
+		read.Checkpoints[0].SnapshotID != "snapshot-one" || read.Checkpoints[0].HeadCommit != "head-one" {
+		t.Fatalf("restarted checkpoint history = %#v", read.Checkpoints)
+	}
+	if len(read.Activity) != 2 || read.Activity[0].SnapshotID != "snapshot-one" ||
+		read.Activity[1].Kind != ActivityStatus {
+		t.Fatalf("restarted activity history = %#v", read.Activity)
+	}
+	read.Checkpoints[0].Reason = "changed clone"
+	again, err := restarted.Get(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Checkpoints[0].Reason != "Before accept" {
+		t.Fatalf("Get shared checkpoint history with its caller: %#v", again.Checkpoints)
+	}
+}
+
+func TestTaskCheckpointStoreRetainsNewest24Records(t *testing.T) {
+	store := testStore(t)
+	created, err := store.Create(validTask("local:/repo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range 30 {
+		store.now = func() time.Time { return time.Date(2026, 11, 13, 20, 0, index, 0, time.UTC) }
+		if _, err := store.RecordCheckpoint(created.ID, Checkpoint{
+			SnapshotID: fmt.Sprintf("snapshot-%02d", index),
+			HeadCommit: fmt.Sprintf("head-%02d", index),
+			Reason:     fmt.Sprintf("Checkpoint %02d", index),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read, err := (&Store{dir: store.dir, now: time.Now}).Get(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(read.Checkpoints) != checkpointHistoryKeep {
+		t.Fatalf("checkpoint count = %d, want %d", len(read.Checkpoints), checkpointHistoryKeep)
+	}
+	ids := map[string]bool{}
+	for index, checkpoint := range read.Checkpoints {
+		generation := index + 6
+		if checkpoint.SnapshotID != fmt.Sprintf("snapshot-%02d", generation) ||
+			checkpoint.HeadCommit != fmt.Sprintf("head-%02d", generation) {
+			t.Fatalf("checkpoint %d is not the expected retained record: %#v", index, checkpoint)
+		}
+		if ids[checkpoint.ID] {
+			t.Fatalf("duplicate checkpoint identity %q", checkpoint.ID)
+		}
+		ids[checkpoint.ID] = true
+	}
+}
+
+func TestTaskActivityStorePersistsClonesAndBoundsHistory(t *testing.T) {
+	store := testStore(t)
+	created, err := store.Create(validTask("local:/repo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 11, 13, 21, 0, 0, 0, time.FixedZone("test", -7*3600))
+	store.now = func() time.Time { return base }
+	recorded, err := store.RecordActivity(created.ID, Activity{
+		ID: "caller-cannot-choose-this", Kind: ActivityLaunch, CreatedAt: base.Add(-time.Hour),
+		Command: "agent --prompt request.md", SessionID: " session-one ", Reference: " terminal:1 ",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recorded.Activity) != 1 || !validTaskID(recorded.Activity[0].ID) ||
+		!recorded.Activity[0].CreatedAt.Equal(base) || recorded.Activity[0].CreatedAt.Location() != time.UTC ||
+		recorded.Activity[0].SessionID != "session-one" || recorded.Activity[0].Reference != "terminal:1" {
+		t.Fatalf("recorded activity = %#v", recorded.Activity)
+	}
+	recorded.Activity[0].Command = "changed by caller"
+	unchanged, err := store.Get(created.ID)
+	if err != nil || unchanged.Activity[0].Command != "agent --prompt request.md" {
+		t.Fatalf("activity result shared its history: %#v, %v", unchanged.Activity, err)
+	}
+
+	for index := 1; index <= 104; index++ {
+		store.now = func() time.Time { return base.Add(time.Duration(index) * time.Minute) }
+		if _, err := store.RecordActivity(created.ID, Activity{
+			Kind: ActivityLaunch, Command: fmt.Sprintf("agent-%03d", index),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	restarted := &Store{dir: store.dir, now: time.Now}
+	read, err := restarted.Get(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(read.Activity) != activityHistoryKeep || read.Activity[0].Command != "agent-005" ||
+		read.Activity[len(read.Activity)-1].Command != "agent-104" {
+		t.Fatalf("bounded restarted history = len %d, first %#v, last %#v", len(read.Activity), read.Activity[0], read.Activity[len(read.Activity)-1])
+	}
+	ids := map[string]bool{}
+	for _, activity := range read.Activity {
+		if ids[activity.ID] {
+			t.Fatalf("duplicate activity identity %q", activity.ID)
+		}
+		ids[activity.ID] = true
+	}
+
+	if _, err := restarted.Update(created.ID, func(task *Task) error {
+		task.Activity[0].Command = "rewritten by update"
+		task.Activity = task.Activity[:1]
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	read.Activity[0].Command = "changed clone"
+	again, err := restarted.Get(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again.Activity) != activityHistoryKeep || again.Activity[0].Command != "agent-005" {
+		t.Fatalf("general update rewrote activity history: %#v", again.Activity[:1])
+	}
+}
+
+func TestTaskStoreRecordsActualLifecycleAndTestTransitions(t *testing.T) {
+	store := testStore(t)
+	created, err := store.Create(validTask("local:/repo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Date(2026, 11, 13, 22, 0, 0, 0, time.UTC)
+	now := started
+	store.now = func() time.Time { return now }
+	if _, err := store.Update(created.ID, func(task *Task) error {
+		task.Status = StatusRunning
+		task.Activity = []Activity{{ID: "injected", Kind: ActivityResume}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Minute)
+	withoutChanges, err := store.Update(created.ID, func(task *Task) error {
+		task.Summary = "No lifecycle or test transition."
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(withoutChanges.Activity) != 1 || withoutChanges.Activity[0].Kind != ActivityStatus ||
+		withoutChanges.Activity[0].StatusFrom != string(StatusReady) ||
+		withoutChanges.Activity[0].StatusTo != string(StatusRunning) ||
+		!withoutChanges.Activity[0].CreatedAt.Equal(started) {
+		t.Fatalf("lifecycle activity = %#v", withoutChanges.Activity)
+	}
+
+	now = now.Add(time.Minute)
+	if _, err := store.Update(created.ID, func(task *Task) error {
+		task.LastTest = &TestResult{Status: TestStatusRunning, Command: "go test ./...", StartedAt: now}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Minute)
+	code := 0
+	passed, err := store.Update(created.ID, func(task *Task) error {
+		task.LastTest.Status = TestStatusPassed
+		task.LastTest.ExitCode = &code
+		task.LastTest.FinishedAt = now
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if passed.Status != StatusRunning || passed.LastTest.Status != TestStatusPassed {
+		t.Fatalf("test history changed existing task/test outcomes: %#v", passed)
+	}
+	if len(passed.Activity) != 3 || passed.Activity[1].Kind != ActivityTest || passed.Activity[2].Kind != ActivityTest {
+		t.Fatalf("automatic activity = %#v", passed.Activity)
+	}
+	startEvent, passEvent := passed.Activity[1], passed.Activity[2]
+	if startEvent.StatusFrom != "" || startEvent.StatusTo != string(TestStatusRunning) ||
+		passEvent.StatusFrom != string(TestStatusRunning) || passEvent.StatusTo != string(TestStatusPassed) ||
+		startEvent.Command != "go test ./..." || passEvent.Command != "go test ./..." ||
+		!startEvent.CreatedAt.Equal(started.Add(2*time.Minute)) || !passEvent.CreatedAt.Equal(now) {
+		t.Fatalf("test transition activity = start %#v, pass %#v", startEvent, passEvent)
 	}
 }
 

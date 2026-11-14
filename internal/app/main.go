@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"github.com/jesseduffield/lazygit/pkg/app/daemon"
 	"github.com/sirupsen/logrus"
 
+	"lazygitapp/internal/agentcli"
 	"lazygitapp/internal/agentwork"
 	"lazygitapp/internal/repository"
 	"lazygitapp/internal/sshworkspace"
@@ -1191,8 +1193,22 @@ func launchPathFrom(workingDir string, args []string) string {
 	return ""
 }
 
-// Main runs the TanGit desktop application.
+// runAgentCommand handles only the explicit agent subcommand. Dispatching it
+// before daemon, launcher and single-instance setup keeps automation headless
+// and prevents a second TanGit window or a forwarded repository-open request.
+func runAgentCommand(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) (int, bool) {
+	if len(args) == 0 || args[0] != "agent" {
+		return 0, false
+	}
+	return agentcli.Execute(ctx, args[1:], stdin, stdout, stderr), true
+}
+
+// Main runs the TanGit desktop application or its explicit headless CLI.
 func Main() {
+	if code, handled := runAgentCommand(context.Background(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr); handled {
+		os.Exit(code)
+	}
+
 	// Lazygit's history-editing commands invoke this executable as Git's editor.
 	// Handle their short-lived todo-file instructions before any GUI or updater
 	// initialization, or Git would open another TanGit window and hang the rebase.
@@ -1224,6 +1240,7 @@ func Main() {
 		openAppWindow(opener, path)
 		setupTray()
 	})
+	deliverAgentDesktopNotification = showAgentDesktopNotification
 	runErr := mygo.App.Run()
 	// OnClosed has already cancelled every page's queue. Let their SFTP
 	// cleanup finish before the opener closes the clients those queues use.

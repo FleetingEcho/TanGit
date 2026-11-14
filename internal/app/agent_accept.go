@@ -13,7 +13,7 @@ import (
 func (a *app) agentAcceptEligibility() (string, bool) {
 	review := &a.agents.review
 	task, ok := a.agentReviewTask()
-	if !ok || !review.open || review.loading || review.err != "" || a.actionBusy {
+	if !ok || !review.open || review.loading || review.err != "" || a.actionBusy || a.agents.checkpointBusy[task.ID] {
 		return "", false
 	}
 	if task.Status != agentwork.StatusReadyForReview || len(review.commits) == 0 || len(review.dirtyFiles) != 0 {
@@ -35,10 +35,16 @@ func (a *app) confirmAcceptAgentCommits() {
 		detail:       tr("Git applies the captured commit range oldest first. Conflicts leave the task ready for review so you can resolve or abort the operation."),
 		confirmLabel: "Cherry-pick commits",
 		run: func() {
-			a.beginRepositoryActionMessage(tr("Accepted agent commits"), "", func(ctx context.Context, session repository.Session) error {
-				return session.CherryPickCommits(ctx, commits)
-			}, func() {
-				a.finishAcceptedAgentTask(taskID)
+			a.createAgentCheckpoint(taskID, "Before accept", func(err error) {
+				currentTaskID, eligible := a.agentAcceptEligibility()
+				if err != nil || !eligible || currentTaskID != taskID {
+					return
+				}
+				a.beginRepositoryActionMessage(tr("Accepted agent commits"), "", func(ctx context.Context, session repository.Session) error {
+					return session.CherryPickCommits(ctx, commits)
+				}, func() {
+					a.finishAcceptedAgentTask(taskID)
+				})
 			})
 		},
 	})
@@ -60,10 +66,16 @@ func (a *app) confirmMergeAgentTask() {
 		detail:       tr("Git creates a merge commit when a fast-forward is not possible. The task worktree and branch are preserved after acceptance."),
 		confirmLabel: "Merge agent branch",
 		run: func() {
-			a.beginRepositoryActionMessage(tr("Accepted agent branch"), "", func(ctx context.Context, session repository.Session) error {
-				return session.MergeBranch(ctx, task.Branch)
-			}, func() {
-				a.finishAcceptedAgentTask(taskID)
+			a.createAgentCheckpoint(taskID, "Before accept", func(err error) {
+				currentTaskID, eligible := a.agentAcceptEligibility()
+				if err != nil || !eligible || currentTaskID != taskID {
+					return
+				}
+				a.beginRepositoryActionMessage(tr("Accepted agent branch"), "", func(ctx context.Context, session repository.Session) error {
+					return session.MergeBranch(ctx, task.Branch)
+				}, func() {
+					a.finishAcceptedAgentTask(taskID)
+				})
 			})
 		},
 	})
