@@ -525,6 +525,11 @@ func (a *app) closeAllForms() {
 	a.showTagForm = false
 	a.showTagPushForm = false
 	a.showWorktreeForm = false
+	a.showWorktreeMoveForm = false
+	a.showWorktreeLockForm = false
+	a.showWorktreeRepairForm = false
+	a.showWorktreePruneForm = false
+	a.worktreePruneToken++
 	a.showSubmoduleForm = false
 	a.showCommitTagForm = false
 	a.showCommitBranchForm = false
@@ -570,6 +575,10 @@ func (a *app) anyFormOpen() bool {
 		a.showTagPushForm ||
 		a.showTagRemoteDeleteForm ||
 		a.showWorktreeForm ||
+		a.showWorktreeMoveForm ||
+		a.showWorktreeLockForm ||
+		a.showWorktreeRepairForm ||
+		a.showWorktreePruneForm ||
 		a.showSubmoduleForm ||
 		a.showCommitTagForm ||
 		a.showCommitBranchForm ||

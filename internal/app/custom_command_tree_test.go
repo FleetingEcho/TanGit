@@ -6,7 +6,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -43,7 +42,9 @@ func TestShutdownStopsCustomCommandDescendants(t *testing.T) {
 	// the correct group cancellation must handle it without external help.
 	t.Cleanup(func() {
 		if childPID > 0 {
-			_ = syscall.Kill(childPID, syscall.SIGKILL)
+			if process, err := os.FindProcess(childPID); err == nil {
+				_ = process.Kill()
+			}
 		}
 	})
 	a.shutdown()

@@ -360,10 +360,22 @@ func (s screenshotSession) ResolveConflict(context.Context, repository.File, boo
 }
 func (s screenshotSession) ContinueOperation(context.Context) error { return nil }
 func (s screenshotSession) AbortOperation(context.Context) error    { return nil }
-func (s screenshotSession) CreateWorktree(context.Context, string, string, string, bool) error {
+func (s screenshotSession) CreateWorktree(context.Context, repository.WorktreeCreateOptions) error {
 	return nil
 }
 func (s screenshotSession) DeleteWorktree(context.Context, string, bool) error { return nil }
+func (s screenshotSession) MoveWorktree(context.Context, string, string, bool) error {
+	return nil
+}
+func (s screenshotSession) FetchWorktree(context.Context, string) error        { return nil }
+func (s screenshotSession) PullWorktree(context.Context, string) error         { return nil }
+func (s screenshotSession) LockWorktree(context.Context, string, string) error { return nil }
+func (s screenshotSession) UnlockWorktree(context.Context, string) error       { return nil }
+func (s screenshotSession) PreviewPruneWorktrees(context.Context, string) ([]string, error) {
+	return nil, nil
+}
+func (s screenshotSession) PruneWorktrees(context.Context, string) error    { return nil }
+func (s screenshotSession) RepairWorktrees(context.Context, []string) error { return nil }
 func (s screenshotSession) AddSubmodule(context.Context, string, string, string) error {
 	return nil
 }
