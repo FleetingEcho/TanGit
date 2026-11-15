@@ -60,7 +60,13 @@ func TestShutdownStopsCustomCommandDescendants(t *testing.T) {
 			return // Reparented to init and awaiting ordinary reap; already dead.
 		}
 		if err == nil {
-			t.Fatal("custom command descendant survived repository shutdown")
+			if time.Now().After(deadline) {
+				t.Fatalf("custom command descendant survived repository shutdown: %s", data)
+			}
+			// Killing the command joins its output, not unrelated descendants
+			// reparented to init. The kernel may still be retiring this PID.
+			time.Sleep(10 * time.Millisecond)
+			continue
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("cannot inspect cancelled descendant %d: %v", childPID, err)

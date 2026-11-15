@@ -1043,6 +1043,15 @@ func (s *gitSession) RecentCommits(ctx context.Context, limit, skip int) ([]Comm
 // diffOptionArgs gives every patch read the same explicit whitespace and
 // context behavior. Context zero is meaningful and must not become Git's
 // default merely because the options' other field is false.
+// diffFileListOptions keeps every path with tree-level changes in the file
+// list, even when whitespace filtering gives it zero changed lines. Git
+// 2.56.1 removes whitespace-only paths from name-status directly; older Git
+// versions kept them. Numstat and patches still use the original options.
+func diffFileListOptions(options DiffOptions) DiffOptions {
+	options.IgnoreWhitespace = false
+	return options
+}
+
 func diffOptionArgs(options DiffOptions) ([]string, error) {
 	if options.ContextLines < 0 {
 		return nil, fmt.Errorf("diff context cannot be negative")
@@ -3527,7 +3536,7 @@ func (s *gitSession) CompareFiles(ctx context.Context, from, to string, options 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	nameArgs, err := s.compareArgs(from, to, "--name-status", options)
+	nameArgs, err := s.compareArgs(from, to, "--name-status", diffFileListOptions(options))
 	if err != nil {
 		return nil, fmt.Errorf("load comparison files: %w", err)
 	}

@@ -33,7 +33,21 @@ type BisectState struct {
 	Done string
 }
 
-var firstBadCommitPattern = regexp.MustCompile(`([0-9a-f]{4,40}) is the first bad commit`)
+// firstBadCommit accepts both Git's historical unquoted term and the quoted
+// term emitted by Git 2.56.1, including custom terms from BISECT_TERMS.
+func firstBadCommit(output, term string) string {
+	term = strings.TrimSpace(term)
+	if term == "" {
+		term = "bad"
+	}
+	pattern := regexp.MustCompile(`(?m)^([0-9a-f]{4,64}) is the first ['"]?` +
+		regexp.QuoteMeta(term) + `['"]? commit\r?$`)
+	match := pattern.FindStringSubmatch(output)
+	if match == nil {
+		return ""
+	}
+	return match[1]
+}
 
 // BisectState reads the bisect metadata in the repository. A missing
 // BISECT_START file means no bisect is running; that is not an error.
@@ -140,8 +154,8 @@ func (s *gitSession) BisectMark(ctx context.Context, term string, ref string) (s
 	if err != nil {
 		return "", fmt.Errorf("bisect %s: %w%s", term, err, commandOutputSummary(out))
 	}
-	if match := firstBadCommitPattern.FindStringSubmatch(out); match != nil {
-		return match[1], nil
+	if commit := firstBadCommit(out, state.NewTerm); commit != "" {
+		return commit, nil
 	}
 	return "", nil
 }
