@@ -348,10 +348,16 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 		return
 	}
 	ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
-		ui.Text(c, trf("%d matches in %d files", len(a.code.searchResults), codeSearchResultFileCount(a.code.searchResults))).
-			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1)
+		matches, files := len(a.code.searchResults), codeSearchResultFileCount(a.code.searchResults)
+		label := trf("%d matches in %d files", matches, files)
 		if a.code.searchLoadingMore {
-			ui.Spinner(c).Label(tr("Loading more matches"))
+			// Counts are only a lower bound while the single completing scan
+			// collects matches beyond the initial page.
+			label = trf("%d+ matches in %d+ files", matches, files)
+		}
+		ui.Text(c, label).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1)
+		if a.code.searchLoadingMore {
+			ui.Spinner(c).Label(tr("Completing search"))
 		}
 	})
 	list := a.keyboardList(c, &a.code.searchList, len(a.code.searchRows)).Grow(1).Rows(func(row ui.ListRow) {
@@ -372,12 +378,6 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 	// chosen match through keyboardEnter; a pointer click opens it directly.
 	if a.keyboardListChanged(&a.code.searchList, list) {
 		a.selectCodeSearchRow(a.code.searchSelectedRow)
-	}
-	// Visible reports the previous committed frame. Prefetch shortly before the
-	// end, without discarding the viewport or jumping to newly discovered files.
-	if _, last := a.code.searchList.Visible(); last >= 0 &&
-		last >= len(a.code.searchRows)-1-codeSearchPrefetchRows {
-		a.loadMoreCodeSearch()
 	}
 }
 
