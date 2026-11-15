@@ -22,6 +22,7 @@ var i18nIdentitySourceKeys = map[string]string{
 	"":                                 "empty optional message",
 	"%s %d":                            "formatting only",
 	"/path/to/repository":              "path example",
+	"/path/to/folder":                  "path example",
 	"Ctrl+Enter":                       "keyboard shortcut",
 	"F3":                               "keyboard shortcut",
 	"F3 / Enter":                       "keyboard shortcuts",

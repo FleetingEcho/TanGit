@@ -228,7 +228,7 @@ func (s *shell) start(path string) {
 	s.active = 0
 	s.pushSettings(t.app)
 	if path != "" {
-		t.app.beginOpen()
+		t.app.beginOpenWithPolicy(openAllowPlainEditor)
 	}
 }
 
@@ -727,7 +727,7 @@ func (s *shell) showHome() {
 // and opens the repository once in the existing tab set.
 func (s *shell) openSecondInstance(args []string, workingDir string) {
 	if path := launchPathFrom(workingDir, args); path != "" {
-		s.openTab(path)
+		s.openTabWithPolicy(path, openAllowPlainEditor)
 	}
 	if s.window != nil {
 		s.window.Show()
@@ -738,6 +738,10 @@ func (s *shell) openSecondInstance(args []string, workingDir string) {
 // openTab opens a repository in a page of its own, for the picker's "Open in
 // new tab". An already open repository is switched to instead of duplicated.
 func (s *shell) openTab(path string) {
+	s.openTabWithPolicy(path, openGitOnly)
+}
+
+func (s *shell) openTabWithPolicy(path string, policy openPolicy) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return
@@ -753,7 +757,7 @@ func (s *shell) openTab(path string) {
 	t := s.newTab(path)
 	s.tabs = append(s.tabs, t)
 	s.activate(s.indexOf(t))
-	t.app.beginOpen()
+	t.app.beginOpenWithPolicy(policy)
 }
 
 // prepareTabsShutdown flushes pending editors without removing any page. Only

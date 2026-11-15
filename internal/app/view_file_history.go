@@ -71,6 +71,9 @@ func (a *app) findFileHistories(path string) {
 // openFileHistory opens the drawer that lists the commits that changed path,
 // read from the repository rather than from the commits on screen.
 func (a *app) openFileHistory(path string) {
+	if a.editorOnlyWorkspace() {
+		return
+	}
 	a.fileHistoryOpen = true
 	a.fileHistoryPath = path
 	a.fileHistoryCommits = nil

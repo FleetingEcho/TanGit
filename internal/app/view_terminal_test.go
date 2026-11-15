@@ -766,11 +766,16 @@ func TestTerminalMaximizeRestoresPanelHeightAndSessions(t *testing.T) {
 	if err := h.tester.Click("Maximize terminal"); err != nil {
 		t.Fatal(err)
 	}
-	h.tester.Advance(250 * time.Millisecond)
 	h.tester.Frame()
 	maximized, found := h.tester.Find("Terminal pane")
 	if !found || !h.app.term.panelMaximized || maximized.H <= before.H*2 {
-		t.Fatalf("maximize did not give the terminal the content area: before=%+v after=%+v state=%+v", before, maximized, h.app.term)
+		t.Fatalf("maximize waited for animation before replacing the other cards: before=%+v after=%+v state=%+v", before, maximized, h.app.term)
+	}
+	h.tester.Advance(250 * time.Millisecond)
+	h.tester.Frame()
+	maximized, found = h.tester.Find("Terminal pane")
+	if !found || maximized.H <= before.H*2 {
+		t.Fatalf("maximized terminal did not retain the content area: before=%+v after=%+v", before, maximized)
 	}
 	if h.app.activeTerminal().pane != secondPane || h.app.term.percent != restorePercent {
 		t.Fatal("maximizing replaced the active shell or overwrote its restored height")

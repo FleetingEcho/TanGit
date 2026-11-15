@@ -135,7 +135,7 @@ func (a *app) codeExplorerMenu(m *ui.Menu, item fileTreeRow, services ui.Service
 		a.openCodeItemInExplorer(item)
 	}
 	m.Separator()
-	if !item.isDirectory() && m.Item(tr("View File History…")).Chosen() {
+	if !a.editorOnlyWorkspace() && !item.isDirectory() && m.Item(tr("View File History…")).Chosen() {
 		a.openFileHistory(item.path)
 	}
 	if m.Item(tr("Rename…")).Disabled(a.code.fileOperationBusy).Chosen() {

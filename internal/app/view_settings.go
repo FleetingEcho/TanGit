@@ -642,6 +642,23 @@ func (a *app) searchExclusionSettings(c *ui.Context) {
 	})
 }
 
+// toolbarActionChoices edits one toolbar without requiring a visible action.
+// Every button defaults on, including when older settings have no saved list.
+func (a *app) toolbarActionChoices(c *ui.Context, actions []toolbarAction, hidden []string, labelFormat string, update func([]string)) {
+	ui.Row(c).Gap(10).Wrap().Children(func() {
+		for _, action := range actions {
+			action := action
+			visible := toolbarActionVisible(hidden, action.id)
+			toggle := ui.Checkbox(c, &visible, tr(action.label)).
+				Label(trf(labelFormat, tr(action.label)))
+			if toggle.Changed() {
+				update(setToolbarActionVisible(hidden, actions, action.id, visible))
+				a.settingsChanged(c)
+			}
+		}
+	})
+}
+
 func (a *app) workspaceSettings(c *ui.Context) {
 	settingsSection(c, func() {
 		settingsGroup(c, worktreesIcon, "Workspace sections", "The tabs the sidebar lists")
@@ -650,6 +667,18 @@ func (a *app) workspaceSettings(c *ui.Context) {
 		})
 		ui.Text(c, tr("Keep the tools you use close at hand. At least one section always stays visible.")).
 			TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).MaxWidth(480)
+		ui.Divider(c)
+		settingsGroup(c, settingsIcon, "Toolbar buttons", "Choose which global actions stay visible")
+		settingRow(c, "Header toolbar", "Repository, editor, and application actions", func() {
+			a.toolbarActionChoices(c, headerToolbarActions, a.settings.HiddenHeaderActions, "Show %s in header", func(hidden []string) {
+				a.settings.HiddenHeaderActions = hidden
+			})
+		})
+		settingRow(c, "Status bar", "Command, pull request, terminal, and help actions", func() {
+			a.toolbarActionChoices(c, statusToolbarActions, a.settings.HiddenStatusActions, "Show %s in status bar", func(hidden []string) {
+				a.settings.HiddenStatusActions = hidden
+			})
+		})
 		ui.Divider(c)
 		settingsGroup(c, terminalIcon, "Terminal", "Default layout for new terminal docks")
 		settingRow(c, "Default terminal position", "Where new terminal docks open", func() {

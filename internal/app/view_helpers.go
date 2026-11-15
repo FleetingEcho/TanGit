@@ -192,6 +192,11 @@ func count(value string) (string, bool) {
 	return value, true
 }
 
+// toolbarSeparator groups related icon actions without adding another face.
+func toolbarSeparator(c *ui.Context) {
+	ui.Box(c).Width(1).Height(16).Margin(0, 2).Background(c.Theme().Border)
+}
+
 // primaryIconButton is iconButton with the theme's primary look, for the
 // action a pane leads with.
 func primaryIconButton(c *ui.Context, label, tooltip string, icon *ui.SVG, disabled bool, run func()) {

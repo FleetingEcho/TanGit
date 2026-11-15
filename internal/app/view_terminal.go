@@ -831,6 +831,7 @@ func (a *app) terminalPaneView(c *ui.Context) {
 			flatIconButton(c, "New terminal tab", "Open an independent terminal in a new tab", plusIcon, 15, 5, false, a.newTerminalTab)
 			flatIconButton(c, "Split terminal right", "Open another independent terminal to the right", splitIcon, 15, 5, splitDisabled, a.splitTerminalRight)
 			flatIconButton(c, "Split terminal below", "Open another independent terminal below", splitBelowIcon, 15, 5, splitDisabled, a.splitTerminalBelow)
+			toolbarSeparator(c)
 			a.terminalDockButton(c)
 			maximizeLabel, maximizeButtonIcon := "Maximize terminal", expandIcon
 			if a.term.panelMaximized {
