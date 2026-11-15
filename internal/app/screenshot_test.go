@@ -645,14 +645,14 @@ func TestScreenshot(t *testing.T) {
 		a := newApp(fakeOpener{})
 		a.settings.Theme = "System"
 		a.recentRepositories = []recentRepository{
-			{Path: "/home/zteng/work/client/fsoc-ui", Branch: "connector-tools-test", LastOpened: timeNow()},
-			{Path: "/home/zteng/work/Tools/test_lg/lazygitApp", Branch: "main", LastOpened: timeNow() - 14*3600},
+			{Path: "/work/projects/fsoc-ui", Branch: "connector-tools-test", LastOpened: timeNow()},
+			{Path: "/work/projects/tangit", Branch: "main", LastOpened: timeNow() - 14*3600},
 			{
-				Path:     "/home/zteng/.local/share/opencode/worktree/tangit-typography-window",
-				Worktree: true, WorktreeName: "tangit-typography-window", RepositoryPath: "/home/zteng/work/Tools/test_lg/lazygitApp",
+				Path:     "/work/worktrees/tangit-typography-window",
+				Worktree: true, WorktreeName: "tangit-typography-window", RepositoryPath: "/work/projects/tangit",
 				LastOpened: timeNow() - 14*3600,
 			},
-			{Path: "/home/zteng/work/client/admin-console", Branch: "feature/campaign", LastOpened: timeNow() - 23*3600},
+			{Path: "/work/projects/admin-console", Branch: "feature/campaign", LastOpened: timeNow() - 23*3600},
 		}
 		tt := ui.NewTester(a.view, 1280, 800)
 		tt.SetDark(false)
@@ -945,6 +945,37 @@ func TestScreenshot(t *testing.T) {
 		a.sectionSearch[sectionCode].Focus()
 		tt.Frame()
 		saveScreenshot(t, dir, "75-code-clear-filter-dark", tt)
+	})
+
+	t.Run("code-french-language-server-recovery-light", func(t *testing.T) {
+		stubCodeWorkspace(t, map[string]string{"main.cpp": "int main() { return 0; }\n"})
+		a, tt, updated := newScreenshotHarness(t, false)
+		a.settings.Language = "fr"
+		a.settings.LanguageServers = map[string]languageServerSettings{
+			"go":     {Disabled: true},
+			"clangd": {Path: "/work/tools/missing-clangd"},
+		}
+		a.setWorkspaceTab(sectionCode)
+		settleShot(t, tt, updated, func() bool { return a.code.filesLoaded && !a.code.filesLoading })
+		a.openCodeFile("main.cpp", 0)
+		settleShot(t, tt, updated, func() bool {
+			document := a.code.documents["main.cpp"]
+			return document != nil && document.state != nil && a.additionalLanguageServers["clangd"] != nil
+		})
+		server := a.additionalLanguageServers["clangd"]
+		server.missing = false
+		server.error = "External server exited"
+		tt.Frame()
+		if _, ok := tt.Find("Serveurs de langage"); !ok {
+			t.Fatal("the failed external language server has no status icon")
+		}
+		a.code.languageServersOpen = true
+		tt.Move(0, 0)
+		tt.Frame()
+		if _, ok := tt.Find("Installer la version gérée clangd"); !ok {
+			t.Fatalf("the translated recovery menu has no managed-install action: %q", tt.Texts())
+		}
+		saveScreenshot(t, dir, "84-code-french-language-server-recovery-light", tt)
 	})
 
 	t.Run("terminal-dock-light", func(t *testing.T) {
@@ -1600,6 +1631,20 @@ func TestScreenshot(t *testing.T) {
 		saveScreenshot(t, dir, "80-settings-go-language-server-catalog-dark", tt)
 	})
 
+	t.Run("settings-french-language-server-catalog-light", func(t *testing.T) {
+		a, tt := newScreenshotApp(t, false)
+		a.settings.Language = "fr"
+		a.settings.LanguageServers = map[string]languageServerSettings{"clangd": {}}
+		a.settingsPage = settingsPageEditor
+		a.openSettings()
+		a.languageServerCatalogQuery = "clangd"
+		a.languageServerCatalogSelected = "clangd"
+		tt.Frame()
+		tt.Scroll(700, 480, 0, 1800)
+		tt.Frame()
+		saveScreenshot(t, dir, "83-settings-french-language-server-catalog-light", tt)
+	})
+
 	t.Run("settings-custom-language-server-dark", func(t *testing.T) {
 		a, tt := newScreenshotApp(t, true)
 		a.settingsPage = settingsPageEditor
@@ -1966,7 +2011,7 @@ func TestScreenshot(t *testing.T) {
 	t.Run("picker-narrow-dark", func(t *testing.T) {
 		a := newApp(screenshotOpener{snapshot: repository.Snapshot{}})
 		a.recentRepositories = []recentRepository{
-			{Path: "/work/lazygitApp", LastOpened: timeNow()},
+			{Path: "/work/projects/tangit", LastOpened: timeNow()},
 			{Path: "/work/project", LastOpened: timeNow() - 3*3600},
 		}
 		tt := ui.NewTester(a.view, 720, 900)

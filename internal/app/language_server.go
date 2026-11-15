@@ -55,6 +55,7 @@ func (a *app) startGoLanguageServer() {
 		},
 	}
 	a.goLanguageServerStarting = true
+	a.goLanguageServerRestartPending = false
 	a.goLanguageServerError = ""
 	go func() {
 		defer a.recoverBackground()
@@ -98,6 +99,10 @@ func (a *app) watchGoLanguageServer(connection languageServerConnection, sequenc
 			} else {
 				a.goLanguageServerError = "language server stopped unexpectedly"
 			}
+			if !a.goLanguageServerRestartUsed {
+				a.goLanguageServerRestartUsed = true
+				a.goLanguageServerRestartPending = true
+			}
 			return a.codeLanguageServerPresentationChanged(before)
 		})
 	}()
@@ -114,6 +119,8 @@ func (a *app) stopGoLanguageServer() {
 	a.goLanguageServerStarting = false
 	a.goLanguageServerMissing = false
 	a.goLanguageServerError = ""
+	a.goLanguageServerRestartPending = false
+	a.goLanguageServerRestartUsed = false
 	a.goLanguageServerDocs = nil
 	if connection != nil {
 		go connection.Close()
@@ -153,7 +160,7 @@ func (a *app) syncGoLanguageServer() {
 		return
 	}
 	if a.goLanguageServer == nil {
-		if !a.goLanguageServerMissing && a.goLanguageServerError == "" {
+		if !a.goLanguageServerMissing && (a.goLanguageServerError == "" || a.goLanguageServerRestartPending) {
 			a.startGoLanguageServer()
 		}
 		return

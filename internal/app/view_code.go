@@ -510,6 +510,7 @@ func (a *app) codeFileStatus(path string) string {
 type codeLanguageServerStatus struct {
 	id         string
 	name       string
+	custom     bool
 	running    bool
 	starting   bool
 	analyzing  bool
@@ -525,7 +526,7 @@ type codeLanguageServerStatus struct {
 func (a *app) codeLanguageServerStatuses() []codeLanguageServerStatus {
 	statuses := make([]codeLanguageServerStatus, 0, len(a.additionalLanguageServers)+1)
 	for _, profile := range languageServerProfilesWithSettings(a.settings.LanguageServers) {
-		status := codeLanguageServerStatus{id: profile.ID, name: profile.Name,
+		status := codeLanguageServerStatus{id: profile.ID, name: profile.Name, custom: profile.Custom,
 			installing: a.languageServerInstalling[profile.ID]}
 		if profile.ID == goLanguageServerID {
 			status.running = a.goLanguageServer != nil
@@ -641,10 +642,13 @@ func (a *app) codeLanguageServersButton(c *ui.Context) {
 					ui.Text(c, "●").TextColor(stateColor).FontSize(theme.FontSize - 2)
 					ui.Text(c, status.name).Grow(1).SingleLine()
 					ui.Text(c, label).TextColor(stateColor).FontSize(theme.FontSize - 1)
-					if status.missing && !status.installing {
-						download := compactTextButton(ui.Button(c, tr("Download"))).
-							Label(tr("Download") + " " + status.name)
-						if download.Clicked() {
+					if !status.custom && !status.installing && (status.missing || status.failed) {
+						action := tr("Install managed")
+						if status.missing {
+							action = tr("Download")
+						}
+						install := compactTextButton(ui.Button(c, action)).Label(action + " " + status.name)
+						if install.Clicked() {
 							a.installLanguageServer(status.id)
 						}
 					}

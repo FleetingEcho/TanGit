@@ -102,12 +102,15 @@ func TestGoplsInstallerFindsGoWithGUIPath(t *testing.T) {
 	original := runLanguageServerInstallCommand
 	t.Cleanup(func() { runLanguageServerInstallCommand = original })
 	dataDir := t.TempDir()
-	binDir := filepath.Join(dataDir, "tools", "bin")
+	binDir := ""
 	calls := 0
 	runLanguageServerInstallCommand = func(ctx context.Context, program string, arguments, environment []string) ([]byte, error) {
 		calls++
+		if len(environment) == 1 {
+			binDir = strings.TrimPrefix(environment[0], "GOBIN=")
+		}
 		if program != goTool || !reflect.DeepEqual(arguments, []string{"install", "golang.org/x/tools/gopls@latest"}) ||
-			!reflect.DeepEqual(environment, []string{"GOBIN=" + binDir}) {
+			!validManagedLanguageServerStaging("go", filepath.Dir(binDir)) {
 			t.Errorf("gopls installer invocation = %q %q, env=%q", program, arguments, environment)
 		}
 		// Exercise the installed Go binary without downloading packages.

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -44,6 +45,30 @@ func (a *app) languageServerExecutableAvailable(profile languageServerProfile) b
 // executable, so checking only Node can hide an obsolete TS6 wrapper install.
 // Require TanGit's managed TypeScript 7 native LSP entry point and version.
 func (a *app) managedLanguageServerDependenciesAvailable(profile languageServerProfile) bool {
+	server := a.settings.LanguageServers[profile.ID]
+	if server.Managed != nil {
+		root := server.Managed.Root
+		if a.dataDir() == "" || root != managedLanguageServerRoot(a.dataDir(), profile.ID) ||
+			!languageServerSettingsReferenceRoot(server, root) {
+			return false
+		}
+		if _, err := readManagedLanguageServerManifest(root, profile.ID); err != nil {
+			return false
+		}
+		for _, path := range languageServerExecutableCandidates(server.Path, "") {
+			if path != "" && pathWithin(root, path) && !regularLanguageServerFile(path) {
+				return false
+			}
+		}
+		for _, arguments := range [][]string{server.Arguments, server.ProbeArguments} {
+			for _, argument := range arguments {
+				if pathWithin(root, argument) && !regularLanguageServerFile(argument) {
+					return false
+				}
+			}
+		}
+		return true
+	}
 	if profile.ID != "typescript" {
 		return true
 	}
@@ -83,6 +108,11 @@ func (a *app) managedLanguageServerDependenciesAvailable(profile languageServerP
 		}
 	}
 	return false
+}
+
+func regularLanguageServerFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
 }
 
 func sameLanguageServerPath(left, right string) bool {
@@ -143,7 +173,7 @@ func (a *app) loadAdditionalLanguageServerDrafts() {
 func (a *app) storeAdditionalLanguageServerDraft(c *ui.Context, id string) {
 	profile, ok := a.customLanguageServerProfileByID(id)
 	draft := a.languageServerDrafts[id]
-	if !ok || profile.ID == goLanguageServerID || draft == nil {
+	if !ok || profile.ID == goLanguageServerID || draft == nil || a.languageServerInstalling[id] || a.languageServerUninstalling[id] {
 		return
 	}
 	if server := a.additionalLanguageServers[id]; server != nil {
@@ -153,11 +183,9 @@ func (a *app) storeAdditionalLanguageServerDraft(c *ui.Context, id string) {
 	if a.settings.LanguageServers == nil {
 		a.settings.LanguageServers = make(map[string]languageServerSettings)
 	}
-	server := a.settings.LanguageServers[id]
+	server := editLanguageServerLaunch(a.settings.LanguageServers[id], strings.TrimSpace(draft.Path), languageServerArguments(draft.Arguments))
 	server.Disabled = !draft.Enabled
-	server.Path = strings.TrimSpace(draft.Path)
-	server.Arguments = languageServerArguments(draft.Arguments)
-	if !draft.Enabled && server.Custom == nil {
+	if !draft.Enabled && server.Custom == nil && server.Managed == nil {
 		delete(a.settings.LanguageServers, id)
 	} else {
 		a.settings.LanguageServers[id] = server
@@ -183,14 +211,28 @@ func languageServerArguments(text string) []string {
 	return arguments
 }
 
+func editLanguageServerLaunch(server languageServerSettings, path string, arguments []string) languageServerSettings {
+	if server.Path != path || !slices.Equal(server.Arguments, arguments) {
+		// Editing a managed command turns it into a user-owned launch setting.
+		// Its files stay in place, but TanGit no longer has removal authority.
+		server.Managed = nil
+		server.ProbeArguments = nil
+	}
+	server.Path = path
+	server.Arguments = arguments
+	return server
+}
+
 func (a *app) storeGoLanguageServerDraft(c *ui.Context) {
+	if a.languageServerInstalling[goLanguageServerID] || a.languageServerUninstalling[goLanguageServerID] {
+		return
+	}
 	a.invalidateLanguageServerTest()
 	a.stopGoLanguageServer()
-	server := languageServerSettings{
-		Disabled:  !a.goLanguageServerEnabled,
-		Path:      strings.TrimSpace(a.goLanguageServerPath),
-		Arguments: languageServerArguments(a.goLanguageServerArgs),
-	}
+	path := strings.TrimSpace(a.goLanguageServerPath)
+	arguments := languageServerArguments(a.goLanguageServerArgs)
+	server := editLanguageServerLaunch(a.settings.LanguageServers[goLanguageServerID], path, arguments)
+	server.Disabled = !a.goLanguageServerEnabled
 	if a.settings.LanguageServers == nil {
 		a.settings.LanguageServers = make(map[string]languageServerSettings)
 	}
@@ -228,7 +270,7 @@ func (a *app) testLanguageServerProfile(id string) {
 		// Transport flags such as --stdio and --lsp start the long-running
 		// server; a version probe needs only the user's explicit global flags.
 		arguments = append([]string(nil), a.settings.LanguageServers[id].Arguments...)
-		if managedProbe := a.settings.LanguageServers[id].ProbeArguments; len(managedProbe) > 0 {
+		if managedProbe := a.settings.LanguageServers[id].ProbeArguments; len(managedProbe) > 0 && !profile.ProtocolProbe {
 			arguments = nil
 			probeArguments = managedProbe
 		}
@@ -239,18 +281,31 @@ func (a *app) testLanguageServerProfile(id string) {
 	a.languageServerTestBusy = true
 	a.languageServerTestResult = ""
 	a.languageServerTestOK = false
+	workspaceRoot, dataDir := a.snapshot.Root, a.dataDir()
 	go func() {
 		defer a.recoverBackground()
 		var output string
 		var err error
-		for _, program := range programs {
-			if id == goLanguageServerID {
-				output, err = runLanguageServerVersion(program, arguments)
-			} else {
-				output, err = runLanguageServerVersionArguments(program, arguments, probeArguments)
+		if profile.ProtocolProbe {
+			connection, connectErr := connectLanguageServerCandidates(languageServerLaunch{
+				Program: programs[0], Arguments: arguments, Root: workspaceRoot,
+				InitializationOptions: languageServerInitializationOptions(profile.ID, dataDir),
+			}, programs)
+			err = connectErr
+			if connection != nil {
+				connection.Close()
+				waitForLanguageServerClose(connection)
 			}
-			if err == nil {
-				break
+		} else {
+			for _, program := range programs {
+				if id == goLanguageServerID {
+					output, err = runLanguageServerVersion(program, arguments)
+				} else {
+					output, err = runLanguageServerVersionArguments(program, arguments, probeArguments)
+				}
+				if err == nil {
+					break
+				}
 			}
 		}
 		a.update(func() {

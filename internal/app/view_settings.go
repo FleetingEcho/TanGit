@@ -1065,17 +1065,24 @@ func (a *app) themeSwatch(c *ui.Context, color ui.Color, label string) {
 		Background(color).Tooltip(tr(label))
 }
 
+func (a *app) resetSettingsToDefaults() {
+	if a.languageServerLifecycleBusy() {
+		return
+	}
+	a.invalidateHomeBackgroundWork()
+	a.clearSSHProfileSecrets()
+	a.closeSSHProfileForm()
+	a.settings = defaultSettings()
+	a.loadGoLanguageServerDraft()
+	a.applySettingsChange()
+}
+
 func (a *app) settingsFooter(c *ui.Context) {
 	theme := c.Theme()
 	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 		if ui.Button(c, tr("Reset to defaults")).Tooltip(tr("Restore every setting")).
-			Clicked() {
-			a.invalidateHomeBackgroundWork()
-			a.clearSSHProfileSecrets()
-			a.closeSSHProfileForm()
-			a.settings = defaultSettings()
-			a.loadGoLanguageServerDraft()
-			a.applySettingsChange()
+			Disabled(a.languageServerLifecycleBusy()).Clicked() {
+			a.resetSettingsToDefaults()
 		}
 		ui.Text(c, tr("Changes apply immediately and are saved automatically")).
 			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1)
