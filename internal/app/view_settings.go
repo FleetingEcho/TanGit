@@ -29,6 +29,7 @@ const (
 
 func (a *app) openSettings() {
 	a.loadGoLanguageServerDraft()
+	a.conflictActionStyleChoice = conflictActionStyleChoice(a.settings.ConflictActionStyle)
 	a.autoFetchChoice = a.settings.AutoFetchInterval
 	if backgroundFetchCustomInterval(a.autoFetchChoice) {
 		a.autoFetchChoice = backgroundFetchCustomChoice
@@ -40,6 +41,7 @@ func (a *app) openSettings() {
 // commands menu's way into the custom command editor.
 func (a *app) openSettingsSection(page int) {
 	a.loadGoLanguageServerDraft()
+	a.conflictActionStyleChoice = conflictActionStyleChoice(a.settings.ConflictActionStyle)
 	a.autoFetchChoice = a.settings.AutoFetchInterval
 	if backgroundFetchCustomInterval(a.autoFetchChoice) {
 		a.autoFetchChoice = backgroundFetchCustomChoice
@@ -411,6 +413,16 @@ func (a *app) behaviorSettings(c *ui.Context) {
 		settingsGroup(c, commitIcon, "Behavior", "Diff reading, files, and keyboard controls")
 		ui.Column(c).Gap(12).Padding(15).Background(c.Theme().Surface.Alpha(0.55)).
 			Border(1, c.Theme().Border).Radius(c.Theme().Radius + 5).Children(func() {
+			settingRow(c, "Conflict and hunk buttons", "Choose compact icons or add visible action labels", func() {
+				choice := ui.Segmented(c, &a.conflictActionStyleChoice, tr("Icons"), tr("Icons + labels")).
+					Label(tr("Conflict and hunk button style")).
+					Tooltip(tr("Show conflict and Changes hunk actions as icons or icons with labels"))
+				if choice.Changed() {
+					a.settings.ConflictActionStyle = conflictActionStyleForChoice(a.conflictActionStyleChoice)
+					a.settingsChanged(c)
+				}
+			})
+			ui.Divider(c)
 			rows := ui.Checkbox(c, &a.settings.DiffSplit, tr("Show diffs side by side")).
 				Label(tr("Show diffs side by side"))
 			if rows.Changed() {
@@ -1073,6 +1085,7 @@ func (a *app) resetSettingsToDefaults() {
 	a.clearSSHProfileSecrets()
 	a.closeSSHProfileForm()
 	a.settings = defaultSettings()
+	a.conflictActionStyleChoice = conflictActionStyleChoice(a.settings.ConflictActionStyle)
 	a.loadGoLanguageServerDraft()
 	a.applySettingsChange()
 }
