@@ -70,9 +70,57 @@ func (a *app) openCodeWorkspaceFolder(value string) bool {
 	a.code.searchFolderSelectionSeq++
 	a.code.searchFolder = folder
 	a.code.searchFolderDraft = folder
+	a.code.searchScopeFolder, a.code.searchScopeFile = "", ""
 	a.code.searchError = ""
 	a.syncCodeTree()
 	return true
+}
+
+// openCodeWorkspaceFolderInExplorer applies an explicit workspace navigation,
+// keeps the user in Files, and refreshes its contents. An active content query
+// still follows the new workspace in the background without switching tabs.
+func (a *app) openCodeWorkspaceFolderInExplorer(value string) {
+	if !a.openCodeWorkspaceFolder(value) {
+		return
+	}
+	a.code.sidebar = codeSidebarFiles
+	a.code.filesLoaded = false
+	a.requestCodeFiles()
+	if strings.TrimSpace(a.code.searchQuery) != "" {
+		a.beginCodeSearch()
+	}
+}
+
+func (a *app) openCodeWorkspaceFolderForm() {
+	a.code.searchFolderSelectionSeq++
+	a.code.searchFolderDraft = a.code.searchFolder
+	a.code.workspaceFormError = ""
+	a.code.workspaceFormOpen = true
+}
+
+func (a *app) closeCodeWorkspaceFolderForm() {
+	a.code.workspaceFormOpen = false
+	a.code.workspaceFormError = ""
+	a.code.searchFolderDraft = a.code.searchFolder
+}
+
+func (a *app) cancelCodeWorkspaceFolderForm() {
+	a.code.searchFolderSelectionSeq++
+	a.closeCodeWorkspaceFolderForm()
+}
+
+func (a *app) submitCodeWorkspaceFolderForm() {
+	if !a.code.workspaceFormOpen {
+		return
+	}
+	if !a.openCodeWorkspaceFolder(a.code.searchFolderDraft) {
+		a.code.workspaceFormError = a.code.searchError
+		return
+	}
+	if strings.TrimSpace(a.code.searchQuery) != "" {
+		a.beginCodeSearch()
+	}
+	a.closeCodeWorkspaceFolderForm()
 }
 
 var chooseCodeSearchFolder = func(opts mygo.OpenDialogOptions) ([]string, error) {
@@ -90,6 +138,7 @@ func (a *app) browseCodeSearchFolder() {
 		// Native picker results are local paths and cannot be resolved against a
 		// remote root. The editable repository-relative scope remains available.
 		a.code.searchError = tr("Enter a repository-relative folder for an SSH workspace")
+		a.code.workspaceFormError = a.code.searchError
 		return
 	}
 	a.code.searchFolderSelectionSeq++
@@ -117,8 +166,11 @@ func (a *app) browseCodeSearchFolder() {
 					if selection != a.code.searchFolderSelectionSeq || root != a.snapshot.Root {
 						return
 					}
-					if a.openCodeWorkspaceFolder(folder) && strings.TrimSpace(a.code.searchQuery) != "" {
-						a.beginCodeSearch()
+					if a.openCodeWorkspaceFolder(folder) {
+						if strings.TrimSpace(a.code.searchQuery) != "" {
+							a.beginCodeSearch()
+						}
+						a.closeCodeWorkspaceFolderForm()
 					}
 				})
 				return
@@ -128,6 +180,7 @@ func (a *app) browseCodeSearchFolder() {
 			a.update(func() {
 				if selection == a.code.searchFolderSelectionSeq && root == a.snapshot.Root {
 					a.code.searchError = safeError(err)
+					a.code.workspaceFormError = a.code.searchError
 				}
 			})
 		}

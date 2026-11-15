@@ -324,3 +324,127 @@ func TestRemoteCodeSaveFailureRetainsModifiedBuffer(t *testing.T) {
 		t.Fatalf("failed save lost dirty state/error: modified=%v error=%q", state.Buffer.Modified(), document.saveError)
 	}
 }
+
+func TestRemoteCodeSearchReplaceAllWritesRemoteFilesAndSavesCleanBuffer(t *testing.T) {
+	h := menuTestApp(t)
+	root := "/srv/repo"
+	h.app.location = workspace.Location{Kind: workspace.SSH, ProfileID: "test", Root: root}
+	h.app.snapshot.Root = root
+	h.app.session = fakeSession{snapshot: repository.Snapshot{Root: root, Branch: "main"}}
+
+	client := newRemoteTestClient()
+	files := map[string]string{
+		"closed.txt": "Needle needle\n",
+		"open.txt":   "Needle\n",
+		"notes.md":   "needle outside the filtered scope\n",
+	}
+	for name, content := range files {
+		filename := root + "/" + name
+		client.infos[filename] = remoteTestRegular(filename, content, 1)
+		client.contents[filename] = []byte(content)
+	}
+
+	state := &editor.State{Buffer: editor.NewBuffer(files["open.txt"])}
+	document := &codeDocument{
+		path: "open.txt", state: state,
+		remoteStamp:      stampRemoteFile(client.infos[root+"/open.txt"]),
+		remoteStampKnown: true,
+	}
+	outsideState := &editor.State{Buffer: editor.NewBuffer(files["notes.md"])}
+	outsideState.Insert("unsaved local edit ")
+	outside := &codeDocument{path: "notes.md", state: outsideState}
+	h.app.code.documents = map[string]*codeDocument{"open.txt": document, "notes.md": outside}
+	h.app.code.tabs = []string{"open.txt", "notes.md"}
+	h.app.code.files = []string{"closed.txt", "notes.md", "open.txt"}
+	h.app.code.filesLoaded = true
+	h.app.code.searchQuery = "needle"
+	h.app.code.searchSubmitted = "needle"
+	h.app.code.searchSubmittedOptions = workspaceSearchOptions{Query: "needle", Include: "*.txt"}
+	h.app.code.searchReplaceQuery = "other"
+	h.app.code.searchPreserveCase = true
+
+	h.app.startCodeSearchReplaceAllWithClient(client)
+	h.waitFor(t, "remote closed-file and clean-buffer replacement", func() bool {
+		return !h.app.code.searchReplaceRunning && h.app.code.searchReplaceStatus == "3 replacements in 2 files"
+	})
+	if h.app.code.searchReplaceError != "" {
+		t.Fatalf("remote replacement reported a failure: %q", h.app.code.searchReplaceError)
+	}
+	client.mu.Lock()
+	closed := string(client.contents[root+"/closed.txt"])
+	notes := string(client.contents[root+"/notes.md"])
+	writes := len(client.atomicWrites)
+	client.mu.Unlock()
+	if closed != "Other other\n" {
+		t.Fatalf("remote closed file = %q, want %q", closed, "Other other\n")
+	}
+	if writes != 2 {
+		t.Fatalf("remote replacement performed %d writes, want 2", writes)
+	}
+	if got := document.state.Buffer.String(); got != "Other\n" || document.state.Buffer.Modified() {
+		t.Fatalf("remote open buffer = %q modified=%v, want saved replacement", got, document.state.Buffer.Modified())
+	}
+	if notes != files["notes.md"] || !outsideState.Buffer.Modified() ||
+		outsideState.Buffer.String() != "unsaved local edit "+files["notes.md"] {
+		t.Fatal("remote replacement touched or blocked an out-of-scope unsaved buffer")
+	}
+	if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("remote replacement touched the local filesystem at %q: %v", root, err)
+	}
+}
+
+// remoteReplacementConcurrentClient changes a file between the stable read
+// and Replace All's final write-time stamp check.
+type remoteReplacementConcurrentClient struct {
+	*remoteTestClient
+	path           string
+	read           bool
+	statsAfterRead int
+}
+
+func (c *remoteReplacementConcurrentClient) ReadFile(name string) ([]byte, error) {
+	data, err := c.remoteTestClient.ReadFile(name)
+	if name == c.path && err == nil {
+		c.read = true
+	}
+	return data, err
+}
+
+func (c *remoteReplacementConcurrentClient) Lstat(name string) (os.FileInfo, error) {
+	if c.read && name == c.path {
+		c.statsAfterRead++
+		if c.statsAfterRead == 2 {
+			content := "concurrent remote edit\n"
+			c.infos[name] = remoteTestRegular(name, content, 2)
+			c.contents[name] = []byte(content)
+		}
+	}
+	return c.remoteTestClient.Lstat(name)
+}
+
+func TestRemoteCodeSearchReplaceAllSkipsConcurrentFileChange(t *testing.T) {
+	root, name := "/srv/repo", "source.txt"
+	filename := root + "/" + name
+	client := &remoteReplacementConcurrentClient{
+		remoteTestClient: newRemoteTestClient(), path: filename,
+	}
+	client.infos[filename] = remoteTestRegular(filename, "needle\n", 1)
+	client.contents[filename] = []byte("needle\n")
+
+	count, err := replaceRemoteWorkspaceFile(context.Background(), client, root, name,
+		workspaceSearchOptions{Query: "needle", CaseSensitive: true}, "changed", false)
+	if !errors.Is(err, errRemoteFileModified) {
+		t.Fatalf("concurrent replacement error = %v, want %v", err, errRemoteFileModified)
+	}
+	if count != 0 {
+		t.Fatalf("concurrent replacement reported %d changes", count)
+	}
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	if len(client.atomicWrites) != 0 {
+		t.Fatalf("concurrent remote file was overwritten: %q", client.atomicWrites)
+	}
+	if got := string(client.contents[filename]); got != "concurrent remote edit\n" {
+		t.Fatalf("newer remote content was lost: %q", got)
+	}
+}

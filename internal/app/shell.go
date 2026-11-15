@@ -152,6 +152,7 @@ type shell struct {
 	settings       appSettings
 	settingsLoaded bool
 	pathUserData   string
+	pathCache      string
 
 	tabs   []*tab
 	active int
@@ -207,6 +208,9 @@ func (s *shell) loadPreferences() {
 		if dir, err := mygo.App.Path(mygo.PathUserData); err == nil {
 			s.pathUserData = dir
 		}
+		if dir, err := mygo.App.Path(mygo.PathCache); err == nil {
+			s.pathCache = dir
+		}
 	}
 	if s.pathUserData != "" {
 		s.settings = normalizeSettings(loadAppSettings(s.pathUserData))
@@ -243,6 +247,7 @@ func (s *shell) newTab(path string) *tab {
 		}
 	}
 	a.pathUserData = s.pathUserData
+	a.pathCache = s.pathCache
 	a.path = path
 	a.checkForUpdates = func() { s.checkForUpdates() }
 	a.updateInfo = s.updateInfo
@@ -267,6 +272,9 @@ func (s *shell) newTab(path string) *tab {
 		if s.windowVisible && s.windowFocused && s.activeApp() == a {
 			a.requestQuietRefresh()
 		}
+	}
+	a.code.searchIndexActive = func() bool {
+		return s.windowVisible && s.windowFocused && s.activeApp() == a
 	}
 	a.loadHistory()
 	s.pushSettings(a)
@@ -416,6 +424,7 @@ func (s *shell) pushSettings(a *app) {
 	a.settings = s.settings
 	a.settingsLoaded = s.settingsLoaded
 	a.pathUserData = s.pathUserData
+	a.pathCache = s.pathCache
 	a.diffSplit = s.settings.DiffSplit
 	a.diffWrap = s.settings.DiffWrap
 	a.ignoreUntracked = s.settings.IgnoreUntracked
@@ -497,6 +506,9 @@ func (s *shell) activate(i int) {
 	s.pushSettings(s.tabs[i].app)
 	s.refreshTitle()
 	s.invalidate()
+	// Index reads follow the repository and window lifecycle: switching back
+	// to a hidden page revalidates its index before it is offered to search.
+	s.tabs[i].app.resumeCodeSearchIndex()
 	// The page coming in may have been hidden while its repository moved:
 	// read it again so it shows what Git holds now.
 	s.tabs[i].app.requestAmbientRefresh()
@@ -548,6 +560,9 @@ func (s *shell) autoRefreshTick() {
 // not after an F5.
 func (s *shell) handleWindowShown() {
 	s.windowVisible = true
+	if a := s.activeApp(); a != nil {
+		a.resumeCodeSearchIndex()
+	}
 	s.refreshAllTabs()
 }
 
@@ -556,6 +571,9 @@ func (s *shell) handleWindowShown() {
 func (s *shell) handleWindowFocused() {
 	s.windowVisible = true
 	s.windowFocused = true
+	if a := s.activeApp(); a != nil {
+		a.resumeCodeSearchIndex()
+	}
 	s.refreshActiveTab()
 }
 

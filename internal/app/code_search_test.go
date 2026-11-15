@@ -23,6 +23,38 @@ func writeWorkspaceSearchTestFile(t *testing.T, root, name, content string) {
 	}
 }
 
+func TestWorkspaceSearchCountsEveryMatchOnALine(t *testing.T) {
+	root := t.TempDir()
+	writeWorkspaceSearchTestFile(t, root, "source.txt", "needle needle\nneedle: needle\n")
+	options := workspaceSearchOptions{Query: "needle", CaseSensitive: true}
+	wantColumns := []int{1, 8, 1, 9}
+	assertMatches := func(backend string, matches []workspaceSearchMatch, err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatalf("%s search: %v", backend, err)
+		}
+		if len(matches) != len(wantColumns) {
+			t.Fatalf("%s returned %d matches, want every occurrence (%d): %+v", backend, len(matches), len(wantColumns), matches)
+		}
+		for index, match := range matches {
+			wantLine := index/2 + 1
+			if match.Line != wantLine || match.Column != wantColumns[index] {
+				t.Errorf("%s match %d = line %d column %d, want line %d column %d", backend, index, match.Line, match.Column, wantLine, wantColumns[index])
+			}
+		}
+	}
+
+	native, err := searchWorkspaceFilesGoWithOptions(context.Background(), root, []string{"source.txt"}, options, 20)
+	assertMatches("native", native, err)
+	if _, lookErr := exec.LookPath("rg"); lookErr == nil {
+		matches, backend, searchErr := searchWorkspaceFilesWithOptions(context.Background(), root, []string{"source.txt"}, options, 20)
+		if backend != workspaceSearchBackendRipgrep {
+			t.Fatalf("search backend = %v, want actual ripgrep", backend)
+		}
+		assertMatches("ripgrep", matches, searchErr)
+	}
+}
+
 func TestWorkspaceSearchExcludesConfiguredDirectoriesBeforeBothBackends(t *testing.T) {
 	root := t.TempDir()
 	paths := []string{
@@ -280,7 +312,10 @@ func TestWorkspaceSearchCaseBehaviorAndByteColumns(t *testing.T) {
 	writeWorkspaceSearchTestFile(t, root, "source.txt", "Alpha needle needle\nalpha Needle\né Kelvin\nfinal ς\n")
 
 	caseSensitive := searchWorkspaceFiles(context.Background(), root, []string{"source.txt"}, "needle", true, 20)
-	wantCaseSensitive := []workspaceSearchMatch{{Path: "source.txt", Line: 1, Column: 7, Text: "Alpha needle needle"}}
+	wantCaseSensitive := []workspaceSearchMatch{
+		{Path: "source.txt", Line: 1, Column: 7, Text: "Alpha needle needle"},
+		{Path: "source.txt", Line: 1, Column: 14, Text: "Alpha needle needle"},
+	}
 	if !slices.Equal(caseSensitive, wantCaseSensitive) {
 		t.Fatalf("case-sensitive matches = %+v, want %+v", caseSensitive, wantCaseSensitive)
 	}
@@ -288,10 +323,11 @@ func TestWorkspaceSearchCaseBehaviorAndByteColumns(t *testing.T) {
 	caseInsensitive := searchWorkspaceFiles(context.Background(), root, []string{"source.txt"}, "NEEDLE", false, 20)
 	wantCaseInsensitive := []workspaceSearchMatch{
 		{Path: "source.txt", Line: 1, Column: 7, Text: "Alpha needle needle"},
+		{Path: "source.txt", Line: 1, Column: 14, Text: "Alpha needle needle"},
 		{Path: "source.txt", Line: 2, Column: 7, Text: "alpha Needle"},
 	}
 	if !slices.Equal(caseInsensitive, wantCaseInsensitive) {
-		t.Fatalf("case-insensitive matches = %+v, want one per matching line: %+v", caseInsensitive, wantCaseInsensitive)
+		t.Fatalf("case-insensitive matches = %+v, want every occurrence: %+v", caseInsensitive, wantCaseInsensitive)
 	}
 
 	for _, test := range []struct {
@@ -322,6 +358,7 @@ func TestWorkspaceSearchOrderingMultipleLinesAndLimit(t *testing.T) {
 		{Path: "second.txt", Line: 1, Column: 1, Text: "needle second"},
 		{Path: "second.txt", Line: 3, Column: 4, Text: "xx needle"},
 		{Path: "first.txt", Line: 2, Column: 3, Text: "  needle and needle"},
+		{Path: "first.txt", Line: 2, Column: 14, Text: "  needle and needle"},
 		{Path: "first.txt", Line: 3, Column: 1, Text: "needle last"},
 	}
 	if !slices.Equal(matches, want) {

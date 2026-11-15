@@ -113,6 +113,61 @@ func mustWorkingDirectory(t *testing.T) string {
 	return dir
 }
 
+func TestDelayedRecentHistoryLoadMergesWithoutBlockingNewerCards(t *testing.T) {
+	dir := t.TempDir()
+	stored := []recentRepository{
+		{Path: "/w/stored", LastOpened: 1, Name: "Stored name"},
+		{Path: "/w/loaded-only", LastOpened: 2, Name: "Loaded"},
+	}
+	if err := saveRecentRepositories(dir, stored); err != nil {
+		t.Fatal(err)
+	}
+	originalIdentity := recentIdentityForPath
+	t.Cleanup(func() { recentIdentityForPath = originalIdentity })
+	release := make(chan struct{})
+	recentIdentityForPath = func(string) (recentIdentity, bool) {
+		<-release
+		return recentIdentity{}, false
+	}
+
+	a := newApp(fakeOpener{})
+	a.pathUserData = dir
+	updated := newUpdates()
+	a.update = updated.update
+	a.recentRepositories = []recentRepository{
+		{Path: "/w/current", LastOpened: 4, Name: "Current"},
+		{Path: "/w/stored", LastOpened: 3, Name: "Edited meanwhile"},
+	}
+	a.historyRevision = 1
+	a.loadHistory()
+	if !a.historyLoading || a.historyLoaded {
+		t.Fatal("history did not enter its background-loading state")
+	}
+	if len(a.recentRepositories) != 2 || a.recentRepositories[1].Name != "Edited meanwhile" {
+		t.Fatalf("starting the delayed read replaced newer cards: %+v", a.recentRepositories)
+	}
+	// Another tab can rename a card before this tab has loaded that card.
+	a.setRecentName("/w/loaded-only", "Renamed before arrival")
+	close(release)
+	updated.waitForUpdate(t)
+	if a.historyLoading || !a.historyLoaded {
+		t.Fatal("the completed background read did not settle history state")
+	}
+	want := []recentRepository{
+		{Path: "/w/current", LastOpened: 4, Name: "Current"},
+		{Path: "/w/stored", LastOpened: 3, Name: "Edited meanwhile"},
+		{Path: "/w/loaded-only", LastOpened: 2, Name: "Renamed before arrival"},
+	}
+	if len(a.recentRepositories) != len(want) {
+		t.Fatalf("merged history = %+v, want %+v", a.recentRepositories, want)
+	}
+	for index := range want {
+		if a.recentRepositories[index] != want[index] {
+			t.Fatalf("merged history[%d] = %+v, want %+v", index, a.recentRepositories[index], want[index])
+		}
+	}
+}
+
 func TestRecentStoreRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	want := []recentRepository{{Path: "/w/a", LastOpened: 42}, {Path: "/w/b", LastOpened: 7}}
@@ -163,6 +218,16 @@ func recentTester(t *testing.T, repositories ...recentRepository) (*app, *ui.Tes
 	// Build one frame so the labels exist to click.
 	tt.Frame()
 	return a, tt, updated
+}
+
+func loadRecentHistoryForTest(t *testing.T, a *app) {
+	t.Helper()
+	updated := newUpdates()
+	a.update = updated.update
+	a.loadHistory()
+	if a.historyLoading {
+		updated.waitForUpdate(t)
+	}
 }
 
 func TestRecentPickerListsHistory(t *testing.T) {
@@ -405,7 +470,7 @@ func TestLinkedWorktreeBadgeSurvivesRestart(t *testing.T) {
 
 	second := newApp(fakeOpener{})
 	second.pathUserData = dir
-	second.loadHistory()
+	loadRecentHistoryForTest(t, second)
 	tt := ui.NewTester(second.view, 1280, 800)
 	tt.Frame()
 	if len(second.recentRepositories) != 1 || !second.recentRepositories[0].Worktree {
@@ -461,7 +526,7 @@ func TestLoadHistoryRecoversExistingWorktreeBadge(t *testing.T) {
 	}
 	a := newApp(fakeOpener{})
 	a.pathUserData = historyDir
-	a.loadHistory()
+	loadRecentHistoryForTest(t, a)
 	if len(a.recentRepositories) != 2 || a.recentRepositories[0].Branch != "main" ||
 		a.recentRepositories[0].Worktree || !a.recentRepositories[1].Worktree ||
 		a.recentRepositories[1].Branch != "feature" || a.recentRepositories[1].WorktreeName != "feature" ||
@@ -693,7 +758,7 @@ func TestHistorySurvivesARestart(t *testing.T) {
 	// Second run: a fresh app, as the launcher starts it, reads the file.
 	second := newApp(fakeOpener{})
 	second.pathUserData = dir
-	second.loadHistory()
+	loadRecentHistoryForTest(t, second)
 	if len(second.recentRepositories) != 1 || second.recentRepositories[0].Path != "/w/reopened" {
 		t.Fatalf("history lost across a restart: %+v", second.recentRepositories)
 	}
@@ -717,7 +782,7 @@ func TestHistoryWaitsForTheDataDirectory(t *testing.T) {
 	a := newApp(fakeOpener{})
 	// Before a window exists there may be no directory to read from; the
 	// picker then starts empty instead of failing, and tries again.
-	a.loadHistory()
+	loadRecentHistoryForTest(t, a)
 	if a.historyLoaded {
 		t.Fatal("the history must not be considered read without a directory")
 	}
@@ -726,7 +791,7 @@ func TestHistoryWaitsForTheDataDirectory(t *testing.T) {
 	}
 
 	a.pathUserData = dir
-	a.loadHistory()
+	loadRecentHistoryForTest(t, a)
 	if !a.historyLoaded || len(a.recentRepositories) != 1 ||
 		a.recentRepositories[0].Path != "/w/waited" {
 		t.Fatalf("history not read once the directory was known: loaded=%v %+v",
@@ -735,7 +800,7 @@ func TestHistoryWaitsForTheDataDirectory(t *testing.T) {
 
 	// Reading it again never overwrites what the running app has in memory.
 	a.recentRepositories = nil
-	a.loadHistory()
+	loadRecentHistoryForTest(t, a)
 	if a.recentRepositories != nil {
 		t.Fatalf("the file was re-read on a later pass: %+v", a.recentRepositories)
 	}

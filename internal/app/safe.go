@@ -96,6 +96,7 @@ func (a *app) reportBackgroundFault(reason string) {
 	// leaving its loading flags set for the rest of the session.
 	a.repositoryDetailsLoading = false
 	a.refreshBusy = false
+	a.historyLoading = false
 
 	if a.commandLog != nil {
 		a.commandLog.Note("Unexpected failure: " + reason)

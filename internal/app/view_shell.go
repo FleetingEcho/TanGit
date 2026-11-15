@@ -124,6 +124,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.homeWorktreesModal(c)
 	a.recentRenameModal(c)
 	a.codeFileFormModal(c)
+	a.codeWorkspaceFolderModal(c)
 	a.terminalRenameModal(c)
 	a.cloneModal(c)
 	a.bisectFormModal(c)
