@@ -326,7 +326,7 @@ func (a *app) fileTreeDirectoryRow(c *ui.Context, scope string, item fileTreeRow
 		action = "Expand directory"
 	}
 	row := ui.ButtonBase(c).Grow(1).Gap(7).AlignItems(ui.Center).
-		Padding(6, 8, 6, float32(8+16*item.depth)).
+		Padding(6, 8, 6, float32(8+treeIndentStep*item.depth)).
 		Label(tr(action) + " " + item.path).Tooltip(item.path)
 	if item.depth > 0 {
 		row.Draw(func(p *ui.Painter, r ui.Rect) {
@@ -362,7 +362,7 @@ type treeGuideSegment struct {
 	vertical, horizontal struct{ X1, Y1, X2, Y2 float32 }
 }
 
-const treeIndentStep = 16
+const treeIndentStep = 12
 
 // treeIndentSegments computes a consistent grid of vertical guides. Child
 // rows keep their native padding and icons; repaint only the rail layout.

@@ -22,7 +22,7 @@ func TestTreeIndentSegmentsDescribeParentRails(t *testing.T) {
 		t.Fatalf("vertical rail has no length: %+v", guides[0].vertical)
 	}
 	for index, line := range guides[:3] {
-		if got, want := line.vertical.X1, float32(12+16*index); got != want {
+		if got, want := line.vertical.X1, float32(12+treeIndentStep*index); got != want {
 			t.Errorf("rail %d is outside the 16px indent grid: X1=%.1f, want %.1f", index, got, want)
 		}
 	}
@@ -37,7 +37,7 @@ func TestTreeIndentSegmentsDescribeParentRails(t *testing.T) {
 	if !lslices.IsSortedFunc(guides[:3], func(a, b treeGuideSegment) int {
 		return int(a.horizontal.X1 - b.horizontal.X1)
 	}) {
-		t.Fatal("deeper indentation rails drift outside one consistent 16-DIP grid")
+		t.Fatal("deeper indentation rails drift outside one consistent 12-DIP grid")
 	}
 	connector := guides[len(guides)-1].horizontal
 	if connector.X1 < 0 || connector.Y1 < 0 || connector.X2 <= connector.X1 {
