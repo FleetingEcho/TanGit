@@ -64,6 +64,10 @@ type OperationState struct {
 	Total       int
 	Actions     []OperationAction
 	Fingerprint string
+	// HistoryPatch links a rebase stop to its durable Custom Patch state. It is
+	// also populated for the post-rebase index/stash stop, where Git itself has
+	// no rebase metadata left.
+	HistoryPatch *HistoryPatchState
 }
 
 // Can reports whether the active operation supports action.
@@ -219,6 +223,22 @@ func (s *gitSession) OperationState(ctx context.Context) (OperationState, error)
 	workingTreeState := s.workingTreeState()
 	type_ := operationType(workingTreeState)
 	if type_ == OperationTypeNone {
+		// Unborn HEAD is a valid empty operation, just as it was before the
+		// durable post-rebase stop was introduced. A Custom Patch history
+		// journal still gets a chance to identify itself if one exists.
+		head, _ := s.gitText("rev-parse", "--verify", "HEAD")
+		unmerged, unmergedErr := s.unmergedStages()
+		if unmergedErr != nil {
+			return OperationState{}, unmergedErr
+		}
+		empty := OperationState{}
+		attached, attachErr := s.attachHistoryPatchState(ctx, empty, strings.TrimSpace(head), unmerged)
+		if attachErr != nil {
+			return OperationState{}, attachErr
+		}
+		if attached.HistoryPatch != nil {
+			return attached, nil
+		}
 		return OperationState{}, nil
 	}
 	state := OperationState{Type: type_, Actions: operationActions(workingTreeState)}
@@ -408,7 +428,7 @@ func (s *gitSession) OperationState(ctx context.Context) (OperationState, error)
 	if err != nil {
 		return OperationState{}, err
 	}
-	return state, nil
+	return s.attachHistoryPatchState(ctx, state, headSHA, unmerged)
 }
 
 // remoteOperationPrecheck identifies transitions where Lazygit mutates Git's
@@ -481,6 +501,12 @@ func (s *gitSession) DriveOperation(ctx context.Context, options OperationDriveO
 	}
 	if !current.Can(options.Action) {
 		return fmt.Errorf("%s does not support %s", current.Type, options.Action)
+	}
+	if current.HistoryPatch != nil {
+		if current.Type != OperationTypeRebase {
+			return fmt.Errorf("history patch: unexpected operation type %s", current.Type)
+		}
+		return s.driveHistoryOperation(ctx, current, options)
 	}
 	unmerged, err := s.unmergedStages()
 	if err != nil {
