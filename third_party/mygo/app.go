@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -256,7 +257,7 @@ func (a *Application) prepareQuit() bool {
 	if a.quitting {
 		return false
 	}
-	before := &QuitEvent{}
+	before := a.quitEvent()
 	fire1(&a.onBeforeQuit, before)
 	if before.prevented {
 		fire(&a.onQuitCanceled)
@@ -270,7 +271,7 @@ func (a *Application) prepareQuit() bool {
 			return false
 		}
 	}
-	will := &QuitEvent{}
+	will := a.quitEvent()
 	fire1(&a.onWillQuit, will)
 	if will.prevented {
 		a.quitting = false
@@ -283,6 +284,16 @@ func (a *Application) prepareQuit() bool {
 	_ = Clipboard.Flush()
 	stopNativeCalls()
 	return true
+}
+
+// quitEvent snapshots the request before a canceled Relaunch clears its state.
+func (a *Application) quitEvent() *QuitEvent {
+	retry := a.Quit
+	if a.relaunch {
+		args := slices.Clone(a.relaunchArgs)
+		retry = func() { a.Relaunch(args...) }
+	}
+	return &QuitEvent{retry: retry}
 }
 
 // endSession runs the quit sequence when the OS ends the session
@@ -298,14 +309,18 @@ func (a *Application) endSession() {
 	}
 	a.quitting = true // the windows closing below do not quit
 	a.stopping = true // a Quit from a listener only asks the loop to stop
-	fire1(&a.onBeforeQuit, &QuitEvent{SessionEnding: true})
+	before := a.quitEvent()
+	before.SessionEnding = true
+	fire1(&a.onBeforeQuit, before)
 	for _, w := range Windows() {
 		if w.native != nil {
 			fire1(&w.onClose, &CloseEvent{Window: w})
 			w.destroy()
 		}
 	}
-	fire1(&a.onWillQuit, &QuitEvent{SessionEnding: true})
+	will := a.quitEvent()
+	will.SessionEnding = true
+	fire1(&a.onWillQuit, will)
 	_ = Clipboard.Flush()
 	stopNativeCalls()
 }
