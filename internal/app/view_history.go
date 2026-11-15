@@ -576,8 +576,10 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 			return
 		}
 		paths := commitFilePaths(a.commitFiles)
+		previousSelectedRow := a.selectedCommitFileRow
 		a.commitFileRows = a.syncFileTreeRows(fileTreeCommitScope, paths, a.commitFileRows,
 			&a.selectedCommitFileRow, &a.selectedCommitFile)
+		revealSelectedRow := a.selectedCommitFileRow >= 0 && a.selectedCommitFileRow != previousSelectedRow
 		// The files and the diff share the rest of the pane, and the line
 		// between them is dragged to give one more room than the other.
 		paneSplitVertical(c, &a.commitFilesHeight, func() {
@@ -610,6 +612,12 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 				})
 				if a.keyboardListChanged(&a.commitFileList, list) {
 					a.selectCommitFileRow(a.selectedCommitFileRow)
+				}
+				if revealSelectedRow {
+					// A programmatic choice such as Open in History has no list input
+					// for MyGo to reveal. Scroll after its rows exist, not when the
+					// asynchronous file read chooses the source file.
+					a.commitFileList.ScrollIntoView(a.selectedCommitFileRow)
 				}
 				normalizeFileTreeRow(a.commitFileRows, &a.selectedCommitFileRow, &a.selectedCommitFile)
 			})
