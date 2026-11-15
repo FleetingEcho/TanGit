@@ -265,16 +265,20 @@ func (a *app) confirmRebaseOntoBranch(branch repository.Branch) {
 		return
 	}
 	currentBranch := a.snapshot.Branch
+	detail := trf("The commits %s has that %s lacks are replayed on top of it, with new hashes.", currentBranch, branchDisplay(branch))
+	if a.markedBaseCommit.Hash != "" {
+		detail = trf("Only commits above marked base %s are replayed with git rebase --onto %s %s.", a.markedBaseCommit.Hash, branchDisplay(branch), a.markedBaseCommit.Hash)
+	}
 	a.askConfirm(confirmRequest{
 		title:        "Rebase Branch",
 		message:      trf("Rebase %s onto %s?", currentBranch, branchDisplay(branch)),
-		detail:       trf("The commits %s has that %s lacks are replayed on top of it, with new hashes.", currentBranch, branchDisplay(branch)),
+		detail:       detail,
 		confirmLabel: "Rebase",
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Rebased %s onto %s", currentBranch, branchDisplay(branch)), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.RebaseOntoBranch(ctx, branch.Name)
-				}, nil)
+					return a.rebaseOntoBranch(ctx, session, branch.Name)
+				}, a.clearMarkedRebaseBase)
 		},
 	})
 }
