@@ -29,6 +29,118 @@ func TestLanguageServerSettingsNormalizePathsAndArguments(t *testing.T) {
 	}); !reflect.DeepEqual(got, map[string]languageServerSettings{"typescript": {}}) {
 		t.Fatalf("an enabled opt-in profile was discarded: %#v", got)
 	}
+	formatterOnly := map[string]languageServerSettings{
+		"go":   {Formatter: "  gofmt  "},
+		"ruff": {Disabled: true, Formatter: " ruff format --stdin-filename {{file}} "},
+	}
+	wantFormatters := map[string]languageServerSettings{
+		"go":   {Formatter: "gofmt"},
+		"ruff": {Disabled: true, Formatter: "ruff format --stdin-filename {{file}}"},
+	}
+	if got := normalizeLanguageServerSettings(formatterOnly); !reflect.DeepEqual(got, wantFormatters) {
+		t.Fatalf("formatter-only settings did not survive normalization: %#v, want %#v", got, wantFormatters)
+	}
+}
+
+func scrollLanguageServerSettingIntoView(t *testing.T, h *harness, label string) {
+	t.Helper()
+	for range 12 {
+		bounds, found := h.tester.Find(label)
+		if !found {
+			t.Fatalf("language-server setting %q is not built: %q", label, h.texts())
+		}
+		if bounds.W > 0 && bounds.H > 0 && bounds.Y >= 0 && bounds.Y+bounds.H <= 800 {
+			return
+		}
+		delta := float32(360)
+		if bounds.Y < 0 {
+			delta = -360
+		}
+		h.tester.Scroll(700, 480, 0, delta)
+		h.tester.Frame()
+	}
+	t.Fatalf("could not scroll language-server setting %q into view", label)
+}
+
+func TestLanguageServerFormatterSettingsPersistEnabledAndDisabled(t *testing.T) {
+	originalLookPath := languageServerLookPath
+	t.Cleanup(func() { languageServerLookPath = originalLookPath })
+	languageServerLookPath = func(program string) (string, error) { return program, nil }
+	for _, test := range []struct {
+		name             string
+		id               string
+		query            string
+		profileName      string
+		initiallyEnabled bool
+		command          string
+	}{
+		{name: "Go", id: "go", query: "gopls", profileName: "Go (gopls)", initiallyEnabled: true, command: "gofmt"},
+		{name: "Ruff", id: "ruff", query: "Ruff", profileName: "Ruff", command: "ruff format --stdin-filename {{file}}"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := menuTestApp(t)
+			h.app.pathUserData = t.TempDir()
+			h.app.settingsPage = settingsPageEditor
+			h.app.openSettings()
+			h.tester.Frame()
+			h.tester.Scroll(700, 480, 0, 1800)
+			h.tester.Frame()
+			if err := h.tester.Click("Search language servers"); err != nil {
+				t.Fatal(err)
+			}
+			h.tester.Type(test.query)
+			h.tester.Frame()
+			if err := h.tester.Click("Configure " + test.profileName); err != nil {
+				t.Fatal(err)
+			}
+			h.tester.Frame()
+			if test.initiallyEnabled {
+				scrollLanguageServerSettingIntoView(t, h, "Enable "+test.profileName)
+				if err := h.tester.Click("Enable " + test.profileName); err != nil {
+					t.Fatal(err)
+				}
+				h.tester.Frame()
+			}
+			scrollLanguageServerSettingIntoView(t, h, test.profileName+" formatter command")
+			if err := h.tester.Click(test.profileName + " formatter command"); err != nil {
+				t.Fatal(err)
+			}
+			h.tester.Type(test.command)
+			h.tester.Frame()
+			server := h.app.settings.LanguageServers[test.id]
+			if !server.Disabled || server.Formatter != test.command {
+				t.Fatalf("disabled formatter settings = %#v", server)
+			}
+			if reloaded := loadAppSettings(h.app.pathUserData).LanguageServers[test.id]; !reloaded.Disabled || reloaded.Formatter != test.command {
+				t.Fatalf("persisted disabled formatter settings = %#v", reloaded)
+			}
+			h.app.loadGoLanguageServerDraft()
+			if h.app.goFormatterCommand != "" && test.id != "go" {
+				t.Fatal("another language's formatter leaked into the Go draft")
+			}
+			if test.id == "go" && h.app.goFormatterCommand != test.command {
+				t.Fatalf("reloaded Go formatter = %q", h.app.goFormatterCommand)
+			}
+			if test.id != "go" {
+				draft := h.app.languageServerDrafts[test.id]
+				if draft == nil || draft.Enabled || draft.Formatter != test.command {
+					t.Fatalf("reloaded disabled formatter draft = %#v", draft)
+				}
+			}
+			scrollLanguageServerSettingIntoView(t, h, "Enable "+test.profileName)
+			if err := h.tester.Click("Enable " + test.profileName); err != nil {
+				t.Fatal(err)
+			}
+			h.tester.Frame()
+			server = h.app.settings.LanguageServers[test.id]
+			if server.Disabled || server.Formatter != test.command {
+				t.Fatalf("enabled formatter settings = %#v", server)
+			}
+			if reloaded := loadAppSettings(h.app.pathUserData).LanguageServers[test.id]; reloaded.Disabled || reloaded.Formatter != test.command {
+				t.Fatalf("persisted enabled formatter settings = %#v", reloaded)
+			}
+		})
+	}
 }
 
 func TestAdditionalLanguageServerDraftsLoadAsOptIn(t *testing.T) {
@@ -40,6 +152,36 @@ func TestAdditionalLanguageServerDraftsLoadAsOptIn(t *testing.T) {
 	}
 	if draft := h.app.languageServerDrafts["tailwind"]; draft == nil || draft.Enabled {
 		t.Fatalf("Tailwind should be opt-in: %#v", draft)
+	}
+}
+
+func TestCustomLanguageServerEditPreservesFormatter(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.pathUserData = t.TempDir()
+	const formatter = "example-format --file {{file}}"
+	h.app.settings.LanguageServers = map[string]languageServerSettings{
+		"custom-example": {
+			Path: "example-ls", Formatter: formatter,
+			Custom: &customLanguageServerDefinition{Name: "Example", Extensions: map[string]string{".example": "example"}},
+		},
+	}
+	h.app.customLanguageServerForm = customLanguageServerForm{
+		Open: true, ID: "custom-example", Name: "Example edited", Path: "example-ls", Arguments: "server",
+		Extensions: ".example=example", Enabled: true, Description: "Updated definition",
+	}
+	h.app.settingsPage = settingsPageEditor
+	h.app.openSettings()
+	h.tester.Frame()
+	scrollLanguageServerSettingIntoView(t, h, "Save custom language server")
+	if err := h.tester.Click("Save custom language server"); err != nil {
+		t.Fatal(err)
+	}
+	server := h.app.settings.LanguageServers["custom-example"]
+	if server.Formatter != formatter || server.Custom == nil || server.Custom.Name != "Example edited" {
+		t.Fatalf("custom edit lost its formatter or changes: %#v", server)
+	}
+	if reloaded := loadAppSettings(h.app.pathUserData).LanguageServers["custom-example"]; reloaded.Formatter != formatter {
+		t.Fatalf("persisted custom formatter = %#v", reloaded)
 	}
 }
 

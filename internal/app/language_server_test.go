@@ -21,16 +21,18 @@ type languageServerDocumentEvent struct {
 }
 
 type fakeLanguageServerConnection struct {
-	mu      sync.Mutex
-	events  []languageServerDocumentEvent
-	done    chan error
-	once    sync.Once
-	closed  bool
-	request func(method string, params any, result func(json.RawMessage, error))
+	mu              sync.Mutex
+	events          []languageServerDocumentEvent
+	done            chan error
+	once            sync.Once
+	closed          bool
+	formatting      bool
+	rangeFormatting bool
+	request         func(method string, params any, result func(json.RawMessage, error))
 }
 
 func newFakeLanguageServerConnection() *fakeLanguageServerConnection {
-	return &fakeLanguageServerConnection{done: make(chan error, 1)}
+	return &fakeLanguageServerConnection{done: make(chan error, 1), formatting: true, rangeFormatting: true}
 }
 
 func (s *fakeLanguageServerConnection) DidOpen(uri, language, text string, version uint64) {
@@ -67,7 +69,9 @@ func (s *fakeLanguageServerConnection) snapshot() []languageServerDocumentEvent 
 	return append([]languageServerDocumentEvent(nil), s.events...)
 }
 
-func (s *fakeLanguageServerConnection) Done() <-chan error { return s.done }
+func (s *fakeLanguageServerConnection) DocumentFormatting() bool      { return s.formatting }
+func (s *fakeLanguageServerConnection) DocumentRangeFormatting() bool { return s.rangeFormatting }
+func (s *fakeLanguageServerConnection) Done() <-chan error            { return s.done }
 
 func (s *fakeLanguageServerConnection) Close() {
 	s.once.Do(func() {

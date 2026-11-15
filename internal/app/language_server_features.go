@@ -71,6 +71,9 @@ func (a *app) configureGoLanguageDocument(document *codeDocument) {
 			a.requestAdditionalLanguageCompletions(document, request)
 		}
 	}
+	document.state.ContextMenu = func(menu *ui.Menu) {
+		a.codeDocumentContextMenu(menu, document)
+	}
 	a.offerLanguageServerInstall(document.path)
 }
 
