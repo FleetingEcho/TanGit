@@ -171,6 +171,7 @@ func TestSafetyJournalRendersRecordsAndLimitsUndoToRecoverableRows(t *testing.T)
 	h.app.snapshot.Operations = records
 	h.app.setWorkspaceTab(sectionStash)
 	h.tester.Frame()
+	openRecoveryForTest(t, h)
 	if err := h.tester.Click("Show safety journal"); err != nil {
 		t.Fatal(err)
 	}
@@ -217,6 +218,7 @@ func TestSafetyJournalScrollsToOlderRecoverableRecords(t *testing.T) {
 	h.app.snapshot.Operations = records
 	h.app.setWorkspaceTab(sectionStash)
 	h.tester.Frame()
+	openRecoveryForTest(t, h)
 	if err := h.tester.Click("Show safety journal"); err != nil {
 		t.Fatal(err)
 	}

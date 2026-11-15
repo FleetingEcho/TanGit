@@ -106,12 +106,13 @@ func (a *app) safetyJournalBody(c *ui.Context) {
 			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		return
 	}
-	height := float32(min(len(a.snapshot.Operations), 6)) * 62
+	rows := min(len(a.snapshot.Operations), 5)
+	height := float32(rows*62 + max(0, rows-1)*5)
 	ui.Scroll(c).Height(height).FillWidth().Children(func() {
 		ui.Column(c).FillWidth().Gap(5).Children(func() {
 			for _, item := range a.snapshot.Operations {
 				record := item
-				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(9).Padding(7, 8).
+				ui.Row(c).FillWidth().MinHeight(62).AlignItems(ui.Center).Gap(9).Padding(7, 8).
 					Background(theme.Surface).Radius(theme.Radius).Children(func() {
 					ui.Column(c).Gap(3).Grow(1).Children(func() {
 						ui.Text(c, record.Summary).SingleLine().Tooltip(record.Summary)
