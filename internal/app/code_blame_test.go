@@ -171,6 +171,65 @@ func TestCodeBlameAnnotationsOpenCommitAndJumpToHistory(t *testing.T) {
 	}
 }
 
+func TestCodeBlameHistoryScrollsBlamedFileIntoView(t *testing.T) {
+	hash := strings.Repeat("e", 40)
+	session := &codeBlameTestSession{
+		lines: []repository.BlameLine{{Hash: hash, Text: "first"}},
+		commits: []repository.Commit{{
+			Hash: hash, ShortHash: "eeeeeee", Subject: "A commit with many files",
+		}},
+	}
+	h, document := openCodeBlameDocument(t, session)
+	h.waitFor(t, "working-tree blame", func() bool { return document.blameLoaded })
+	snapshot := document.state.Buffer.Snapshot()
+	document.state.OnHover(editor.HoverRequest{Offset: snapshot.LineEnd(0), Version: snapshot.Version()})
+	h.waitFor(t, "commit details", func() bool {
+		return h.app.codeBlameHover.open && !h.app.codeBlameHover.loading
+	})
+
+	files := make([]repository.CommitFile, 4)
+	for index := range files {
+		files[index] = repository.CommitFile{Path: fmt.Sprintf("file-%02d.txt", index), Status: "M"}
+	}
+	const targetSource = 4
+	files = append(files, repository.CommitFile{Path: "notes.txt", Status: "M"})
+	h.app.session = &codeBlameHistoryTestSession{
+		codeBlameTestSession: session,
+		files:                files,
+		diff:                 repository.Diff{NewText: "first\nsecond\n", Kind: "Commit"},
+	}
+	if err := h.tester.Click("Open in History"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor(t, "the blamed file in a long commit file list", func() bool {
+		return h.app.workspaceTab == sectionHistory && h.app.selectedCommitFile == targetSource &&
+			h.app.selectedCommitFileRow >= 0 && h.app.commitDiffState != nil && !h.app.commitDiffLoading
+	})
+	first, last := h.app.commitFileList.Visible()
+	if selected := h.app.selectedCommitFileRow; selected < first || selected > last {
+		t.Fatalf("selected file row %d is outside the visible rows %d-%d", selected, first, last)
+	}
+	row, ok := h.tester.Find("notes.txt")
+	if !ok {
+		t.Fatal("the selected file was not rendered in the visible list")
+	}
+	header, ok := h.tester.Find("Commit files")
+	if !ok {
+		t.Fatal("the commit file list header is missing")
+	}
+	if row.Y < header.Y || row.Y+row.H > header.Y+h.app.commitFilesHeight {
+		t.Fatalf("selected file bounds %v are outside the commit file pane ending at %v", row, header.Y+h.app.commitFilesHeight)
+	}
+
+	// Reveal the choice when it changes, without pulling the list back after
+	// the user deliberately scrolls to another part of it.
+	h.app.commitFileList.ScrollIntoView(0)
+	h.tester.Frame()
+	if first, _ := h.app.commitFileList.Visible(); first != 0 {
+		t.Fatalf("a later frame overrode manual scrolling: visible rows start at %d, want 0", first)
+	}
+}
+
 func TestCodeBlameHistoryOpensBlamedFileAtCommitLine(t *testing.T) {
 	hash := strings.Repeat("f", 40)
 	var content, oldContent strings.Builder
