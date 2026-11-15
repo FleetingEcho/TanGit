@@ -11,20 +11,22 @@ import (
 )
 
 type managedLanguageServer struct {
-	profile      languageServerProfile
-	connection   languageServerConnection
-	starting     bool
-	analyzing    bool
-	missing      bool
-	sequence     uint64
-	error        string
-	requestError bool
-	statusBusy   bool
-	statusError  bool
-	progress     map[string]string
-	statusDetail string
-	documents    map[string]uint64
-	workspaceKey string
+	profile        languageServerProfile
+	connection     languageServerConnection
+	starting       bool
+	analyzing      bool
+	missing        bool
+	sequence       uint64
+	error          string
+	requestError   bool
+	statusBusy     bool
+	statusError    bool
+	progress       map[string]string
+	statusDetail   string
+	restartPending bool
+	restartUsed    bool
+	documents      map[string]uint64
+	workspaceKey   string
 }
 
 func (a *app) syncAdditionalLanguageServers() {
@@ -90,7 +92,7 @@ func (a *app) syncAdditionalLanguageServers() {
 			}
 		}
 		if server.connection == nil {
-			if !server.starting && !server.missing && server.error == "" {
+			if !server.starting && !server.missing && (server.error == "" || server.restartPending) {
 				a.startManagedLanguageServer(server)
 			}
 			continue
@@ -144,6 +146,7 @@ func (a *app) startManagedLanguageServer(server *managedLanguageServer) {
 	server.sequence++
 	sequence := server.sequence
 	server.starting = true
+	server.restartPending = false
 	server.error = ""
 	launch := languageServerLaunch{
 		Program: program, Arguments: arguments, Root: a.snapshot.Root,
@@ -241,8 +244,11 @@ func rustLanguageServerInitializationOptions(root string, files, openFiles []str
 }
 
 // TypeScript 7 is itself the language server and needs no legacy tsserver
-// initialization options. Keep this hook for servers that need options later.
+// initialization options. NeoCMakeLSP keeps its parser diagnostics opt-in.
 func languageServerInitializationOptions(id, dataDir string) map[string]any {
+	if id == "neocmake" {
+		return map[string]any{"lint": map[string]any{"enable": true}}
+	}
 	return nil
 }
 
@@ -269,6 +275,10 @@ func (a *app) watchManagedLanguageServer(server *managedLanguageServer, connecti
 			} else {
 				server.error = "language server stopped unexpectedly"
 			}
+			if !server.restartUsed {
+				server.restartUsed = true
+				server.restartPending = true
+			}
 			return a.codeLanguageServerPresentationChanged(before)
 		})
 	}()
@@ -290,6 +300,8 @@ func (a *app) stopManagedLanguageServer(server *managedLanguageServer) {
 	server.statusError = false
 	server.progress = nil
 	server.statusDetail = ""
+	server.restartPending = false
+	server.restartUsed = false
 	server.documents = nil
 	if connection != nil {
 		go connection.Close()
@@ -314,13 +326,56 @@ func (a *app) syncManagedLanguageServerDocument(server *managedLanguageServer, p
 	version := document.state.Buffer.Version()
 	previous, opened := server.documents[path]
 	uri := languageServerFileURI(a.workingFilePath(path))
+	changed := false
 	if !opened {
 		server.connection.DidOpen(uri, language, document.state.Buffer.String(), version)
 		server.documents[path] = version
+		changed = true
 	} else if previous != version {
 		server.connection.DidChange(uri, document.state.Buffer.String(), version)
 		server.documents[path] = version
+		changed = true
 	}
+	if changed && server.profile.PullDiagnostics {
+		a.requestManagedLanguageServerDiagnostics(server, path, document)
+	}
+}
+
+type languageServerDiagnosticParams struct {
+	TextDocument languageServerTextDocument `json:"textDocument"`
+}
+
+func (a *app) requestManagedLanguageServerDiagnostics(server *managedLanguageServer, path string, document *codeDocument) {
+	connection := server.connection
+	sequence := server.sequence
+	version := document.state.Buffer.Version()
+	uri := languageServerFileURI(a.workingFilePath(path))
+	connection.Request("textDocument/diagnostic", languageServerDiagnosticParams{TextDocument: languageServerTextDocument{URI: uri}}, func(raw json.RawMessage, err error) {
+		if err != nil {
+			return
+		}
+		var report struct {
+			Kind  string          `json:"kind"`
+			Items json.RawMessage `json:"items"`
+		}
+		if json.Unmarshal(raw, &report) != nil || report.Kind != "full" {
+			return
+		}
+		params, marshalErr := json.Marshal(struct {
+			URI         string          `json:"uri"`
+			Version     uint64          `json:"version"`
+			Diagnostics json.RawMessage `json:"diagnostics"`
+		}{URI: uri, Version: version, Diagnostics: report.Items})
+		if marshalErr != nil {
+			return
+		}
+		a.handleLanguageServerDiagnostics(server.profile.ID, params, func() bool {
+			return a.additionalLanguageServers[server.profile.ID] == server && server.sequence == sequence &&
+				server.connection == connection && a.code.documents[path] == document &&
+				document.state != nil && document.state.Buffer != nil && document.state.Buffer.Version() == version &&
+				server.documents[path] == version
+		})
+	})
 }
 
 func (a *app) additionalLanguageServersForDocument(document *codeDocument) []*managedLanguageServer {
