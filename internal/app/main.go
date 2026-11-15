@@ -395,12 +395,26 @@ type app struct {
 	code codeState
 	// navSelected is the sidebar row the active section shows, which differs
 	// from workspaceTab once sections are hidden.
-	navSelected         int
-	navList             ui.ListState
-	commitList          ui.ListState
-	selectedCommit      int
-	commitSelectionMode bool
-	commitSelection     map[string]bool
+	navSelected    int
+	navList        ui.ListState
+	commitList     ui.ListState
+	selectedCommit int
+	// History's Rebase mode reads OperationState.Steps directly. A marked
+	// base is session-local UI state and always stores Git's full commit ID.
+	historyWorkspace     int
+	markedBaseCommit     repository.Commit
+	rebaseStepList       ui.ListState
+	selectedRebaseStep   int
+	rebaseTargetRef      string
+	rebaseDraft          *repository.RebasePlan
+	rebasePlan           *repository.RebasePlan
+	rebasePlanText       string
+	rebasePlanEditorOpen bool
+	rebasePlanLoading    bool
+	rebasePlanError      string
+	rebasePlanToken      uint64
+	commitSelectionMode  bool
+	commitSelection      map[string]bool
 	// commitsMore says the commit list has another page below it; loading
 	// and error are that read's own state, and token drops one a newer
 	// snapshot or page replaced.
@@ -854,6 +868,7 @@ func newApp(opener repositoryOpener) *app {
 		filePaneWidth:               340,
 		navPaneWidth:                navPaneDefault,
 		selectedCommit:              -1,
+		selectedRebaseStep:          -1,
 		selectedBranchRow:           -1,
 		selectedBranch:              -1,
 		selectedBranchCommit:        -1,
@@ -1000,6 +1015,22 @@ func newApp(opener repositoryOpener) *app {
 	a.stagedList.Label = func(row int) string { return changeLabel(a.stagedRows, row) }
 	a.mergeList.Label = func(row int) string { return changeLabel(a.mergeRows, row) }
 	a.commitList.Selected = &a.selectedCommit
+	a.rebaseStepList.Selected = &a.selectedRebaseStep
+	a.rebaseStepList.Key = func(row int) any {
+		steps := a.visibleRebaseSteps()
+		if row < 0 || row >= len(steps) {
+			return row
+		}
+		step := steps[row]
+		return fmt.Sprintf("%s\x00%s\x00%s\x00%d", step.Action, step.Hash, step.UpdateRef, row)
+	}
+	a.rebaseStepList.Label = func(row int) string {
+		steps := a.visibleRebaseSteps()
+		if row < 0 || row >= len(steps) {
+			return ""
+		}
+		return rebaseStepLabel(steps[row])
+	}
 	a.commitList.EndReached = func(int) { a.requestMoreCommits() }
 	a.commitList.Key = func(row int) any {
 		commits := a.visibleCommits()
