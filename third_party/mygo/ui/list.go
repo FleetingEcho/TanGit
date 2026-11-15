@@ -89,6 +89,11 @@ type ListState struct {
 	// in the same list can start it afresh (list = ListState{}), which
 	// forgets the item chosen before.
 	Selected *int
+	// RowHighlighted, when set, overrides which rows paint as selected and
+	// what ListRow.Selected reports. It changes presentation only: Selected
+	// and Selection, clicks, keys and menus keep their usual behavior. It is
+	// useful when checkboxes choose rows independently of the cursor.
+	RowHighlighted func(row int) bool
 	// Selection, when set, lets the user choose several rows, which it
 	// holds by their keys: a click chooses one, Cmd-click (Ctrl-click on
 	// Linux and Windows) adds a row or takes it out, and Shift-click
@@ -538,12 +543,12 @@ type listRow struct {
 // once, not as the later click of a double click (RowClicked), and an
 // element took that click not given by the pointer.
 type rowBuild struct {
-	f                       *listFrame
-	e                       *node
-	i                       int
-	key                     any
-	clicked, chosen, double bool
-	single, singleTaken     bool
+	f                                    *listFrame
+	e                                    *node
+	i                                    int
+	key                                  any
+	clicked, chosen, highlighted, double bool
+	single, singleTaken                  bool
 }
 
 // List creates a vertical scroll container of n rows, built with row(i),
@@ -836,9 +841,14 @@ func (f *listFrame) build(i int) *node {
 			w.flags |= flagDraggable // the moves of a press come as frames
 		}
 		rb.chosen = f.chosen(i, key)
+		rb.highlighted = rb.chosen
 		*valueBinding[listRowInput](w) = listRowInput{f: f, i: i}
 		w.onValueInput(listRowValueInput)
 		on := f.chosen(i, key)
+		if s.RowHighlighted != nil {
+			on = s.RowHighlighted(i)
+			rb.highlighted = on
+		}
 		if f.choosesCells() {
 			// Its cells in the block show the choice (Table); CellsStyle
 			// paints its row here, behind them.

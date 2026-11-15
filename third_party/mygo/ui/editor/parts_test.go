@@ -94,6 +94,41 @@ func TestCodeEditorParts(t *testing.T) {
 	}
 }
 
+func TestHoverCardAnchorUsesRangeMidpoint(t *testing.T) {
+	ct := newEditorTest(t, "", "|abcdefghij")
+	var bounds [2]ui.Rect
+	var ranges [2][2]int
+	var valid [2]bool
+	stage := 0
+	ct.st.RenderHover = func(c *ui.Context, panel ui.Element, h *HoverCard) {
+		anchor := h.Anchor()
+		bounds[stage] = anchor.Bounds()
+		valid[stage] = anchor.Valid()
+		start, end := h.Range()
+		ranges[stage] = [2]int{start, end}
+	}
+	ct.st.ShowHover(2, 2, "anchor", nil)
+	ct.tt.Frame()
+	ct.tt.Frame()
+	stage = 1
+	ct.st.ShowHover(2, 8, "anchor", nil)
+	ct.tt.Frame()
+	ct.tt.Frame()
+	if !valid[0] || !valid[1] || ranges[1] != [2]int{2, 8} {
+		t.Fatalf("hover anchor/range = valid %v range %v, want valid range 2..8", valid, ranges[1])
+	}
+	startRect, startOK := ct.st.ed.caretRect(2)
+	midRect, midOK := ct.st.ed.caretRect(5)
+	if !startOK || !midOK {
+		t.Fatal("hover source positions are not laid out")
+	}
+	got := bounds[1].X - bounds[0].X
+	want := midRect.X - startRect.X
+	if delta := got - want; delta < -0.01 || delta > 0.01 {
+		t.Fatalf("anchor moved %v for range 2..8, want midpoint delta %v (bounds %v)", got, want, bounds)
+	}
+}
+
 // The default find bar stays within an editor beside a sidebar as the
 // window narrows, while replacing, leaving out the count of matches, then
 // all but the fields and the ⇄ and close buttons, as the editor passes
