@@ -1696,17 +1696,18 @@ func TestScreenshot(t *testing.T) {
 			"Please make sure you have the correct access rights\n" +
 			"and the repository exists."
 		log := repository.NewCommandLog()
-		log.Note(output)
+		log.BeginUserCommand("git push")(output, false)
 		a.commandLog = log
 		a.openCommandLog()
 		tt.Frame()
-		box, ok := tt.Find(output)
-		if !ok {
+		first, firstOK := tt.Find("remote: OTP verification is required to access the repository.")
+		last, lastOK := tt.Find("and the repository exists.")
+		if !firstOK || !lastOK {
 			t.Fatalf("the log does not show its output: %v", tt.Texts())
 		}
-		tt.Press(box.X+box.W*0.05, box.Y+box.H*0.2)
-		tt.Move(box.X+box.W*0.62, box.Y+box.H*0.6)
-		tt.Release(box.X+box.W*0.62, box.Y+box.H*0.6)
+		tt.Press(first.X+first.W*0.05, first.Y+first.H*0.2)
+		tt.Move(last.X+last.W*0.62, last.Y+last.H*0.6)
+		tt.Release(last.X+last.W*0.62, last.Y+last.H*0.6)
 		saveScreenshot(t, dir, "50-command-log-selection-tokyo-night", tt)
 	})
 
@@ -1746,6 +1747,16 @@ func TestScreenshot(t *testing.T) {
 		}
 		tt.Frame()
 		saveScreenshot(t, dir, "55-settings-behavior-light", tt)
+		if err := tt.Click("Background fetch interval"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		saveScreenshot(t, dir, "55b-background-fetch-selector-light", tt)
+		if err := tt.Click("Custom fetch interval"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		saveScreenshot(t, dir, "55c-background-fetch-custom-light", tt)
 	})
 
 	// The version row and the button that opens the releases page; nothing is
