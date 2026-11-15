@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -508,5 +509,307 @@ func TestTaskStoreRejectsUnsafeOrImplicitTargets(t *testing.T) {
 	}
 	if _, err := store.RequestFile("../escape"); err == nil {
 		t.Fatal("RequestFile accepted an unsafe task ID")
+	}
+}
+
+func TestTaskDependenciesAndPhase3ProfilePersistAndClone(t *testing.T) {
+	store := testStore(t)
+	dependency, err := store.Create(validTask("local:/repo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := validTask("local:/repo")
+	input.Title = "Dependent work"
+	input.DependsOn = []string{dependency.ID}
+	input.Profile.RunCommand = "npm run dev -- --port {port}"
+	input.Profile.SparsePaths = []string{"cmd", "internal/agentwork"}
+	input.Profile.IgnoredFiles = []string{"config/local.json"}
+	input.Profile.Environment = map[string]string{"APP_ENV": "development"}
+	input.Profile.Resources = Resources{
+		DevelopmentPort: 3100,
+		DatabaseName:    "tangit_task_2",
+		CacheDirectory:  filepath.Join("cache", "task-2"),
+	}
+	created, err := store.Create(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.DependsOn[0] = "changed by caller"
+	input.Profile.SparsePaths[0] = "changed by caller"
+	input.Profile.IgnoredFiles[0] = ".env"
+	input.Profile.Environment["APP_ENV"] = "changed by caller"
+	created.DependsOn[0] = "changed returned value"
+	created.Profile.SparsePaths[0] = "changed returned value"
+	created.Profile.IgnoredFiles[0] = "changed returned value"
+	created.Profile.Environment["APP_ENV"] = "changed returned value"
+	created.Profile.Resources.DevelopmentPort = 1
+
+	restarted := &Store{dir: store.dir, now: time.Now}
+	read, err := restarted.Get(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(read.DependsOn) != 1 || read.DependsOn[0] != dependency.ID {
+		t.Fatalf("persisted dependencies = %#v, want %q", read.DependsOn, dependency.ID)
+	}
+	if read.Profile.RunCommand != "npm run dev -- --port {port}" ||
+		!slices.Equal(read.Profile.SparsePaths, []string{"cmd", "internal/agentwork"}) ||
+		!slices.Equal(read.Profile.IgnoredFiles, []string{"config/local.json"}) ||
+		read.Profile.Environment["APP_ENV"] != "development" ||
+		read.Profile.Resources.DevelopmentPort != 3100 ||
+		read.Profile.Resources.DatabaseName != "tangit_task_2" ||
+		read.Profile.Resources.CacheDirectory != filepath.Join("cache", "task-2") {
+		t.Fatalf("persisted Phase-3 profile = %#v", read.Profile)
+	}
+	read.DependsOn[0] = "changed clone"
+	read.Profile.SparsePaths[0] = "changed clone"
+	read.Profile.IgnoredFiles[0] = "changed clone"
+	read.Profile.Environment["APP_ENV"] = "changed clone"
+	again, err := restarted.Get(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.DependsOn[0] != dependency.ID || again.Profile.SparsePaths[0] != "cmd" ||
+		again.Profile.IgnoredFiles[0] != "config/local.json" || again.Profile.Environment["APP_ENV"] != "development" {
+		t.Fatalf("Get shared Phase-3 fields with its caller: %#v", again)
+	}
+}
+
+func TestTaskOrderIsDependencyFirstDeterministicAndIncludesArchived(t *testing.T) {
+	store := testStore(t)
+	first, err := store.Create(validTask("local:/repo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondInput := validTask("local:/repo")
+	secondInput.DependsOn = []string{first.ID}
+	second, err := store.Create(secondInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archivedInput := validTask("local:/repo")
+	archivedInput.Status = StatusArchived
+	archived, err := store.Create(archivedInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	positions := map[string]int{}
+	ordered, err := TaskOrder([]Task{second, archived, first})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ordered) != 3 {
+		t.Fatalf("ordered task count = %d, want 3", len(ordered))
+	}
+	for index, task := range ordered {
+		positions[task.ID] = index
+	}
+	if positions[first.ID] >= positions[second.ID] {
+		t.Fatalf("dependency order = %#v", ordered)
+	}
+	if _, ok := positions[archived.ID]; !ok {
+		t.Fatal("TaskOrder omitted an archived task")
+	}
+	reversed, err := TaskOrder([]Task{first, archived, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range ordered {
+		if ordered[index].ID != reversed[index].ID {
+			t.Fatalf("order depends on input order: first %#v, second %#v", ordered, reversed)
+		}
+	}
+	ordered[0].DependsOn = append(ordered[0].DependsOn, "changed clone")
+	read, err := store.Get(ordered[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Equal(read.DependsOn, ordered[0].DependsOn) {
+		t.Fatal("TaskOrder returned tasks sharing their dependencies with the store")
+	}
+}
+
+func TestTaskStoreRejectsInvalidDependenciesAtomically(t *testing.T) {
+	store := testStore(t)
+	first, err := store.Create(validTask("local:/repo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondInput := validTask("local:/repo")
+	secondInput.DependsOn = []string{first.ID}
+	second, err := store.Create(secondInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := store.Create(validTask("local:/other"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing := strings.Repeat("f", 32)
+	for missing == first.ID || missing == second.ID || missing == other.ID {
+		missing = strings.Repeat("e", 32)
+	}
+
+	tests := []struct {
+		name         string
+		dependencies []string
+		want         string
+	}{
+		{name: "self", dependencies: []string{first.ID}, want: "itself"},
+		{name: "duplicate", dependencies: []string{second.ID, second.ID}, want: "duplicate"},
+		{name: "missing", dependencies: []string{missing}, want: "missing"},
+		{name: "malformed", dependencies: []string{"../escape"}, want: "invalid dependency ID"},
+		{name: "cross repository", dependencies: []string{other.ID}, want: "another repository"},
+		{name: "cycle", dependencies: []string{second.ID}, want: "cycle"},
+	}
+	taskPath := filepath.Join(store.dir, "agent-tasks.json")
+	before, err := os.ReadFile(taskPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestPath, _ := store.RequestFile(first.ID)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := store.Update(first.ID, func(task *Task) error {
+				task.DependsOn = test.dependencies
+				task.Request = "must not be saved"
+				return nil
+			})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("Update error = %v, want text %q", err, test.want)
+			}
+			after, readErr := os.ReadFile(taskPath)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if string(after) != string(before) {
+				t.Fatal("invalid dependency update changed the task store")
+			}
+			request, readErr := os.ReadFile(requestPath)
+			if readErr != nil || string(request) != first.Request {
+				t.Fatalf("invalid dependency update changed request = %q, %v", request, readErr)
+			}
+		})
+	}
+
+	invalidCreate := validTask("local:/repo")
+	invalidCreate.DependsOn = []string{missing}
+	if _, err := store.Create(invalidCreate); err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Fatalf("Create missing dependency error = %v", err)
+	}
+	invalidCreate.DependsOn = []string{other.ID}
+	if _, err := store.Create(invalidCreate); err == nil || !strings.Contains(err.Error(), "another repository") {
+		t.Fatalf("Create cross-repository dependency error = %v", err)
+	}
+}
+
+func TestTaskOrderReportsMissingAndCycleErrors(t *testing.T) {
+	first := validTask("local:/repo")
+	first.ID = strings.Repeat("1", 32)
+	second := validTask("local:/repo")
+	second.ID = strings.Repeat("2", 32)
+	second.DependsOn = []string{strings.Repeat("3", 32)}
+	if _, err := TaskOrder([]Task{first, second}); err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Fatalf("missing dependency error = %v", err)
+	}
+	first.DependsOn = []string{second.ID}
+	second.DependsOn = []string{first.ID}
+	if _, err := TaskOrder([]Task{first, second}); err == nil || !strings.Contains(err.Error(), "cycle") {
+		t.Fatalf("cycle error = %v", err)
+	}
+}
+
+func TestTaskStoreValidatesPhase3ProfileResourcesAndPaths(t *testing.T) {
+	store := testStore(t)
+	longPath := strings.Repeat("x", maxProfilePathLength+1)
+	tooManyPaths := make([]string, maxProfilePaths+1)
+	for index := range tooManyPaths {
+		tooManyPaths[index] = "file.txt"
+	}
+	tests := []struct {
+		name   string
+		mutate func(*Profile)
+	}{
+		{name: "empty sparse path", mutate: func(p *Profile) { p.SparsePaths = []string{" "} }},
+		{name: "absolute sparse path", mutate: func(p *Profile) { p.SparsePaths = []string{string(filepath.Separator) + "etc"} }},
+		{name: "escaping sparse path", mutate: func(p *Profile) { p.SparsePaths = []string{filepath.Join("a", "..", "..", "outside")} }},
+		{name: "empty ignored file", mutate: func(p *Profile) { p.IgnoredFiles = []string{""} }},
+		{name: "absolute ignored file", mutate: func(p *Profile) { p.IgnoredFiles = []string{string(filepath.Separator) + "secret"} }},
+		{name: "escaping ignored file", mutate: func(p *Profile) { p.IgnoredFiles = []string{".."} }},
+		{name: "path count", mutate: func(p *Profile) { p.SparsePaths = tooManyPaths }},
+		{name: "path size", mutate: func(p *Profile) { p.IgnoredFiles = []string{longPath} }},
+		{name: "negative port", mutate: func(p *Profile) { p.Resources.DevelopmentPort = -1 }},
+		{name: "large port", mutate: func(p *Profile) { p.Resources.DevelopmentPort = 65536 }},
+		{name: "blank database", mutate: func(p *Profile) { p.Resources.DatabaseName = " \t " }},
+		{name: "database control", mutate: func(p *Profile) { p.Resources.DatabaseName = "db\x00name" }},
+		{name: "database size", mutate: func(p *Profile) { p.Resources.DatabaseName = strings.Repeat("d", maxDatabaseNameLength+1) }},
+		{name: "blank cache", mutate: func(p *Profile) { p.Resources.CacheDirectory = "  " }},
+		{name: "escaping cache", mutate: func(p *Profile) { p.Resources.CacheDirectory = filepath.Join("..", "cache") }},
+	}
+	for _, test := range tests {
+		t.Run("create "+test.name, func(t *testing.T) {
+			task := validTask("local:/repo")
+			test.mutate(&task.Profile)
+			if _, err := store.Create(task); err == nil {
+				t.Fatal("Create accepted an invalid Phase-3 profile")
+			}
+		})
+	}
+
+	created, err := store.Create(validTask("local:/repo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := store.Get(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range tests {
+		t.Run("update "+test.name, func(t *testing.T) {
+			if _, err := store.Update(created.ID, func(task *Task) error {
+				test.mutate(&task.Profile)
+				return nil
+			}); err == nil {
+				t.Fatal("Update accepted an invalid Phase-3 profile")
+			}
+			after, err := store.Get(created.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after.Profile.Resources != before.Profile.Resources ||
+				!slices.Equal(after.Profile.SparsePaths, before.Profile.SparsePaths) ||
+				!slices.Equal(after.Profile.IgnoredFiles, before.Profile.IgnoredFiles) {
+				t.Fatalf("invalid update changed profile: %#v", after.Profile)
+			}
+		})
+	}
+
+	for _, cache := range []string{filepath.Join("relative", "cache"), filepath.Join(string(filepath.Separator), "absolute", "cache")} {
+		task := validTask("local:/repo")
+		task.Profile.Resources = Resources{DevelopmentPort: 65535, DatabaseName: "development", CacheDirectory: cache}
+		task.Profile.SparsePaths = []string{filepath.Join("dir", "..", "allowed")}
+		if _, err := store.Create(task); err != nil {
+			t.Fatalf("Create rejected valid resources/cache %q: %v", cache, err)
+		}
+	}
+}
+
+func TestLegacyTaskWithoutDependenciesOrPhase3ProfileRemainsReadable(t *testing.T) {
+	store := testStore(t)
+	id := strings.Repeat("a", 32)
+	legacy := `{"version":1,"tasks":[{"id":"` + id + `","repositoryId":"local:/repo","title":"Legacy","baseCommit":"abc","worktreePath":"/tmp/legacy","profile":{"launchCommand":"agent"},"status":"ready","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"}]}`
+	if err := os.MkdirAll(store.dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.path(), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	read, err := store.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.DependsOn != nil || read.Profile.SparsePaths != nil || read.Profile.IgnoredFiles != nil || read.Profile.Resources != (Resources{}) {
+		t.Fatalf("legacy task gained nonzero Phase-3 fields: %#v", read)
 	}
 }

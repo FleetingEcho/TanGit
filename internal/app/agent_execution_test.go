@@ -54,8 +54,11 @@ func TestAgentTestsUseIndependentTerminalAndPersistPassedExit(t *testing.T) {
 	if !slices.Equal(testOptions.Command, wantCommand) {
 		t.Fatalf("test command = %#v, want %#v", testOptions.Command, wantCommand)
 	}
-	if !slices.Equal(testOptions.Env, agentOptions.Env) {
-		t.Fatalf("test environment = %#v, agent environment = %#v", testOptions.Env, agentOptions.Env)
+	wantAgentEnvironment := agentTaskEnvironment(task, requestPath, task.ID)
+	wantTestEnvironment := agentTaskEnvironment(task, requestPath, agentTestOperationID(task.ID))
+	if !slices.Equal(agentOptions.Env, wantAgentEnvironment) || !slices.Equal(testOptions.Env, wantTestEnvironment) {
+		t.Fatalf("test environment = %#v (want %#v), agent environment = %#v (want %#v)",
+			testOptions.Env, wantTestEnvironment, agentOptions.Env, wantAgentEnvironment)
 	}
 	if h.app.term.sessions[0].agentTaskID != task.ID ||
 		h.app.term.sessions[1].agentTaskID != agentTestOperationID(task.ID) {

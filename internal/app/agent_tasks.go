@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,29 +14,46 @@ import (
 )
 
 type agentUIState struct {
-	review         agentReviewState
-	tasks          []agentwork.Task
-	list           ui.ListState
-	selectedRow    int
-	selectedTaskID string
-	loadedRepo     string
-	loading        bool
-	loadToken      uint64
-	err            string
-	mutating       map[string]bool
-	checkpointBusy map[string]bool
+	review             agentReviewState
+	overlap            agentOverlapUIState
+	updates            agentUpdateUIState
+	batch              agentBatchUIState
+	tasks              []agentwork.Task
+	list               ui.ListState
+	selectedRow        int
+	selectedTaskID     string
+	loadedRepo         string
+	loading            bool
+	loadToken          uint64
+	err                string
+	mutating           map[string]bool
+	processCompletions map[string]agentProcessCompletion
+	testCompletions    map[string]agentTestCompletion
+	checkpointBusy     map[string]bool
 
-	formOpen       bool
-	title          string
-	request        string
-	base           string
-	branch         string
-	path           string
-	launchCommand  string
-	resumeCommand  string
-	setupCommand   string
-	testCommand    string
-	launchAfterAdd bool
+	formOpen        bool
+	title           string
+	request         string
+	base            string
+	branch          string
+	path            string
+	launchCommand   string
+	resumeCommand   string
+	setupCommand    string
+	testCommand     string
+	runCommand      string
+	environment     string
+	sparsePaths     string
+	ignoredFiles    string
+	developmentPort string
+	databaseName    string
+	cacheDirectory  string
+	dependencies    map[string]*bool
+	templates       []agentwork.WorkspaceTemplate
+	templateChoice  string
+	templateName    string
+	templatesBusy   bool
+	launchAfterAdd  bool
 }
 
 func (a *app) agentRepositoryID() string {
@@ -119,6 +137,24 @@ func (a *app) beginNewAgentTask() {
 	a.agents.resumeCommand = ""
 	a.agents.setupCommand = ""
 	a.agents.testCommand = ""
+	a.agents.runCommand = ""
+	a.agents.environment = ""
+	a.agents.sparsePaths = ""
+	a.agents.ignoredFiles = ""
+	a.agents.developmentPort = ""
+	a.agents.databaseName = ""
+	a.agents.cacheDirectory = ""
+	a.agents.templateName = ""
+	a.agents.templateChoice = agentManualProfile
+	a.agents.dependencies = map[string]*bool{}
+	for _, task := range a.agents.tasks {
+		if agentTaskActive(task) {
+			a.agents.dependencies[task.ID] = new(bool)
+		}
+	}
+	if err := a.reloadAgentTemplates(); err != nil {
+		a.notify("error", "Could not load workspace templates", safeError(err))
+	}
 	a.agents.base = "HEAD"
 	if a.snapshot.Branch != "" {
 		a.agents.base = a.snapshot.Branch
@@ -152,12 +188,12 @@ func (a *app) beginCreateAgentTask() {
 		return
 	}
 	launchAfterAdd := a.agents.launchAfterAdd
-	profile := agentwork.Profile{
-		LaunchCommand: strings.TrimSpace(a.agents.launchCommand),
-		ResumeCommand: strings.TrimSpace(a.agents.resumeCommand),
-		SetupCommand:  strings.TrimSpace(a.agents.setupCommand),
-		TestCommand:   strings.TrimSpace(a.agents.testCommand),
+	profile, err := a.agentFormProfile()
+	if err != nil {
+		a.notify("error", "Could not create agent task", safeError(err))
+		return
 	}
+	dependencies := a.selectedAgentDependencies()
 	repositoryID := a.agentRepositoryID()
 	store, err := a.ensureAgentStore()
 	if err != nil {
@@ -165,22 +201,37 @@ func (a *app) beginCreateAgentTask() {
 		return
 	}
 	var created agentwork.Task
+	setupWarning := ""
+	sourceWorktree := a.snapshot.Root
+	targetPath := a.worktreeOpenPath(path)
 	a.beginRepositoryActionMessage("", "", func(ctx context.Context, session repository.Session) error {
 		baseCommit, err := session.ResolveCommit(ctx, base)
 		if err != nil {
 			return err
 		}
-		if err := session.CreateWorktree(ctx, repository.WorktreeCreateOptions{Path: path, Base: base, Branch: branch}); err != nil {
+		if err := session.CreateWorktree(ctx, repository.WorktreeCreateOptions{Path: path, Base: base, Branch: branch, SparsePaths: profile.SparsePaths}); err != nil {
 			return err
 		}
 		created, err = store.Create(agentwork.Task{
 			RepositoryID: repositoryID,
 			Title:        title, Request: request,
 			BaseRef: base, BaseCommit: baseCommit,
-			Branch: branch, WorktreePath: path, Profile: profile,
+			Branch: branch, WorktreePath: path, Profile: profile, DependsOn: dependencies,
 		})
 		if err != nil {
 			return fmt.Errorf("worktree %s was created, but the agent task could not be saved: %w", path, err)
+		}
+		if len(profile.IgnoredFiles) > 0 {
+			target, openErr := a.opener.Open(ctx, targetPath)
+			if openErr != nil {
+				setupWarning = fmt.Sprintf("The task was saved, but its ignored files were not copied: %s", safeError(openErr))
+			} else {
+				copyErr := target.CopyAgentIgnoredFiles(ctx, sourceWorktree, profile.IgnoredFiles)
+				closeRepositorySession(target)
+				if copyErr != nil {
+					setupWarning = fmt.Sprintf("The task was saved, but ignored-file setup was incomplete: %s", safeError(copyErr))
+				}
+			}
 		}
 		return nil
 	}, func() {
@@ -188,8 +239,12 @@ func (a *app) beginCreateAgentTask() {
 		a.agents.selectedTaskID = created.ID
 		a.agents.formOpen = false
 		a.agents.err = ""
-		a.notify("success", "Agent task created", created.Title)
-		if launchAfterAdd && created.Profile.LaunchCommand != "" {
+		if setupWarning != "" {
+			a.notify("warning", "Agent task created with incomplete setup", setupWarning)
+		} else {
+			a.notify("success", "Agent task created", created.Title)
+		}
+		if launchAfterAdd && setupWarning == "" && created.Profile.LaunchCommand != "" {
 			a.launchAgentTask(created.ID, false)
 		}
 	})
@@ -205,6 +260,10 @@ func (a *app) selectedAgentTask() (agentwork.Task, bool) {
 }
 
 func (a *app) mutateAgentTask(taskID string, mutate func(*agentwork.Task) error, success ...func(agentwork.Task)) {
+	a.mutateAgentTaskAtGeneration(taskID, a.generation, mutate, success...)
+}
+
+func (a *app) mutateAgentTaskAtGeneration(taskID string, generation uint64, mutate func(*agentwork.Task) error, success ...func(agentwork.Task)) {
 	if taskID == "" || a.agents.mutating[taskID] {
 		return
 	}
@@ -217,7 +276,6 @@ func (a *app) mutateAgentTask(taskID string, mutate func(*agentwork.Task) error,
 		a.agents.mutating = map[string]bool{}
 	}
 	a.agents.mutating[taskID] = true
-	generation := a.generation
 	go func() {
 		defer a.recoverBackground()
 		previous, err := store.Get(taskID)
@@ -227,9 +285,18 @@ func (a *app) mutateAgentTask(taskID string, mutate func(*agentwork.Task) error,
 		}
 		a.update(func() {
 			delete(a.agents.mutating, taskID)
+			// Terminal exits are operations, not optional status mutations. If
+			// one arrived while this update held the per-task lock, persist it
+			// next instead of dropping the completion or guessing an outcome.
+			a.flushAgentProcessCompletion(taskID)
+			a.flushAgentTestCompletion(taskID)
 			if generation != a.generation {
 				return
 			}
+			// A batch waiting for this per-task lock must wake even when no
+			// terminal subsequently exits. If flushing started a completion
+			// mutation, that later callback will perform the successful pump.
+			defer a.pumpAgentTestBatch()
 			if err != nil {
 				a.notify("error", "Could not update agent task", safeError(err))
 				return
@@ -267,7 +334,8 @@ func (a *app) expandAgentTaskCommand(task agentwork.Task, template, requestPath 
 	values := map[string]string{
 		"worktree": task.WorktreePath, "task": task.Title, "request": task.Request,
 		"promptFile": requestPath, "base": task.BaseCommit, "branch": task.Branch,
-		"sessionId": task.SessionID,
+		"sessionId": task.SessionID, "port": strconv.Itoa(task.Profile.Resources.DevelopmentPort),
+		"database": task.Profile.Resources.DatabaseName, "cacheDir": agentTaskCacheDirectory(task),
 	}
 	parts := make([]string, 0, len(values)*4)
 	for key, value := range values {

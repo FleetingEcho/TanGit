@@ -536,6 +536,7 @@ func (a *app) closeAllForms() {
 	a.showCommitBranchForm = false
 	a.closeCommitRewordForm()
 	a.showRenameRecent = false
+	a.closeHomeWorktrees()
 	a.closeCodeFileForm()
 	a.closeTerminalRename()
 	a.cancelCloneOperation()
@@ -586,6 +587,7 @@ func (a *app) anyFormOpen() bool {
 		a.showCommitBranchForm ||
 		a.showCommitRewordForm ||
 		a.showRenameRecent ||
+		(a.homeWorktrees.open && !a.homeWorktrees.dropdown) ||
 		a.sshProfileFormOpen ||
 		a.cloneOpen ||
 		a.code.fileForm != codeFileFormNone ||

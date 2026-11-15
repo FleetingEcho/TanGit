@@ -78,6 +78,7 @@ func (a *app) openAgentReview(task agentwork.Task) {
 }
 
 func (a *app) closeAgentReview() {
+	a.abandonAgentBatchReview()
 	a.resetAgentReview()
 }
 
