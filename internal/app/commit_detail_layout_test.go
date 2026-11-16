@@ -133,6 +133,56 @@ func TestCommitFilesPanelCollapsesAndRestores(t *testing.T) {
 	}
 }
 
+func TestBranchCommitFilesPanelMatchesHistoryAndCollapses(t *testing.T) {
+	for _, layout := range []int{commitDetailsLeftRight, commitDetailsTopBottom} {
+		t.Run(fmt.Sprint(layout), func(t *testing.T) {
+			h := branchPageHarness(t)
+			h.waitFor(t, "the branch commit files", func() bool { return len(h.app.branchCommitFiles) > 0 })
+			h.waitFor(t, "the branch commit diff", func() bool {
+				return h.app.branchCommitDiffState != nil && !h.app.branchCommitDiffLoading
+			})
+			h.app.commitDetailsLayout = layout
+			h.tester.Frame()
+			for _, label := range []string{
+				"Commit files", "Collapse changed files",
+				"Switch layout (Left/Right)", "Switch layout (Top/Bottom)",
+			} {
+				if _, ok := h.tester.Find(tr(label)); !ok {
+					t.Fatalf("branch commit details lack the History control %q: %q", label, h.texts())
+				}
+			}
+			if h.tester.HasText("Changed files") {
+				t.Fatal("branch commit details kept their separate legacy file-pane header")
+			}
+
+			diff := h.app.branchCommitDiffState
+			path, selected := h.app.branchCommitDiffPath, h.app.selectedBranchCommitFile
+			if err := h.tester.Click("Collapse changed files"); err != nil {
+				t.Fatal(err)
+			}
+			h.tester.Frame()
+			if h.tester.HasText("Commit files") || !h.tester.HasText("Expand changed files") {
+				t.Fatalf("collapsed branch commit files left the wrong controls: %q", h.texts())
+			}
+			if h.app.branchCommitDiffState != diff || h.app.branchCommitDiffPath != path ||
+				h.app.selectedBranchCommitFile != selected {
+				t.Fatal("collapsing branch commit files changed or unloaded the selected diff")
+			}
+			if err := h.tester.Click("Expand changed files"); err != nil {
+				t.Fatal(err)
+			}
+			h.tester.Frame()
+			if !h.tester.HasText("Commit files") || h.app.branchCommitDiffState != diff ||
+				h.app.branchCommitDiffPath != path || h.app.selectedBranchCommitFile != selected {
+				t.Fatal("restoring branch commit files did not retain its content and selected diff")
+			}
+			if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+				saveScreenshot(t, dir, fmt.Sprintf("branch-commit-details-layout-%d", layout), h.tester)
+			}
+		})
+	}
+}
+
 func TestCommitDetailToolbarsFitNarrowPanes(t *testing.T) {
 	for _, width := range []int{260, 320, 480} {
 		for _, branchView := range []bool{false, true} {

@@ -464,7 +464,7 @@ func (a *app) requestFileDiffMode(quiet bool) {
 	if a.diffKey == key && !quiet {
 		return
 	}
-	if quiet && (file.HasMergeConflicts || (a.diffKey != "" && a.diffKey != key) || a.diffLoading || a.cancelDiff != nil) {
+	if quiet && ((a.diffKey != "" && a.diffKey != key) || a.diffLoading || a.cancelDiff != nil) {
 		return
 	}
 
@@ -493,7 +493,7 @@ func (a *app) requestFileDiffMode(quiet bool) {
 	}
 
 	if file.HasMergeConflicts {
-		a.requestConflictFile(file, generation)
+		a.requestConflictFileMode(file, generation, quiet)
 		return
 	}
 

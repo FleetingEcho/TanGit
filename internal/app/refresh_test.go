@@ -340,6 +340,50 @@ func TestAQuietRefreshKeepsTheChosenFile(t *testing.T) {
 	}
 }
 
+func TestLocalQuietRefreshKeepsTheVisibleDiffDuringReload(t *testing.T) {
+	const (
+		firstPatch  = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-first\n+second\n"
+		secondPatch = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-first\n+third\n"
+	)
+	root := t.TempDir()
+	file := changedFile("a.txt")
+	opener := &liveOpener{snapshot: repository.Snapshot{Root: root, Branch: "main", Files: []repository.File{file}}}
+	s, _, updated := newLiveShell(t, opener)
+	s.activeApp().workspaceTab = sectionChanges
+	a := openLiveRepo(t, s, updated, root)
+	a.changeRows = a.changeRowsFrom(a.snapshot.Files)
+	a.selectedFile = changeRowIndex(a.changeRows, file.Path, false)
+	session := &controlledRemoteDiffSession{Session: a.session, response: repository.Diff{Kind: "Unstaged", Patch: firstPatch}}
+	a.session = session
+	a.beginDiff()
+	for a.cancelDiff != nil {
+		updated.waitForUpdate(t)
+	}
+	if a.diffPatch != firstPatch {
+		t.Fatal("test did not load the initial diff")
+	}
+	displayed := a.diffState
+
+	updatedSnapshot := opener.current()
+	updatedSnapshot.Files = append([]repository.File(nil), updatedSnapshot.Files...)
+	updatedSnapshot.Files[0].LinesAdded++
+	opener.set(updatedSnapshot)
+	started, release := session.respond(repository.Diff{Kind: "Unstaged", Patch: secondPatch})
+	a.requestQuietRefresh()
+	drainRefresh(t, updated, 1)
+	<-started
+	preserved := a.diffState == displayed && !a.diffLoading && a.diffPatch == firstPatch
+	close(release)
+	updated.waitForUpdate(t)
+
+	if !preserved {
+		t.Fatal("local quiet refresh replaced the visible diff with a loading state")
+	}
+	if a.diffState == displayed || a.diffPatch != secondPatch || a.diffLoading {
+		t.Fatalf("the changed diff was not installed once: patch=%q loading=%v", a.diffPatch, a.diffLoading)
+	}
+}
+
 // Nothing is applied, and no frame is asked for, while the user is editing a
 // file or holding a dialog.
 func TestAQuietRefreshStandsAsideWhileTheUserIsBusy(t *testing.T) {

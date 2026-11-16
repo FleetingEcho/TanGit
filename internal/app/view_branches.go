@@ -983,105 +983,33 @@ func (a *app) selectBranchCommitFileRow(row int) {
 	a.branchCommitDiffError = ""
 }
 
-// branchCommitDetailView is the third column: the chosen commit, the files it
-// changed, and the diff of the file chosen from them.
+func (a *app) branchCommitDetailViewState() commitDetailViewState {
+	return commitDetailViewState{
+		scope:     fileTreeBranchScope,
+		filesHash: &a.branchCommitFilesHash, filesLoading: &a.branchCommitFilesLoading, filesError: &a.branchCommitFilesError,
+		files: &a.branchCommitFiles, fileRows: &a.branchCommitFileRows, fileList: &a.branchCommitFileList,
+		selectedFileRow: &a.selectedBranchCommitFileRow, selectedFile: &a.selectedBranchCommitFile,
+		filesHeight: &a.branchCommitFilesHeight, filesWidth: &a.branchCommitFilesWidth, filesCollapsed: &a.branchCommitFilesCollapsed,
+		diffLoading: &a.branchCommitDiffLoading, diffError: &a.branchCommitDiffError, diffPath: &a.branchCommitDiffPath,
+		diffState: &a.branchCommitDiffState, diffMedia: &a.branchCommitDiffMedia,
+		requestDetails: a.requestBranchCommitFiles, requestDiff: a.requestBranchCommitFileDiff,
+		selectFileRow: a.selectBranchCommitFileRow,
+	}
+}
+
+// branchCommitDetailView is the third column. Its independent branch data is
+// bound into the same detail body History, Graph, and Reflog render.
 func (a *app) branchCommitDetailView(c *ui.Context, branch repository.Branch) {
-	theme := c.Theme()
-	ui.Column(c).Fill().Gap(8).PaddingStart(16).Children(func() {
-		if a.selectedBranchCommit < 0 || a.selectedBranchCommit >= len(a.branchCommits) {
-			ui.Column(c).Grow(1).Center().Children(func() {
-				ui.Text(c, tr("Select a commit to see its files and diff.")).TextColor(theme.TextMuted).TextAlign(ui.Center)
-			})
-			return
-		}
-		commit := a.branchCommits[a.selectedBranchCommit]
-		// The column is narrow, so the subject, the metadata and the actions
-		// each take their own row.
-		ui.Text(c, commit.Subject).FontSize(16).Bold().SingleLine().Tooltip(commit.Subject)
-		a.commitHashRow(c, commit, "Copy commit hash")
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			a.authorAvatar(c, commit, 20)
-			ui.Textf(c, "%s <%s>", commit.AuthorName, commit.AuthorEmail).TextColor(theme.TextMuted).
-				SingleLine().Grow(1).MinWidth(0).Tooltip(fmt.Sprintf("%s <%s>", commit.AuthorName, commit.AuthorEmail))
-			if rel := relTime(commit.UnixTimestamp); rel != "" {
-				ui.Text(c, rel).TextColor(theme.TextMuted).SingleLine().Shrink(0)
-			}
-		})
-		ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Wrap().Children(func() {
-			a.commitActionIconsWithHistory(c, commit, branch.Head)
-		})
-		a.diffViewOptions(c)
-		a.requestBranchCommitFiles(commit)
-		if a.branchCommitFilesLoading {
-			ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
-				ui.Spinner(c).Label(tr("Loading commit files"))
-				ui.Text(c, tr("Loading changed files…")).TextColor(theme.TextMuted)
-			})
-			return
-		}
-		if a.branchCommitFilesError != "" {
-			ui.Text(c, a.branchCommitFilesError).TextColor(theme.Danger)
-			return
-		}
-		if len(a.branchCommitFiles) == 0 {
-			ui.Text(c, tr("This commit changed no files.")).TextColor(theme.TextMuted)
-			return
-		}
-		paths := commitFilePaths(a.branchCommitFiles)
-		a.branchCommitFileRows = a.syncFileTreeRows(fileTreeBranchScope, paths, a.branchCommitFileRows,
-			&a.selectedBranchCommitFileRow, &a.selectedBranchCommitFile)
-		// The files and the diff share the rest of the column, and the line
-		// between them is dragged to give one more room than the other.
-		paneSplitVertical(c, &a.branchCommitFilesHeight, func() {
-			ui.Column(c).Fill().Gap(6).Children(func() {
-				ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
-					ui.Text(c, tr("Changed files")).Bold().Grow(1)
-					ui.Badge(c, fmt.Sprintf("%d", len(a.branchCommitFiles)))
-					a.fileTreeButtons(c, fileTreeBranchScope, paths)
-				})
-				list := a.keyboardList(c, &a.branchCommitFileList, len(a.branchCommitFileRows)).Grow(1).Rows(func(row ui.ListRow) {
-					item := a.branchCommitFileRows[row.Index]
-					if item.isDirectory() {
-						a.fileTreeDirectoryRow(row.Context, fileTreeBranchScope, item, row.Selected(), func() {
-							a.selectBranchCommitFileRow(row.Index)
-						})
-						return
-					}
-					file := a.branchCommitFiles[item.source]
-					services := row.Context.Services()
-					ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(5, 8, 5, float32(8+16*item.depth)).Children(func() {
-						ui.Text(row.Context, file.Status).Width(24).TextColor(theme.Warning)
-						ui.Text(row.Context, item.name).Grow(1).SingleLine().Tooltip(file.Path)
-						fileDiffStatCounts(row.Context, file.Path, file.LinesAdded, file.LinesDeleted)
-					}).PopoverMenu(func(m *ui.Menu) {
-						a.commitFileMenu(m, &commit, file, services)
-					})
-				})
-				if a.keyboardListChanged(&a.branchCommitFileList, list) {
-					a.selectBranchCommitFileRow(a.selectedBranchCommitFileRow)
-				}
-				normalizeFileTreeRow(a.branchCommitFileRows, &a.selectedBranchCommitFileRow, &a.selectedBranchCommitFile)
-			})
-		}, func() {
-			ui.Column(c).Fill().Children(func() {
-				if a.selectedBranchCommitFile >= 0 && a.selectedBranchCommitFile < len(a.branchCommitFiles) {
-					a.requestBranchCommitFileDiff(commit, a.branchCommitFiles[a.selectedBranchCommitFile])
-				}
-				switch {
-				case a.branchCommitDiffLoading:
-					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-						ui.Spinner(c).Label(tr("Loading diff"))
-						ui.Text(c, tr("Loading diff…")).TextColor(theme.TextMuted)
-					})
-				case a.branchCommitDiffError != "":
-					ui.Text(c, a.branchCommitDiffError).TextColor(theme.Danger)
-				case a.branchCommitDiffState != nil:
-					a.keyboardDiffViewer(c, a.branchCommitDiffState)
-				default:
-					noTextualDiffOrMedia(c, a.branchCommitDiffMedia, a.branchCommitDiffPath)
-				}
-			})
-		}).Grow(1)
+	var commit *repository.Commit
+	if a.selectedBranchCommit >= 0 && a.selectedBranchCommit < len(a.branchCommits) {
+		selected := a.branchCommits[a.selectedBranchCommit]
+		commit = &selected
+	}
+	ui.Column(c).Fill().Gap(10).PaddingStart(16).Children(func() {
+		a.commitDetailBody(c, commit, "Select a commit to see its files and diff.",
+			func(c *ui.Context, commit repository.Commit) {
+				a.commitActionIconsWithHistory(c, commit, branch.Head)
+			}, a.branchCommitDetailViewState())
 	})
 }
 

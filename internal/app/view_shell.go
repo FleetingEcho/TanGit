@@ -758,7 +758,14 @@ func (a *app) mainArea(c *ui.Context) {
 		}
 	}
 	box := ui.Box(c)
-	size := box.Animate("terminal-size", target, 200*time.Millisecond)
+	size := target
+	if a.term.panelOpen && !a.term.panelMaximized {
+		size = box.Animate("terminal-size", target, 200*time.Millisecond)
+	} else {
+		// Hiding and maximizing switch directly between layouts; their targets
+		// are not rendered as fractional sizes, so animating would only rebuild.
+		box.Jump("terminal-size", target)
+	}
 	dock := a.terminalDock()
 	terminalFirst := dock == terminalDockTop || dock == terminalDockLeft
 

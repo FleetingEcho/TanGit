@@ -11,16 +11,16 @@ func (a *app) attachRepositoryCommandLog(log *repository.CommandLog) {
 		return
 	}
 	log.SetListener(func() {
-		if !a.commandLogVisible.Load() {
+		if !a.commandLogVisible.Load() || !a.commandLogFramePending.CompareAndSwap(false, true) {
 			return
 		}
-		// Window.Invalidate coalesces bursts of Git output to one redraw. Tests
-		// without a native window run the corresponding queued UI update.
-		if a.window != nil {
-			a.window.Invalidate()
-			return
-		}
-		a.update(func() {})
+		// Queue one publication for a burst rather than allowing every output
+		// append to repaint or fill the main-thread queue. Visibility is checked
+		// again on the UI thread so a closed log or background tab stays quiet.
+		a.updateChanged(func() bool {
+			a.commandLogFramePending.Store(false)
+			return a.commandLogVisible.Load()
+		})
 	})
 }
 
