@@ -383,7 +383,8 @@ func (s *gitSession) validateJournalSnapshot(snapshot *WorkSnapshot) error {
 	if err != nil || strings.TrimSpace(hash) != snapshot.Hash {
 		return fmt.Errorf("saved work was deleted or changed; undo stopped before modifying the repository")
 	}
-	return nil
+	_, err = s.readWorkspacePermissions(snapshot.Hash)
+	return err
 }
 
 func (s *gitSession) validateJournalPin(ref, object string) error {
@@ -522,7 +523,10 @@ func (s *gitSession) restoreResetWorkSnapshot(ctx context.Context, snapshot Work
 	if err := s.RestoreWorkSnapshot(ctx, tracked); err != nil {
 		return err
 	}
-	return s.restoreSnapshotUntracked(snapshot)
+	if err := s.restoreSnapshotUntracked(snapshot); err != nil {
+		return err
+	}
+	return s.restoreWorkspacePermissions(snapshot.Hash)
 }
 
 // restoreJournalWorkSnapshot undoes discard after its exact after-state has
@@ -536,7 +540,10 @@ func (s *gitSession) restoreJournalWorkSnapshot(snapshot WorkSnapshot) error {
 	if err := s.applyWorkSnapshot(tracked); err != nil {
 		return err
 	}
-	return s.restoreSnapshotUntracked(snapshot)
+	if err := s.restoreSnapshotUntracked(snapshot); err != nil {
+		return err
+	}
+	return s.restoreWorkspacePermissions(snapshot.Hash)
 }
 
 // UndoOperation performs only the operation-specific plan stored with id.
