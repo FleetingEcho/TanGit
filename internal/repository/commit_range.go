@@ -41,7 +41,12 @@ func (s *gitSession) CherryPickCommits(ctx context.Context, selected []Commit) e
 		seen[c.Hash] = true
 		commits = append(commits, models.NewCommit(&utils.StringPool{}, models.NewCommitOpts{Hash: c.Hash, Parents: append([]string(nil), c.Parents...)}))
 	}
-	return s.git.Rebase.CherryPickCommits(commits)
+	return s.withWorkspaceMutation(ctx, OperationCherryPick, fmt.Sprintf("Cherry-pick %d commits", len(commits)), true, func() error {
+		if err := s.git.Rebase.CherryPickCommits(commits); err != nil {
+			return fmt.Errorf("cherry-pick commits: %w", err)
+		}
+		return nil
+	})
 }
 
 // EditCommitRange resolves hashes against fresh HEAD history. A visible filtered

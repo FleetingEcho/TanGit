@@ -102,7 +102,7 @@ their package installer.
 | Use an external editor | Set **Settings → Editor**, then click its editor button. Neovim opens in a terminal. |
 | Edit several commits | Select rows with checkboxes or `Ctrl+Space`, then use **Batch actions** or the right-click menu. Rewrites require consecutive commits on the current branch. |
 | Resolve conflicts | Choose or edit hunks, stage each resolved file, then continue the interrupted operation. |
-| Recover work | Use Reflog to inspect earlier states and create a branch, check out, or reset after confirmation. In **Saved work → Safety Journal**, review discards, resets, rebases, branch deletions, dropped stashes, and patch applications. Successful operations offer immediate notification Undo and remain listed durably. Undo uses the exact operation's pinned object, saved work, or patch bytes and stops if HEAD or newer working-tree changes no longer match. Interrupted or failed entries stay visible without an unsafe Undo action. |
+| Recover work | Use Reflog to inspect earlier states and create a branch, check out, or reset after confirmation. In **Saved work → Safety Journal**, review supported local commits, merges, checkouts, discards, resets, rebases, branch operations, stash changes and patch applications. Recoverable operations offer immediate notification Undo and remain listed durably. Undo compares immutable before/after restore points across raw files, index, operation metadata, local refs and configuration, and refuses when newer content or Git state does not match. Interrupted restoration keeps both recovery points without pretending its rollback completed. |
 | Adjust the workspace | Drag dividers; use expand/shrink icons for full-window views. The folder button toggles directory grouping. |
 
 All workspace sections are visible by default; choose which ones to show in **Settings → Workspace sections**.
@@ -119,7 +119,9 @@ Author avatars load in the background from GitHub, GitLab.com, or self-managed G
 
 This section describes behavior in the current implementation. Availability of
 an action depends on the live repository state, not merely on the menu or panel
-being visible.
+being visible. For complete-workspace restore points, compare-and-swap checks,
+interrupted Undo, and explicitly unsupported boundaries, see
+[Operation and workspace recovery](operation-recovery.md).
 
 ### Real operation context and conflict controls
 

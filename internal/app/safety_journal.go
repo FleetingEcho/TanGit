@@ -63,6 +63,12 @@ func operationStatusLabel(record repository.OperationRecord) string {
 	if record.UndoneAt != 0 {
 		return tr("Undone")
 	}
+	if record.Status == repository.OperationUndoing {
+		return tr("Undoing")
+	}
+	if record.UndoStartedAt != 0 {
+		return tr("Undo interrupted")
+	}
 	if record.ActiveOperation != repository.OperationTypeNone || record.RebasePaused {
 		return tr("In progress")
 	}
@@ -130,7 +136,11 @@ func (a *app) safetyJournalBody(c *ui.Context) {
 					})
 					ui.Badge(c, operationStatusLabel(record))
 					if record.Snapshot != nil {
-						ui.Badge(c, tr("Saved work")).Tooltip(tr("A recovery copy is also listed under Recovery & checkpoints."))
+						tooltip := tr("A recovery copy is also listed under Recovery & checkpoints.")
+						if record.UndoStartedAt != 0 && record.AfterSnapshot != nil {
+							tooltip = tr("Both before and after recovery points remain available for review.")
+						}
+						ui.Badge(c, tr("Saved work")).Tooltip(tooltip)
 					}
 					if record.CanUndo() {
 						if compactTextButton(ui.Button(c, tr("Undo…"))).Label(tr("Undo") + " " + record.ID).
