@@ -471,8 +471,13 @@ type registeredFace struct {
 	mono   bool
 }
 
+// coreTextLoaded binds the functions of Core Text and its frameworks
+// once, as engines are made apart, on the goroutine of each, and what
+// one bound the others reuse.
+var coreTextLoaded = sync.OnceValue(loadCoreText)
+
 func newCoreText() (*coreText, error) {
-	if err := loadCoreText(); err != nil {
+	if err := coreTextLoaded(); err != nil {
 		return nil, err
 	}
 	e := &coreText{

@@ -276,6 +276,35 @@ func TestReviewLineCommands(t *testing.T) {
 	ct = newEditorTest(t, "", "one\ntw|o\nthree")
 	ct.run(DeleteLine)
 	ct.want("one\nth|ree")
+	// A whole line moved down to the last ends with the text.
+	ct = newEditorTest(t, "", "[one\n]two")
+	ct.run(MoveLinesDown)
+	ct.want("two\n[one]")
+	// A caret stays at its place, at the start of the character that
+	// came there.
+	ct = newEditorTest(t, "", "語\n|a")
+	ct.run(SortLines)
+	ct.want("a\n|語")
+	ct = newEditorTest(t, "", "é|\n")
+	ct.run(ReverseLines)
+	ct.want("\n|é")
+	ct = newEditorTest(t, "", "\n\n|é ")
+	ct.run(UniqueLines)
+	ct.want("\n|é ")
+}
+
+// Carets in one word, or in a word with a selection, convert its case
+// once, as one selection.
+func TestReviewCaseOverlap(t *testing.T) {
+	ct := newEditorTest(t, "", "ab|cd|ef")
+	ct.run(Uppercase)
+	ct.want("[ABCDEF]")
+	ct = newEditorTest(t, "", "[ab]cd| ef")
+	ct.run(Uppercase)
+	ct.want("[ABCD] ef")
+	ct = newEditorTest(t, "", "| | ")
+	ct.run(SnakeCase)
+	ct.want("|")
 }
 
 // Tab goes to the next tab stop past hard tabs, and indents the line of
@@ -490,6 +519,41 @@ func TestReviewCompletionCarets(t *testing.T) {
 	}
 }
 
+// Completions close when the caret goes elsewhere than by typing: the
+// one accepted then went in where the word was typed, not at the caret,
+// in place of the text from there to it.
+func TestReviewCompletionCaretMoved(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		move func(ct *editorTest)
+		want string
+	}{
+		{"a caret added below", func(ct *editorTest) { ct.run(AddCursorBelow) }, "one\nfo\n|\nth\n|ree\n"},
+		{"a caret added above", func(ct *editorTest) { ct.run(AddCursorAbove) }, "on\n|e\nfo\n|\nthree\n"},
+		{"the selection undone", func(ct *editorTest) { ct.run(UndoSelection) }, "\n|one\nfo\nthree\n"},
+		{"the app's selection, after", func(ct *editorTest) { ct.st.Select(13, 13) }, "one\nfo\nthree\n\n|"},
+		{"the app's selection, before", func(ct *editorTest) { ct.st.Select(1, 1) }, "o\n|ne\nfo\nthree\n"},
+		{"typing and deleting", func(ct *editorTest) { ct.typ("o"); ct.key(0, ui.KeyBackspace) }, "one\nfooBar|\nthree\n"},
+	} {
+		ct := newEditorTest(t, "", "|one\nfo\nthree\n")
+		ct.st.OnCompletion = func(r CompletionRequest) {
+			ct.st.ShowCompletions(r.Offset-len(r.Prefix), []Completion{{Label: "fooBar"}})
+		}
+		ct.st.Select(6, 6)
+		ct.tt.Frame()
+		ct.run(ShowCompletions)
+		if !ct.st.ed.complete.open() {
+			t.Fatalf("%s: no completions", c.name)
+		}
+		c.move(ct)
+		ct.tt.Frame()
+		ct.key(0, ui.KeyEnter)
+		if got := ct.show(); got != c.want {
+			t.Errorf("%s: Enter gives %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 // A regular expression's replacement expands its groups as found in the
 // text, \B and all.
 func TestReviewRegexReplace(t *testing.T) {
@@ -596,6 +660,33 @@ func TestReviewCRLF(t *testing.T) {
 	ct.want("two\no|ne\ntwo\nthree")
 }
 
+// Text typed, put in by an input method or taken from a suggestion with
+// \r\n line endings goes in with \n, as a paste's, the caret after it: a
+// byte further for each line, it could be inside a character.
+func TestReviewCRLFTyped(t *testing.T) {
+	ct := newEditorTest(t, "", "a|語b|語")
+	ct.tt.Type("x\r\ny\r\n")
+	ct.want("ax\ny\n|語bx\ny\n|語")
+	ct = newEditorTest(t, "", "ab|語")
+	ct.st.ed.ReplaceText(&ui.TextInputRange{Start: 0, End: 1}, "x\r\ny")
+	ct.tt.Frame()
+	ct.want("x\ny|b語")
+	ct = newEditorTest(t, "", "ab|語")
+	ct.st.SetSuggestion(2, "x\r\ny")
+	ct.tt.Frame()
+	ct.key(0, ui.KeyTab)
+	ct.want("abx\ny|語")
+	// Replacing a match goes on from the end of what went in, to the
+	// match after it.
+	ct = newEditorTest(t, "", "[a]aa")
+	f := &ct.st.ed.find
+	f.query, f.replace, f.stale = "a", "\r\n", true
+	ct.tt.Frame()
+	f.replaceOne(&ct.st.ed)
+	ct.tt.Frame()
+	ct.want("\n[a]a")
+}
+
 // Set replaces the whole text at once, edits from other goroutines
 // before or after it.
 func TestReviewSetAtomic(t *testing.T) {
@@ -651,6 +742,27 @@ func TestReviewConcurrentTyping(t *testing.T) {
 	got := strings.ReplaceAll(b.String(), "z", "")
 	if got != typed.String() {
 		t.Fatalf("typed %d letters, the text has %d of them: ...%q", typed.Len(), len(got), got[max(0, len(got)-40):])
+	}
+}
+
+// A command that finds the buffer edited before its own edit runs again
+// until its edit goes in, however many times another goroutine edits
+// first: the letter typed is kept, not left out.
+func TestReviewRetryUntilApplied(t *testing.T) {
+	ct := newEditorTest(t, "", "|")
+	ed, b := &ct.st.ed, ct.st.Buffer
+	runs := 0
+	ed.retry(func() bool {
+		runs++
+		if runs <= 6 {
+			// As another goroutine, between the editor's look and its edit.
+			b.Edit(Edit{Start: 0, End: 0, Text: "z"})
+		}
+		ed.insert("a")
+		return true
+	})
+	if got := strings.ReplaceAll(b.String(), "z", ""); got != "a" {
+		t.Fatalf("after %d runs the text has %q of the letter typed, want \"a\"", runs, got)
 	}
 }
 

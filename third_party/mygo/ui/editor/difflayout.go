@@ -198,14 +198,15 @@ func (d *DiffState) prepare() {
 	}
 	prevA, prevB := 0, 0
 	unchanged := func(a0, b0, n int) {
-		// Annotations on unchanged lines leave room on the other side.
+		// Annotations on unchanged lines leave room on the other side,
+		// those of collapsed lines none: they go with their lines.
 		for i := 0; i < n; i++ {
 			ha, hb := sides[0].ann[a0+i], sides[1].ann[b0+i]
 			var ra, rb float32
 			if alignRows && !hidden(a0+i) {
 				ra, rb = rowsOf(viewA, a0+i), rowsOf(viewB, b0+i)
 			}
-			if ha == 0 && hb == 0 && ra == rb {
+			if ha == 0 && hb == 0 && ra == rb || hidden(a0+i) {
 				continue
 			}
 			hmax := max(ra+ha, rb+hb)

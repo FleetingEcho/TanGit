@@ -127,6 +127,56 @@ func TestCodeEditorTyping(t *testing.T) {
 	ct.want("([abc])")
 }
 
+func TestCodeEditorAutoPairCJK(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		lang string
+		init string
+		typ  string
+		want string
+	}{
+		// Symmetric quotes and backticks auto-pair after CJK characters.
+		{name: "double-quote-after-han", lang: "go", init: "中|", typ: `"`, want: `中"|"`},
+		{name: "single-quote-after-han", lang: "python", init: "中文|", typ: `'`, want: `中文'|'`},
+		{name: "backtick-after-han", lang: "markdown", init: "中文|", typ: "`", want: "中文`|`"},
+		{name: "quote-after-hiragana", lang: "go", init: "あ|", typ: `"`, want: `あ"|"`},
+		{name: "quote-after-katakana", lang: "go", init: "ア|", typ: `"`, want: `ア"|"`},
+		{name: "quote-after-hangul", lang: "go", init: "한|", typ: `"`, want: `한"|"`},
+		{name: "backtick-after-hiragana", lang: "markdown", init: "あ|", typ: "`", want: "あ`|`"},
+		// Brackets and quotes auto-pair before closing CJK/smart brackets and trailing punctuation.
+		{name: "paren-before-cjk-period", lang: "markdown", init: "你好|。", typ: "(", want: "你好(|)。"},
+		{name: "bracket-before-cjk-comma", lang: "markdown", init: "你好|，", typ: "[", want: "你好[|]，"},
+		{name: "paren-before-cjk-comma", lang: "markdown", init: "|，", typ: "(", want: "(|)，"},
+		{name: "paren-before-cjk-closing-paren", lang: "markdown", init: "|）", typ: "(", want: "(|)）"},
+		{name: "paren-before-cjk-closing-corner", lang: "markdown", init: "「你好|」", typ: "(", want: "「你好(|)」"},
+		{name: "quote-after-han-before-cjk-period", lang: "go", init: "你好|。", typ: `"`, want: `你好"|"。`},
+		{name: "quote-before-cjk-closing-quote", lang: "go", init: "你好|”", typ: `"`, want: `你好"|"”`},
+		{name: "paren-before-cjk-closing-single-quote", lang: "markdown", init: "‘你好|’", typ: "(", want: "‘你好(|)’"},
+		{name: "paren-before-cjk-tilde", lang: "markdown", init: "你好|～", typ: "(", want: "你好(|)～"},
+		{name: "paren-before-cjk-middle-dot", lang: "markdown", init: "你好|·", typ: "(", want: "你好(|)·"},
+		// Do not auto-pair before opening CJK/smart brackets/quotes or general fullwidth symbols.
+		{name: "no-autopair-before-fullwidth-open-paren", lang: "markdown", init: "|（a）", typ: "(", want: "(|（a）"},
+		{name: "no-autopair-before-cjk-open-corner", lang: "go", init: "|「a」", typ: `"`, want: `"|「a」`},
+		{name: "no-autopair-before-smart-open-double-quote", lang: "markdown", init: "|“a”", typ: "(", want: "(|“a”"},
+		{name: "no-autopair-before-smart-open-single-quote", lang: "markdown", init: "|‘a’", typ: "(", want: "(|‘a’"},
+		{name: "no-autopair-before-fullwidth-hash", lang: "markdown", init: "|＃a", typ: "(", want: "(|＃a"},
+		{name: "no-autopair-before-fullwidth-quote", lang: "markdown", init: "|＂a", typ: "(", want: "(|＂a"},
+		// Latin contractions and trailing word characters still do not auto-pair.
+		{name: "latin-contraction", lang: "python", init: "don|", typ: `'`, want: "don'|"},
+		{name: "latin-contraction-before-ascii-apostrophe", lang: "python", init: "don|'t", typ: `'`, want: "don'|'t"},
+		{name: "latin-contraction-before-curly-apostrophe", lang: "python", init: "don|’t", typ: `'`, want: "don'|’t"},
+		{name: "latin-double-quote", lang: "go", init: "word|", typ: `"`, want: `word"|`},
+		// Do not auto-pair immediately before another Han character.
+		{name: "before-han-char", lang: "go", init: "中|文", typ: `"`, want: `中"|文`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ct := newEditorTest(t, tc.lang, tc.init)
+			ct.typ(tc.typ)
+			ct.want(tc.want)
+		})
+	}
+}
+
 func TestCodeEditorNewline(t *testing.T) {
 	ct := newEditorTest(t, "go", "func main() {|}")
 	ct.key(0, ui.KeyEnter)
@@ -566,6 +616,22 @@ func TestCodeEditorComposition(t *testing.T) {
 	ct.want("a|b\nc|d")
 }
 
+// Enter while an input method composes is its own, as choosing a
+// candidate: the editor breaks no line and leaves the composition to the
+// input method, which commits it (#1815).
+func TestCodeEditorComposingEnter(t *testing.T) {
+	ct := newEditorTest(t, "", "a|b")
+	ct.tt.Compose("に", 1)
+	ct.key(0, ui.KeyEnter)
+	ct.want("aに|b")
+	if _, marked := ct.st.ed.MarkedRange(); !marked {
+		t.Fatal("Enter ended the composition")
+	}
+	ct.tt.Type("に")
+	ct.key(0, ui.KeyEnter)
+	ct.want("aに\n|b")
+}
+
 func TestCodeEditorFind(t *testing.T) {
 	ct := newEditorTest(t, "", "|cat Cat cat dog")
 	ct.st.Find("cat")
@@ -807,12 +873,12 @@ func TestCodeEditorWrapLongLines(t *testing.T) {
 // quarter of an em between Han and Latin letters, given to the advance of
 // the one before as penAdvances does, and CJK punctuation that ends a
 // text takes half its width. on tells whether it does.
-func contextSpaced(on func() bool) func(text.Params) *text.Layout {
+func contextSpaced(on func(*text.System) bool) func(*text.System, text.Params) *text.Layout {
 	han := func(r rune) bool { return r >= 0x4e00 && r <= 0x9fff }
 	latin := func(r rune) bool { return r < 0x80 && (unicode.IsLetter(r) || unicode.IsDigit(r)) }
-	return func(p text.Params) *text.Layout {
-		l := text.Shared().Shape(p)
-		if !on() {
+	return func(sys *text.System, p text.Params) *text.Layout {
+		l := sys.Shape(p)
+		if !on(sys) {
 			return l
 		}
 		out := *l
@@ -846,7 +912,7 @@ func contextSpaced(on func() bool) func(text.Params) *text.Layout {
 }
 
 // useShaper shapes the editors' text with shape until the test ends.
-func useShaper(t *testing.T, shape func(text.Params) *text.Layout) {
+func useShaper(t *testing.T, shape func(*text.System, text.Params) *text.Layout) {
 	old := shapeText
 	shapeText = shape
 	t.Cleanup(func() { shapeText = old })
@@ -882,7 +948,7 @@ const chineseText = "城城城城城城城城城城城城城城城城城城城�
 // Chinese text, which no character shaped alone has, keeps wrapped rows
 // within the editor (#1576).
 func TestCodeEditorWrapContextSpacing(t *testing.T) {
-	useShaper(t, contextSpaced(func() bool { return true }))
+	useShaper(t, contextSpaced(func(*text.System) bool { return true }))
 	ct := newEditorTest(t, "", chineseText)
 	ct.st.SoftWrap = true
 	v := &ct.st.ed.view
@@ -900,16 +966,14 @@ func TestCodeEditorWrapContextSpacing(t *testing.T) {
 // app's language: when it changes, the rows are measured and shaped
 // again, in the spacing of the new one.
 func TestCodeEditorWrapLanguageChange(t *testing.T) {
-	sys := text.Shared()
-	t.Cleanup(func() { sys.SetLanguage("") })
-	sys.SetLanguage("")
-	useShaper(t, contextSpaced(func() bool { return sys.Language() == "zh-Hans" }))
+	useShaper(t, contextSpaced(func(sys *text.System) bool { return sys.Language() == "zh-Hans" }))
 	ct := newEditorTest(t, "", strings.Repeat("城a", 80))
+	t.Cleanup(func() { ct.tt.SetLocale("") })
 	ct.st.SoftWrap = true
 	ct.tt.Frame()
 	v := &ct.st.ed.view
 	before := len(v.line(0).rows)
-	sys.SetLanguage("zh-Hans")
+	ct.tt.SetLocale("zh-Hans")
 	ct.tt.Frame()
 	if after := len(v.line(0).rows); after <= before {
 		t.Errorf("in Chinese, the line takes %d rows, as many as before (%d)", after, before)

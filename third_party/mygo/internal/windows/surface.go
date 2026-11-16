@@ -774,7 +774,7 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 		if wp == timerWebView {
 			procKillTimer.Call(hwnd, timerWebView)
 			for _, v := range s.w.webViews {
-				if v.controller == 0 && v.webViewErr == nil {
+				if webViewBuilt && v.controller == 0 && v.webViewErr == nil {
 					v.createWebView()
 				}
 			}
@@ -824,6 +824,10 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 			s.canceledUp = true
 			procReleaseCapture.Call()
 		}
+		return 0, false
+	case wmPointerCaptureChanged:
+		// A finger another window took: its touch ends there.
+		s.send(platform.SurfaceEvent{Kind: platform.TouchCancel, ID: uint64(loword(wp))})
 		return 0, false
 	case wmMouseMove:
 		if !s.tracking {

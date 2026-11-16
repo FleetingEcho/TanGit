@@ -415,7 +415,7 @@ func codesign(c *Config, path, identity string, production bool) error {
 	if entitlements != "" && c.native != nil && len(c.native.entitlements) > 0 {
 		defer os.Remove(entitlements)
 	}
-	out, err := exec.Command("codesign", codesignArgs(path, identity, entitlements, production)...).CombinedOutput()
+	out, err := signCode(filepath.Base(path), identity, codesignArgs(path, identity, entitlements, production)...)
 	if err != nil {
 		return fmt.Errorf("codesign %s: %v\n%s", filepath.Base(path), err, out)
 	}

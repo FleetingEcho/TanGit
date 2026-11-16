@@ -25,6 +25,7 @@ var (
 	clipboardID                                        ptr
 	clipboardGeneration                                uint64
 	clipboardConnected                                 bool
+	clipboardChanged                                   func()
 )
 
 type gtkClipboardSource struct {
@@ -85,7 +86,20 @@ func initClipboardCallbacks() {
 			s.release()
 		}
 	})
-	cbClipboardOwner = purego.NewCallback(func(board, event, data ptr) { clipboardGeneration++ })
+	cbClipboardOwner = purego.NewCallback(func(board, event, data ptr) {
+		clipboardGeneration++
+		if clipboardChanged != nil {
+			clipboardChanged()
+		}
+	})
+}
+
+func (clipboard) WatchChanges(changed func()) (func(), error) {
+	// This signal is already needed to detect ownership changes during
+	// reads. Removing the watch leaves that lightweight guard connected.
+	clip()
+	clipboardChanged = changed
+	return func() { clipboardChanged = nil }, nil
 }
 
 func (s *gtkClipboardSource) release() {

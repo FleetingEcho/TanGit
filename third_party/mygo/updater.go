@@ -21,6 +21,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -679,6 +680,13 @@ func cleanUpdateLeftovers() {
 // interface, for tests), through the system's proxy (package netproxy).
 // A failure that a moment may mend, as a gateway timing out in front of
 // the store of a release's assets, is tried again (httpRetries).
+//
+// The deadlines of the request are these: the headers must arrive within
+// httpHeaderTimeout, and a body that sends nothing for httpStallTimeout is
+// given up. Without them a connection that the network dropped without a
+// reset holds the caller until the socket times out, which keepalive may
+// never do, and a check in the background has no window to cancel it from
+// and keeps the updater from scheduling the next one.
 func httpGet(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -687,10 +695,15 @@ func httpGet(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 	if u.Scheme != "https" && !(u.Scheme == "http" && isLoopback(u.Hostname())) {
 		return nil, fmt.Errorf("refusing to download %s: updates need HTTPS", rawURL)
 	}
-	client := &http.Client{Transport: netproxy.Transport()}
+	client := httpClient()
 	for try := 0; ; try++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+		// Canceled when the body closes, or when nothing arrives: the one
+		// cancels the request of a body that stopped, the other ends a
+		// request whose response was refused.
+		reqCtx, cancel := context.WithCancel(ctx)
+		req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, rawURL, nil)
 		if err != nil {
+			cancel()
 			return nil, err
 		}
 		// Not the app's name: GitHub's release assets come from a store that
@@ -701,13 +714,15 @@ func httpGet(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 		var wait time.Duration
 		switch {
 		case err != nil:
+			cancel()
 			if ctx.Err() != nil || try >= len(httpRetries) {
 				return nil, err
 			}
 		case resp.StatusCode == http.StatusOK:
-			return resp.Body, nil
+			return newStalledBody(resp.Body, cancel), nil
 		default:
 			resp.Body.Close()
+			cancel()
 			if !transientStatus(resp.StatusCode) || try >= len(httpRetries) {
 				return nil, fmt.Errorf("GET %s: %s", rawURL, resp.Status)
 			}
@@ -720,6 +735,96 @@ func httpGet(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 		case <-time.After(wait):
 		}
 	}
+}
+
+// httpHeaderTimeout is how long the headers of a response may take to
+// arrive: the client has no deadline above the socket. Five minutes of a
+// check in the background would be five minutes without the next check.
+var httpHeaderTimeout = 30 * time.Second
+
+// httpStallTimeout is how long a body may send nothing before the download
+// is given up. A slow download is fine, however long it takes; one that
+// stopped is not, and its reads never return.
+var httpStallTimeout = time.Minute
+
+// httpClient is the client of the updater's requests: the transport of
+// package netproxy, so that the system's proxy settings apply, with the
+// deadline for the headers that it leaves to its callers. A test that needs
+// another deadline changes the transport for its run.
+var updateHTTPClient struct {
+	once   sync.Once
+	client *http.Client
+}
+
+func httpClient() *http.Client {
+	updateHTTPClient.once.Do(func() { updateHTTPClient.client = newHTTPClient() })
+	return updateHTTPClient.client
+}
+
+func newHTTPClient() *http.Client {
+	transport := netproxy.Transport().Clone()
+	transport.ResponseHeaderTimeout = httpHeaderTimeout
+	return &http.Client{Transport: transport}
+}
+
+// stalledBody cancels the request of a body that stops arriving, and says
+// so instead of the canceled request it would otherwise be read as.
+type stalledBody struct {
+	body   io.ReadCloser
+	cancel context.CancelFunc
+	// d is the timeout it was made with, which the watch reads in its own
+	// goroutine: reading the setting there would race with a test's change.
+	d time.Duration
+	// last is when the last byte arrived, in Unix nanoseconds; stalled is
+	// set once cancel was called, so that the error can say why; done ends
+	// the watch when the body closes.
+	last    atomic.Int64
+	stalled atomic.Bool
+	done    atomic.Bool
+	timer   *time.Timer
+}
+
+func newStalledBody(body io.ReadCloser, cancel context.CancelFunc) *stalledBody {
+	b := &stalledBody{body: body, cancel: cancel, d: httpStallTimeout}
+	b.last.Store(time.Now().UnixNano())
+	// Publish the timer before its callback can read it to rearm it.
+	b.timer = time.AfterFunc(1<<63-1, b.check)
+	b.timer.Stop()
+	b.timer.Reset(b.d / 4)
+	return b
+}
+
+// check cancels the request when nothing arrived for its timeout, and looks
+// again a quarter of that later otherwise: often enough to stop a download
+// soon after it stops, rarely enough to cost nothing while it runs.
+func (b *stalledBody) check() {
+	if b.done.Load() {
+		return
+	}
+	if time.Since(time.Unix(0, b.last.Load())) >= b.d {
+		b.stalled.Store(true)
+		b.cancel()
+		return
+	}
+	b.timer.Reset(b.d / 4)
+}
+
+func (b *stalledBody) Read(p []byte) (int, error) {
+	n, err := b.body.Read(p)
+	if n > 0 {
+		b.last.Store(time.Now().UnixNano())
+	}
+	if err != nil && b.stalled.Load() {
+		return n, errors.New("the download stalled: the connection sent nothing")
+	}
+	return n, err
+}
+
+func (b *stalledBody) Close() error {
+	b.done.Store(true)
+	b.timer.Stop()
+	b.cancel()
+	return b.body.Close()
 }
 
 // httpRetries are how long httpGet waits before each try after the first

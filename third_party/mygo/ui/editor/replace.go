@@ -117,6 +117,9 @@ func (ed *editor) setReplacements(rs []Replacement) {
 // forgetLines lays out again the lines holding bytes a to b, and measures
 // their wraps anew.
 func (v *view) forgetLines(a, b int) {
+	for _, child := range v.styleViews {
+		child.forgetLines(a, b)
+	}
 	from, to := v.text.LineOf(a), v.text.LineOf(b)
 	if v.lines.m != nil {
 		if to-from > len(v.lines.m) {
@@ -365,8 +368,8 @@ func (ed *editor) placeReplacements(y0, y1 float64, dst []placed) []placed {
 		d := l.toDisp(r.Start-l.start, false)
 		ri := l.rowOf(d, false)
 		x := v.xOf(l, &l.rows[ri], d)
-		y := ed.rowTop(line) + float64(ri)*float64(v.lineHeight)
-		dst = append(dst, placed{r.Start, ui.Rect{X: x, Y: float32(y), W: v.objectWidth(r), H: v.lineHeight}})
+		y := ed.rowTop(line) + float64(ri)*float64(l.rowHeight)
+		dst = append(dst, placed{r.Start, ui.Rect{X: x, Y: float32(y), W: l.owner.objectWidth(r), H: l.rowHeight}})
 	}
 	return dst
 }

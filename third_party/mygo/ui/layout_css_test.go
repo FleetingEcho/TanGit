@@ -209,18 +209,22 @@ func TestStretchedItemsOfRowTakeItsHeight(t *testing.T) {
 	wantSize(t, "the centered item", centered, 10, 12)
 	wantSize(t, "the item by its baseline", baseline, 10, 8)
 	wantSize(t, "the item in a wrapping row", wrapped, 10, 10)
+	// None of them keeps what was measured of it: the items that stretch
+	// take the line's height without being measured, and the others are
+	// boxes with nothing in them, whose height is their padding at every
+	// width, which naturalHeight returns before the measures.
 	for _, it := range []struct {
-		name     string
-		e        *node
-		measured bool
+		name string
+		e    *node
 	}{
-		{"the plain item", plain, false}, {"the item with a minimum", tall, false},
-		{"the item with a maximum", short, false}, {"the item with taller content", nested, false},
-		{"the centered item", centered, true}, {"the item by its baseline", baseline, true},
-		{"the item in a wrapping row", wrapped, true},
+		{"the plain item", plain}, {"the item with a minimum", tall},
+		{"the item with a maximum", short}, {"the item with taller content", nested},
+		{"the centered item", centered}, {"the item by its baseline", baseline},
+		{"the item in a wrapping row", wrapped},
 	} {
-		if got := it.e.nmeasure > 0; got != it.measured {
-			t.Errorf("%s: measured %v, want %v", it.name, got, it.measured)
+		if it.e.nmeasure > 0 {
+			t.Errorf("%s: kept %d measurements, and its height cannot change with the width",
+				it.name, it.e.nmeasure)
 		}
 	}
 }

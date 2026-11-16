@@ -248,10 +248,12 @@ type avEngine struct {
 
 	// buf is the CVPixelBuffer that Frame last returned, retained, and
 	// surface the surface showing it.
-	buf      uintptr
-	surface  *scene.Surface
-	w, h     int
-	interval time.Duration
+	buf     uintptr
+	surface *scene.Surface
+	w, h    int
+	// interval is Interval's, which the watching goroutine reads once
+	// the item is ready to play: 0 until it has.
+	interval atomic.Int64
 
 	mu    sync.Mutex
 	wake  func()
@@ -318,12 +320,19 @@ func itoa(n uint64) string {
 
 // watch follows how loading and playing go, as the player reports it,
 // and wakes the window when that changes: a loop seeks back at the end.
+// It wakes the window for the first picture too, which only Frame takes,
+// on the main thread, as a frame of the window builds: the state stays
+// Loading until then, and nothing else may build one (#1830).
 func (e *avEngine) watch() {
 	defer close(e.done)
 	runtime.LockOSThread() // for the autorelease pools
 	defer runtime.UnlockOSThread()
 	tick := time.NewTicker(25 * time.Millisecond)
 	defer tick.Stop()
+	// When the window was last woken for a first picture, which it wakes
+	// for again while none was taken: a frame woken may build before the
+	// output has it at the frame's time, or while none of the window shows.
+	var wokeFirst time.Time
 	for {
 		select {
 		case <-e.quit:
@@ -335,8 +344,22 @@ func (e *avEngine) watch() {
 		before, beforeErr := e.state, e.err
 		e.poll()
 		changed := e.state != before || e.err != beforeErr
+		loading := e.state == media.Loading
 		wake := e.wake
 		e.mu.Unlock()
+		ready := msgInt(e.item, sel("status")) == avStatusReadyToPlay
+		if ready && e.interval.Load() == 0 {
+			// Out of mu: State, on the main thread, never waits for it.
+			e.interval.Store(int64(e.frameInterval()))
+		}
+		if ready && loading && time.Since(wokeFirst) >= 250*time.Millisecond {
+			// The output has the first picture once it has one for now,
+			// which the frame woken, due a little later, takes.
+			at := msgItemTimeForHostTime(e.output, sel("itemTimeForHostTime:"), caCurrentMediaTime())
+			if msgHasNewBuffer(e.output, sel("hasNewPixelBufferForItemTime:"), at) {
+				wokeFirst, changed = time.Now(), true
+			}
+		}
 		poolPop(pool)
 		if changed && wake != nil {
 			wake()
@@ -476,21 +499,30 @@ func pixelBufferRGBA(s *scene.Surface, dst []byte, w, h int) []byte {
 	return planes.RGBA(dst, w, h)
 }
 
-func (e *avEngine) Interval() time.Duration {
-	if e.interval == 0 {
-		e.interval = time.Second / 60
-		pop := pooled()
-		tracks := send(send(e.item, "asset"), "tracksWithMediaType:", avMediaTypeVideo)
-		if tracks != 0 && msgInt(tracks, sel("count")) > 0 {
-			if fps := msgFloat32(send(tracks, "firstObject"), sel("nominalFrameRate")); fps > 1 {
-				// Asked for twice as often, so that a frame shows at the
-				// refresh after it came due, not up to one later.
-				e.interval = time.Duration(float64(time.Second) / float64(fps) / 2)
-			}
+// frameInterval is half the time a picture shows at the video's
+// nominal rate, or 1/60 s for none. It reads the asset's tracks, which
+// for an AVURLAsset loads them, over the network for a URL, until the
+// item is ready to play: only the watching goroutine calls it, once the
+// item is.
+func (e *avEngine) frameInterval() time.Duration {
+	tracks := send(send(e.item, "asset"), "tracksWithMediaType:", avMediaTypeVideo)
+	if tracks != 0 && msgInt(tracks, sel("count")) > 0 {
+		if fps := msgFloat32(send(tracks, "firstObject"), sel("nominalFrameRate")); fps > 1 {
+			// Asked for twice as often, so that a frame shows at the
+			// refresh after it came due, not up to one later.
+			return time.Duration(float64(time.Second) / float64(fps) / 2)
 		}
-		pop()
 	}
-	return e.interval
+	return time.Second / 60
+}
+
+// Interval is 1/60 s until the watching goroutine read the video's rate,
+// never touching the asset's tracks on the main thread (#1743).
+func (e *avEngine) Interval() time.Duration {
+	if d := e.interval.Load(); d > 0 {
+		return time.Duration(d)
+	}
+	return time.Second / 60
 }
 
 func (e *avEngine) State() (media.State, error) {

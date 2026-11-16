@@ -18,6 +18,9 @@ func (v *view) input(ev ui.InputEvent) bool {
 	if ev.Kind == ui.InputKeyDown && v.opts.OnKey != nil && v.opts.OnKey(ev.Key, ev.Mods) {
 		return true
 	}
+	if ev.Kind == ui.InputCommand && v.opts.OnCommand != nil && v.opts.OnCommand(ev.Text) {
+		return true
+	}
 	v.sync()
 	defer v.publish()
 	switch ev.Kind {
@@ -51,10 +54,8 @@ func (v *view) input(ev ui.InputEvent) bool {
 		v.reveal = true
 		return true
 	case ui.InputScroll:
-		before := v.scroll
-		v.setScroll(max(0, min(v.scroll+float64(ev.DY), v.hs.top(len(v.paras))-float64(v.viewH))))
 		// At an end, the wheel goes on to the containers around.
-		return v.scroll != before
+		return v.scrollTo(v.scroll + float64(ev.DY))
 	}
 	return false
 }
@@ -154,14 +155,17 @@ func (v *view) grapheme(i, dir int) int {
 }
 
 // visual returns the caret one grapheme left (dir < 0) or right on screen,
-// across bidi runs, and to the next paragraph at the edge of one.
+// across bidi runs, and to the next paragraph at the edge of one. An
+// offset can have two places, the edge of a span's PaddingX (outside the
+// span and in it) or a line wrapped within a word (the end of one line and
+// the start of the next), and a step between them is a move.
 func (v *view) visual(dir int) (int, ui.TextAffinity) {
 	p := v.shown.paraAt(v.caret)
 	pv := v.paraLayout(p)
 	l := min(v.local(p, v.caret), len(pv.units)-1)
 	pos := ui.TextCaretPosition{Index: pv.units[l], Affinity: v.affinity}
 	next := pv.layout.MoveCaret(pos, dir)
-	if next.Index == pos.Index {
+	if next == pos {
 		if dir < 0 {
 			return max(v.shown.paraStart(p)-1, 0), ui.TextDownstream
 		}
@@ -172,6 +176,23 @@ func (v *view) visual(dir int) (int, ui.TextAffinity) {
 
 // vertical moves the caret up or down lines, keeping its x.
 func (v *view) vertical(lines int, extend bool) {
+	// A plain move collapses a non-empty selection to its end in the
+	// direction of travel — the start for up, the end for down — before
+	// stepping vertically, matching KeyLeft/KeyRight and ui/editor.
+	if !extend {
+		if a, z := v.selection(); a != z {
+			edge := z
+			if lines < 0 {
+				edge = a
+			}
+			aff := ui.TextDownstream
+			if edge == v.caret {
+				aff = v.affinity
+			}
+			v.moveTo(edge, aff, false)
+			v.hasDesired = false
+		}
+	}
 	x, y, h := v.caretAt(v.caret, 0, v.affinity)
 	if !v.hasDesired {
 		v.desiredX, v.hasDesired = x, true
@@ -184,6 +205,24 @@ func (v *view) vertical(lines int, extend bool) {
 		v.moveTo(v.shown.Len(), ui.TextDownstream, extend)
 	default:
 		i, a := v.positionAt(v.desiredX, target)
+		if _, ny, _ := v.caretAt(i, 0, a); ny == y {
+			// Still on the caret's line: the room to the next line
+			// that way, a heading's margin or Space, is over half a
+			// line. Past it, to the last line of the paragraph before
+			// or the first of the one after; at the text's start or
+			// end, there.
+			p := v.shown.paraAt(v.caret)
+			switch {
+			case lines < 0 && p > 0:
+				i, a = v.positionAt(v.desiredX, v.hs.top(p)-1)
+			case lines < 0:
+				i, a = 0, ui.TextDownstream
+			case p+1 < len(v.paras):
+				i, a = v.positionAt(v.desiredX, v.hs.top(p+1)+1)
+			default:
+				i, a = v.shown.Len(), ui.TextDownstream
+			}
+		}
 		v.moveTo(i, a, extend)
 	}
 	v.hasDesired = true
@@ -374,6 +413,8 @@ func (v *view) key(key ui.Key, mods ui.Modifiers) bool {
 			v.deleteRange(s, v.caret, false)
 		case word:
 			v.deleteRange(v.prevWord(v.caret), v.caret, false)
+		case v.caret > ps && text.IsCombiningMark(v.runeAt(v.caret-1)):
+			v.deleteRange(v.caret-1, v.caret, true)
 		case v.caret > 0:
 			v.deleteRange(v.grapheme(v.caret, -1), v.caret, true)
 		}

@@ -26,8 +26,11 @@ import (
 // edits made elsewhere. Offsets count bytes of UTF-8, and a Pos a line
 // and the bytes into it.
 //
-// Lines end in \n, as in Zed: a text set with \r\n line endings keeps
-// \n ones, and LineEnding says which it had, which WriteTo writes.
+// Lines end in \n, as in Zed: a text set with \r\n or \r line endings
+// keeps \n ones, and the buffer remembers the ending each line had, which
+// WriteTo writes back, so that a file opened and saved stays as it was,
+// mixed endings and all, and an edit changes the endings of only the
+// lines it breaks or joins. LineEnding says which ending most lines have.
 //
 // Methods are safe from any goroutine; schedule changes with
 // Window.Update so the window shows them.
@@ -48,8 +51,9 @@ type Buffer struct {
 	open     int
 	openTx   *transaction
 	lastEdit time.Time
-	crlf     bool // the text's line endings are \r\n
-	syntax   *syntaxState
+	// ends are the line endings of text, and savedEnds of saved.
+	ends, savedEnds lineEnds
+	syntax          *syntaxState
 	// restarts are the lines that start in state 0 in the default
 	// highlighter, the first lines of a patch's hunks (setRestarts),
 	// which each version moves (record) into a new slice, as snapshots
@@ -87,6 +91,7 @@ type change struct {
 type logEntry struct {
 	version  uint64
 	text     rope.Text
+	ends     lineEnds
 	changes  []change
 	restarts []int // the buffer's restarts in text
 }
@@ -102,7 +107,11 @@ type transaction struct {
 	// edits taking each back, in the order they applied them, as the step
 	// that makes it again (applyStep). Being edits rather than texts, the
 	// steps move past an edit outside the history (EditRemote, rebase).
-	edits     [][]Edit
+	edits [][]Edit
+	// ends are the line ending codes of the edits' line breaks, a string
+	// for each edit of edits, which put back the endings the step took
+	// away.
+	ends      [][]string
 	owner     any
 	selBefore any
 	selAfter  any
@@ -130,50 +139,39 @@ const (
 
 // NewBuffer returns a buffer holding text, which is its saved text.
 func NewBuffer(text string) *Buffer {
-	b := &Buffer{text: rope.New(lf(text)), crlf: strings.Contains(text, "\r\n")}
-	b.saved = b.text
+	t, ends := newLineEnds(text)
+	b := &Buffer{text: rope.New(t), ends: ends}
+	b.saved, b.savedEnds = b.text, b.ends
 	return b
 }
 
-// lf returns s with \n line endings.
-func lf(s string) string {
-	if strings.Contains(s, "\r\n") {
-		return strings.ReplaceAll(s, "\r\n", "\n")
-	}
-	return s
-}
-
-// LineEnding returns the line ending the text had as it was set, \r\n or
-// \n, which WriteTo writes; SetLineEnding changes it.
+// LineEnding returns the line ending most of the text's lines have, \r\n,
+// \r or \n, the first line's on a tie, and \n for a text of one line.
+// WriteTo writes each line with its own ending.
 func (b *Buffer) LineEnding() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.crlf {
-		return "\r\n"
-	}
-	return "\n"
+	return b.ends.dominant()
 }
 
+// SetLineEnding converts the ending of every line to ending, \r\n, \r
+// or \n, as an editor's command converting a file's line endings: lines
+// it breaks later end so too. It is not a step of undo, and undo and redo
+// make lines with it after it; the buffer is modified until saved.
 func (b *Buffer) SetLineEnding(ending string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.crlf = ending == "\r\n"
-}
-
-// writeText writes t to w with the line ending of crlf.
-func writeText(t rope.Text, crlf bool, w io.Writer) (int64, error) {
-	if !crlf {
-		return rope.WriteTo(t.Root(), w)
+	code := endCode(ending)
+	b.ends = b.ends.convert(code)
+	for _, stack := range [][]transaction{b.undo, b.redo} {
+		for i := range stack {
+			for _, ends := range stack[i].ends {
+				for j, e := range ends {
+					ends[j] = strings.Repeat(string(code), len(e))
+				}
+			}
+		}
 	}
-	var n int64
-	var err error
-	t.Chunks(0, t.Len(), func(s string) bool {
-		var k int
-		k, err = io.WriteString(w, strings.ReplaceAll(s, "\n", "\r\n"))
-		n += int64(k)
-		return err == nil
-	})
-	return n, err
 }
 
 // snapshot returns the current text and version.
@@ -192,14 +190,19 @@ func (b *Buffer) snapshot() (rope.Text, uint64) {
 func (b *Buffer) Snapshot() Snapshot {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return Snapshot{b.text, b.version, b.crlf, b.restarts}
+	return b.snapshotLocked()
+}
+
+// snapshotLocked returns the current Snapshot; b.mu is held.
+func (b *Buffer) snapshotLocked() Snapshot {
+	return Snapshot{t: b.text, version: b.version, ends: b.ends, restarts: b.restarts}
 }
 
 // String returns the text.
 func (b *Buffer) String() string { r, _ := b.snapshot(); return r.String() }
 
-// WriteTo writes the text to w, a chunk at a time, as for saving it, with
-// its LineEnding.
+// WriteTo writes the text to w, a chunk at a time, as for saving it, each
+// line with its own line ending.
 func (b *Buffer) WriteTo(w io.Writer) (int64, error) {
 	s := b.Snapshot()
 	return s.WriteTo(w)
@@ -245,13 +248,14 @@ func (b *Buffer) SetLanguage(l *Language) {
 	}
 }
 
-// Modified reports whether the text differs from the saved one: the
-// text the buffer was made or Reset with, or had when MarkSaved was
-// called. Undoing back to it makes the buffer unmodified again.
+// Modified reports whether the text, or its line endings, differ from
+// the saved one: the text the buffer was made or Reset with, or had when
+// MarkSaved was called. Undoing back to it makes the buffer unmodified
+// again.
 func (b *Buffer) Modified() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return !sameText(b.text, b.saved)
+	return !sameText(b.text, b.saved) || !sameText(b.ends.codes, b.savedEnds.codes)
 }
 
 // sameText reports whether a and b hold the same bytes, comparing them
@@ -281,7 +285,7 @@ func sameText(a, b rope.Text) bool {
 func (b *Buffer) MarkSaved() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.saved = b.text
+	b.saved, b.savedEnds = b.text, b.ends
 }
 
 // Reset replaces the text and forgets the undo history, as for a file
@@ -290,9 +294,9 @@ func (b *Buffer) Reset(text string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	old := b.text
-	b.text = rope.New(lf(text))
-	b.crlf = strings.Contains(text, "\r\n")
-	b.saved = b.text
+	t, ends := newLineEnds(text)
+	b.text, b.ends = rope.New(t), ends
+	b.saved, b.savedEnds = b.text, b.ends
 	b.undo, b.redo, b.openTx = nil, nil, nil
 	b.record([]change{wholeChange(old, b.text)})
 }
@@ -372,7 +376,7 @@ func (b *Buffer) undoStep() (transaction, bool) {
 	b.openTx = nil
 	b.lastEdit = time.Time{}
 	redo := tx
-	redo.edits = b.applyStep(tx.edits)
+	redo.edits, redo.ends = b.applyStep(tx.edits, tx.ends)
 	b.redo = append(b.redo, redo)
 	return tx, true
 }
@@ -388,37 +392,53 @@ func (b *Buffer) redoStep() (transaction, bool) {
 	b.openTx = nil
 	b.lastEdit = time.Time{}
 	undo := tx
-	undo.edits = b.applyStep(tx.edits)
+	undo.edits, undo.ends = b.applyStep(tx.edits, tx.ends)
 	b.undo = append(b.undo, undo)
 	return tx, true
 }
 
 // applyStep applies the edits of a step, from the last list, each list
-// a version, and returns the edits taking them back, in the order it
-// applied them: the step that makes it again. b.mu is held.
-func (b *Buffer) applyStep(edits [][]Edit) [][]Edit {
+// a version, with the line endings of their breaks, and returns the edits
+// taking them back, in the order it applied them, and their endings: the
+// step that makes it again. b.mu is held.
+func (b *Buffer) applyStep(edits [][]Edit, ends [][]string) ([][]Edit, [][]string) {
 	back := make([][]Edit, 0, len(edits))
+	backEnds := make([][]string, 0, len(edits))
 	for i := len(edits) - 1; i >= 0; i-- {
-		before := b.text
-		text, changes := b.replace(edits[i])
+		before, beforeEnds := b.text, b.ends
+		var codes []string
+		if i < len(ends) {
+			codes = ends[i]
+		}
+		text, newEnds, changes, kept := b.replace(edits[i], codes)
 		if changes == nil {
 			continue
 		}
-		b.text = text
+		b.text, b.ends = text, newEnds
 		b.record(changes)
-		back = append(back, inverse(before, changes))
+		e, c := inverse(before, beforeEnds, changes, kept)
+		back, backEnds = append(back, e), append(backEnds, c)
 	}
-	return back
+	return back, backEnds
 }
 
 // inverse returns the edits taking changes back, of the text they made
-// of before.
-func inverse(before rope.Text, changes []change) []Edit {
+// of before, and the line ending codes of their breaks, of ends, before's
+// line endings, as replace takes them: each followed by the code kept
+// says the break after the change had, when it changed it.
+func inverse(before rope.Text, ends lineEnds, changes []change, kept []byte) ([]Edit, []string) {
 	out := make([]Edit, len(changes))
+	codes := make([]string, len(changes))
 	for i, c := range changes {
 		out[i] = Edit{Start: c.newStart, End: c.newEnd, Text: before.Slice(c.oldStart, c.oldEnd)}
+		if c.oldEndLine > c.oldLine {
+			codes[i] = ends.codes.Slice(c.oldLine, c.oldEndLine)
+		}
+		if kept != nil && kept[i] != 0 {
+			codes[i] += string(kept[i])
+		}
 	}
-	return out
+	return out, codes
 }
 
 // EditRemote applies edits made outside the buffer's history, as
@@ -439,11 +459,11 @@ func inverse(before rope.Text, changes []change) []Edit {
 func (b *Buffer) EditRemote(edits ...Edit) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	text, changes := b.replace(edits)
+	text, ends, changes, _ := b.replace(edits, nil)
 	if changes == nil {
 		return
 	}
-	b.text = text
+	b.text, b.ends = text, ends
 	b.record(changes)
 	c := make([]span, len(changes))
 	for i, ch := range changes {
@@ -465,25 +485,33 @@ func (b *Buffer) EditRemote(edits ...Edit) {
 // edit applies edits as a transaction, or into the open one; b.mu is
 // held. It returns the changes, nil when nothing changed.
 func (b *Buffer) edit(edits []Edit, kind editKind, owner, selBefore any) []change {
-	before := b.text
-	text, changes := b.replace(edits)
+	return b.editEnds(edits, nil, kind, owner, selBefore)
+}
+
+// editEnds is edit, with the line ending codes of the edits' breaks as
+// replace takes them, nil for those lineEnds.made gives.
+func (b *Buffer) editEnds(edits []Edit, codes []string, kind editKind, owner, selBefore any) []change {
+	before, beforeEnds := b.text, b.ends
+	text, ends, changes, kept := b.replace(edits, codes)
 	if changes == nil {
 		return nil
 	}
-	b.text = text
+	b.text, b.ends = text, ends
 	b.record(changes)
 	b.redo = nil
-	back := inverse(before, changes)
+	back, backEnds := inverse(before, beforeEnds, changes, kept)
 	now := time.Now()
 	switch tx := b.openTx; {
 	case tx != nil:
 		tx.edits = append(tx.edits, back)
+		tx.ends = append(tx.ends, backEnds)
 	case b.open == 0 && kind != editOther && len(b.undo) > 0 && b.undo[len(b.undo)-1].kind == kind &&
 		b.undo[len(b.undo)-1].owner == owner && (now.Sub(b.lastEdit) < groupTimeout || kind == editCompose && !b.lastEdit.IsZero()):
 		tx := &b.undo[len(b.undo)-1]
 		tx.edits = append(tx.edits, back)
+		tx.ends = append(tx.ends, backEnds)
 	default:
-		b.undo = append(b.undo, transaction{edits: [][]Edit{back}, owner: owner, selBefore: selBefore, kind: kind})
+		b.undo = append(b.undo, transaction{edits: [][]Edit{back}, ends: [][]string{backEnds}, owner: owner, selBefore: selBefore, kind: kind})
 		if len(b.undo) > undoMax {
 			b.undo = slices.Delete(b.undo, 0, len(b.undo)-undoMax)
 		}
@@ -495,31 +523,44 @@ func (b *Buffer) edit(edits []Edit, kind editKind, owner, selBefore any) []chang
 	return changes
 }
 
-// replace returns the text edits make of the buffer's and their changes,
-// nil when they change nothing, recording nothing; b.mu is held. The
-// edits are as Edit takes them.
-func (b *Buffer) replace(edits []Edit) (rope.Text, []change) {
+// replace returns the text edits make of the buffer's, its line endings
+// and their changes, nil when they change nothing, recording nothing;
+// b.mu is held. The edits are as Edit takes them. codes, when not nil,
+// are the line ending codes of each edit's line breaks, as undo and redo
+// put back, and maybe one more, the code of the break after the edit's
+// text, which ends its last line; without them the breaks end as
+// lineEnds.made says, whatever their text has, \r\n, \r or \n.
+//
+// kept, nil when none, is for each change the code the break after it had
+// when the edits changed it (fixCR, or codes' one more), else 0: what
+// inverse puts back.
+func (b *Buffer) replace(edits []Edit, codes []string) (_ rope.Text, _ lineEnds, _ []change, kept []byte) {
 	if len(edits) == 0 {
-		return b.text, nil
+		return b.text, b.ends, nil, nil
 	}
 	if !slices.IsSortedFunc(edits, func(x, y Edit) int { return x.Start - y.Start }) {
+		// Undo's edits, which come with codes, are in order.
 		edits = slices.Clone(edits)
 		slices.SortStableFunc(edits, func(x, y Edit) int { return x.Start - y.Start })
+		codes = nil
 	}
 	cloned := false
+	var own []string // the codes of the edits' texts, "" for all \n
 	for i, e := range edits {
-		if strings.Contains(e.Text, "\r\n") {
+		if strings.IndexByte(e.Text, '\r') >= 0 {
 			if !cloned {
 				edits, cloned = slices.Clone(edits), true
+				own = make([]string, len(edits))
 			}
-			edits[i].Text = lf(e.Text)
+			edits[i].Text, own[i] = readEnds(e.Text)
 		}
 	}
-	before := b.text
-	text := before
+	before, beforeEnds := b.text, b.ends
+	text, ends := before, beforeEnds
 	changes := make([]change, 0, len(edits))
+	var after []byte // codes' one more of each change, 0 for none
 	delta, lineDelta, last := 0, 0, 0
-	for _, e := range edits {
+	for i, e := range edits {
 		start := max(last, min(e.Start, before.Len()))
 		end := max(start, min(e.End, before.Len()))
 		last = end
@@ -537,14 +578,60 @@ func (b *Buffer) replace(edits []Edit) (rope.Text, []change) {
 		c.newLine = c.oldLine + lineDelta
 		c.newEndLine = c.newLine + strings.Count(e.Text, "\n")
 		text = text.Replace(c.newStart, c.newStart+end-start, e.Text)
+		// The line breaks the edit takes away are those of its old lines,
+		// and those it puts in end its new ones: the break ending its last
+		// line stays as it is.
+		if m, k := c.oldEndLine-c.oldLine, c.newEndLine-c.newLine; m > 0 || k > 0 {
+			var add string
+			if codes != nil && i < len(codes) && (len(codes[i]) == k || len(codes[i]) == k+1) {
+				add = codes[i][:k]
+			} else {
+				var o string
+				if own != nil {
+					o = own[i]
+				}
+				add = beforeEnds.made(c.oldLine, c.oldEndLine, k, o)
+			}
+			ends = ends.replace(c.newLine, c.newLine+m, add)
+		}
+		var more byte
+		if codes != nil && i < len(codes) && len(codes[i]) == c.newEndLine-c.newLine+1 {
+			more = codes[i][len(codes[i])-1]
+		}
+		after = append(after, more)
 		delta += len(e.Text) - (end - start)
 		lineDelta += (c.newEndLine - c.newLine) - (c.oldEndLine - c.oldLine)
 		changes = append(changes, c)
 	}
 	if len(changes) == 0 {
-		return before, nil
+		return before, beforeEnds, nil, nil
 	}
-	return text, changes
+	// The break after a change is its own when the next change starts on
+	// a line after it: the last change on a line has it.
+	owns := func(i int) bool {
+		c := changes[i]
+		return (i+1 == len(changes) || changes[i+1].oldLine > c.oldEndLine) &&
+			c.oldEndLine < beforeEnds.codes.Len() && c.newEndLine < ends.codes.Len()
+	}
+	for i, c := range changes {
+		if after[i] != 0 && owns(i) && ends.at(c.newEndLine) != after[i] {
+			ends = ends.replace(c.newEndLine, c.newEndLine+1, string(after[i]))
+		}
+	}
+	for _, c := range changes {
+		ends = fixCR(text, ends, c.newLine-1, c.newEndLine)
+	}
+	for i, c := range changes {
+		if owns(i) {
+			if was := beforeEnds.at(c.oldEndLine); ends.at(c.newEndLine) != was {
+				if kept == nil {
+					kept = make([]byte, len(changes))
+				}
+				kept[i] = was
+			}
+		}
+	}
+	return text, ends, changes, kept
 }
 
 // endGroup ends the group of typing, so that the next edit makes a step
@@ -573,7 +660,7 @@ func (b *Buffer) record(changes []change) {
 		b.restarts = moveRestarts(b.restarts, Snapshot{t: b.restartsText}, Snapshot{t: b.text}, publicChanges(changes))
 		b.restartsText = b.text
 	}
-	b.log = append(b.log, logEntry{version: b.version, text: b.text, changes: changes, restarts: b.restarts})
+	b.log = append(b.log, logEntry{version: b.version, text: b.text, ends: b.ends, changes: changes, restarts: b.restarts})
 	if len(b.log) > logMax {
 		b.log = slices.Delete(b.log, 0, len(b.log)-logMax/2)
 	}
@@ -672,6 +759,14 @@ func (b *Buffer) watch(s ui.Services) {
 	}
 }
 
+// watched reports whether a window showed the buffer, which invalidate
+// draws again.
+func (b *Buffer) watched() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.wake) > 0
+}
+
 // invalidate draws the windows showing the buffer again, from any
 // goroutine.
 func (b *Buffer) invalidate() {
@@ -728,7 +823,7 @@ func rebase(steps []transaction, c []span, redo bool) ([]transaction, bool) {
 				c = composeSpans(madeSpans(tx.edits[j]), c)
 			}
 			next = nil
-			tx.edits = nil
+			tx.edits, tx.ends = nil, nil
 			dropped = true
 			continue
 		}
@@ -928,7 +1023,7 @@ func offsetOf(t rope.Text, p Pos) int {
 type Snapshot struct {
 	t        rope.Text
 	version  uint64
-	crlf     bool
+	ends     lineEnds
 	restarts []int // Restarts, never changed
 }
 
@@ -972,8 +1067,8 @@ func (s Snapshot) Slice(start, end int) string { return s.t.Slice(start, end) }
 // returns false: what a parser reads text with.
 func (s Snapshot) Chunks(start, end int, fn func(text string) bool) { s.t.Chunks(start, end, fn) }
 
-// WriteTo writes the text to w.
-func (s Snapshot) WriteTo(w io.Writer) (int64, error) { return writeText(s.t, s.crlf, w) }
+// WriteTo writes the text to w, each line with its own line ending.
+func (s Snapshot) WriteTo(w io.Writer) (int64, error) { return writeText(s.t, s.ends, w) }
 
 // Change is a range of a text an edit replaced: bytes OldStart to OldEnd
 // of the text before the edit, which are bytes NewStart to NewEnd of the

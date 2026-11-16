@@ -412,7 +412,7 @@ func (b *Buffer) highlighter() Highlighter {
 		b.syntax = s
 	}
 	if s.h == nil {
-		s.text = Snapshot{b.text, b.version, b.crlf, b.restarts}
+		s.text = b.snapshotLocked()
 	}
 	b.mu.Unlock()
 	if s.h == nil {
@@ -422,13 +422,13 @@ func (b *Buffer) highlighter() Highlighter {
 	if !ok {
 		// Too far behind: a highlighter of the text as it is.
 		b.mu.Lock()
-		s.text = Snapshot{b.text, b.version, b.crlf, b.restarts}
+		s.text = b.snapshotLocked()
 		b.mu.Unlock()
 		s.h = newHighlighter(lang, s.text, b.invalidate)
 		return s.h
 	}
 	for _, e := range entries {
-		next := Snapshot{e.text, e.version, b.crlf, e.restarts}
+		next := Snapshot{t: e.text, version: e.version, ends: e.ends, restarts: e.restarts}
 		s.h.Edit(s.text, next, publicChanges(e.changes))
 		s.text = next
 	}

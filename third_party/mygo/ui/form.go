@@ -37,6 +37,7 @@ func coreForm(c *context, fn func()) *node {
 	f.widget = "Form"
 	fb := &formBuild{}
 	f.form = fb
+	f.special = true // it lays its labels out
 	saved := c.form
 	c.form = fb
 	f.Children(fn)

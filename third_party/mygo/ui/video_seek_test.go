@@ -6,11 +6,13 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/internal/media"
+	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/internal/scene"
 	"github.com/egoist/mygo/internal/wait"
 )
@@ -343,6 +345,8 @@ type fakeEngine struct {
 	wake    func()
 	plays   int
 	seeks   []time.Duration
+	// intervals counts the calls of Interval.
+	intervals int
 	// readyOnFrame makes the engine ready by its first picture, in
 	// Frame, without a wake, as AVFoundation's does.
 	readyOnFrame bool
@@ -381,7 +385,7 @@ func (e *fakeEngine) Frame(t time.Time) (media.Picture, bool, bool) {
 	return pic, changed, true
 }
 
-func (e *fakeEngine) Interval() time.Duration     { return 100 * time.Millisecond }
+func (e *fakeEngine) Interval() time.Duration     { e.intervals++; return 100 * time.Millisecond }
 func (e *fakeEngine) State() (media.State, error) { return e.state, nil }
 func (e *fakeEngine) Size() (int, int)            { return 4, 4 }
 func (e *fakeEngine) Duration() time.Duration {
@@ -421,9 +425,21 @@ func TestEngineVideo(t *testing.T) {
 	if e.plays != 1 || p.Ready() {
 		t.Fatalf("shown, loading: %d plays, ready %v", e.plays, p.Ready())
 	}
+	// AVFoundation would load the asset's tracks for it, on the main
+	// thread (#1743).
+	tt.Frame()
+	if e.intervals != 0 {
+		t.Fatalf("Interval asked %d times while loading", e.intervals)
+	}
 	e.setState(media.Ready)
 	builds := tt.rt.frame
+	if tt.FramePending() {
+		t.Fatal("loading: a frame asked for")
+	}
 	e.wakeNow()
+	if !tt.FramePending() {
+		t.Fatal("the engine's wake asked for no frame")
+	}
 	tt.Frame()
 	if got := shows(); got != videoRed || !p.Ready() || tt.rt.frame == builds {
 		t.Fatalf("loaded: %v, ready %v", got, p.Ready())
@@ -498,5 +514,114 @@ func TestEngineVideoReadyByFrame(t *testing.T) {
 	tt.Advance(100 * time.Millisecond)
 	if got := shows(); got != videoGreen {
 		t.Fatalf("100ms on: %v", got)
+	}
+}
+
+// TestEngineVideoBuiltOutOfSight checks that a frame built while none of
+// the window shows, as keys typed into a window that another covers build
+// one, asks for the frame of the next picture, which waits for the window
+// to show and builds once it does: the video goes on, muted or not,
+// rather than stand still for good while its sound plays on.
+func TestEngineVideoBuiltOutOfSight(t *testing.T) {
+	for _, muted := range []bool{false, true} {
+		e := &fakeEngine{colors: []color.RGBA{videoRed, videoGreen, videoBlue}, shown: -1, state: media.Loading, readyOnFrame: true}
+		p := NewEngineVideoPlayer(e).SetMuted(muted)
+		tt, shows := videoTester(p, nil)
+		if got := shows(); got != videoRed || !p.Ready() {
+			t.Fatalf("muted %v, first picture: %v, ready %v", muted, got, p.Ready())
+		}
+		tt.h.hidden = true
+		tt.Frame()
+		if tt.h.afterAt.IsZero() {
+			t.Fatalf("muted %v, built out of sight: no frame asked for", muted)
+		}
+		tt.Advance(100 * time.Millisecond)
+		if !tt.rt.held {
+			t.Fatalf("muted %v, out of sight: the frame asked for is not held", muted)
+		}
+		tt.h.hidden = false
+		tt.rt.event(platform.SurfaceEvent{Kind: platform.SurfaceShown})
+		if !tt.FramePending() {
+			t.Fatalf("muted %v, shown again: no frame asked for", muted)
+		}
+		tt.Frame()
+		if !e.playing || shows() == videoRed {
+			t.Fatalf("muted %v, shown again: playing %v, showing %v", muted, e.playing, shows())
+		}
+		p.Close()
+	}
+}
+
+// seekingDecoder is a decoder of solid frames of 100 ms each that seeks
+// to a frame at once, counting the frames it decodes.
+type seekingDecoder struct {
+	colors []color.RGBA
+	next   int
+	mu     sync.Mutex
+	nexts  int
+}
+
+func (d *seekingDecoder) Next() (VideoFrame, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.next >= len(d.colors) {
+		return VideoFrame{}, io.EOF
+	}
+	d.nexts++
+	img := image.NewRGBA(image.Rect(0, 0, 4, 4))
+	for i := 0; i < len(img.Pix); i += 4 {
+		c := d.colors[d.next]
+		img.Pix[i], img.Pix[i+1], img.Pix[i+2], img.Pix[i+3] = c.R, c.G, c.B, c.A
+	}
+	d.next++
+	return VideoFrame{Image: img, Duration: 100 * time.Millisecond}, nil
+}
+
+func (d *seekingDecoder) Rewind() error { d.mu.Lock(); d.next = 0; d.mu.Unlock(); return nil }
+
+func (d *seekingDecoder) Seek(at time.Duration) (time.Duration, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.next = min(int(at/(100*time.Millisecond)), len(d.colors)-1)
+	return time.Duration(d.next) * 100 * time.Millisecond, nil
+}
+
+func (d *seekingDecoder) Duration() time.Duration {
+	return time.Duration(len(d.colors)) * 100 * time.Millisecond
+}
+
+func (d *seekingDecoder) decoded() int { d.mu.Lock(); defer d.mu.Unlock(); return d.nexts }
+
+// TestVideoSeeker checks that a player seeks a VideoSeeker at once,
+// decoding the frame it goes to alone, rather than every frame before it.
+func TestVideoSeeker(t *testing.T) {
+	colors := make([]color.RGBA, 50)
+	for i := range colors {
+		colors[i] = videoRed
+	}
+	colors[42], colors[49] = videoGreen, videoBlue
+	d := &seekingDecoder{colors: colors}
+	p, err := NewVideoPlayer(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(p.Close)
+	tt, shows := videoTester(p, nil)
+	decodedAhead(t, p, 2)
+	p.Pause()
+	before := d.decoded()
+	p.Seek(4250 * time.Millisecond)
+	tt.Frame()
+	if got, pos := shows(), p.Position(); got != videoGreen || pos != 4250*time.Millisecond {
+		t.Fatalf("sought to 4.25s: %v at %v", got, pos)
+	}
+	if n := d.decoded() - before; n > 1 {
+		t.Errorf("seeking decoded %d frames", n)
+	}
+	p.Play()
+	p.Seek(time.Hour)
+	tt.Frame()
+	if got, pos := shows(), p.Position(); got != videoBlue || pos != 5*time.Second || !p.Ended() {
+		t.Fatalf("sought past the end: %v at %v, ended %v", got, pos, p.Ended())
 	}
 }

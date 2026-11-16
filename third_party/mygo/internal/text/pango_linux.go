@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 	"unsafe"
@@ -482,8 +483,13 @@ type scaledKey struct {
 	subpixel bool
 }
 
+// pangoLoaded binds the functions of Pango and its libraries once, as
+// engines are made apart, on the goroutine of each, and what one bound
+// the others reuse.
+var pangoLoaded = sync.OnceValue(loadPango)
+
 func newPango() (*pangoEngine, error) {
-	if err := loadPango(); err != nil {
+	if err := pangoLoaded(); err != nil {
 		return nil, err
 	}
 	l := &pangoLib
