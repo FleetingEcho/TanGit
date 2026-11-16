@@ -112,6 +112,9 @@ stop terminal sessions, background refresh, or other activity.
 Use **Settings → Updates** to check the installed version and available updates.
 The Editor virtualizes large file trees, rebuilds them only when their contents or folding changes, and renders only the active editor tab.
 
+Author avatars load in the background from GitHub, GitLab.com, or self-managed GitLab, using the configured remote host (or its custom web URL). Public lookups work without a hosting CLI; restricted lookups can reuse an existing local `gh` or `glab` login. Images are cached locally. Missing accounts, unavailable images, network failures, and authentication failures silently keep the colored author initial. TanGit never starts a login flow for an avatar lookup. In SSH workspaces, avatar requests still run on the desktop; a company GitLab server must be reachable from that machine.
+
+
 ## Keyboard
 
 `?` shows context help; `F1` opens the complete, searchable shortcut reference.

@@ -5,6 +5,14 @@ package app
 // in every language without disturbing the larger Git catalogs.
 var codeWorkspaceTranslations = map[string]map[string]string{
 	"zh-Hans": {
+		"Insertions": "新增行数",
+		"Deletions":  "删除行数",
+
+		"Changes in this commit (%d)": "此提交中的改动（%d）",
+		"Files changed":               "更改的文件",
+		"More info":                   "更多信息",
+		"Parent":                      "父提交",
+
 		"Save unsaved changes before replacing: %s": "保存未保存的更改后再替换：%s",
 		"the open file changed during replacement":  "替换期间打开的文件已被更改",
 		"%d replacements in %d files":               "已完成 %d 处替换（%d 个文件）",
@@ -113,6 +121,14 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Formatter reads source from stdin and writes formatted source to stdout; {{file}} is the current path.": "格式化工具从标准输入读取源代码，并将格式化结果写入标准输出；{{file}} 是当前路径。",
 	},
 	"zh-Hant": {
+		"Insertions": "新增行數",
+		"Deletions":  "刪除行數",
+
+		"Changes in this commit (%d)": "此提交中的變更（%d）",
+		"Files changed":               "變更的檔案",
+		"More info":                   "更多資訊",
+		"Parent":                      "父提交",
+
 		"Save unsaved changes before replacing: %s": "儲存未儲存的變更後再取代：%s",
 		"the open file changed during replacement":  "取代期間，開啟的檔案已被變更",
 		"%d replacements in %d files":               "已完成 %d 處取代（%d 個檔案）",
@@ -221,6 +237,14 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Formatter reads source from stdin and writes formatted source to stdout; {{file}} is the current path.": "格式化工具從標準輸入讀取原始碼，並將格式化結果寫入標準輸出；{{file}} 是目前路徑。",
 	},
 	"ja": {
+		"Insertions": "追加行数",
+		"Deletions":  "削除行数",
+
+		"Changes in this commit (%d)": "このコミットの変更（%d）",
+		"Files changed":               "変更されたファイル",
+		"More info":                   "詳細情報",
+		"Parent":                      "親コミット",
+
 		"Save unsaved changes before replacing: %s": "未保存の変更を保存してから置換してください: %s",
 		"the open file changed during replacement":  "置換中に開いているファイルが変更されました",
 		"%d replacements in %d files":               "%d 件の置換を %d 個のファイルに適用しました",
@@ -329,6 +353,14 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Formatter reads source from stdin and writes formatted source to stdout; {{file}} is the current path.": "フォーマッターは標準入力からソースを読み、フォーマット結果を標準出力に書き込みます。{{file}} は現在のパスです。",
 	},
 	"es": {
+		"Insertions": "Inserciones",
+		"Deletions":  "Eliminaciones",
+
+		"Changes in this commit (%d)": "Cambios en este commit (%d)",
+		"Files changed":               "Archivos modificados",
+		"More info":                   "Más información",
+		"Parent":                      "Commit padre",
+
 		"Save unsaved changes before replacing: %s": "Guarda los cambios sin guardar antes de reemplazar: %s",
 		"the open file changed during replacement":  "el archivo abierto cambió durante el reemplazo",
 		"%d replacements in %d files":               "%d reemplazos en %d archivos",
@@ -437,6 +469,14 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Formatter reads source from stdin and writes formatted source to stdout; {{file}} is the current path.": "El formateador lee el código fuente por stdin y escribe el resultado por stdout; {{file}} es la ruta actual.",
 	},
 	"fr": {
+		"Insertions": "Insertions",
+		"Deletions":  "Suppressions",
+
+		"Changes in this commit (%d)": "Modifications de ce commit (%d)",
+		"Files changed":               "Fichiers modifiés",
+		"More info":                   "Plus d’informations",
+		"Parent":                      "Commit parent",
+
 		"Save unsaved changes before replacing: %s": "Enregistrez les modifications non enregistrées avant le remplacement : %s",
 		"the open file changed during replacement":  "le fichier ouvert a changé pendant le remplacement",
 		"%d replacements in %d files":               "%d remplacements dans %d fichiers",

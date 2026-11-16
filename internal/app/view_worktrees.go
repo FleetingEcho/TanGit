@@ -701,13 +701,18 @@ func (a *app) worktreesView(c *ui.Context) {
 					list := a.keyboardList(c, &a.worktreeList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
 						worktree, _ := sourceRow(visible, a.snapshot.Worktrees, row.Index)
 						services := row.Context.Services()
-						ui.Row(row.Context).Gap(8).Padding(7, 8).Children(func() {
+						ui.Row(row.Context).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(8).Padding(7, 8).Clip().Children(func() {
 							if worktree.Current {
-								ui.Text(row.Context, tr("●")).TextColor(theme.Success)
+								ui.Text(row.Context, tr("●")).TextColor(theme.Success).SingleLine().Shrink(0)
 							}
-							ui.Text(row.Context, worktree.Name).Grow(1)
+							ui.Text(row.Context, worktree.Name).Grow(1).Shrink(1).MinWidth(0).
+								SingleLine().Ellipsis("…").Tooltip(worktree.Name)
 							if worktree.Branch != "" {
-								ui.Badge(row.Context, worktree.Branch)
+								ui.Row(row.Context).MaxWidthPercent(55).Shrink(1).MinWidth(0).
+									Padding(0, theme.Space(1.5)).Radius(999).Background(theme.Text.Alpha(0.1)).Children(func() {
+									ui.Text(row.Context, worktree.Branch).FontSize(theme.FontSize - 2).
+										SingleLine().Ellipsis("…").Shrink(1).MinWidth(0).Tooltip(worktree.Branch)
+								})
 							}
 							if worktree.Locked {
 								ui.Badge(row.Context, tr("Locked"))
@@ -741,7 +746,8 @@ func (a *app) worktreesView(c *ui.Context) {
 					}
 					worktree := a.snapshot.Worktrees[a.selectedWorktree]
 					ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
-						ui.Text(c, worktree.Name).FontSize(18).Bold().Grow(1)
+						ui.Text(c, worktree.Name).FontSize(18).Bold().Grow(1).Shrink(1).MinWidth(0).
+							SingleLine().Ellipsis("…").Tooltip(worktree.Name)
 						if !worktree.Current && !worktree.Missing {
 							primaryIconButton(c, "Open worktree", "Open this worktree in TanGit (O)", folderOpenIcon, a.actionBusy, a.openSelectedWorktree)
 							if a.openTab != nil {

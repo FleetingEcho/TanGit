@@ -18,6 +18,7 @@ require (
 	github.com/stefanhaller/git-todo-parser v0.0.7-0.20250905083220-c50528f08304
 	github.com/ulikunitz/xz v0.5.17
 	golang.org/x/crypto v0.59.0
+	golang.org/x/image v0.48.0
 )
 
 require (
@@ -77,7 +78,6 @@ require (
 	go.digitalxero.dev/rpm v0.3.4 // indirect
 	go.uber.org/atomic v1.12.0 // indirect
 	golang.org/x/exp v0.0.0-20261113113407-e3970619a1a4 // indirect
-	golang.org/x/image v0.48.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect

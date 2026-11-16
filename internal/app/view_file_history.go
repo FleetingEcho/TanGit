@@ -426,7 +426,7 @@ func (a *app) fileHistoryCommitsView(c *ui.Context) {
 				commit := a.fileHistoryCommits[row.Index]
 				services := row.Context.Services()
 				ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(6, 8).Children(func() {
-					authorAvatar(row.Context, commit.AuthorName, commit.AuthorEmail, 18)
+					a.authorAvatar(row.Context, commit, 18)
 					ui.Column(row.Context).Gap(2).Grow(1).Children(func() {
 						ui.Text(row.Context, commit.Subject).SingleLine()
 						ui.Row(row.Context).Gap(8).Children(func() {
