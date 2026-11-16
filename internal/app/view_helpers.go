@@ -642,6 +642,7 @@ func (a *app) anyFormOpen() bool {
 		a.cloneOpen ||
 		a.code.fileForm != codeFileFormNone ||
 		a.code.workspaceFormOpen ||
+		a.code.languageDialog != codeLanguageDialogNone ||
 		a.term.renameID != 0 || a.term.renameGroup != 0 ||
 		a.customCommandFormOpen ||
 		a.commandPromptOpen ||

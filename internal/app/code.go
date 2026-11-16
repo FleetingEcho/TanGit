@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path"
 	"path/filepath"
@@ -75,6 +76,23 @@ type codeDocument struct {
 	hoverScroll          ui.ScrollState
 	definitionSeq        uint64
 	completionSeq        uint64
+	languageActionSeq    uint64
+	languageRenameSeq    uint64
+	languageReferenceSeq uint64
+	signatureSeq         uint64
+	signatureVersion     uint64
+	signatureRequested   bool
+	symbolSeq            uint64
+	symbolVersion        uint64
+	symbolsRequested     bool
+	symbols              []languageServerDocumentSymbol
+	inlaySeq             uint64
+	inlayVersion         uint64
+	inlayRequested       bool
+	languageInlays       []editor.Inlay
+	semanticSeq          uint64
+	semanticVersion      uint64
+	semanticRequested    bool
 	formatSeq            uint64
 	formatting           bool
 	languageDiagnostics  map[string][]editor.Diagnostic
@@ -90,6 +108,8 @@ type codeDocument struct {
 	blameActiveLine      int
 	blameAnnotationSet   bool
 	markdownPreviewOpen  bool
+	localStamp           localFileStamp
+	localStampKnown      bool
 	remoteStamp          remoteFileStamp
 	remoteStampKnown     bool
 	remoteSave           remoteSaveState
@@ -117,14 +137,32 @@ type shutdownPreparation struct {
 }
 
 type codeState struct {
-	shutdown       shutdownPreparation
-	paneWidth      float32
-	list           ui.ListState
-	files          []string
-	visiblePaths   []string
-	rows           []fileTreeRow
-	selectedRow    int
-	selectedSource int
+	shutdown            shutdownPreparation
+	languageEditSeq     uint64
+	languageEditRunning bool
+	languageDialog      codeLanguageDialog
+	languageDocument    *codeDocument
+	languageOffset      int
+	languageRename      string
+	languageError       string
+	languageActions     []languageServerCodeAction
+	languageReferences  []languageServerLocation
+	languagePeekPath    string
+	languagePeekState   *editor.State
+	languagePeekLine    int
+	languagePeekLoading bool
+	recoveryRoot        string
+	recoverySignature   localFileStamp
+	recoverySeq         uint64
+	recoveryLoaded      bool
+	recoveryEntries     map[string]codeRecoveryEntry
+	paneWidth           float32
+	list                ui.ListState
+	files               []string
+	visiblePaths        []string
+	rows                []fileTreeRow
+	selectedRow         int
+	selectedSource      int
 	// treeDirty is set by folder folding. Stable frames retain the already
 	// sorted rows instead of rebuilding a large repository tree every frame.
 	treeDirty     bool
@@ -238,6 +276,7 @@ type codeState struct {
 }
 
 func (a *app) resetCode() {
+	a.code.recoverySeq++
 	a.code.remoteFileEdit.save.invalidate()
 	a.code.remoteFileEdit.client = nil
 	a.code.remoteFileEdit.stampKnown = false
@@ -277,6 +316,10 @@ func (a *app) resetCode() {
 	a.code.pendingMoveSource = ""
 	a.code.pendingMoveTarget = ""
 	a.code.documents = nil
+	a.code.recoveryRoot = ""
+	a.code.recoverySignature = localFileStamp{}
+	a.code.recoveryLoaded = false
+	a.code.recoveryEntries = nil
 	a.code.tabs = nil
 	a.code.active = ""
 	a.code.activeTab = 0
@@ -778,6 +821,7 @@ func (a *app) requestCodeDocument(document *codeDocument) {
 	document.imagePreview = nil
 	document.loadError = ""
 	document.saveError = ""
+	document.localStampKnown = false
 	go func() {
 		defer a.recoverBackground()
 		content, err := readWorkingFile(onDisk)
@@ -813,12 +857,15 @@ func (a *app) requestCodeDocument(document *codeDocument) {
 				document.loadError = safeError(err)
 				return a.workspaceTab == sectionCode && a.activeCodeDocument() == document
 			}
+			document.localStamp = stampLocalFile(content)
+			document.localStampKnown = true
 			if binary {
 				document.binary = true
 				document.imagePreview = preview
 				return a.workspaceTab == sectionCode && a.activeCodeDocument() == document
 			}
 			document.state = state
+			a.restoreCodeRecoveryEntry(document)
 			a.configureGoLanguageDocument(document)
 			a.configureCodeBlame(document)
 			a.revealCodeLine(document)
@@ -858,6 +905,10 @@ func (a *app) revealCodeLine(document *codeDocument) {
 }
 
 func (a *app) saveCodeDocument(document *codeDocument) {
+	a.saveCodeDocumentWithOverwrite(document, false)
+}
+
+func (a *app) saveCodeDocumentWithOverwrite(document *codeDocument, overwrite bool) {
 	if a.location.IsRemote() {
 		a.saveRemoteCodeDocument(document, nil)
 		return
@@ -876,11 +927,16 @@ func (a *app) saveCodeDocument(document *codeDocument) {
 		return
 	}
 	path := a.workingFilePath(document.path)
-	if err := writeWorkingFile(path, content.Bytes()); err != nil {
+	if err := writeWorkingFileChecked(path, content.Bytes(), document.localStamp, document.localStampKnown && !overwrite); err != nil {
 		document.saveError = safeError(err)
+		if errors.Is(err, errLocalFileModified) {
+			a.confirmCodeDocumentConflict(document)
+		}
 		return
 	}
 	document.state.Buffer.MarkSaved()
+	document.localStamp = stampLocalFile(content.Bytes())
+	document.localStampKnown = true
 	document.saveError = ""
 	document.branchNotice = ""
 	if a.goLanguageServer != nil && strings.EqualFold(filepath.Ext(document.path), ".go") {
@@ -893,6 +949,55 @@ func (a *app) saveCodeDocument(document *codeDocument) {
 	}
 	a.requestCodeBlame(document)
 	a.invalidateCodeSearchIndex()
+}
+
+func (a *app) confirmCodeDocumentConflict(document *codeDocument) {
+	if document == nil || document.state == nil || document.state.Buffer == nil {
+		return
+	}
+	version := document.state.Buffer.Version()
+	a.askConfirm(confirmRequest{
+		title:            "File changed on disk",
+		message:          "This file changed on disk after it was opened.",
+		detail:           "Reload discards your unsaved changes. Overwrite replaces the file on disk.",
+		confirmLabel:     "Overwrite",
+		alternativeLabel: "Reload",
+		destructive:      true,
+		run: func() {
+			if a.code.documents[document.path] == document && document.state != nil &&
+				document.state.Buffer != nil && document.state.Buffer.Version() == version {
+				a.saveCodeDocumentWithOverwrite(document, true)
+			}
+		},
+		alternative: func() {
+			if a.code.documents[document.path] == document {
+				a.reloadCodeDocument(document)
+			}
+		},
+	})
+}
+
+func (a *app) reloadCodeDocument(document *codeDocument) {
+	if document == nil || document.readOnly || a.location.IsRemote() || a.code.documents[document.path] != document {
+		return
+	}
+	if document.state != nil {
+		position := document.state.CursorPos()
+		document.pendingLine = position.Line + 1
+		document.pendingColumn = position.Col
+	}
+	document.generation++
+	document.loading = false
+	document.state = nil
+	document.binary = false
+	document.imagePreview = nil
+	document.loadError = ""
+	document.saveError = ""
+	document.branchNotice = ""
+	document.hoverState = nil
+	document.languageDiagnostics = nil
+	document.localStampKnown = false
+	a.requestCodeDocument(document)
 }
 
 func (a *app) saveCodeEdits() {

@@ -49,6 +49,7 @@ type options struct {
 	gutterMarks   []GutterMark
 	backgrounds   []LineBackground
 	textBgs       []TextBackground
+	semantic      []SemanticToken
 	diffBase      *Buffer
 	onCompletion  func(CompletionRequest)
 	onHover       func(HoverRequest)

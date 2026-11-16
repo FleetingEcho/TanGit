@@ -25,6 +25,7 @@ const (
 	settingsPageCommands
 	settingsPageUpdates
 	settingsPageSSHProfiles
+	settingsPageCodeEditor
 )
 
 func (a *app) openSettings() {
@@ -198,6 +199,7 @@ func (a *app) settingsBody(c *ui.Context) {
 				a.settingsPageButton(c, settingsPageTypography, fontIcon, "Typography")
 				a.settingsPageButton(c, settingsPageBehavior, commitIcon, "Behavior")
 				a.settingsPageButton(c, settingsPageEditor, fileCodeIcon, "Editor")
+				a.settingsPageButton(c, settingsPageCodeEditor, fileCodeIcon, "Code editor")
 				a.settingsPageButton(c, settingsPageWorkspace, worktreesIcon, "Workspace")
 				a.settingsPageButton(c, settingsPageCommands, commandIcon, "Commands")
 				a.settingsPageButton(c, settingsPageSSHProfiles, remotesIcon, "SSH profiles")
@@ -213,6 +215,8 @@ func (a *app) settingsBody(c *ui.Context) {
 					a.behaviorSettings(c)
 				case settingsPageEditor:
 					a.editorSettings(c)
+				case settingsPageCodeEditor:
+					a.codeEditorSettings(c)
 				case settingsPageWorkspace:
 					a.workspaceSettings(c)
 				case settingsPageCommands:
@@ -653,6 +657,45 @@ func (a *app) editorSettings(c *ui.Context) {
 		ui.Divider(c)
 		a.languageServerCatalog(c)
 	})
+}
+
+func (a *app) codeEditorSettings(c *ui.Context) {
+	a.ensureBuiltInEditorPreferences()
+	settingsSection(c, func() {
+		a.builtInEditorPreferenceSettings(c)
+	})
+}
+
+func (a *app) builtInEditorPreferenceSettings(c *ui.Context) {
+	ui.Text(c, tr("Built-in editor preferences")).Bold().FontSize(c.Theme().FontSize + 1)
+	settingRow(c, "Line numbers", "Absolute, relative, or hidden", func() {
+		choice := ui.Combobox(c, &a.settings.EditorLineNumbers, []string{"on", "relative", "off"}).Label(tr("Line numbers"))
+		if choice.Changed() {
+			a.settingsChanged(c)
+		}
+	})
+	settingRow(c, "Whitespace", "Choose which spaces and tabs are visible", func() {
+		choice := ui.Combobox(c, &a.settings.EditorWhitespace, []string{"selection", "none", "all", "trailing", "boundary"}).Label(tr("Whitespace"))
+		if choice.Changed() {
+			a.settingsChanged(c)
+		}
+	})
+	for _, item := range []struct {
+		label string
+		value *bool
+	}{
+		{"Wrap long lines", &a.settings.EditorWordWrap},
+		{"Auto-close brackets and quotes", &a.settings.EditorAutoClose},
+		{"Inlay hints", &a.settings.EditorInlayHints},
+		{"Semantic highlighting", &a.settings.EditorSemanticHighlighting},
+		{"Minimap", &a.settings.EditorMinimap},
+		{"Sticky symbol header", &a.settings.EditorStickyScroll},
+	} {
+		box := ui.Checkbox(c, item.value, tr(item.label))
+		if box.Changed() {
+			a.settingsChanged(c)
+		}
+	}
 }
 
 // searchExclusionSettings edits one durable list shared by content search.
