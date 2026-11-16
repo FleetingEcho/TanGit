@@ -1114,11 +1114,22 @@ func TestViewShowsConflictRecoveryControls(t *testing.T) {
 
 	for _, text := range []string{
 		"MERGE", "Continue", "Abort…", "Conflict", "Conflict 1 of 1",
-		"Use current", "Use incoming", "Use both", "Mark resolved", "Open file in editor",
+		"Use current", "Use incoming", "Mark resolved", "Open file in editor",
 	} {
 		if !tt.HasText(text) {
 			t.Fatalf("conflict control %q not shown in texts %q", text, tt.Texts())
 		}
+	}
+	if !tt.HasText("Use both") {
+		if err := tt.Click("Apply"); err != nil {
+			t.Fatalf("open compact Apply actions: %v", err)
+		}
+		tt.Frame()
+		if !tt.HasText("Use both") {
+			t.Fatalf("Use both is not reachable from Apply: %q", tt.Texts())
+		}
+		tt.Key(0, ui.KeyEscape)
+		tt.Frame()
 	}
 }
 
