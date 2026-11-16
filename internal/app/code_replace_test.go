@@ -171,7 +171,7 @@ func TestCodeSearchReplaceAllConfirmationIsRequiredAndCancellable(t *testing.T) 
 	h := menuTestApp(t)
 	root := useRealCodeWorkspace(t, h, map[string]string{"source.txt": "needle needle\n"})
 	prepareCodeSearchReplacement(t, h, "needle", "changed")
-	h.tester.Key(ui.Cmd | ui.Shift, ui.KeyH)
+	h.tester.Key(ui.Cmd|ui.Shift, ui.KeyH)
 	h.tester.Frame()
 
 	if err := h.tester.Click("Replace All"); err != nil {
