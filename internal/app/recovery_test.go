@@ -1,6 +1,7 @@
 package app
 
 import (
+	"os"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -8,22 +9,61 @@ import (
 	"lazygitapp/internal/repository"
 )
 
-func TestRecoveryCardUsesTheStandardIslandGapAboveSavedWork(t *testing.T) {
+func openRecoveryForTest(t *testing.T, h *harness) {
+	t.Helper()
+	if err := h.tester.Click("Recovery & checkpoints"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if _, found := h.tester.AccessByRole(ui.RoleDialog, "Recovery & checkpoints"); !found {
+		t.Fatal("recovery modal did not open")
+	}
+}
+
+func TestRecoveryLivesInSavedWorkModal(t *testing.T) {
 	h, _ := changesTestApp(t, unstagedTrackedFile())
 	h.app.setWorkspaceTab(sectionStash)
 	h.tester.Frame()
-
-	recovery, found := h.tester.AccessByRole(ui.RoleRegion, "Recovery & checkpoints")
-	if !found {
-		t.Fatal("the recovery card is missing its region")
+	if _, found := h.tester.AccessByRole(ui.RoleRegion, "Recovery & checkpoints"); found {
+		t.Fatal("recovery card still occupies the workspace")
 	}
-	savedWork, found := h.tester.AccessByRole(ui.RoleRegion, "Saved work")
-	if !found {
-		t.Fatal("the saved-work card is missing its region")
+	if _, found := h.tester.AccessByRole(ui.RoleRegion, "Saved work"); !found {
+		t.Fatal("saved-work pane missing")
 	}
-	gap := savedWork.Bounds.Y - (recovery.Bounds.Y + recovery.Bounds.H)
-	if gap != islandGap {
-		t.Fatalf("gap below the recovery card = %v, want the standard island gap %v", gap, islandGap)
+	openRecoveryForTest(t, h)
+	if !h.app.anyFormOpen() {
+		t.Fatal("modal does not block workspace shortcuts")
+	}
+	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+		saveScreenshot(t, dir, "recovery-modal", h.tester)
+	}
+	h.tester.SetSize(640, 480)
+	h.tester.Frame()
+	dialog, found := h.tester.AccessByRole(ui.RoleDialog, "Recovery & checkpoints")
+	if !found || dialog.Bounds.X < 0 || dialog.Bounds.Y < 0 || dialog.Bounds.X+dialog.Bounds.W > 640 || dialog.Bounds.Y+dialog.Bounds.H > 480 {
+		t.Fatalf("recovery modal exceeds the small window: %+v", dialog.Bounds)
+	}
+	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+		saveScreenshot(t, dir, "recovery-modal-small", h.tester)
+	}
+	h.tester.Key(0, ui.KeyEscape)
+	h.tester.Frame()
+	if h.app.showRecoveryModal {
+		t.Fatal("Escape did not close recovery")
+	}
+	openRecoveryForTest(t, h)
+	if err := h.tester.Click("Close"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.showRecoveryModal {
+		t.Fatal("Close did not close recovery")
+	}
+	openRecoveryForTest(t, h)
+	h.app.closeAllForms()
+	h.tester.Frame()
+	if h.app.showRecoveryModal {
+		t.Fatal("repository cleanup left recovery open")
 	}
 }
 
@@ -35,6 +75,7 @@ func TestRecoveryAndCheckpointActionsAskBeforeChangingSavedWork(t *testing.T) {
 	}}
 	h.app.setWorkspaceTab(sectionStash)
 	h.tester.Frame()
+	openRecoveryForTest(t, h)
 	if !h.tester.HasText("Discard changed.txt") {
 		t.Fatalf("recovery row is missing: %q", h.texts())
 	}
@@ -43,6 +84,15 @@ func TestRecoveryAndCheckpointActionsAskBeforeChangingSavedWork(t *testing.T) {
 	}
 	if h.app.confirm == nil || calls.has("restore-snapshot:abc123") {
 		t.Fatal("restore did not wait for confirmation")
+	}
+	h.tester.Key(0, ui.KeyEscape)
+	h.tester.Frame()
+	h.tester.Frame()
+	if h.app.confirm != nil || !h.app.showRecoveryModal {
+		t.Fatal("cancelling restore also closed the recovery modal")
+	}
+	if err := h.tester.Click("Restore abc123"); err != nil {
+		t.Fatal(err)
 	}
 	h.tester.Frame()
 	if err := h.tester.Click("Restore"); err != nil {

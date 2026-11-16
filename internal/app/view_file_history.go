@@ -437,6 +437,7 @@ func (a *app) fileHistoryCommitsView(c *ui.Context) {
 							}
 						})
 					})
+					commitDiffStatBlocks(row.Context, commit.ShortHash, commit.LinesAdded, commit.LinesDeleted)
 				}).OnClick(func() {
 					a.fileHistorySelected = row.Index
 					a.loadFileHistoryCommit(commit, false)

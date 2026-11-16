@@ -101,6 +101,8 @@ type Snapshot struct {
 }
 
 type Commit struct {
+	LinesAdded    int
+	LinesDeleted  int
 	Hash          string
 	ShortHash     string
 	Subject       string
@@ -876,6 +878,9 @@ func (s *gitSession) DetailsSnapshot(ctx context.Context) (Snapshot, error) {
 	for _, commit := range modelCommits {
 		commits = append(commits, snapshotCommit(commit))
 	}
+	if _, err := s.withCommitLineStats(ctx, commits); err != nil {
+		return Snapshot{}, err
+	}
 	modelBranches, err := s.localBranches()
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("load local branches: %w", err)
@@ -1010,7 +1015,7 @@ func (s *gitSession) RecentCommits(ctx context.Context, limit, skip int) ([]Comm
 	for _, commit := range modelCommits {
 		commits = append(commits, snapshotCommit(commit))
 	}
-	return commits, nil
+	return s.withCommitLineStats(ctx, commits)
 }
 
 // diffOptionArgs gives every patch read the same explicit whitespace and
@@ -3584,7 +3589,7 @@ func (s *gitSession) BranchCommits(ctx context.Context, branch string, limit int
 	for _, commit := range modelCommits {
 		commits = append(commits, snapshotCommit(commit))
 	}
-	return commits, nil
+	return s.withCommitLineStats(ctx, commits)
 }
 
 // commitLogFormat is one commit per line: its fields separated by the unit
@@ -3612,7 +3617,10 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 		if err != nil && s.isUnbornBranch(branch) {
 			return nil, nil
 		}
-		return commits, err
+		if err != nil {
+			return nil, err
+		}
+		return s.withCommitLineStats(ctx, commits)
 	}
 
 	args := []string{"git", "log", fmt.Sprintf("--max-count=%d", filter.Limit), commitLogFormat}
@@ -3638,7 +3646,7 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 		}
 		return nil, fmt.Errorf("search commits: %w", err)
 	}
-	return parseCommitLog(output), nil
+	return s.withCommitLineStats(ctx, parseCommitLog(output))
 }
 
 // isUnbornBranch recognizes only the checked-out symbolic branch whose ref
@@ -3824,7 +3832,7 @@ func (s *gitSession) FileCommits(ctx context.Context, path string, limit, skip i
 	for _, commit := range modelCommits {
 		commits = append(commits, snapshotCommit(commit))
 	}
-	return commits, nil
+	return s.withCommitLineStats(ctx, commits)
 }
 
 func (s *gitSession) worktreeFilePath(root string, filePath string) (string, error) {
