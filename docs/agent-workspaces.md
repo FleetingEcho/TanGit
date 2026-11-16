@@ -1,95 +1,157 @@
-# Agent workspaces roadmap
+# Agent workspaces: current implementation
 
-TanGit's worktree support is the foundation for isolated coding-agent work. The
-product goal is a complete loop: **create → observe → review → revise → accept
-→ archive**. A worktree is an execution environment, not the task itself.
+This document describes the Agent workspace behavior present in the current
+code. It replaces the former Phase 1/2/3 roadmap: those headings were planning
+labels, not an accurate inventory of shipped behavior. Nothing in this document
+is a promise of provider support or a future integration.
 
-## Shared model and invariants
+See [Local agent automation](agent-automation.md) for CLI/RPC commands and the
+[workflow guide](guide.md#optional-external-assist-helpers) for Conflict
+Assistant and Change Splitter.
 
-An Agent Task belongs to a repository's common worktree family and has its own
-stable ID. It records a title, request, base ref and resolved base commit,
-branch, worktree path, agent profile, initialization/test commands, lifecycle
-state and timestamps. Later phases add session, run, checkpoint, review and
-integration records without changing that identity.
+## Task identity and isolated worktrees
 
-- Git remains the source of truth for commits and file changes.
-- Agent state comes from structured events when available. Terminal titles or
-  output must not be presented as reliable task completion.
-- Every automated operation names an explicit task/worktree target. Selection
-  in the UI is never implicit authorization for a background operation.
-- Review includes commits, the index, tracked working-tree edits and untracked
-  files relative to the recorded base. It never hides dirty agent output.
-- Closing or archiving a task does not delete its worktree. Removal checks
-  running processes, unsaved buffers, uncommitted work and unpushed commits.
-- Existing confirmations, Safety Journal and destructive-action policies also
-  apply to agent-originated operations.
-- Repository-wide fetches and object-database operations run once per common
-  repository, not redundantly once per linked worktree.
-- Worktree status is cached and refreshed independently in the background; a
-  dashboard must not synchronously scan every worktree during each UI snapshot.
+An Agent Task belongs to one repository worktree family and has a durable ID.
+Its record includes the title and request, base ref plus resolved full base
+commit, new branch, explicit worktree path, command profile, dependencies,
+lifecycle state, session/activity/test information, checkpoints, and timestamps.
+Git remains the source of truth for commits and files; the task record does not
+replace them.
 
-## Phase 1 — the complete single-task loop
+The desktop **New Agent Task** workflow:
 
-1. **New Agent Task**: create an isolated branch/worktree from a selected base,
-   save the request and resolved base SHA, and use a configurable command
-   template (`{worktree}`, `{task}`, `{promptFile}`) rather than tying the app to
-   one agent vendor.
-2. **Agent profiles**: launch/resume, setup and test commands. Generic local
-   terminals work first; structured adapters can be added without changing the
-   task model.
-3. **Mission Control**: task-centric rows for running, needs input, testing,
-   ready for review, blocked, failed and done; recent activity, changes,
-   ahead/behind state and test outcome. Unknown terminal state remains unknown.
-4. **Review Center**: base-to-final-result diff plus commits-only and dirty-only
-   views, test results and agent summary. Request Changes resumes the same task;
-   Accept offers explicit commit/cherry-pick/merge or selective Change Courier
-   delivery. Archive is distinct from worktree removal.
-5. Focused repository, persistence and native-UI tests for every transition.
+1. Resolves the chosen base to a commit SHA.
+2. Creates the requested branch and isolated worktree, including explicitly
+   listed sparse paths when configured.
+3. Persists the durable task and request file.
+4. Copies only explicitly named ignored files when requested; it neither
+   discovers nor implicitly copies `.env` files or secrets.
 
-## Phase 2 — recovery, notifications and automation
+If Git creation succeeds but task persistence fails, the error identifies the
+remaining branch/worktree for inspection or manual cleanup. Task creation is
+therefore not described as an all-or-nothing filesystem transaction.
 
-1. **Task Checkpoints**: preserve base and WIP state before accept, cleanup,
-   rerun or bulk history operations; restore without silently discarding newer
-   work.
-2. **Attention delivery**: desktop notification and dashboard badges for needs
-   input, completion and failure, including background repository tabs.
-3. **Activity and run history**: lifecycle events, commands, test results,
-   resumable agent session IDs and bounded terminal/artifact references.
-4. **Local automation**: CLI and structured local RPC/MCP adapter for task
-   creation, explicit-target status/diff reads, progress/test reporting, review
-   requests, comments and patch delivery. Reads default to safe access; writes
-   follow policies, expected revisions and existing destructive confirmations.
+Profiles can contain launch, resume, setup, test, development/run, and optional
+AssistCommand templates. Command placeholders include the explicit worktree,
+task/request/prompt file, full base, branch, session ID, and configured port,
+database, and cache values. Values are substituted once and shell-quoted.
+Reusable workspace templates store independent copies of profiles, so editing
+a template does not rewrite existing tasks.
 
-## Phase 3 — coordinated parallel work
+The generic desktop terminal adapter currently requires a **local worktree**
+for agent launch/resume, test, and development/run commands. Durable tasks and
+remote worktree data remain available when that adapter cannot launch a remote
+terminal. Configured commands are trusted user programs, not sandboxed jobs.
 
-1. **Overlap analysis**: compare committed and dirty changes between tasks;
-   show file and neighboring-hunk overlap, delete/modify hazards and generated
-   or migration-file risks without claiming overlap is always a conflict.
-2. **Task dependency graph**: base relationships, explicit dependencies and an
-   integration worktree. Dry-run integration and stop at the first conflict.
-3. **Coordinated updates**: one repository fetch, independent behind-base
-   calculations, selected rebase/pull operations and independent conflict
-   recovery.
-4. **Workspace templates**: reusable setup/test/run commands, sparse checkout,
-   explicit ignored-file selection and per-task nonsecret environment values.
-   Secrets and arbitrary `.env` files are never copied implicitly.
-5. **Resource isolation**: per-task development ports, database names and cache
-   directories where the profile supports them; coordinated test/review batch
-   actions with independent results.
+## Review, revision, checkpoints, and acceptance
 
-## Implementation seams
+**Review changes** opens a separate session for the explicit task worktree.
+Its three views are:
 
-- `agentwork`: persistent tasks, runs, state transitions and checkpoints. It
-  owns invariants and emits domain events; it does not render UI or guess agent
-  state from terminal text.
-- `repository`: arbitrary-worktree reads, final-result diffs, checks and Git
-  recovery operations. No agent process policy belongs here.
-- Agent adapters: translate generic terminal and structured agent events into
-  task events. A basic command adapter is the first implementation.
-- `app`: task forms, Mission Control, Review Center and integration actions.
-  Background updates are generation/task-ID guarded and published on the UI
-  thread.
+- **Final files**: one direct BaseCommit-to-final comparison including commits,
+  staged and unstaged changes, and untracked files.
+- **Commit range**: commits in the task branch since its fixed base.
+- **Dirty only**: the task's current index/worktree output.
 
-Each phase is delivered as tested, usable increments inside its complete
-workflow; persistent schema versions remain backward-compatible as later
-phases add fields.
+Review never hides dirty output or infers readiness from terminal text, an exit
+code, or a passing test. A zero agent exit records `exited`, not
+`ready_for_review`; test execution updates the test result without changing the
+agent lifecycle. A person or structured integration must explicitly mark a
+task ready for review.
+
+**Request changes** appends reviewer feedback to the durable request and resumes
+the same task with its configured resume command. It does not silently create a
+new worktree or task. Archiving changes task visibility, not the worktree or its
+changes.
+
+Checkpoints preserve staged, unstaged, and untracked WIP together with the
+captured HEAD identity. Restoring requires the same HEAD, saves current WIP in
+a new safety checkpoint first, and then restores the selected work snapshot.
+Newer commits stop restoration; failure is not reported as a successful
+rollback.
+
+Acceptance is a separate explicit action. It is available only for a task marked
+ready for review that has task commits and no remaining staged, unstaged, or
+untracked output. **Accept commits** cherry-picks the captured commit range
+oldest first; **Merge branch** merges the task branch into the current
+foreground branch. Both create a task checkpoint before the confirmed Git
+mutation. Conflicts use the normal operation recovery UI. No review view,
+notification, or passing test performs these actions automatically.
+
+## Notifications and coordinated task tools
+
+Current task tools also include:
+
+- Durable activity and bounded test/session records, plus toast and native
+  desktop notifications for explicit needs-input, ready-for-review, exit,
+  failure, and test-result transitions. Native notification delivery failure
+  does not rewrite task state.
+- **Analyze overlaps**, which compares committed and dirty final results across
+  active tasks and labels shared files, exact/nearby hunks, delete/modify
+  hazards, and generated/migration risks. Different base SHAs prevent a false
+  hunk-position comparison. Findings are review hints, not conflict predictions
+  or integration authorization.
+- **Integration dry run**, which captures selected task HEAD SHAs and merges
+  them in dependency order in an isolated worktree. It stops at real conflicts
+  for inspection without pushing, changing task readiness/BaseCommit, or
+  modifying foreground/task worktrees. Worktree cleanup is separately
+  confirmed.
+- **Coordinated updates**, which fetch the foreground repository once, inspect
+  explicitly selected task targets independently, and run confirmed task
+  rebases with checkpoints and per-task results. A stop prevents scheduling
+  additional tasks; it is not described as cancellation of an already-running
+  Git process.
+- **Batch tests and reviews**, which queue explicitly selected tasks within
+  terminal capacity and present independent results or review visits. Merely
+  visiting a review does not mark it ready or accepted.
+
+## CLI/RPC automation and advice helpers
+
+The local `tangit agent ...` CLI and newline-delimited JSON RPC share the same
+persistent task store. They provide explicit-target list/show/diff/create,
+report, comment, test-result, patch preview, and confirmed working-tree patch
+application. Existing-task writes require the exact `updatedAt` revision; patch
+application consumes its clean, source-bound preview. The service does not
+launch profile commands, open a socket, or implicitly fetch, stage, commit,
+merge, push, clean up, or mutate the source worktree.
+
+The optional Agent Profile **AssistCommand** is a separate provider-neutral
+JSON-file helper for Conflict Assistant and Change Splitter. It runs only after
+an explicit suggestion request. The advisor does not open a repository or invoke
+Git, and advice previews do not stage or commit automatically. Accepting a
+conflict Result and applying one split group to the index are distinct desktop
+actions with source/index/operation checks.
+
+AssistCommand is executed through the platform shell with the user's normal
+permissions and receives source text or diff content in its request. It is a
+trusted helper, **not a sandbox**, and no model or service provider is bundled.
+The same distinction applies to coding-agent commands: TanGit does not infer
+integration approval from their output, but a command the user deliberately
+launches can itself edit or commit inside its assigned worktree.
+
+## Safety invariants across the UI and CLI
+
+- Every background operation names an explicit task and worktree; the selected
+  desktop tab is never implicit authorization.
+- Commits, the index, tracked working-tree changes, and untracked files all
+  participate in task review.
+- Store revision checks, full commit IDs, exact patch bytes, and repository
+  state checks bound mutations to what was reviewed.
+- Existing confirmations, operation recovery, checkpoints, and destructive
+  action policies apply to the corresponding Agent actions.
+- Overlap, test, exit, and notification observations do not equal review
+  approval. Acceptance and integration always require their own actions.
+
+## Ownership in the source
+
+- `internal/agentwork`: durable tasks, state transitions, checkpoints,
+  activity/test records, templates, dependency ordering, and overlap analysis.
+- `internal/agentcli`: explicit local CLI and stdin/stdout JSON RPC; no GUI,
+  listener, MCP server, or implicit command launch.
+- `internal/agentassist`: source parsing, identity validation, helper protocol,
+  and in-memory previews; no repository access or Git mutation.
+- `internal/repository`: arbitrary-worktree reads, final-result diffs, snapshots,
+  recovery, and confirmed Git operations.
+- `internal/app`: task forms, terminal adapters, review and acceptance,
+  notifications, coordinated tools, and assistant dialogs. Repository-bound
+  work is guarded by task/repository identity and current source state.

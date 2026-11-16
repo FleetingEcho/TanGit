@@ -1,4 +1,4 @@
-# Local agent automation (Phase 2)
+# Local agent automation
 
 The `internal/agentcli` package provides a local CLI/RPC service over the same
 `agentwork.Store` and repository review operations used by TanGit. It has no GUI,
@@ -7,6 +7,12 @@ MyGo, socket, network, or MCP dependency. `app.Main` routes the explicit
 and `os.Stderr` before starting any GUI, launcher, or single-instance handling.
 The newline-delimited JSON interface below is local structured RPC; it is not a
 complete MCP implementation and creates no listener or network connection.
+
+This document describes the CLI/RPC boundary in the current implementation,
+not a delivery phase or future provider integration. The desktop task and
+review workflow is documented in [Agent workspaces](agent-workspaces.md#agent-workspaces-current-implementation).
+The CLI does not infer a task, selected tab, destination, review approval, or
+integration action from UI state.
 
 ## Shared data directory
 
@@ -228,6 +234,28 @@ discarded through its newline so later requests can proceed. Responses are
 bounded to **8 MiB**; an oversized result is replaced by a size error. Actual
 stdin/stdout I/O failures are returned to `Execute` and reported on stderr.
 
+## Relation to in-app assist helpers
+
+The desktop's Agent Profile can also contain an optional **AssistCommand** for
+Conflict Assistant and Change Splitter. That JSON-file advisor is separate
+from `agentcli`: `tangit agent ...` neither launches it nor turns its output
+into task status or a Git mutation. Its protocol and mutation boundaries are
+described in the [workflow guide](guide.md#optional-external-assist-helpers).
+
+Assist responses are proposals only. Merely requesting or previewing one does
+not stage, commit, continue an operation, or accept a task. Conflict Result
+acceptance and split-group staging are separate explicit desktop actions, and
+TanGit generates and validates the exact data used by those actions. An
+AssistCommand is a user-trusted helper run through the platform shell with
+ordinary process permissions; private request files and response validation do
+not make it a sandbox. No model or service provider is built in.
+
+This differs deliberately from `agent create` and `agent patch --yes`: those
+commands perform their documented worktree or working-tree mutation only after
+explicit confirmation. Even confirmed CLI patch application does not stage or
+commit files. Task reports and passing test results similarly record
+observations, not approval to integrate.
+
 ## Safety policy
 
 - Every task/worktree target is explicit; UI selection is never read.
@@ -239,6 +267,12 @@ stdin/stdout I/O failures are returned to `Execute` and reported on stderr.
   integration. Comments are durable request text only and launch no command.
 - Patch previews remain bound to their exact bytes, destination, and observed
   repository state through the repository API.
-- The service launches no configured agent/setup/test command, opens no socket,
-  and adds no implicit fetch, commit, stage, merge, push, cleanup, or source
-  worktree mutation.
+- The service launches no configured agent/setup/test/assist command, opens no
+  socket, and adds no implicit fetch, commit, stage, merge, push, cleanup, or
+  source worktree mutation.
+- Suggestions and previews are not authorization to stage or commit. Desktop
+  acceptance/integration actions have their own explicit confirmations and
+  source-state checks.
+- See [Verification](verification.md#feature-specific-evidence-and-limits) for
+  what the automated tests establish; passing them does not certify arbitrary
+  external helpers, hosting providers, Git versions, or SSH deployments.
