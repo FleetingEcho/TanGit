@@ -595,11 +595,14 @@ func TestAConflictedFileHeaderCarriesTheDiffControls(t *testing.T) {
 	if slices.Contains(h.texts(), "Toggle diff layout") {
 		t.Fatalf("the markers offer a layout to switch: %q", h.texts())
 	}
-	// The menu comes last, after the controls that change only the view.
+	// The menu comes last on the controls row; expansion sits above it in the
+	// title's top-right corner.
 	more, _ := h.tester.Find("File actions")
 	expand, _ := h.tester.Find("Expand diff")
-	if more.X <= expand.X {
-		t.Fatalf("the overflow menu sits at %.0f, before Expand diff at %.0f", more.X, expand.X)
+	save, _ := h.tester.Find("Save diff")
+	if more.X <= save.X || expand.X <= more.X || more.Y < expand.Y+expand.H {
+		t.Fatalf("the conflict header is not split into title and controls rows: expand=%+v save=%+v more=%+v",
+			expand, save, more)
 	}
 }
 

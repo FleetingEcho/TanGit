@@ -92,6 +92,16 @@ func TestCommitDetailToolbarsFitNarrowPanes(t *testing.T) {
 				if bottom-top > 60 {
 					t.Fatalf("diff controls form a vertical stack %.1f points tall", bottom-top)
 				}
+				if !branchView {
+					leftRight, leftRightOK := tt.Find(tr("Switch layout (Left/Right)"))
+					topBottom, topBottomOK := tt.Find(tr("Switch layout (Top/Bottom)"))
+					whitespace, whitespaceOK := tt.Find(tr("Toggle whitespace-only diff changes"))
+					if !leftRightOK || !topBottomOK || !whitespaceOK ||
+						leftRight.X >= whitespace.X || topBottom.X >= whitespace.X {
+						t.Fatalf("commit layout control is not at the left of the diff toolbar: left/right=%+v top/bottom=%+v whitespace=%+v",
+							leftRight, topBottom, whitespace)
+					}
+				}
 				for _, label := range []string{commit.Subject, commit.Hash, "Copy commit hash", "Compare commit with HEAD"} {
 					r, ok := tt.Find(label)
 					if !ok || r.X < 0 || r.X+r.W > float32(width)+1 {
@@ -103,6 +113,15 @@ func TestCommitDetailToolbarsFitNarrowPanes(t *testing.T) {
 				if copyHash.X < hash.X+hash.W || copyHash.X-hash.X-hash.W > 5 ||
 					copyHash.Y >= hash.Y+hash.H || copyHash.Y+copyHash.H <= hash.Y {
 					t.Fatalf("copy control is not immediately after the hash on its row: hash=%+v copy=%+v", hash, copyHash)
+				}
+				if !branchView {
+					subject, _ := tt.Find(commit.Subject)
+					expand, _ := tt.Find(tr("Expand diff"))
+					if expand.X <= subject.X || expand.Y >= subject.Y+subject.H || expand.Y+expand.H <= subject.Y ||
+						float32(width)-(expand.X+expand.W) > 24 {
+						t.Fatalf("expand control is not at the commit header's top-right: subject=%+v expand=%+v width=%d",
+							subject, expand, width)
+					}
 				}
 				if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
 					saveScreenshot(t, dir, fmt.Sprintf("commit-detail-%d-branch-%v", width, branchView), tt)

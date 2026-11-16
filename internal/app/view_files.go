@@ -589,7 +589,6 @@ func (a *app) fileDetailsView(c *ui.Context) {
 				}
 				a.diffWrapButton(c)
 				a.exportDiffButton(c)
-				a.expandDiffButton(c)
 				a.fileActionsMenu(c, theme, file)
 			} else {
 				// A file the working tree no longer holds has nothing for an
@@ -597,7 +596,7 @@ func (a *app) fileDetailsView(c *ui.Context) {
 				if !file.Deleted {
 					a.fileEditorButton(c, file)
 				}
-				a.diffViewOptions(c)
+				a.diffViewOptionsWith(c, nil, false)
 				a.fileActionsMenu(c, theme, file)
 			}
 		}
@@ -606,10 +605,16 @@ func (a *app) fileDetailsView(c *ui.Context) {
 		// The way to mark it resolved is a resolution, so it sits on the
 		// conflict toolbar below rather than beside the name: the extra
 		// button would leave the name no room in the default window and make
-		// the conflict's bar taller than a changed file's. The bar wraps
-		// rather than let a control fall past the edge in a narrow window.
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
+		// the conflict's bar taller than a changed file's. Expansion stays in
+		// the title's top-right corner; the other controls wrap on their own row
+		// rather than let one fall past the edge in a narrow window.
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 			title()
+			if !a.fileEditing {
+				a.expandDiffButton(c)
+			}
+		})
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
 			controls()
 		})
 		ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {

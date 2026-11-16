@@ -432,6 +432,7 @@ func (s *shell) pushSettings(a *app) {
 	a.pathCache = s.pathCache
 	a.diffSplit = s.settings.DiffSplit
 	a.diffWrap = s.settings.DiffWrap
+	a.commitDetailsLayout = s.settings.CommitDetailsLayout
 	a.ignoreUntracked = s.settings.IgnoreUntracked
 	a.ensureVisibleSection()
 }

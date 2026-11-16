@@ -216,6 +216,9 @@ func TestCodeBlameHistoryScrollsBlamedFileIntoView(t *testing.T) {
 		}},
 	}
 	h, document := openCodeBlameDocument(t, session)
+	// The file list shares its height with the diff only in the top/bottom
+	// layout; this test asserts against the height the divider stores.
+	h.app.commitDetailsLayout = commitDetailsTopBottom
 	h.waitFor(t, "working-tree blame", func() bool { return document.blameLoaded })
 	snapshot := document.state.Buffer.Snapshot()
 	document.state.OnHover(editor.HoverRequest{Offset: snapshot.LineEnd(0), Version: snapshot.Version()})

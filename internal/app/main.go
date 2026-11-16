@@ -751,15 +751,18 @@ type app struct {
 	commitFileList        ui.ListState
 	selectedCommitFileRow int
 	selectedCommitFile    int
-	// commitFilesHeight is the room the commit's files take above its diff,
-	// which the line between them drags.
-	commitFilesHeight  float32
-	commitFilesHash    string
-	commitFilesLoading bool
-	commitFilesError   string
-	commitDiffHash     string
-	commitDiffPath     string
-	commitDiffOptions  repository.DiffOptions
+	// commitFilesHeight and commitFilesWidth are the room the commit's files
+	// take above or beside its diff, which the line between them drags.
+	// commitDetailsLayout chooses those two arrangements.
+	commitFilesHeight   float32
+	commitFilesWidth    float32
+	commitDetailsLayout int
+	commitFilesHash     string
+	commitFilesLoading  bool
+	commitFilesError    string
+	commitDiffHash      string
+	commitDiffPath      string
+	commitDiffOptions   repository.DiffOptions
 	// commitDiffPatch is the diff the pane shows, kept so it can be saved.
 	commitDiffPatch   string
 	commitDiffLoading bool
@@ -868,6 +871,7 @@ func newApp(opener repositoryOpener) *app {
 		// The commit's files start at the height they had before the line
 		// between them and the diff could be dragged.
 		commitFilesHeight: 150,
+		commitFilesWidth:  300,
 		stashFilesHeight:  180,
 		// The branches column is narrower, so its two panes start smaller.
 		branchCommitFilesHeight: 110,
