@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -251,7 +252,7 @@ func (a *Application) prepareQuit() bool {
 	if a.quitting {
 		return false
 	}
-	before := &QuitEvent{}
+	before := a.quitEvent()
 	fire1(&a.onBeforeQuit, before)
 	if before.prevented {
 		fire(&a.onQuitCanceled)
@@ -265,7 +266,7 @@ func (a *Application) prepareQuit() bool {
 			return false
 		}
 	}
-	will := &QuitEvent{}
+	will := a.quitEvent()
 	fire1(&a.onWillQuit, will)
 	if will.prevented {
 		a.quitting = false
@@ -278,6 +279,16 @@ func (a *Application) prepareQuit() bool {
 	_ = Clipboard.Flush()
 	stopNativeCalls()
 	return true
+}
+
+// quitEvent snapshots the request before a canceled Relaunch clears its state.
+func (a *Application) quitEvent() *QuitEvent {
+	retry := a.Quit
+	if a.relaunch {
+		args := slices.Clone(a.relaunchArgs)
+		retry = func() { a.Relaunch(args...) }
+	}
+	return &QuitEvent{retry: retry}
 }
 
 // endSession runs the quit sequence when the OS ends the session
