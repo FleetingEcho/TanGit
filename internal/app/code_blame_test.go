@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"image/color"
 	"os"
 	"strings"
 	"testing"
@@ -831,5 +833,116 @@ func TestCodeBlameCardUsesWindowHeightToShowExpandedContent(t *testing.T) {
 	}
 	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
 		saveScreenshot(t, dir, "blame-expanded-card-full-height", tt)
+	}
+}
+
+func TestCodeBlameNativeGoHoverFitsAndPrioritizesCurrentFile(t *testing.T) {
+	for _, tc := range []struct {
+		width, height int
+		font          float64
+		line          int
+	}{{1280, 800, 13, 0}, {1280, 1000, 18, 0}, {900, 900, 16, 0}, {1280, 800, 13, 16}} {
+		t.Run(fmt.Sprintf("%dx%d-font%.0f-line%d", tc.width, tc.height, tc.font, tc.line), func(t *testing.T) {
+			h, _, document := openGoDocumentWithLanguageServer(t, map[string]string{"main.go": "package main\n" + strings.Repeat("// source line\n", 40)}, func(method string, _ any, result func(json.RawMessage, error)) {
+				if method == "textDocument/hover" {
+					result(json.RawMessage(`{"contents":{"kind":"plaintext","value":"Language-server documentation"}}`), nil)
+				}
+			})
+			h.app.settings.FontSize = tc.font
+			h.tester.SetSize(tc.width, tc.height)
+			hash := strings.Repeat("9", 40)
+			subject := "Add expandable branch views and refresh bilingual documentation with complete descriptions"
+			session := &codeBlameTestSession{
+				fakeSession: fakeSession{calls: &callRecorder{}},
+				lines:       []repository.BlameLine{{Hash: hash, Author: "JakeZT", AuthorEmail: "author@example.com", Subject: subject, Current: true, Text: "package main"}},
+				commits:     []repository.Commit{{Hash: hash, Subject: subject, AuthorName: "JakeZT", AuthorEmail: "author@example.com", UnixTimestamp: timeNow() - 7*86400, Parents: []string{strings.Repeat("7", 40)}}},
+				message:     &repository.CommitMessage{Summary: subject},
+			}
+			for i := 0; i < 21; i++ {
+				session.files = append(session.files, repository.CommitFile{Path: fmt.Sprintf("internal/app/a-very-long-directory-name/changed-file-%02d_test.go", i)})
+			}
+			session.files[17] = repository.CommitFile{Path: "main.go", LinesAdded: 1100, LinesDeleted: 10}
+			first := session.lines[0]
+			for len(session.lines) < 41 {
+				line := first
+				line.Text = "// source line"
+				session.lines = append(session.lines, line)
+			}
+			h.app.session = session
+			document.state.GoTo(editor.Pos{Line: tc.line})
+			h.app.requestCodeBlame(document)
+			h.waitFor(t, "Go working-tree blame", func() bool { return document.blameLoaded })
+			document.state.GoTo(editor.Pos{Line: tc.line})
+			h.app.syncCodeBlameActiveLine(document)
+			h.tester.Frame()
+			snapshot := document.state.Buffer.Snapshot()
+			document.state.OnHover(editor.HoverRequest{Offset: snapshot.LineEnd(tc.line), Version: snapshot.Version()})
+			h.waitFor(t, "native Go blame card", func() bool { return h.app.codeBlameHover.open && !h.app.codeBlameHover.loading })
+			h.tester.Frame()
+			panel, ok := h.tester.AccessByRole(ui.RoleTooltip, "")
+			if !ok {
+				t.Fatal("native editor hover not shown")
+			}
+			if panel.Bounds.Y < 0 || panel.Bounds.Y+panel.Bounds.H > float32(tc.height) {
+				t.Fatalf("hover outside window: %+v", panel.Bounds)
+			}
+			for _, label := range []string{"Copy commit hash", "Open in History", "Insertions", "Deletions", "+1100", "−10", fmt.Sprintf("main.go:%d", tc.line+1)} {
+				bounds, ok := h.tester.Find(label)
+				if !ok || bounds.X < panel.Bounds.X || bounds.X+bounds.W > panel.Bounds.X+panel.Bounds.W || bounds.Y < panel.Bounds.Y || bounds.Y+bounds.H > panel.Bounds.Y+panel.Bounds.H {
+					t.Fatalf("%s clipped by native hover: %+v panel %+v", label, bounds, panel.Bounds)
+				}
+			}
+			title, ok := h.tester.Find(subject)
+			if !ok || title.W > panel.Bounds.W-24+0.5 || title.H < float32(tc.font)*2 {
+				t.Fatalf("long subject did not wrap inside the card: %+v", title)
+			}
+			current, ok := h.tester.Find("Current file: main.go")
+			next, found := h.tester.Find(session.files[0].Path)
+			if !ok || !found || current.Y >= next.Y {
+				t.Fatalf("current file was not placed first: %+v %+v", current, next)
+			}
+
+			photo := h.tester.Image()
+			sample := func(r ui.Rect) color.RGBA {
+				return color.RGBAModel.Convert(photo.At(int(r.X+3), int(r.Y+r.H/2))).(color.RGBA)
+			}
+			if sample(current) == sample(next) {
+				t.Fatal("current file has no distinct background")
+			}
+			if document.hoverScroll.MaxY != 0 {
+				t.Fatalf("blame still inherits the LSP scroller: %+v", document.hoverScroll)
+			}
+			if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+				saveScreenshot(t, dir, fmt.Sprintf("native-go-blame-%dx%d-font%.0f-line%d", tc.width, tc.height, tc.font, tc.line), h.tester)
+			}
+			// Returning to symbol hover must still use the document's LSP renderer.
+			document.state.OnHover(editor.HoverRequest{Offset: 1, Version: snapshot.Version()})
+			h.waitFor(t, "language hover after blame", func() bool {
+				return document.hoverState != nil && document.hoverState.Buffer.String() == "Language-server documentation"
+			})
+			if h.app.codeBlameHover.open {
+				t.Fatal("symbol hover retained the blame card")
+			}
+		})
+	}
+}
+
+func TestCodeBlameCurrentFileMatchesHistoricalAndRenamedPaths(t *testing.T) {
+	for _, tc := range []struct {
+		name, current, historical string
+		files                     []repository.CommitFile
+		want                      int
+	}{
+		{"working path", "current.go", "", []repository.CommitFile{{Path: "other.go"}, {Path: "current.go"}}, 1},
+		{"historical path", "new.go", "old.go", []repository.CommitFile{{Path: "other.go"}, {Path: "old.go"}}, 1},
+		{"rename in commit", "latest.go", "old.go", []repository.CommitFile{{Path: "other.go"}, {Path: "renamed.go", PreviousPath: "old.go"}}, 1},
+		{"no matching file", "missing.go", "", []repository.CommitFile{{Path: "other.go"}}, -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hover := codeBlameHoverState{path: tc.current, blame: repository.BlameLine{CommitPath: tc.historical}, files: tc.files}
+			if got := codeBlameCurrentFileIndex(&hover); got != tc.want {
+				t.Fatalf("current file = %d, want %d", got, tc.want)
+			}
+		})
 	}
 }
