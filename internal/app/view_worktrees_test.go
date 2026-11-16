@@ -1,6 +1,10 @@
 package app
 
 import (
+	"fmt"
+	"github.com/egoist/mygo/ui"
+	"os"
+	"strings"
 	"testing"
 
 	"lazygitapp/internal/repository"
@@ -160,4 +164,55 @@ func TestLockedAndPrunableWorktreeStateIsVisible(t *testing.T) {
 	h.waitFor(t, "worktree unlock", func() bool {
 		return calls.has("unlock-worktree:/media/archive") && !h.app.actionBusy
 	})
+}
+
+func TestWorktreeRowsKeepOneLineForLongNamesAndBranches(t *testing.T) {
+	for _, width := range []int{900, 1280} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			h, _ := menuTestAppWithCalls(t)
+			h.app.workspaceTab = sectionWorktrees
+			h.app.filePaneWidth = 300
+			h.app.snapshot.Worktrees = []repository.Worktree{
+				{Name: "short", Path: "/work/short", Branch: "main"},
+				{Name: "dyson-link-mp-2", Path: "/work/dyson-link-mp-2", Branch: "feature/WMP-14622-ship-ticket-with-worktrees-and-many-more-words", Current: true},
+				{Name: strings.Repeat("long-worktree-name-", 6), Path: "/work/long-worktree", Branch: strings.Repeat("feature/long-branch-name-", 5)},
+				{Name: "locked-worktree-with-a-long-name", Path: "/work/locked-worktree", Branch: "feature/long-branch-with-status", Locked: true, Prunable: true, Modified: 12, Ahead: 3, Behind: 2},
+			}
+			h.app.selectedWorktreeRow, h.app.selectedWorktree = 0, 0
+			h.tester.SetSize(width, 760)
+			h.tester.Frame()
+			var rowHeight float32
+			for _, tree := range h.app.snapshot.Worktrees {
+				row, ok := h.tester.AccessByRole(ui.RoleListItem, tree.Name)
+				if !ok {
+					t.Fatalf("missing worktree row %q", tree.Name)
+				}
+				if rowHeight == 0 {
+					rowHeight = row.Bounds.H
+				}
+				if row.Bounds.H != rowHeight {
+					t.Fatalf("%q wrapped: height=%v, short row=%v", tree.Name, row.Bounds.H, rowHeight)
+				}
+			}
+			target := h.app.snapshot.Worktrees[1]
+			row, _ := h.tester.AccessByRole(ui.RoleListItem, target.Name)
+			h.tester.Move(row.Bounds.X+5, row.Bounds.Y+row.Bounds.H/2)
+			h.tester.Frame()
+			hovered, _ := h.tester.AccessByRole(ui.RoleListItem, target.Name)
+			if hovered.Bounds.H != rowHeight {
+				t.Fatal("hover changed the worktree row height")
+			}
+			if err := h.tester.Click(target.Name); err != nil {
+				t.Fatal(err)
+			}
+			h.tester.Frame()
+			selected, _ := h.tester.AccessByRole(ui.RoleListItem, target.Name)
+			if selected.Bounds.H != rowHeight || h.app.selectedWorktree != 1 {
+				t.Fatal("selecting a long worktree changed its height or selected the wrong target")
+			}
+			if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+				saveScreenshot(t, dir, fmt.Sprintf("worktree-single-line-%d", width), h.tester)
+			}
+		})
+	}
 }
