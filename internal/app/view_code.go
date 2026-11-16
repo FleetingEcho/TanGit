@@ -882,33 +882,11 @@ func (a *app) codeStickySymbolHeader(c *ui.Context, document *codeDocument) {
 }
 
 func (a *app) codeMinimap(c *ui.Context, document *codeDocument) {
-	if document == nil || document.state == nil || document.state.Buffer == nil {
+	if document == nil || document.state == nil {
 		return
 	}
-	theme, buffer := c.Theme(), document.state.Buffer
-	lineCount := buffer.LineCount()
-	if lineCount <= 0 {
-		return
-	}
-	rows := min(76, lineCount)
-	first, last := document.state.VisibleLines()
-	ui.Column(c).Width(86).Padding(4, 5).Gap(1).Background(theme.Surface.Alpha(0.55)).Label(tr("Minimap")).Children(func() {
-		for row := range rows {
-			line := row * lineCount / rows
-			text := strings.TrimSpace(buffer.Line(line))
-			width := float32(min(72, max(5, len(text))))
-			button := ui.ButtonBase(c).FillWidth().Height(4).Padding(0).Label(trf("Go to line %d", line+1))
-			button.Children(func() {
-				ui.Box(c).Width(width).Height(2).Radius(1).Background(theme.TextMuted.Alpha(0.42))
-			})
-			if line >= first && line <= last {
-				button.Background(theme.Accent.Alpha(0.22))
-			}
-			if button.Clicked() {
-				document.state.ScrollTo(line)
-			}
-		}
-	})
+	theme := c.Theme()
+	editor.Minimap(c, document.state).Width(86).FillHeight().Background(theme.Surface.Alpha(0.55)).Label(tr("Minimap"))
 }
 
 func isMarkdownDocument(name string) bool {
