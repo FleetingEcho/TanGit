@@ -251,7 +251,11 @@ func (a *app) hunkActionControls(c *ui.Context) {
 	}
 	disabled := mutationReason != ""
 	theme := c.Theme()
-	ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(5).Children(func() {
+	row := ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(5)
+	paneWidth := a.measuredActionGroupWidth(c, row)
+	compactLabels := normalizeConflictActionStyle(a.settings.ConflictActionStyle) == conflictActionStyleIconsLabels &&
+		(paneWidth <= 0 || paneWidth < conflictCompactPaneWidth)
+	row.Children(func() {
 		if mutationReason != "" {
 			ui.Text(c, tr(mutationReason)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2).
 				SingleLine().Width(0).Grow(1).Tooltip(tr(mutationReason))
@@ -300,6 +304,13 @@ func (a *app) hunkActionControls(c *ui.Context) {
 			actionControl{label: "Next hunk", shortcut: "]", description: "Go to the next diff hunk", icon: chevronDownIcon,
 				disabled: nextReason != "", disabledReason: nextReason, run: func() { navigateDiffHunk(a.diffState, 1) }},
 		)
-		a.conflictActionToolbar(c, "Diff hunk actions", actions)
+		if compactLabels {
+			renderActionControl(c, actionControl{
+				label: "Diff hunk actions", visibleLabel: "More", icon: moreIcon,
+				description: "Show this action group with labels and unavailable reasons", menu: actions,
+			}, true)
+		} else {
+			a.conflictActionToolbar(c, "Diff hunk actions", actions)
+		}
 	})
 }

@@ -5,6 +5,10 @@ package app
 var actionControlTranslations = []struct {
 	english, zhHans, zhHant, japanese, spanish, french string
 }{
+	{"File details", "文件详情", "檔案詳情", "ファイル詳細", "Detalles del archivo", "Détails du fichier"},
+	{"Conflict content", "冲突内容", "衝突內容", "競合コンテンツ", "Contenido del conflicto", "Contenu du conflit"},
+	{"Conflict toolbar", "冲突工具栏", "衝突工具列", "競合ツールバー", "Barra de herramientas de conflicto", "Barre d’outils de conflit"},
+	{"Repository header", "仓库标题栏", "儲存庫標題列", "リポジトリヘッダー", "Encabezado del repositorio", "En-tête du dépôt"},
 	{"Conflict and hunk buttons", "冲突和差异块按钮", "衝突與差異區塊按鈕", "競合とハンクのボタン", "Botones de conflicto y bloque", "Boutons de conflit et de section"},
 	{"Choose compact icons or add visible action labels", "选择紧凑图标，或显示操作标签", "選擇緊湊圖示，或顯示操作標籤", "コンパクトなアイコン、または操作ラベル付きを選択", "Elige iconos compactos o añade etiquetas visibles", "Choisissez des icônes compactes ou ajoutez des libellés visibles"},
 	{"Icons", "图标", "圖示", "アイコン", "Iconos", "Icônes"},
