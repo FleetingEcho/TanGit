@@ -36,11 +36,14 @@ var french = map[string]string{
 	"Press ? to show keyboard shortcuts.": "Appuyez sur ? pour afficher les raccourcis clavier.",
 
 	// Hotkeys switch.
-	"Hotkeys":                   "Raccourcis",
-	"Enable hotkeys":            "Activer les raccourcis",
-	"Enable keyboard shortcuts": "Activer les raccourcis clavier",
-	"Run a one-off shell command": "Exécuter une commande shell ponctuelle",
-	"Shortcut notifications":    "Notifications de raccourcis",
+	"Hotkeys":                      "Raccourcis",
+	"Enable hotkeys":               "Activer les raccourcis",
+	"Unstaged all changes":         "Tous les changements ont été retirés de l’index",
+	"Keyboard shortcut":            "Raccourci clavier",
+	"Enable keyboard shortcuts":    "Activer les raccourcis clavier",
+	"Stage or unstage all changes": "Ajouter ou retirer tous les changements de l’index",
+	"Run a one-off shell command":  "Exécuter une commande shell ponctuelle",
+	"Shortcut notifications":       "Notifications de raccourcis",
 	"Show shortcut acknowledgements while keeping Command Log and operation notifications visible.": "Affiche les raccourcis acceptés tout en gardant visibles le journal et les notifications d’opérations.",
 
 	// Operations requiring attention.

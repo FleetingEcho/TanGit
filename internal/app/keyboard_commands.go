@@ -40,7 +40,11 @@ func keyboardCommands() []keyboardCommand {
 				a.showCommitForm = true
 			}
 		}},
-		{"Changes", "a", "Stage all changes", 0, ui.KeyA, func(a *app) {
+		{"Changes", "a", "Stage or unstage all changes", 0, ui.KeyA, func(a *app) {
+			if hasStagedFiles(a.snapshot.Files) {
+				a.beginRepositoryActionMessage(tr("Unstaged all changes"), "", func(ctx context.Context, s repository.Session) error { return s.UnstageAll(ctx) }, nil)
+				return
+			}
 			a.beginRepositoryActionMessage(tr("Staged all changes"), "", func(ctx context.Context, s repository.Session) error { return s.StageAll(ctx) }, nil)
 		}},
 		{"Changes", "s", "Stash changes…", 0, ui.KeyS, (*app).openStashForm},
@@ -90,6 +94,16 @@ func keyboardCommands() []keyboardCommand {
 			}
 		}},
 		{"History and graph", "d", "Drop the chosen commit", 0, ui.KeyD, (*app).confirmSelectedDropCommit},
+		{"History and graph", "n", "Create branch", 0, ui.KeyN, func(a *app) {
+			if commit, ok := a.selectedVisibleCommit(); ok {
+				a.openCommitBranchForm(commit)
+			}
+		}},
+		{"History and graph", "T", "Create tag", ui.Shift, ui.KeyT, func(a *app) {
+			if commit, ok := a.selectedVisibleCommit(); ok {
+				a.openCommitTagForm(commit)
+			}
+		}},
 		{"History and graph", "t", "Revert the chosen commit", 0, ui.KeyT, func(a *app) { a.confirmCommitAction(true) }},
 		{"History and graph", "C", "Copy commits for cherry-pick", ui.Shift, ui.KeyC, (*app).copyKeyboardCommits},
 		{"History and graph", "V", "Cherry-pick copied commits", ui.Shift, ui.KeyV, (*app).pasteKeyboardCommits},
@@ -103,6 +117,22 @@ func keyboardCommands() []keyboardCommand {
 		{"Branches", "Space", "Check out the chosen branch", 0, ui.KeySpace, (*app).checkoutSelectedBranch},
 		{"Branches", "n", "Create a branch", 0, ui.KeyN, (*app).beginNewBranch},
 		{"Branches", "M", "Merge into current…", ui.Shift, ui.KeyM, (*app).confirmMergeSelectedBranch},
+		{"Branches", "f", "Fast-forward", 0, ui.KeyF, func(a *app) {
+			if branch, ok := a.branchAt(a.selectedBranchRow); ok {
+				a.beginFastForwardBranch(branch)
+			}
+		}},
+		{"Branches", "F", "Force checkout", ui.Shift, ui.KeyF, func(a *app) {
+			if branch, ok := a.branchAt(a.selectedBranchRow); ok {
+				a.confirmForceCheckoutBranch(branch)
+			}
+		}},
+		{"Branches", "R", "Rename", ui.Shift, ui.KeyR, func(a *app) {
+			if branch, ok := a.branchAt(a.selectedBranchRow); ok {
+				a.renameBranch = branch.Name
+				a.showRenameForm = true
+			}
+		}},
 		{"Branches", "r", "Rebase current onto this…", 0, ui.KeyR, func(a *app) {
 			if b, ok := a.branchAt(a.selectedBranchRow); ok {
 				a.confirmRebaseOntoBranch(b)
@@ -127,6 +157,11 @@ func keyboardCommands() []keyboardCommand {
 		{"Remote branches", "r", "Rebase current onto this…", 0, ui.KeyR, (*app).confirmRebaseSelectedRemoteBranch},
 		{"Remote branches", "d", "Delete remote branch…", 0, ui.KeyD, (*app).confirmDeleteSelectedRemoteBranch},
 		{"Stash", "Space", "Apply the chosen stash", 0, ui.KeySpace, (*app).applySelectedStash},
+		{"Stash", "r", "Rename stash", 0, ui.KeyR, func(a *app) {
+			if a.selectedStash >= 0 && a.selectedStash < len(a.snapshot.Stashes) {
+				a.showStashRenameForm = true
+			}
+		}},
 		{"Stash", "g", "Pop (apply and drop)…", 0, ui.KeyG, func(a *app) { a.confirmStashMutation(true) }},
 		{"Stash", "d", "Drop the chosen stash", 0, ui.KeyD, func(a *app) { a.confirmStashMutation(false) }},
 		{"Tags", "n", "Create tag", 0, ui.KeyN, (*app).openTagForm},
@@ -134,6 +169,7 @@ func keyboardCommands() []keyboardCommand {
 		{"Tags", "Shift+P", "Push tag…", ui.Shift, ui.KeyP, (*app).beginPushSelectedTag},
 		{"Tags", "Shift+A", "Push all tags…", ui.Shift, ui.KeyA, (*app).beginPushAllTags},
 		{"Worktrees", "n", "Create worktree", 0, ui.KeyN, (*app).beginNewWorktree},
+		{"Worktrees", "Space", "Open worktree", 0, ui.KeySpace, (*app).openSelectedWorktree},
 		{"Worktrees", "o", "Open worktree", 0, ui.KeyO, (*app).openSelectedWorktree},
 		{"Worktrees", "e", "Open worktree in editor", 0, ui.KeyE, (*app).openSelectedWorktreeInEditor},
 		{"Worktrees", "t", "Open worktree terminal", 0, ui.KeyT, (*app).openSelectedWorktreeTerminal},
