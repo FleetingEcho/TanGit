@@ -190,6 +190,9 @@ func TestConflictAssistantClonePreviewAndAcceptOnlyResult(t *testing.T) {
 
 	h.app.acceptConflictAdvice()
 	h.waitFor(t, "Result-only accept", func() bool { return !h.app.actionBusy && writer.requestCount() == 1 })
+	if h.app.assistance.conflict.open || !h.app.quietRefreshAllowed() {
+		t.Fatal("successful explicit Accept did not close the Result preview and restore quiet refresh")
+	}
 	writer.mu.Lock()
 	request := writer.requests[0]
 	writer.mu.Unlock()
