@@ -5,8 +5,9 @@ package app
 // in every language without disturbing the larger Git catalogs.
 var codeWorkspaceTranslations = map[string]map[string]string{
 	"zh-Hans": {
-		"Insertions": "新增行数",
-		"Deletions":  "删除行数",
+		"Current file: %s": "当前文件：%s",
+		"Insertions":       "新增行数",
+		"Deletions":        "删除行数",
 
 		"Changes in this commit (%d)": "此提交中的改动（%d）",
 		"Files changed":               "更改的文件",
@@ -121,8 +122,9 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Formatter reads source from stdin and writes formatted source to stdout; {{file}} is the current path.": "格式化工具从标准输入读取源代码，并将格式化结果写入标准输出；{{file}} 是当前路径。",
 	},
 	"zh-Hant": {
-		"Insertions": "新增行數",
-		"Deletions":  "刪除行數",
+		"Current file: %s": "目前檔案：%s",
+		"Insertions":       "新增行數",
+		"Deletions":        "刪除行數",
 
 		"Changes in this commit (%d)": "此提交中的變更（%d）",
 		"Files changed":               "變更的檔案",
@@ -237,8 +239,9 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Formatter reads source from stdin and writes formatted source to stdout; {{file}} is the current path.": "格式化工具從標準輸入讀取原始碼，並將格式化結果寫入標準輸出；{{file}} 是目前路徑。",
 	},
 	"ja": {
-		"Insertions": "追加行数",
-		"Deletions":  "削除行数",
+		"Current file: %s": "現在のファイル: %s",
+		"Insertions":       "追加行数",
+		"Deletions":        "削除行数",
 
 		"Changes in this commit (%d)": "このコミットの変更（%d）",
 		"Files changed":               "変更されたファイル",
@@ -353,8 +356,9 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Formatter reads source from stdin and writes formatted source to stdout; {{file}} is the current path.": "フォーマッターは標準入力からソースを読み、フォーマット結果を標準出力に書き込みます。{{file}} は現在のパスです。",
 	},
 	"es": {
-		"Insertions": "Inserciones",
-		"Deletions":  "Eliminaciones",
+		"Current file: %s": "Archivo actual: %s",
+		"Insertions":       "Inserciones",
+		"Deletions":        "Eliminaciones",
 
 		"Changes in this commit (%d)": "Cambios en este commit (%d)",
 		"Files changed":               "Archivos modificados",
@@ -469,8 +473,9 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Formatter reads source from stdin and writes formatted source to stdout; {{file}} is the current path.": "El formateador lee el código fuente por stdin y escribe el resultado por stdout; {{file}} es la ruta actual.",
 	},
 	"fr": {
-		"Insertions": "Insertions",
-		"Deletions":  "Suppressions",
+		"Current file: %s": "Fichier actuel : %s",
+		"Insertions":       "Insertions",
+		"Deletions":        "Suppressions",
 
 		"Changes in this commit (%d)": "Modifications de ce commit (%d)",
 		"Files changed":               "Fichiers modifiés",

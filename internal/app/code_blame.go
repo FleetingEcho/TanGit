@@ -272,9 +272,22 @@ func (a *app) configureCodeBlame(document *codeDocument) {
 		return
 	}
 	previous := document.state.OnHover
+	previousRender := document.state.RenderHover
+	document.state.RenderHover = func(c *ui.Context, panel ui.Element, hover *editor.HoverCard) {
+		if a.codeBlameHover.open && a.codeBlameHover.source == document {
+			a.renderCodeBlameHover(c, panel, hover)
+			return
+		}
+		if previousRender != nil {
+			previousRender(c, panel, hover)
+		} else {
+			editor.DefaultHover(c, panel, hover)
+		}
+	}
 	document.state.OnHover = func(request editor.HoverRequest) {
 		line, ok := codeBlameAt(document, request)
 		if !ok {
+			a.closeCodeBlameDetailsFor(document)
 			if previous != nil {
 				previous(request)
 			}
