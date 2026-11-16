@@ -39,6 +39,9 @@ var japanese = map[string]string{
 	"Hotkeys":                   "ホットキー",
 	"Enable hotkeys":            "ホットキーを有効化",
 	"Enable keyboard shortcuts": "キーボードショートカットを有効化",
+	"Run a one-off shell command": "単発のシェルコマンドを実行",
+	"Shortcut notifications":    "ショートカット通知",
+	"Show shortcut acknowledgements while keeping Command Log and operation notifications visible.": "ショートカットの受付通知を表示し、コマンドログと操作通知も引き続き表示します。",
 
 	// Operations requiring attention.
 	"Edit remote":      "リモートを編集",

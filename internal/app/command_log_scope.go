@@ -5,6 +5,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"fmt"
+
 	"github.com/egoist/mygo/ui"
 
 	"lazygitapp/internal/repository"
@@ -26,7 +28,7 @@ func (a *app) commandLogVisibleEntries() []repository.CommandEntry {
 		if entry.Origin != origin {
 			continue
 		}
-		if query != "" && !strings.Contains(strings.ToLower(entry.Command+"\n"+entry.Output), query) {
+		if query != "" && !strings.Contains(strings.ToLower(commandLogEntrySearchText(entry)), query) {
 			continue
 		}
 		visible = append(visible, entry)
@@ -61,6 +63,21 @@ func (a *app) commandLogTools(c *ui.Context) {
 			})
 		}
 	})
+}
+
+func commandLogEntryText(entry repository.CommandEntry) string {
+	if entry.Shortcut != nil {
+		return fmt.Sprintf("[%s] %s", entry.Shortcut.Chord, entry.Command)
+	}
+	return "$ " + entry.Command
+}
+
+func commandLogEntrySearchText(entry repository.CommandEntry) string {
+	text := entry.Command + "\n" + entry.Output
+	if entry.Shortcut != nil {
+		text = entry.Shortcut.Chord + "\n" + entry.Shortcut.ID + "\n" + text
+	}
+	return text
 }
 
 func commandLogScopeButton(c *ui.Context, title, tooltip string, count int, active bool, run func()) {
