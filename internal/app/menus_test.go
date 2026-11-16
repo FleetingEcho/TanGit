@@ -87,6 +87,9 @@ func (h *harness) settle(t *testing.T) {
 // press presses a key and settles the frame it changed.
 func (h *harness) press(t *testing.T, key ui.Key) {
 	t.Helper()
+	// Shortcut routing belongs to the committed view. In particular, a
+	// fixture's new custom binding must be registered before F5 is injected.
+	h.tester.Frame()
 	h.tester.Key(0, key)
 	h.tester.Frame()
 	h.settle(t)

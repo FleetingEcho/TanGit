@@ -251,13 +251,11 @@ func TestBranchUpdatesResetCommitScrollToTop(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			a, updated, tester := branchScrollFixture(t)
 			test.apply(a, updated)
-			tester.Frame()
-			updated.flushPending()
-			tester.Frame()
-			first, _ := a.branchCommitList.Visible()
-			if first != 0 {
-				t.Fatalf("after %s the branch list starts at row %d, want the top", test.name, first)
-			}
+			h := &harness{app: a, tester: tester, updates: updated}
+			h.waitFor(t, test.name+" to reset branch commits", func() bool {
+				first, _ := a.branchCommitList.Visible()
+				return !a.branchCommitsLoading && first == 0
+			})
 		})
 	}
 }
