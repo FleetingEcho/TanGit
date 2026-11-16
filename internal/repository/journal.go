@@ -28,6 +28,7 @@ const (
 	OperationSucceeded   = "succeeded"
 	OperationFailed      = "failed"
 	OperationInterrupted = "interrupted"
+	OperationUndoing     = "undoing"
 
 	UndoRestoreWork    = "restore-work"
 	UndoResetHead      = "reset-head"
@@ -51,24 +52,31 @@ type OperationRecord struct {
 	// Partial marks a failed multi-file discard after at least one file was
 	// completely discarded. Its recorded final state and snapshot still support
 	// the same revalidated Undo as a successful discard.
-	Partial     bool          `json:"partial,omitempty"`
-	CreatedAt   int64         `json:"created_at"`
-	FinishedAt  int64         `json:"finished_at,omitempty"`
-	UndoneAt    int64         `json:"undone_at,omitempty"`
-	Worktree    string        `json:"worktree"`
-	Branch      string        `json:"branch_before,omitempty"`
-	BranchAfter string        `json:"branch_after,omitempty"`
-	HeadBefore  string        `json:"head_before,omitempty"`
-	HeadAfter   string        `json:"head_after,omitempty"`
-	BeforeState string        `json:"before_state,omitempty"`
-	AfterState  string        `json:"after_state,omitempty"`
-	StashAfter  string        `json:"stash_after,omitempty"`
-	ObjectID    string        `json:"object_id,omitempty"`
-	RefName     string        `json:"ref_name,omitempty"`
-	Message     string        `json:"message,omitempty"`
-	UndoKind    string        `json:"undo_kind,omitempty"`
-	Snapshot    *WorkSnapshot `json:"snapshot,omitempty"`
-	Error       string        `json:"error,omitempty"`
+	Partial              bool              `json:"partial,omitempty"`
+	CreatedAt            int64             `json:"created_at"`
+	FinishedAt           int64             `json:"finished_at,omitempty"`
+	UndoneAt             int64             `json:"undone_at,omitempty"`
+	UndoStartedAt        int64             `json:"undo_started_at,omitempty"`
+	Worktree             string            `json:"worktree"`
+	Branch               string            `json:"branch_before,omitempty"`
+	BranchAfter          string            `json:"branch_after,omitempty"`
+	HeadBefore           string            `json:"head_before,omitempty"`
+	HeadAfter            string            `json:"head_after,omitempty"`
+	BeforeState          string            `json:"before_state,omitempty"`
+	AfterState           string            `json:"after_state,omitempty"`
+	GitStateBefore       string            `json:"git_state_before,omitempty"`
+	GitStateAfter        string            `json:"git_state_after,omitempty"`
+	RemoteEffects        []RemoteRefEffect `json:"remote_effects,omitempty"`
+	WorkspaceGuardBefore string            `json:"workspace_guard_before,omitempty"`
+	WorkspaceGuardAfter  string            `json:"workspace_guard_after,omitempty"`
+	StashAfter           string            `json:"stash_after,omitempty"`
+	ObjectID             string            `json:"object_id,omitempty"`
+	RefName              string            `json:"ref_name,omitempty"`
+	Message              string            `json:"message,omitempty"`
+	UndoKind             string            `json:"undo_kind,omitempty"`
+	Snapshot             *WorkSnapshot     `json:"snapshot,omitempty"`
+	AfterSnapshot        *WorkSnapshot     `json:"after_snapshot,omitempty"`
+	Error                string            `json:"error,omitempty"`
 	// RebasePaused is the legacy active-rebase marker used by edit-stops and
 	// conflict pauses. Its undo is finalized only after the rebase returns to
 	// the branch, not against the temporary detached HEAD.
@@ -86,6 +94,9 @@ type OperationRecord struct {
 
 // CanUndo is only a UI hint. Repository preflights remain authoritative.
 func (r OperationRecord) CanUndo() bool {
+	if len(r.RemoteEffects) != 0 || r.UndoStartedAt != 0 || r.WorkspaceGuardBefore != "" && r.AfterSnapshot == nil {
+		return false
+	}
 	recoverable := r.Status == OperationSucceeded || (r.Status == OperationFailed && r.Partial)
 	return recoverable && r.UndoneAt == 0 && r.UndoKind != "" && !r.RebasePaused && r.ActiveOperation == OperationTypeNone
 }
@@ -245,11 +256,37 @@ func (s *gitSession) beginOperation(kind, summary string, undoKind string, snaps
 		Branch: branch, HeadBefore: head, BeforeState: state,
 		UndoKind: undoKind, Snapshot: snapshot,
 	}
+	scope, enabled, err := storedWorkspaceScope(s, snapshot)
+	if err != nil {
+		return OperationRecord{}, err
+	}
+	if enabled {
+		current, err := s.currentWorkspaceScope(scope)
+		if err != nil {
+			return OperationRecord{}, fmt.Errorf("verify operation recovery start: %w", err)
+		}
+		if current.GitStateGuard != scope.GitStateGuard || current.WorkspaceGuard != scope.WorkspaceGuard {
+			return OperationRecord{}, fmt.Errorf("workspace changed while creating the recovery point; the action was not run")
+		}
+		record.GitStateBefore = scope.GitStateGuard
+		record.WorkspaceGuardBefore = scope.WorkspaceGuard
+	}
 	name, _ := s.operationPath(record.ID)
 	if err := s.writeOperationRecord(name, record); err != nil {
 		return OperationRecord{}, err
 	}
 	return record, nil
+}
+
+func storedWorkspaceScope(s *gitSession, snapshot *WorkSnapshot) (workspaceArchiveScope, bool, error) {
+	if snapshot == nil {
+		return workspaceArchiveScope{}, false, nil
+	}
+	archive, present, err := readWorkspaceRepositoryArchive(s, snapshot.Hash)
+	if err != nil || !present {
+		return workspaceArchiveScope{}, present, err
+	}
+	return archive.Scope, true, nil
 }
 
 func (s *gitSession) pinOperationBefore(record OperationRecord) (OperationRecord, error) {
@@ -281,6 +318,19 @@ func (s *gitSession) stashOperationState() (string, error) {
 }
 
 func (s *gitSession) completeJournalOperation(record OperationRecord, actionErr error) error {
+	if record.UndoStartedAt != 0 {
+		if actionErr == nil {
+			actionErr = errors.New("undo was interrupted before completion")
+		}
+		record.Status = OperationFailed
+		record.Error = RedactSecrets(actionErr.Error())
+		record.FinishedAt = time.Now().Unix()
+		name, _ := s.operationPath(record.ID)
+		if err := s.writeOperationRecord(name, record); err != nil {
+			return fmt.Errorf("undo was interrupted and its journal could not be updated: %w (also %v)", actionErr, err)
+		}
+		return fmt.Errorf("%w (Undo was interrupted; its before and after recovery points remain available)", actionErr)
+	}
 	branch, head, identityErr := s.currentOperationIdentity()
 	var state string
 	var stateErr error
@@ -292,6 +342,17 @@ func (s *gitSession) completeJournalOperation(record OperationRecord, actionErr 
 	record.BranchAfter, record.HeadAfter = branch, head
 	if stateErr == nil {
 		record.AfterState = state
+	}
+	var guardErr error
+	if record.WorkspaceGuardBefore != "" {
+		var point WorkSnapshot
+		var scope workspaceArchiveScope
+		point, scope, guardErr = s.capturePostOperationSnapshot(record)
+		if guardErr == nil {
+			record.AfterSnapshot = &point
+			record.GitStateAfter = scope.GitStateGuard
+			record.WorkspaceGuardAfter = scope.WorkspaceGuard
+		}
 	}
 	var stashErr error
 	if actionErr == nil && record.UndoKind == UndoRestoreStash {
@@ -306,7 +367,10 @@ func (s *gitSession) completeJournalOperation(record OperationRecord, actionErr 
 			record.UndoKind = ""
 		}
 	}
-	if identityErr != nil || stateErr != nil || stashErr != nil {
+	if guardErr != nil && actionErr == nil {
+		record.Error = RedactSecrets(guardErr.Error())
+	}
+	if identityErr != nil || stateErr != nil || guardErr != nil || stashErr != nil {
 		record.Status = OperationInterrupted
 		record.UndoKind = ""
 	}
@@ -383,7 +447,10 @@ func (s *gitSession) validateJournalSnapshot(snapshot *WorkSnapshot) error {
 	if err != nil || strings.TrimSpace(hash) != snapshot.Hash {
 		return fmt.Errorf("saved work was deleted or changed; undo stopped before modifying the repository")
 	}
-	_, err = s.readWorkspacePermissions(snapshot.Hash)
+	if _, err = s.readWorkspacePermissions(snapshot.Hash); err != nil {
+		return err
+	}
+	_, _, err = readWorkspaceRepositoryArchive(s, snapshot.Hash)
 	return err
 }
 
@@ -424,6 +491,28 @@ func (s *gitSession) requireUnchangedOperation(record OperationRecord) error {
 	if state != record.AfterState {
 		return fmt.Errorf("the worktree changed after this operation; preserve the newer work instead of undoing")
 	}
+	scope, enabled, guardErr := storedWorkspaceScope(s, record.Snapshot)
+	if guardErr != nil {
+		return guardErr
+	}
+	if enabled {
+		if scope.GitStateGuard != record.GitStateBefore || scope.WorkspaceGuard != record.WorkspaceGuardBefore {
+			return fmt.Errorf("the recovery point does not match this operation's original state")
+		}
+		if scope.WorkspaceGuard == "" || record.GitStateBefore == "" || record.GitStateAfter == "" || record.WorkspaceGuardBefore == "" || record.WorkspaceGuardAfter == "" {
+			return fmt.Errorf("the operation's workspace recovery information is incomplete")
+		}
+		if branch != record.BranchAfter || head != record.HeadAfter {
+			return fmt.Errorf("HEAD or its branch moved after this operation; undo would overwrite newer history")
+		}
+		current, err := s.currentWorkspaceScope(scope)
+		if err != nil {
+			return err
+		}
+		if current.GitStateGuard != record.GitStateAfter || current.WorkspaceGuard != record.WorkspaceGuardAfter {
+			return fmt.Errorf("the worktree changed after this operation; preserve the newer work and Git metadata instead of undoing")
+		}
+	}
 	if record.UndoKind == UndoRestoreStash {
 		stashState, err := s.stashOperationState()
 		if err != nil {
@@ -446,6 +535,9 @@ func (s *gitSession) requireUnchangedOperation(record OperationRecord) error {
 }
 
 func (s *gitSession) markOperationUndone(record OperationRecord) error {
+	if record.UndoStartedAt != 0 {
+		record.Status = OperationSucceeded
+	}
 	record.UndoneAt = time.Now().Unix()
 	name, _ := s.operationPath(record.ID)
 	if err := s.writeOperationRecord(name, record); err != nil {
@@ -484,10 +576,16 @@ func (s *gitSession) trackedSnapshotWithoutUntracked(snapshot WorkSnapshot) (Wor
 // parent. Exact literal pathspecs avoid both false stash collisions and the
 // tracked-file deletions that restoring an entire tree would cause.
 func (s *gitSession) restoreSnapshotUntracked(snapshot WorkSnapshot) error {
-	untracked, err := s.gitText("rev-parse", "--verify", "--quiet", snapshot.Hash+"^3^{tree}")
+	untrackedCommit, err := s.snapshotUntrackedCommit(snapshot.Hash)
 	if err != nil {
-		// Snapshots without an untracked parent have only tracked work to undo.
+		return err
+	}
+	if untrackedCommit == "" {
 		return nil
+	}
+	untracked, err := s.gitText("rev-parse", "--verify", untrackedCommit+"^{tree}")
+	if err != nil {
+		return fmt.Errorf("saved untracked parent is unavailable: %w", err)
 	}
 	untrackedTree := strings.TrimSpace(untracked)
 	listing, err := s.cmd.New([]string{"git", "ls-tree", "-r", "--name-only", "-z", untrackedTree}).RunWithOutput()
@@ -509,13 +607,20 @@ func (s *gitSession) restoreSnapshotUntracked(snapshot WorkSnapshot) error {
 	if err != nil {
 		return fmt.Errorf("restore saved untracked files: %w: %s", err, strings.TrimSpace(output))
 	}
-	return nil
+	paths, err := workspacePathsFromNul(listing)
+	if err != nil {
+		return err
+	}
+	return s.restoreRawWorkspacePaths(snapshot.Hash, paths)
 }
 
 // restoreResetWorkSnapshot restores tracked index/worktree state separately
 // from the pure-untracked parent. Reset can overwrite or remove an untracked
 // file when the target tracks the same path, so that parent is still required.
 func (s *gitSession) restoreResetWorkSnapshot(ctx context.Context, snapshot WorkSnapshot) error {
+	if err := s.reconcileWorkspacePaths(snapshot.Hash); err != nil {
+		return err
+	}
 	tracked, err := s.trackedSnapshotWithoutUntracked(snapshot)
 	if err != nil {
 		return err
@@ -526,6 +631,9 @@ func (s *gitSession) restoreResetWorkSnapshot(ctx context.Context, snapshot Work
 	if err := s.restoreSnapshotUntracked(snapshot); err != nil {
 		return err
 	}
+	if err := s.restoreWorkspaceRepositoryArchive(snapshot.Hash); err != nil {
+		return err
+	}
 	return s.restoreWorkspacePermissions(snapshot.Hash)
 }
 
@@ -533,6 +641,9 @@ func (s *gitSession) restoreResetWorkSnapshot(ctx context.Context, snapshot Work
 // matched. Tracked state uses stash's index-aware apply; surviving untracked
 // files are then overwritten only where the saved tree has a version.
 func (s *gitSession) restoreJournalWorkSnapshot(snapshot WorkSnapshot) error {
+	if err := s.reconcileWorkspacePaths(snapshot.Hash); err != nil {
+		return err
+	}
 	tracked, err := s.trackedSnapshotWithoutUntracked(snapshot)
 	if err != nil {
 		return err
@@ -541,6 +652,9 @@ func (s *gitSession) restoreJournalWorkSnapshot(snapshot WorkSnapshot) error {
 		return err
 	}
 	if err := s.restoreSnapshotUntracked(snapshot); err != nil {
+		return err
+	}
+	if err := s.restoreWorkspaceRepositoryArchive(snapshot.Hash); err != nil {
 		return err
 	}
 	return s.restoreWorkspacePermissions(snapshot.Hash)
@@ -565,11 +679,39 @@ func (s *gitSession) UndoOperation(ctx context.Context, id string) error {
 	if record.ID != id {
 		return fmt.Errorf("safety journal operation identity does not match its record")
 	}
+	if len(record.RemoteEffects) != 0 {
+		return fmt.Errorf("undo operation: %w", ErrRemoteCompensationRequired)
+	}
 	if !record.CanUndo() {
 		return fmt.Errorf("this operation has no safe undo available")
 	}
 	if err := s.requireUnchangedOperation(record); err != nil {
 		return fmt.Errorf("undo operation: %w", err)
+	}
+	if record.WorkspaceGuardBefore != "" {
+		if record.AfterSnapshot == nil {
+			return fmt.Errorf("undo operation: the post-operation recovery point is missing")
+		}
+		if err := s.validateJournalSnapshot(record.AfterSnapshot); err != nil {
+			return fmt.Errorf("undo operation: validate the post-operation recovery point: %w", err)
+		}
+		afterScope, present, err := storedWorkspaceScope(s, record.AfterSnapshot)
+		if err != nil || !present {
+			return fmt.Errorf("undo operation: the post-operation capture policy is incomplete")
+		}
+		if afterScope.GitStateGuard != record.GitStateAfter || afterScope.WorkspaceGuard != record.WorkspaceGuardAfter {
+			return fmt.Errorf("undo operation: the post-operation recovery point does not match its journal entry")
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if record.WorkspaceGuardBefore != "" {
+		record.UndoStartedAt = time.Now().Unix()
+		record.Status = OperationUndoing
+		if err := s.writeOperationRecord(name, record); err != nil {
+			return fmt.Errorf("undo operation: could not record its start; no recovery writes were made: %w", err)
+		}
 	}
 
 	switch record.UndoKind {
@@ -582,7 +724,7 @@ func (s *gitSession) UndoOperation(ctx context.Context, id string) error {
 		// therefore are not newer conflicts: they are part of the exact state
 		// being replaced by the saved snapshot.
 		if err := s.restoreJournalWorkSnapshot(*record.Snapshot); err != nil {
-			return err
+			return s.failJournalOperation(record, err)
 		}
 	case UndoResetHead:
 		if record.HeadBefore == "" {
