@@ -158,8 +158,8 @@ func (a *app) beginNewAgentTask() {
 		a.notify("error", "Could not load workspace templates", safeError(err))
 	}
 	a.agents.base = "HEAD"
-	if a.snapshot.Branch != "" {
-		a.agents.base = a.snapshot.Branch
+	if branch := a.currentBranchName(); branch != "" {
+		a.agents.base = "refs/heads/" + branch
 	}
 	a.agents.branch = "agent/"
 	a.agents.path = ""

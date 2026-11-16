@@ -631,6 +631,46 @@ func TestBranchCommitsReadWithoutCheckout(t *testing.T) {
 	}
 }
 
+// A branch filter names a branch, not an equally named tag. Both the normal
+// log path and hash-specific filtering must retain commits that advance the
+// local branch after the tag was created.
+func TestSearchCommitsPrefersLocalBranchOverSameNamedTag(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	runGit(t, dir, "config", "user.name", "Desktop Test")
+	runGit(t, dir, "config", "user.email", "desktop@example.com")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "tagged base")
+	runGit(t, dir, "tag", "main")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "new branch tip")
+	branchTip := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
+
+	session, err := (Opener{}).Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches, err := session.SearchCommits(context.Background(), CommitFilter{Branch: "main", Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 2 || matches[0].Hash != branchTip {
+		t.Fatalf("branch filter resolved the same-named tag instead: %#v", matches)
+	}
+	branchCommits, err := session.BranchCommits(context.Background(), "main", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(branchCommits) != 2 || branchCommits[0].Hash != branchTip {
+		t.Fatalf("branch page resolved the same-named tag instead: %#v", branchCommits)
+	}
+	hashMatches, err := session.SearchCommits(context.Background(), CommitFilter{Branch: "main", Query: branchTip, Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hashMatches) != 1 || hashMatches[0].Hash != branchTip {
+		t.Fatalf("hash query resolved the same-named tag instead: %#v", hashMatches)
+	}
+}
+
 // SearchCommits narrows Git's history by message, hash, author and branch,
 // and treats the message as literal text rather than a regular expression.
 func TestSearchCommitsFilters(t *testing.T) {

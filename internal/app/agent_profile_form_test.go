@@ -60,6 +60,36 @@ func configureAgentProfileTaskForm(h *harness) {
 	h.app.agents.cacheDirectory = ".cache/service"
 }
 
+func TestAgentBaseRefChoicesDisambiguateBranchesAndTags(t *testing.T) {
+	h, _ := newAgentTestHarness(t)
+	h.app.snapshot.Branch = "main"
+	h.app.snapshot.Branches = []repository.Branch{{Name: "main", Head: true}}
+	h.app.snapshot.Remotes = []repository.Remote{{Name: "origin", Branches: []repository.RemoteBranch{{Name: "main"}}}}
+	h.app.snapshot.Tags = []repository.Tag{{Name: "main"}}
+
+	h.app.beginNewAgentTask()
+	if got := h.app.agents.base; got != "refs/heads/main" {
+		t.Fatalf("new task default base = %q, want explicit local branch", got)
+	}
+	choices := newAgentTestChoiceSet(h.app.worktreeRefOptions())
+	for _, ref := range []string{"HEAD", "refs/heads/main", "refs/remotes/origin/main", "refs/tags/main"} {
+		if !choices[ref] {
+			t.Fatalf("base choices %v do not contain %q", choices, ref)
+		}
+	}
+	if choices["main"] {
+		t.Fatalf("ambiguous short base remains in the choices: %v", choices)
+	}
+}
+
+func newAgentTestChoiceSet(choices []string) map[string]bool {
+	result := make(map[string]bool, len(choices))
+	for _, choice := range choices {
+		result[choice] = true
+	}
+	return result
+}
+
 func TestAgentTaskCreationPersistsFullProfileAndInitializesExplicitSetup(t *testing.T) {
 	h, store := newAgentTestHarness(t)
 	dependency := createAgentTestTask(t, h, store, agentwork.Task{Title: "Schema first"})

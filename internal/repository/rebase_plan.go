@@ -410,6 +410,9 @@ func (s *gitSession) resolveRebaseRevision(revision, role string) (string, error
 	if revision == "" {
 		return "", nil
 	}
+	if err := s.rejectAmbiguousRef(revision); err != nil {
+		return "", err
+	}
 	output, err := s.gitText("rev-parse", "--verify", revision+"^{commit}")
 	if err != nil {
 		return "", fmt.Errorf("resolve %s %s: %w", role, revision, err)
