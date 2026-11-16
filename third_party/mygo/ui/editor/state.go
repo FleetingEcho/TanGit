@@ -149,6 +149,7 @@ type State struct {
 	// SemanticTokens override syntax colors for byte ranges classified by a
 	// language server. Ranges are recomputed when the buffer version changes.
 	SemanticTokens []SemanticToken
+	minimapDrag    minimapDragState
 	// OnInput sees each input event before the editor, as keys for a
 	// mode of the app's such as Vim's: returning true takes it, and the
 	// editor leaves it. Text typed at the carets comes as InputText;
