@@ -29,7 +29,11 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Save your changes before closing?":         "关闭前要保存更改吗？",
 		"Save":                                      "保存",
 		"Don't Save":                                "不保存",
-		"Code":                                      "代码", "Files": "文件", "Search": "搜索", "Search results": "搜索结果",
+		"File changed on disk":                      "磁盘上的文件已更改",
+		"This file changed on disk after it was opened.":                             "此文件在打开后发生了磁盘更改。",
+		"Reload discards your unsaved changes. Overwrite replaces the file on disk.": "重新加载会丢弃未保存的更改。覆盖会替换磁盘上的文件。",
+		"Reload": "重新加载",
+		"Code":   "代码", "Files": "文件", "Search": "搜索", "Search results": "搜索结果",
 		"Expand file explorer": "展开文件资源管理器", "Collapse file explorer": "折叠文件资源管理器",
 		"Refresh files": "刷新文件", "Reload the repository file list": "重新加载仓库文件列表",
 		"Open repository in external editor": "在外部编辑器中打开仓库", "Open this repository in VS Code, Zed, or another editor": "在 VS Code、Zed 或其他编辑器中打开此仓库",
@@ -146,7 +150,11 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Save your changes before closing?":         "關閉前要儲存變更嗎？",
 		"Save":                                      "儲存",
 		"Don't Save":                                "不要儲存",
-		"Code":                                      "程式碼", "Files": "檔案", "Search": "搜尋", "Search results": "搜尋結果",
+		"File changed on disk":                      "磁碟上的檔案已變更",
+		"This file changed on disk after it was opened.":                             "此檔案在開啟後於磁碟上發生了變更。",
+		"Reload discards your unsaved changes. Overwrite replaces the file on disk.": "重新載入會捨棄未儲存的變更。覆寫會取代磁碟上的檔案。",
+		"Reload": "重新載入",
+		"Code":   "程式碼", "Files": "檔案", "Search": "搜尋", "Search results": "搜尋結果",
 		"Expand file explorer": "展開檔案總管", "Collapse file explorer": "摺疊檔案總管",
 		"Refresh files": "重新整理檔案", "Reload the repository file list": "重新載入儲存庫檔案清單",
 		"Open repository in external editor": "在外部編輯器中開啟儲存庫", "Open this repository in VS Code, Zed, or another editor": "在 VS Code、Zed 或其他編輯器中開啟此儲存庫",
@@ -263,7 +271,11 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Save your changes before closing?":         "閉じる前に変更を保存しますか？",
 		"Save":                                      "保存",
 		"Don't Save":                                "保存しない",
-		"Code":                                      "コード", "Files": "ファイル", "Search": "検索", "Search results": "検索結果",
+		"File changed on disk":                      "ディスク上のファイルが変更されました",
+		"This file changed on disk after it was opened.":                             "このファイルは開かれた後にディスク上で変更されました。",
+		"Reload discards your unsaved changes. Overwrite replaces the file on disk.": "再読み込みすると未保存の変更が破棄されます。上書きするとディスク上のファイルが置き換えられます。",
+		"Reload": "再読み込み",
+		"Code":   "コード", "Files": "ファイル", "Search": "検索", "Search results": "検索結果",
 		"Expand file explorer": "ファイルエクスプローラーを展開", "Collapse file explorer": "ファイルエクスプローラーを折りたたむ",
 		"Refresh files": "ファイルを更新", "Reload the repository file list": "リポジトリのファイル一覧を再読み込み",
 		"Open repository in external editor": "外部エディターでリポジトリを開く", "Open this repository in VS Code, Zed, or another editor": "このリポジトリを VS Code、Zed、または別のエディターで開く",
@@ -380,7 +392,11 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Save your changes before closing?":         "¿Guardar los cambios antes de cerrar?",
 		"Save":                                      "Guardar",
 		"Don't Save":                                "No guardar",
-		"Code":                                      "Código", "Files": "Archivos", "Search": "Búsqueda", "Search results": "Resultados de búsqueda",
+		"File changed on disk":                      "El archivo cambió en el disco",
+		"This file changed on disk after it was opened.":                             "Este archivo cambió en el disco después de abrirse.",
+		"Reload discards your unsaved changes. Overwrite replaces the file on disk.": "Recargar descarta los cambios sin guardar. Sobrescribir reemplaza el archivo en el disco.",
+		"Reload": "Recargar",
+		"Code":   "Código", "Files": "Archivos", "Search": "Búsqueda", "Search results": "Resultados de búsqueda",
 		"Expand file explorer": "Expandir explorador de archivos", "Collapse file explorer": "Contraer explorador de archivos",
 		"Refresh files": "Actualizar archivos", "Reload the repository file list": "Recargar la lista de archivos del repositorio",
 		"Open repository in external editor": "Abrir el repositorio en un editor externo", "Open this repository in VS Code, Zed, or another editor": "Abrir este repositorio en VS Code, Zed u otro editor",
@@ -497,7 +513,11 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 		"Save your changes before closing?":         "Enregistrer les modifications avant de fermer ?",
 		"Save":                                      "Enregistrer",
 		"Don't Save":                                "Ne pas enregistrer",
-		"Code":                                      "Code", "Files": "Fichiers", "Search": "Recherche", "Search results": "Résultats de recherche",
+		"File changed on disk":                      "Le fichier a changé sur le disque",
+		"This file changed on disk after it was opened.":                             "Ce fichier a changé sur le disque après son ouverture.",
+		"Reload discards your unsaved changes. Overwrite replaces the file on disk.": "Recharger abandonne les modifications non enregistrées. Écraser remplace le fichier sur le disque.",
+		"Reload": "Recharger",
+		"Code":   "Code", "Files": "Fichiers", "Search": "Recherche", "Search results": "Résultats de recherche",
 		"Expand file explorer": "Développer l’explorateur de fichiers", "Collapse file explorer": "Réduire l’explorateur de fichiers",
 		"Refresh files": "Actualiser les fichiers", "Reload the repository file list": "Recharger la liste des fichiers du dépôt",
 		"Open repository in external editor": "Ouvrir le dépôt dans un éditeur externe", "Open this repository in VS Code, Zed, or another editor": "Ouvrir ce dépôt dans VS Code, Zed ou un autre éditeur",
@@ -591,11 +611,65 @@ var codeWorkspaceTranslations = map[string]map[string]string{
 	},
 }
 
+var editorFeatureSourceKeys = []string{
+	"Could not read editor recovery", "Could not save editor recovery", "%s changed on disk",
+	"Editor recovery skipped", "Unsaved editor changes restored", "Enter a new symbol name",
+	"Symbol renamed", "Language server returned invalid code actions",
+	"This code action is a command the editor cannot run yet", "Language server returned invalid references",
+	"No definition found", "Definition is not a local file", "Outline", "Peek Definition",
+	"Quick Fix", "References", "Rename Symbol", "Actions offered by the language server",
+	"Locations reported by the language server", "Rename across the workspace",
+	"Symbols in the current document", "New symbol name", "No code actions available",
+	"No references found", "No document symbols found", "Loading definition…", "Quick Fix…",
+	"Find References", "Could not apply language server edit", "%s changed before the edit could be applied",
+	"The file changed while a language server edit was being applied", "Updated %d files",
+	"Go to line %d", "Built-in editor preferences", "Absolute, relative, or hidden",
+	"Line numbers", "Choose which spaces and tabs are visible", "Whitespace",
+	"Wrap long lines", "Auto-close brackets and quotes", "Inlay hints", "Semantic highlighting",
+	"Minimap", "Sticky symbol header", "No definition found", "Loading definition…",
+}
+
+var editorFeatureZhHans = map[string]string{
+	"Could not read editor recovery": "无法读取编辑器恢复数据", "Could not save editor recovery": "无法保存编辑器恢复数据",
+	"%s changed on disk": "%s 已在磁盘上更改", "Editor recovery skipped": "已跳过编辑器恢复",
+	"Unsaved editor changes restored": "已恢复未保存的编辑器更改", "Enter a new symbol name": "请输入新的符号名称",
+	"Symbol renamed": "符号已重命名", "Language server returned invalid code actions": "语言服务器返回了无效的代码操作",
+	"This code action is a command the editor cannot run yet": "此代码操作是编辑器暂时无法运行的命令",
+	"Language server returned invalid references":             "语言服务器返回了无效的引用", "No definition found": "未找到定义",
+	"Definition is not a local file": "定义不在本地文件中", "Outline": "大纲", "Peek Definition": "速览定义",
+	"Quick Fix": "快速修复", "Quick Fix…": "快速修复…", "References": "引用", "Rename Symbol": "重命名符号",
+	"Actions offered by the language server": "语言服务器提供的操作", "Locations reported by the language server": "语言服务器报告的位置",
+	"Rename across the workspace": "在整个工作区中重命名", "Symbols in the current document": "当前文档中的符号",
+	"New symbol name": "新符号名称", "No code actions available": "没有可用的代码操作", "No references found": "未找到引用",
+	"No document symbols found": "未找到文档符号", "Loading definition…": "正在加载定义…", "Find References": "查找引用",
+	"Could not apply language server edit": "无法应用语言服务器编辑", "%s changed before the edit could be applied": "应用编辑前 %s 已发生更改",
+	"The file changed while a language server edit was being applied": "应用语言服务器编辑时文件发生了更改",
+	"Updated %d files": "已更新 %d 个文件", "Go to line %d": "转到第 %d 行", "Built-in editor preferences": "内置编辑器偏好设置",
+	"Absolute, relative, or hidden": "绝对、相对或隐藏", "Line numbers": "行号", "Choose which spaces and tabs are visible": "选择显示哪些空格和制表符",
+	"Whitespace": "空白字符", "Wrap long lines": "长行自动换行", "Auto-close brackets and quotes": "自动闭合括号和引号",
+	"Inlay hints": "内嵌提示", "Semantic highlighting": "语义高亮", "Minimap": "缩略图", "Sticky symbol header": "固定符号标题",
+}
+
 func init() {
 	catalogs := map[string]map[string]string{"zh-Hans": zhHans, "zh-Hant": zhHant, "ja": japanese, "es": spanish, "fr": french}
 	for language, additions := range codeWorkspaceTranslations {
 		for english, translated := range additions {
 			catalogs[language][english] = translated
+		}
+	}
+	// New editor features remain readable in every locale immediately; the
+	// Simplified Chinese catalog carries the complete native terminology and
+	// other locales can replace the English fallback incrementally.
+	for language, catalog := range catalogs {
+		for _, key := range editorFeatureSourceKeys {
+			if _, exists := catalog[key]; !exists {
+				catalog[key] = key
+			}
+		}
+		if language == "zh-Hans" {
+			for key, translated := range editorFeatureZhHans {
+				catalog[key] = translated
+			}
 		}
 	}
 }

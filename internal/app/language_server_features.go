@@ -47,6 +47,12 @@ func (a *app) configureGoLanguageDocument(document *codeDocument) {
 		(!strings.EqualFold(filepath.Ext(document.path), ".go") && !a.isAdditionalLanguageServerPath(document.path)) {
 		return
 	}
+	// Force the first rendered frame to request document-wide features even
+	// when a new Buffer's version is zero.
+	document.signatureVersion = ^uint64(0)
+	document.symbolVersion = ^uint64(0)
+	document.inlayVersion = ^uint64(0)
+	document.semanticVersion = ^uint64(0)
 	document.state.OnHover = func(request editor.HoverRequest) {
 		if strings.EqualFold(filepath.Ext(document.path), ".go") {
 			a.requestGoLanguageHover(document, request)
@@ -73,6 +79,24 @@ func (a *app) configureGoLanguageDocument(document *codeDocument) {
 	}
 	document.state.ContextMenu = func(menu *ui.Menu) {
 		a.codeDocumentContextMenu(menu, document)
+	}
+	document.state.OnInput = func(event ui.InputEvent) bool {
+		if event.Kind != ui.InputKeyDown {
+			return false
+		}
+		if event.Key == ui.KeyF12 && event.Mods == ui.Alt {
+			a.requestLanguagePeekDefinition(document)
+			return true
+		}
+		if event.Mods != 0 {
+			return false
+		}
+		switch event.Key {
+		case ui.KeyF2:
+			a.openLanguageRename(document)
+			return true
+		}
+		return false
 	}
 	a.offerLanguageServerInstall(document.path)
 }

@@ -2,10 +2,13 @@ package app
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
@@ -18,7 +21,45 @@ import (
 var readWorkingFile = os.ReadFile
 
 var writeWorkingFile = func(path string, data []byte) error {
-	return os.WriteFile(path, data, 0o644)
+	return mygo.WriteFileSafely(path, func(w io.Writer) error {
+		_, err := w.Write(data)
+		return err
+	})
+}
+
+var writeWorkingFileChecked = func(path string, data []byte, expected localFileStamp, known bool) error {
+	if !known {
+		return writeWorkingFile(path, data)
+	}
+	return mygo.WriteFileSafelyChecked(path, func() error {
+		return checkLocalFileStamp(path, expected, true)
+	}, func(w io.Writer) error {
+		_, err := w.Write(data)
+		return err
+	})
+}
+
+type localFileStamp [sha256.Size]byte
+
+var errLocalFileModified = errors.New("file was modified on disk; reopen it before saving")
+
+func stampLocalFile(content []byte) localFileStamp { return sha256.Sum256(content) }
+
+// checkLocalFileStamp refuses to overwrite a file whose contents no longer
+// match what the editor read. Reading the contents instead of comparing only
+// size and modification time also catches fast, same-size replacements.
+func checkLocalFileStamp(path string, previous localFileStamp, known bool) error {
+	if !known {
+		return nil
+	}
+	content, err := readWorkingFile(path)
+	if err != nil {
+		return err
+	}
+	if stampLocalFile(content) != previous {
+		return errLocalFileModified
+	}
+	return nil
 }
 
 // errBinaryFile reports a file the pane refuses to edit: its bytes include a
