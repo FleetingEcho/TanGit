@@ -754,15 +754,16 @@ type app struct {
 	// commitFilesHeight and commitFilesWidth are the room the commit's files
 	// take above or beside its diff, which the line between them drags.
 	// commitDetailsLayout chooses those two arrangements.
-	commitFilesHeight   float32
-	commitFilesWidth    float32
-	commitDetailsLayout int
-	commitFilesHash     string
-	commitFilesLoading  bool
-	commitFilesError    string
-	commitDiffHash      string
-	commitDiffPath      string
-	commitDiffOptions   repository.DiffOptions
+	commitFilesHeight    float32
+	commitFilesWidth     float32
+	commitFilesCollapsed bool
+	commitDetailsLayout  int
+	commitFilesHash      string
+	commitFilesLoading   bool
+	commitFilesError     string
+	commitDiffHash       string
+	commitDiffPath       string
+	commitDiffOptions    repository.DiffOptions
 	// commitDiffPatch is the diff the pane shows, kept so it can be saved.
 	commitDiffPatch   string
 	commitDiffLoading bool
