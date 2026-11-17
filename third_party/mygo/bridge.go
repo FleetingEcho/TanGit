@@ -319,7 +319,7 @@ func (w *Window) handleMessage(msg string) {
 		S  string `json:"s"`
 		E  bool   `json:"e"`
 	}
-	if err := json.Unmarshal(stringBytes(msg), &m); err != nil {
+	if err := json.Unmarshal(stringBytes(msg), &m, decodeOptions); err != nil {
 		return
 	}
 	switch m.T {
@@ -350,7 +350,7 @@ func (w *Window) handleMessage(msg string) {
 		w.fitContentSize(contentSize{m.W, m.H, m.SW, m.SH})
 	case "drag":
 		if w.native != nil && !w.untrusted {
-			w.startDrag()
+			w.native.StartDrag()
 		}
 	case "dblclick":
 		if w.native != nil && !w.untrusted {

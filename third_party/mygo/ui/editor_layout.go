@@ -172,9 +172,8 @@ func (e *node) paintInput(p *Painter) {
 		if ed.placeholderColorSet {
 			color = ed.placeholderColor
 		}
-		// Placeholder metrics can differ from the empty content (especially
-		// for CJK fallback fonts). Share the active content's baseline, never
-		// confuse the content box's top-origin with a typography baseline.
+		// Match a CJK fallback font's baseline with the active content instead
+		// of incorrectly sharing the empty editor's top-origin.
 		y := oy
 		if ed.area == nil && l != nil && len(l.Lines) > 0 && len(pl.Lines) > 0 {
 			y += l.Lines[0].Baseline - pl.Lines[0].Baseline

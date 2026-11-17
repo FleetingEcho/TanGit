@@ -37,7 +37,11 @@ func (w *Window) attachContent(content Content) {
 		Clipboard:      backend().Clipboard(),
 		StartDataDrag:  w.startDataDrag,
 		CancelDataDrag: w.cancelDataDrag,
-		StartDrag:      w.startDrag,
+		StartDrag: func() {
+			if w.native != nil {
+				w.native.StartDrag()
+			}
+		},
 		TitleBarDoubleClicked: func() {
 			if w.native != nil {
 				w.native.TitleBarDoubleClicked()

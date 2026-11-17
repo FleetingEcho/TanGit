@@ -173,7 +173,7 @@ func TestAtlasGrowthReleasesCachedMasks(t *testing.T) {
 // A whole mask can fill a shelf as tall as the largest atlas after it
 // grows. Failed tiles or icons must then release it too, although no
 // whole path mask failed in that paint.
-func TestAtlasGrowthKeepsTilesAndIconsDrawable(t *testing.T) {
+func TestAtlasGrowthLeavesRoomForTilesAndIcons(t *testing.T) {
 	for _, kind := range []string{"tiles", "icon"} {
 		t.Run(kind, func(t *testing.T) {
 			show := false
