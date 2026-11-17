@@ -228,6 +228,26 @@ func (a *app) selectedRemoteName() (string, bool) {
 	return "", false
 }
 
+// runTrustedShellCommand executes a user's command through the local system
+// shell with the user's full permissions and the repository as its working
+// directory. It is deliberately not a sandbox: commands inherit normal local
+// environment/filesystem access and may use the network or write files. Both
+// custom commands and Continue checks use this exact implementation, so their
+// trust declaration describes the code that actually runs.
+func runTrustedShellCommand(ctx context.Context, root, command string) (string, error) {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
+	} else {
+		cmd = exec.CommandContext(ctx, "sh", "-c", command)
+	}
+	cmd.Dir = root
+	repository.ConfigureBackgroundCommand(cmd)
+	configureCustomCancellation(cmd)
+	output, err := cmd.CombinedOutput()
+	return string(output), err
+}
+
 // runCustomCommand runs a custom command, or an ad-hoc prompt command, in
 // the repository root. Output goes to the command log; a toast reports the
 // outcome. Custom commands are unavailable in SSH workspaces.
@@ -290,17 +310,8 @@ func (a *app) runCustomCommand(command, label string) {
 		defer a.recoverBackground()
 		defer close(jobDone)
 		defer cancel()
-		var cmd *exec.Cmd
-		if runtime.GOOS == "windows" {
-			cmd = exec.CommandContext(ctx, "cmd", "/C", expanded)
-		} else {
-			cmd = exec.CommandContext(ctx, "sh", "-c", expanded)
-		}
-		cmd.Dir = root
-		repository.ConfigureBackgroundCommand(cmd)
-		configureCustomCancellation(cmd)
-		output, err := cmd.CombinedOutput()
-		done(string(output), err != nil)
+		output, err := runTrustedShellCommand(ctx, root, expanded)
+		done(output, err != nil)
 	}()
 }
 

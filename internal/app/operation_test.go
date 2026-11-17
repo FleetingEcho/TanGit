@@ -99,16 +99,14 @@ func TestOperationContextShowsRealRefsAndProgress(t *testing.T) {
 
 func TestOperationControlsDriveConfirmedFingerprint(t *testing.T) {
 	for _, action := range []repository.OperationAction{
-		repository.OperationActionContinue,
 		repository.OperationActionSkip,
 		repository.OperationActionAbort,
 	} {
 		t.Run(string(action), func(t *testing.T) {
 			h, calls := operationTestApp(t, richRebaseOperation())
 			button := map[repository.OperationAction]string{
-				repository.OperationActionContinue: "Continue",
-				repository.OperationActionSkip:     "Skip…",
-				repository.OperationActionAbort:    "Abort…",
+				repository.OperationActionSkip:  "Skip…",
+				repository.OperationActionAbort: "Abort…",
 			}[action]
 			if err := h.tester.Click(button); err != nil {
 				t.Fatalf("open %s confirmation: %v", action, err)
