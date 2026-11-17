@@ -612,6 +612,16 @@ func (a *app) anyFormOpen() bool {
 // modalOpen reports whether a dialog or a full-window view owns the keyboard,
 // so the window's tab shortcuts stand aside while it does.
 func (a *app) modalOpen() bool {
+	return a.modalOpenIncludingDiffFullscreen(true)
+}
+
+// modalOpenExceptDiffFullscreen lets a read-only maximized diff follow new
+// commits while preserving the refresh protection every actual dialog has.
+func (a *app) modalOpenExceptDiffFullscreen() bool {
+	return a.modalOpenIncludingDiffFullscreen(false)
+}
+
+func (a *app) modalOpenIncludingDiffFullscreen(includeDiffFullscreen bool) bool {
 	return a.confirm != nil ||
 		a.settingsOpen ||
 		a.keybindingsOpen ||
@@ -623,7 +633,7 @@ func (a *app) modalOpen() bool {
 		a.sshWorkspaceOpen ||
 		a.sshHostKeyPrompt != nil ||
 		a.state == stateCloning ||
-		a.diffFullscreen ||
+		(includeDiffFullscreen && a.diffFullscreen) ||
 		a.branchFullscreen ||
 		a.anyFormOpen() ||
 		a.lineSelectMode ||
@@ -672,6 +682,13 @@ func commitFilterButton(c *ui.Context, tooltip string, active bool, run func()) 
 // it beside the filter button only while a filter narrows it.
 func clearFilterButton(c *ui.Context, tooltip string, run func()) {
 	commitHeaderButton(c, "Clear all filters", tooltip, closeIcon, run)
+}
+
+// commitRefreshButton puts the repository refresh the header offers where the
+// commits are, so a list that looks stale can be re-read in place. It rests
+// while that refresh runs, like the header button.
+func (a *app) commitRefreshButton(c *ui.Context) {
+	flatIconButton(c, "Refresh commits", "Reload the commit list", refreshIcon, 14, 4, a.actionBusy, a.beginRefresh)
 }
 
 // paneTitle is a section column's heading: its icon and its name.

@@ -169,5 +169,10 @@ var featureTranslationsEs = map[string]string{
 	"Pushed all tags":        "Se hizo push de todas las etiquetas",
 	"Delete tag %s from %s?": "¿Eliminar la etiqueta %s de %s?",
 	"The tag is deleted only on the remote. Your local tag remains.": "La etiqueta solo se elimina del remoto. La etiqueta local se conserva.",
-	"Deleted tag %s from %s": "Se eliminó la etiqueta %s de %s",
+	"Deleted tag %s from %s":     "Se eliminó la etiqueta %s de %s",
+	"Commit details layout":      "Diseño de detalles del commit",
+	"Switch layout (Left/Right)": "Cambiar diseño (izquierda/derecha)",
+	"Switch layout (Top/Bottom)": "Cambiar diseño (arriba/abajo)",
+	"Refresh commits":            "Actualizar commits",
+	"Reload the commit list":     "Recargar la lista de commits",
 }

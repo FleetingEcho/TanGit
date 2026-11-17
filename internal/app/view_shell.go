@@ -737,7 +737,9 @@ func (a *app) emptyRecentView(c *ui.Context) {
 func (a *app) appView(c *ui.Context, overlayTopInset float32) {
 	ui.Box(c).Fill().Background(islandBackdrop(c.Theme())).Children(func() {
 		ui.Column(c).Fill().Padding(islandGap / 2).Children(func() {
-			a.headerView(c)
+			if !a.diffFullscreen {
+				a.headerView(c)
+			}
 			a.mainArea(c)
 			a.statusBar(c)
 		})
@@ -851,13 +853,20 @@ func (a *app) workspaceView(c *ui.Context) {
 }
 
 func (a *app) headerView(c *ui.Context) {
+	a.headerViewWithID(c, "toolbar")
+}
+
+// headerViewWithID gives the full-window diff its own repository toolbar.
+// Its distinct keyboard-pane id keeps focus inside the fullscreen view while
+// leaving Fetch, Pull, Push and the other repository actions available.
+func (a *app) headerViewWithID(c *ui.Context, keyboardID string) {
 	theme := c.Theme()
 	// A service callback is safe to keep for this window's lifetime. This one
 	// deliberately targets the user's desktop, never a remote SSH browser.
 	if a.openExternalURL == nil {
 		a.openExternalURL = c.Services().OpenURL
 	}
-	a.keyboardPane(c, "toolbar", islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(6, 14)).Focusable()).Children(func() {
+	a.keyboardPane(c, keyboardID, islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(6, 14)).Focusable()).Children(func() {
 		base := filepath.Base(a.snapshot.Root)
 		if base == "." || base == string(filepath.Separator) || base == "" {
 			base = a.snapshot.Root

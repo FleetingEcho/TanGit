@@ -429,6 +429,7 @@ func (a *app) historyListHeader(c *ui.Context) {
 					a.clearCommitFilter(sectionHistory)
 				})
 			}
+			a.commitRefreshButton(c)
 			paneCollapseButton(c, &a.workspacePaneCollapsed[sectionHistory], "Collapse list pane")
 		})
 		if filtered {
@@ -513,6 +514,60 @@ func (a *app) selectCommitFileRow(row int) {
 	a.commitDiffError = ""
 }
 
+const (
+	commitDetailsLeftRight = iota
+	commitDetailsTopBottom
+)
+
+// commitDetailsLayoutControl switches the changed files and their diff between
+// side-by-side and stacked panes. The two icons stay visible together so the
+// current choice is clear without opening a menu.
+func (a *app) commitDetailsLayoutControl(c *ui.Context) {
+	theme := c.Theme()
+	parts := ui.SegmentedBase(c, &a.commitDetailsLayout, 2)
+	track := parts.Track.AlignItems(ui.Center).Padding(2).Gap(2).
+		Radius(theme.Radius).Background(theme.Surface).Border(1, theme.Border).
+		Label(tr("Commit details layout"))
+	track.Children(func() {
+		options := []struct {
+			label string
+			icon  *ui.SVG
+		}{
+			{label: "Switch layout (Left/Right)", icon: splitIcon},
+			{label: "Switch layout (Top/Bottom)", icon: diffUnifiedIcon},
+		}
+		for i, option := range options {
+			chosen := i == a.commitDetailsLayout
+			segment := parts.Segment(i).Size(26, 22).Padding(0).Center().
+				Radius(max(theme.Radius-2, 0)).Border(1, theme.Border.Alpha(0)).
+				Label(tr(option.label)).Tooltip(tr(option.label))
+			switch {
+			case chosen:
+				segment.Background(theme.Accent.Alpha(0.14)).TextColor(theme.Accent).
+					Border(1, theme.Accent.Alpha(0.55))
+			case segment.Hovered():
+				segment.Background(theme.SurfaceHover)
+			}
+			segment.Children(func() {
+				ui.Icon(c, option.icon).FontSize(14)
+			})
+		}
+	})
+	if track.Changed() {
+		a.settings.CommitDetailsLayout = a.commitDetailsLayout
+		a.saveSettings()
+	}
+}
+
+// commitDetailsSplit keeps independent divider positions for the two layouts,
+// so trying one never loses the size the user chose in the other.
+func (a *app) commitDetailsSplit(c *ui.Context, first, second func()) ui.Element {
+	if a.commitDetailsLayout == commitDetailsTopBottom {
+		return paneSplitVertical(c, &a.commitFilesHeight, first, second)
+	}
+	return paneSplit(c, &a.commitFilesWidth, first, second)
+}
+
 func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLabel string,
 	actionIcons func(*ui.Context, repository.Commit)) {
 	theme := c.Theme()
@@ -523,11 +578,15 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 			})
 			return
 		}
-		ui.Text(c, commit.Subject).FontSize(18).Bold().SingleLine().Tooltip(commit.Subject)
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+			ui.Text(c, commit.Subject).FontSize(18).Bold().SingleLine().Tooltip(commit.Subject).
+				Grow(1).MinWidth(0)
+			a.expandDiffButton(c)
+		})
 		if actionIcons != nil {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(4).Wrap().Children(func() { actionIcons(c, *commit) })
 		}
-		a.diffViewOptions(c)
+		a.diffViewOptionsWith(c, a.commitDetailsLayoutControl, false)
 		a.customPatchBar(c)
 		copyLabel := "Copy commit hash"
 		if a.workspaceTab == sectionReflog {
@@ -583,13 +642,13 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 		revealSelectedRow := a.selectedCommitFileRow >= 0 && a.selectedCommitFileRow != previousSelectedRow
 		// The files and the diff share the rest of the pane, and the line
 		// between them is dragged to give one more room than the other.
-		paneSplitVertical(c, &a.commitFilesHeight, func() {
+		a.commitDetailsSplit(c, func() {
 			ui.Column(c).Fill().Gap(6).Children(func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
 					ui.Icon(c, folderIcon).FontSize(13).TextColor(theme.Accent)
 					ui.Text(c, tr("Commit files")).Bold().Grow(1)
 					ui.Badge(c, fmt.Sprintf("%d", len(a.commitFiles)))
-					a.fileTreeButtons(c, fileTreeCommitScope, paths)
+					a.fileTreeModeButton(c).Margin(0, 8, 0, 0)
 				})
 				list := a.keyboardList(c, &a.commitFileList, len(a.commitFileRows)).Grow(1).Rows(func(row ui.ListRow) {
 					item := a.commitFileRows[row.Index]

@@ -45,6 +45,7 @@ func (a *app) graphView(c *ui.Context) {
 								a.clearCommitFilter(sectionGraph)
 							})
 						}
+						a.commitRefreshButton(c)
 						paneCollapseButton(c, &a.workspacePaneCollapsed[sectionGraph], "Collapse list pane")
 					})
 					if filtered {
