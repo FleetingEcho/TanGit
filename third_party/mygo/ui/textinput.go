@@ -34,7 +34,7 @@ func textInputBase(c *context, value *string, multiline bool) *node {
 	}
 	st := e.st
 	if st.editor == nil || st.editor.document != nil {
-		st.editor = newEditor(c.rt.now)
+		st.editor = newEditor(c.rt.now, c.rt.text)
 		st.editor.setText(*value)
 		st.editor.caret, st.editor.anchor = st.editor.buf.n, st.editor.buf.n
 	}

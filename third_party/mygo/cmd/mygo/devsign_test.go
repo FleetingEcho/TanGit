@@ -20,7 +20,7 @@ func TestDevelopmentIdentity(t *testing.T) {
 		{`  1) 0000000000000000000000000000000000000001 "Developer ID Application: Jane Doe (AAAA)"`, "AAAA", "", ""},
 		{"     0 valid identities found\n", "", "", ""},
 	} {
-		if hash, name := developmentIdentity(tt.out, tt.team); hash != tt.hash || name != tt.name {
+		if hash, name := developmentIdentity(tt.out, nil, tt.team); hash != tt.hash || name != tt.name {
 			t.Errorf("developmentIdentity(%q, %q) = %q, %q; want %q, %q", tt.out, tt.team, hash, name, tt.hash, tt.name)
 		}
 	}
@@ -36,6 +36,40 @@ func TestSigningTeam(t *testing.T) {
 	} {
 		if got := signingTeam(in); got != want {
 			t.Errorf("signingTeam(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestCertificateTeams(t *testing.T) {
+	_, certs, hashes := testKeychain(t, []string{otherDev, teamDev, "No Team"}, map[string]string{otherDev: "OTHER67890", teamDev: "TEAM123456"})
+	certs = append([]byte("-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n"), certs...)
+	got := certificateTeams(certs)
+	want := map[string]string{hashes[otherDev]: "OTHER67890", hashes[teamDev]: "TEAM123456"}
+	if len(got) != len(want) {
+		t.Errorf("certificateTeams = %v, want %v", got, want)
+	}
+	for hash, team := range want {
+		if got[hash] != team {
+			t.Errorf("certificateTeams[%s] = %q, want %q", hash, got[hash], team)
+		}
+	}
+}
+
+// An Apple Development identity's name ends in the user's identifier, so
+// its team comes from its certificate.
+func TestDevelopmentIdentityTeamFromCertificate(t *testing.T) {
+	identities, certs, hashes := testKeychain(t,
+		[]string{"Developer ID Application: Example (TEAM123456)", otherDev, teamDev},
+		map[string]string{otherDev: "OTHER67890", teamDev: "TEAM123456"})
+	teams := certificateTeams(certs)
+	for _, tt := range []struct{ team, name string }{
+		{"TEAM123456", teamDev},
+		{"OTHER67890", otherDev},
+		{"NOPE000000", otherDev},
+		{"", otherDev},
+	} {
+		if hash, name := developmentIdentity(identities, teams, tt.team); hash != hashes[tt.name] || name != tt.name {
+			t.Errorf("developmentIdentity(team %q) = %q, %q; want %q, %q", tt.team, hash, name, hashes[tt.name], tt.name)
 		}
 	}
 }

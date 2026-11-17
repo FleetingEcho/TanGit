@@ -124,7 +124,7 @@ func sharpness(m *image.RGBA) float64 {
 
 // TestZoomDrawsAtTheScreensResolutionTimesTheZoom checks that text zoomed
 // 2 times draws as text at twice the scale does, pixel for pixel, and
-// sharper than the same text scaled up by a transform.
+// sharper than the text drawn at scale 1, its bitmap scaled up.
 func TestZoomDrawsAtTheScreensResolutionTimesTheZoom(t *testing.T) {
 	native := coreNewTester(zoomText, 160, 30)
 	native.SetScale(2)
@@ -149,13 +149,10 @@ func TestZoomDrawsAtTheScreensResolutionTimesTheZoom(t *testing.T) {
 		t.Errorf("zoomed 2 times, %d of %d components differ from scale 2's, by up to %d", differ, len(a.Pix), maxDiff)
 	}
 
-	scaled := coreNewTester(func(c *context) {
-		coreColumn(c).Absolute().Top(0).Left(0).Width(160).Height(30).TransformOrigin(0, 0).Scale(2, 2).Children(func() { zoomText(c) })
-	}, 320, 60)
-	z, s := sharpness(b), sharpness(scaled.Image())
-	t.Logf("sharpness zoomed %.0f, scaled by a transform %.0f", z, s)
+	z, s := sharpness(b), sharpness(upscaled(coreNewTester(zoomText, 160, 30).Image(), 2))
+	t.Logf("sharpness zoomed %.0f, scaled up as a bitmap %.0f", z, s)
 	if z < s*1.2 {
-		t.Errorf("zoomed text's sharpness %.0f, scaled up by a transform %.0f: want it clearly sharper", z, s)
+		t.Errorf("zoomed text's sharpness %.0f, scaled up as a bitmap %.0f: want it clearly sharper", z, s)
 	}
 	// Unzoomed, nothing changes.
 	once := coreNewTester(zoomText, 160, 30)

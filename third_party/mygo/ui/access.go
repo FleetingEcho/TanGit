@@ -300,8 +300,8 @@ const (
 // so that the user knows to look there, AutoCompleteInline for the text
 // completed in place. It only tells it: the view shows the suggestions
 // itself, as in ComboboxBase's popup. Combobox, Autocomplete, and a
-// TokenField with suggestions, tell AutoCompleteList themselves;
-// AutoCompleteNone takes it back.
+// TokenField with suggestions or a Query, tell AutoCompleteList
+// themselves; AutoCompleteNone takes it back.
 func (e *node) AutoComplete(kind AutoComplete) *node {
 	e.autoComplete = kind
 	return e
@@ -650,10 +650,13 @@ func leafRole(r platform.AccessRole) bool {
 // of its texts, as a name from content takes a descendant's aria-label on
 // the web: a row reads "Branch main (checked out)" rather than the "✓
 // main" drawn for it; one hidden from assistive technology
-// (AccessHidden) gives nothing. Assistive technology names elements by it
-// every frame, so a single text is returned as it is, without a copy.
+// (AccessHidden) gives nothing, nor does one that is inert, as a copy of
+// an element leaving with an Exit transition or a page a Router is
+// leaving, which the accessibility tree leaves out too. Assistive
+// technology names elements by it every frame, so a single text is
+// returned as it is, without a copy.
 func (e *node) innerText() string {
-	if e.flags&flagInvisible != 0 || e.hidden {
+	if e.flags&(flagInvisible|flagInert) != 0 || e.hidden {
 		return ""
 	}
 	if e.kind == kindText {
@@ -677,7 +680,7 @@ type innerTexts struct {
 }
 
 func (t *innerTexts) walk(e *node) {
-	if e.flags&flagInvisible != 0 || e.hidden || e.accessHidden {
+	if e.flags&(flagInvisible|flagInert) != 0 || e.hidden || e.accessHidden {
 		return
 	}
 	if e.label != "" {
@@ -822,6 +825,14 @@ func (rt *engine) accessElement(t *platform.AccessTree, e *node, parent int, scr
 			chooseRow(t, len(t.Nodes)-1)
 		}
 		parent = len(t.Nodes) - 1
+		if e.accChildren != nil {
+			// A copy, as adding moves the nodes.
+			p := t.Nodes[parent]
+			e.accChildren(&p, func(n platform.AccessNode) {
+				n.Parent = parent
+				t.Nodes = append(t.Nodes, n)
+			})
+		}
 		if e.kind == kindText {
 			rt.accessInline(t, e, parent)
 			return
@@ -1217,7 +1228,7 @@ func (rt *engine) accessAction(ev platform.SurfaceEvent) {
 		for row := s; row != nil; row = rt.states[row.parent] {
 			if l := rt.states[row.parent]; l != nil && l.list != nil {
 				if r, ok := l.list.rows[row.id]; ok {
-					l.list.ScrollIntoView(r.row)
+					l.list.reveal(r.row)
 				}
 			}
 			if row.parent == 0 {

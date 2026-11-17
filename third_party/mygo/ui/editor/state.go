@@ -107,6 +107,13 @@ type State struct {
 	// OnDefinition is called for Cmd+click (Ctrl+click elsewhere) and F12
 	// on a word, as to go to its definition.
 	OnDefinition func(offset int)
+	// NoDefinitionClick leaves Cmd+click to the editor's other clicks,
+	// with no link under it: F12 and the context menu still go to the
+	// definition.
+	NoDefinitionClick bool
+	// NoDefinitionLink shows no link under the pointer with Cmd held,
+	// though Cmd+click still goes to the definition.
+	NoDefinitionLink bool
 	// OnGutterClick is called for a click on a line's number, as to set a
 	// breakpoint.
 	OnGutterClick func(line int)
@@ -239,6 +246,7 @@ func (st *State) options() options {
 		placeholder: st.Placeholder, label: st.Label, theme: st.Theme, bindings: st.Bindings, gutterMarks: st.GutterMarks,
 		backgrounds: st.LineBackgrounds, textBgs: st.TextBackgrounds, diffBase: st.DiffBase, onCompletion: st.OnCompletion, onHover: st.OnHover, onDefinition: st.OnDefinition,
 		hoverDelay: st.HoverDelay, noPointerHover: st.NoPointerHover,
+		noDefinitionClick: st.NoDefinitionClick, noDefinitionLink: st.NoDefinitionLink,
 		onGutterClick: st.OnGutterClick, contextMenu: st.ContextMenu, onInput: st.OnInput, noInputMethod: st.NoInputMethod, minDigits: 3,
 		renderFindBar: st.RenderFindBar, renderGoToLine: st.RenderGoToLine,
 		renderCompletions: st.RenderCompletions, renderHover: st.RenderHover,
@@ -502,6 +510,33 @@ func (st *State) SetReplacements(rs []Replacement) {
 // Replacements returns the replacements shown, where the edits since
 // moved them.
 func (st *State) Replacements() []Replacement { return slices.Clone(st.ed.view.repls) }
+
+// SetLineStyles draws lines in other fonts, as a Markdown editor's
+// headings in larger type: each line's rows are as high as its style
+// makes them, and only the lines in view are laid out still. They move
+// with the edits until set again, a style going with its line's text.
+// Set them again as the text changes: setting the same styles costs
+// nothing, and a change lays out again only the lines whose style
+// changed. Styles of lines that don't exist are left out, and the last
+// given for a line wins. A diff's sides take none.
+//
+// The gutter numbers styled lines in the editor's font, on the baseline
+// of their first row, and a replacement's element without a Width is as
+// wide as the line's rows are high.
+func (st *State) SetLineStyles(styles []LineStyle) {
+	st.ensure()
+	st.ed.setLineStyles(styles)
+}
+
+// LineStyles returns the styles shown, where the edits since moved them.
+func (st *State) LineStyles() []LineStyle {
+	st.ensure()
+	out := make([]LineStyle, len(st.ed.view.lineStyles))
+	for i, s := range st.ed.view.lineStyles {
+		out[i] = s.LineStyle
+	}
+	return out
+}
 
 // SetSuggestion shows text at offset, muted, as an edit prediction:
 // Tab inserts it, and an edit or a move of the caret drops it. An empty

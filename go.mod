@@ -5,16 +5,16 @@ go 1.27.3
 tool github.com/egoist/mygo/cmd/mygo
 
 require (
-	github.com/egoist/mygo v0.9.0
+	github.com/egoist/mygo v0.9.2
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-errors/errors v1.5.1
-	github.com/jesseduffield/lazygit v0.66.4-0.20261110130621-8290cc9357ad
+	github.com/jesseduffield/lazygit v0.66.4-0.20261115072517-54cc6af1d77b
 	github.com/junegunn/fzf v0.75.0
 	github.com/junegunn/go-shellwords v0.0.0-20250127100254-2aa3b3277741
 	github.com/pkg/sftp v1.13.12
 	github.com/sasha-s/go-deadlock v0.3.9
 	github.com/sirupsen/logrus v1.10.2
-	github.com/sourcegraph/zoekt v0.0.0-20261113144410-b808c14e30c9
+	github.com/sourcegraph/zoekt v0.0.0-20261116114912-33ce1d04d373
 	github.com/stefanhaller/git-todo-parser v0.0.7-0.20250905083220-c50528f08304
 	github.com/ulikunitz/xz v0.5.17
 	golang.org/x/crypto v0.59.0

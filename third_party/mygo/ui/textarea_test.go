@@ -135,6 +135,30 @@ func TestBufferWords(t *testing.T) {
 	}
 }
 
+// Backspace takes a combining mark alone, and an emoji sequence whole.
+func TestTextInputBackspaceMarks(t *testing.T) {
+	for _, c := range []struct{ s, want string }{
+		{"aนี้", "aนี"},
+		{"ทำ", "ท"},
+		{"é", "e"},
+		{"葛\U000E0100", ""},
+		{"❤️", ""},
+		{"👍🏽", ""},
+		{"🇹🇭", ""},
+	} {
+		v := ""
+		tt := NewTester(func(ctx *Context) {
+			TextInput(ctx, &v).AutoFocus().Label("field").Width(400)
+		}, 500, 120)
+		tt.Frame()
+		tt.Type(c.s)
+		tt.Key(0, KeyBackspace)
+		if v != c.want {
+			t.Errorf("backspace in %q leaves %q, want %q", c.s, v, c.want)
+		}
+	}
+}
+
 // TestTextInputCJKWords deletes, moves and selects by words in Chinese
 // and Japanese, which have no spaces between them: a character at a time,
 // not the whole run (#668).
@@ -279,7 +303,7 @@ func TestTextAreaLaysOutAsWholeText(t *testing.T) {
 	ed := e.st.editor
 	params := ed.area.params
 	params.Text = s
-	whole := textSystem().Layout(params)
+	whole := ed.sys.Layout(params)
 	for i := 0; i <= ed.buf.n; i++ {
 		x, y, h := ed.area.caretAt(ed, i, 0)
 		wx, wy, wh := whole.Caret(i)
@@ -413,7 +437,7 @@ func TestTextAreaSelectsAsWholeText(t *testing.T) {
 	a := ed.area
 	params := a.params
 	params.Text = s
-	whole := textSystem().Layout(params)
+	whole := ed.sys.Layout(params)
 	n := ed.buf.n
 	for from := 0; from <= n; from++ {
 		for to := from + 1; to <= n; to++ {
@@ -868,10 +892,10 @@ func TestInputPlaceholderStaysOnItsLine(t *testing.T) {
 		lineEl = coreTextInputBase(c, &line).Width(120).Placeholder("mmmm mmmm mmmm mmmm mmmm mmmm").Label("Field")
 		areaEl = coreTextAreaBase(c, &area).Width(120).Placeholder("mmmm mmmm mmmm mmmm mmmm mmmm").Label("Area")
 	}, 300, 160)
-	if n := len(textSystem().Layout(lineEl.placeholderParams(120)).Lines); n != 1 {
+	if n := len(lineEl.c.rt.text.Layout(lineEl.placeholderParams(120)).Lines); n != 1 {
 		t.Errorf("the input's placeholder takes %d lines", n)
 	}
-	if n := len(textSystem().Layout(areaEl.placeholderParams(120)).Lines); n < 2 {
+	if n := len(areaEl.c.rt.text.Layout(areaEl.placeholderParams(120)).Lines); n < 2 {
 		t.Errorf("the text area's placeholder takes %d lines", n)
 	}
 }

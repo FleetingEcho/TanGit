@@ -62,6 +62,8 @@ type clip struct {
 	// the spans clipSolid found for the rows of the area, lo and hi a row
 	// (noSpan until found), or -1.
 	spans int
+	// solidX is the fixed fully covered x range of a rectangular clip.
+	solidX [2]int
 }
 
 const noSpan = math.MinInt32
@@ -80,12 +82,15 @@ type renderer struct {
 	spanBuf []int32
 	// blurred holds, by op, the images blurred of the ops that blur theirs.
 	blurred []*blurredImage
+	// over draws the first operation over what dst holds, rather than over
+	// the scene's clear color (Layer.Over).
+	over bool
 }
 
 // Render draws s into dst, which must be s.Width×s.Height.
 func Render(dst *Image, s *scene.Scene) {
-	drawCanvases(s)
 	var r Renderer
+	r.drawCanvases(s)
 	r.d.draw(dst, s, image.Rect(0, 0, dst.W, dst.H), r.opBounds(s))
 }
 
@@ -136,6 +141,8 @@ func (d *drawer) draw(dst *Image, s *scene.Scene, area image.Rectangle, bounds [
 	// Ops that only translate draw as those without transforms do, as on
 	// the GPU (gpu.Builder).
 	s = d.fold.Fold(s)
+	// Each quad of an effect painting quads is an op of its own.
+	s, bounds = d.inst.Split(s, bounds)
 	area = area.Intersect(image.Rect(0, 0, dst.W, dst.H))
 	// An owner may have dropped an image's pixels (Bitmap.ReleasePixels)
 	// once a GPU renderer uploaded them: make them again before the bands
@@ -187,12 +194,28 @@ func (d *drawer) drawOps(dst *Image, s *scene.Scene, area image.Rectangle, bound
 		rows = effectRows
 	}
 	bands := (area.Dy() + rows - 1) / rows
-	n := max(min(runtime.GOMAXPROCS(0), area.Dx()*area.Dy()/workArea, bands, maxWorkers), 1)
+	workers := min(runtime.GOMAXPROCS(0), maxWorkers)
+	pixels := area.Dx() * area.Dy()
+	n := max(min(workers, pixels/workArea, bands), 1)
+	if px == nil && n == 1 && workers > 1 && area.Dy() >= 2*effectRows && to-from >= 4 {
+		// Overlapping fills can paint a small target many times. Other
+		// operations, low-overdraw scenes and already-parallel targets keep
+		// the area-based split. Fewer than four fills cannot cover it four times.
+		nextRows := max(effectRows, (area.Dy()+2*workers-1)/(2*workers))
+		nextBands := (area.Dy() + nextRows - 1) / nextRows
+		work := fillWork(s, area, to, nextRows, min(workers, nextBands), max(4*pixels, workArea*workers))
+		if work >= 4*pixels && work >= 2*workArea {
+			// Bound the new scene traversals for a formerly serial target.
+			rows, bands = nextRows, nextBands
+			n = max(n, min(workers, work/workArea, bands))
+		}
+	}
 	for len(d.rs) < n {
 		d.rs = append(d.rs, renderer{})
 	}
 	for i := range d.rs {
 		d.rs[i].blurred = d.blurred
+		d.rs[i].over = d.over
 	}
 	if n == 1 {
 		d.rs[0].render(dst, s, area, bounds, from, to, px, b)
@@ -204,6 +227,58 @@ func (d *drawer) drawOps(dst *Image, s *scene.Scene, area image.Rectangle, bound
 	}
 	d.bands.run(n, bands)
 	d.job = bandJob{}
+}
+
+// fillWork estimates pixels visited by visible, untransformed solid fills that
+// span enough bands to share work across workers, stopping at limit. Localized
+// overdraw must not multiply scene scans without sharing the paint work.
+// Borders with a transparent interior do not fill their box.
+// Damage bounds grow both paint and clips: a one-pixel fill, or a large fill
+// under a one-pixel clip, must not count as nine pixels of overdraw. Track the
+// tight clip rectangles instead. Complex transforms and very deep clip stacks
+// conservatively keep the existing area-based schedule, with no scratch allocs.
+func fillWork(s *scene.Scene, area image.Rectangle, to, rows, workers, limit int) int {
+	var stack [32]image.Rectangle
+	clip, depth, work := area, 0, 0
+	pixels := func(rc scene.Rect) image.Rectangle {
+		return image.Rect(int(math.Floor(float64(rc.X))), int(math.Floor(float64(rc.Y))),
+			int(math.Ceil(float64(rc.X+rc.W))), int(math.Ceil(float64(rc.Y+rc.H))))
+	}
+	for i := 0; i < to && work < limit; i++ {
+		op := &s.Ops[i]
+		switch op.Kind {
+		case scene.OpPushClip:
+			if depth == len(stack) || op.Transform.Set {
+				return 0
+			}
+			stack[depth] = clip
+			depth++
+			if op.Rect.Empty() {
+				clip = image.Rectangle{}
+			} else {
+				clip = clip.Intersect(pixels(op.Rect))
+			}
+		case scene.OpPopClip:
+			if depth > 0 {
+				depth--
+				clip = stack[depth]
+			}
+		case scene.OpFill:
+			if op.Transform.Set || op.Rect.Empty() || op.Paint != scene.PaintSolid || op.Color.A == 0 {
+				continue
+			}
+			r := pixels(op.Rect).Intersect(clip)
+			if r.Empty() {
+				continue
+			}
+			first, last := (r.Min.Y-area.Min.Y)/rows, (r.Max.Y-1-area.Min.Y)/rows
+			if last-first+1 < workers {
+				continue
+			}
+			work += r.Dx() * r.Dy()
+		}
+	}
+	return work
 }
 
 // bandJob is what the bands of drawOps draw: operations from to to of s
@@ -238,7 +313,7 @@ func (r *renderer) render(dst *Image, s *scene.Scene, area image.Rectangle, boun
 	if r.area.Empty() {
 		return
 	}
-	if from == 0 {
+	if from == 0 && !r.over {
 		r.clear(s.Clear)
 	}
 	r.updateBounds()
@@ -308,6 +383,9 @@ func (r *renderer) render(dst *Image, s *scene.Scene, area image.Rectangle, boun
 			c.inverse, c.valid = cs.Transform.Inverse()
 			if c.masked = cs.Masks(); c.masked {
 				c.mask = newClipMasking(&cs)
+			}
+			if !c.round && !c.transform.Set && !c.masked {
+				c.solidX = [2]int{int(math.Ceil(float64(c.r.X))), int(math.Floor(float64(c.r.X + c.r.W)))}
 			}
 			if c.continuous && !c.transform.Set {
 				// Continuous corners take long to find the spans of, which
@@ -408,7 +486,11 @@ func (r *renderer) clipSolid(y int) (lo, hi int) {
 			return lo, lo
 		}
 		var l, h int
-		if k := c.spans + 2*(y-r.area.Min.Y); c.spans >= 0 && y >= r.area.Min.Y && y < r.area.Max.Y {
+		if !c.round {
+			if float32(y) >= c.r.Y && float32(y+1) <= c.r.Y+c.r.H {
+				l, h = c.solidX[0], c.solidX[1]
+			}
+		} else if k := c.spans + 2*(y-r.area.Min.Y); c.spans >= 0 && y >= r.area.Min.Y && y < r.area.Max.Y {
 			if r.spanBuf[k] == noSpan {
 				l, h = solidSpan(&c.shape, float32(y), float32(y+1))
 				r.spanBuf[k], r.spanBuf[k+1] = int32(l), int32(h)
@@ -562,6 +644,9 @@ func solidSpan(s *shape, y0, y1 float32) (lo, hi int) {
 	rc := s.r
 	if y0 < rc.Y || y1 > rc.Y+rc.H {
 		return 0, 0
+	}
+	if !hasRadii(s.radii) {
+		return int(math.Ceil(float64(rc.X))), int(math.Floor(float64(rc.X + rc.W)))
 	}
 	// The corners narrow the row the most at its edge nearer to theirs.
 	top, bottom := y0-rc.Y, rc.Y+rc.H-y1
@@ -1532,6 +1617,9 @@ func (r *renderer) image(op *scene.Op) {
 	opacity := op.Opacity
 	if opacity == 0 {
 		opacity = 1
+	}
+	if r.imagePixels(op, opacity) {
+		return
 	}
 	radii := scene.Corners(op.Rect, op.Radii, op.Continuous)
 	box := newShape(op.Rect, radii)

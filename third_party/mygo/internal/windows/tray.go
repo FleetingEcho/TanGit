@@ -88,7 +88,7 @@ type tray struct {
 	template bool
 }
 
-func (b *Backend) NewTray(h platform.TrayHandler) (platform.Tray, error) {
+func (b *Backend) NewTray(_ string, h platform.TrayHandler) (platform.Tray, error) {
 	whitenTemplate = whiten
 	b.nextTray++
 	t := &tray{b: b, h: h, id: b.nextTray}
@@ -186,6 +186,8 @@ func whiten(data []byte) ([]byte, error) {
 }
 
 func (t *tray) SetTitle(string) {}
+
+func (t *tray) SetTitleMonospaced(bool) {}
 
 // Dark reports whether the taskbar is dark: Windows draws it in the
 // system's mode, which may differ from the apps'.
@@ -549,7 +551,7 @@ func (b *Backend) finishNotification(t *tray) {
 
 // Global shortcuts.
 
-func (b *Backend) RegisterHotkey(id int, acc string) error {
+func (b *Backend) RegisterHotkey(id int, acc, _ string) error {
 	a, err := accelerator.Parse(acc, "windows")
 	if err != nil {
 		return err

@@ -277,6 +277,12 @@ func TestUnifiedClipboardForeignOwnershipAndShutdown(t *testing.T) {
 	if err := mygo.Clipboard.Write(transfer.TextData("old"), mygo.ClipboardOptions{OnRelease: func() { releases.Add(1) }}); err != nil {
 		t.Fatal(err)
 	}
+	var foreignChanges atomic.Int32
+	t.Cleanup(mygo.Clipboard.OnChanged(func() {
+		if slices.Contains(mygo.Clipboard.Formats(), clipboardCustom) {
+			foreignChanges.Add(1)
+		}
+	}))
 	ctx, cancel := context.WithTimeout(context.Background(), wait.Guard)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^$")
@@ -305,6 +311,7 @@ func TestUnifiedClipboardForeignOwnershipAndShutdown(t *testing.T) {
 	if err != nil || ready != "ready\n" {
 		t.Fatalf("foreign owner startup %q: %v, %s", ready, err, stderr.String())
 	}
+	eventually(t, "foreign clipboard change notification", func() bool { return foreignChanges.Load() > 0 })
 	eventually(t, "foreign clipboard ownership", func() bool { return slices.Contains(mygo.Clipboard.Formats(), clipboardCustom) })
 	eventually(t, "old provider release", func() bool { return releases.Load() == 1 })
 	d, err := mygo.Clipboard.Read(clipboardCustom)

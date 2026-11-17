@@ -151,6 +151,11 @@ func DecodeSound(data []byte) (*Sound, error) {
 	return ReadSound(d)
 }
 
+// reserveFrames is the most frames ReadSound reserves from a decoder's
+// Len, six minutes at 44.1 kHz: a header can say any length, and a longer
+// sound grows as it is decoded.
+const reserveFrames = 1 << 24
+
 // ReadSound decodes everything d has into memory.
 func ReadSound(d Decoder) (*Sound, error) {
 	ch := d.Channels()
@@ -160,7 +165,7 @@ func ReadSound(d Decoder) (*Sound, error) {
 	keep := min(ch, 2)
 	var samples []float32
 	if n := d.Len(); n > 0 {
-		samples = make([]float32, 0, n*int64(keep))
+		samples = make([]float32, 0, min(n, reserveFrames)*int64(keep))
 	}
 	buf := make([]float32, 4096/ch*ch)
 	for {

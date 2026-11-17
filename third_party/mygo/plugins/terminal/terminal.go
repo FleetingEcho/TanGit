@@ -116,6 +116,11 @@ type Options struct {
 	// from where it thinks it is, would land elsewhere, as the server's
 	// screen would show to the next client attaching.
 	ResizeByConn bool
+	// NoExitMessage leaves out the dim line the terminal writes on its
+	// screen when the program ends, "[Process exited]" ("[Disconnected]"
+	// with Conn), for an app that says so itself or closes the view.
+	// OnExit, Done and ExitCode are the same either way.
+	NoExitMessage bool
 
 	// Font is the font of the text: the system's monospaced font at 13
 	// DIPs when zero.
@@ -925,7 +930,7 @@ func (t *Terminal) ended() {
 		t.code.Store(int64(code))
 	}
 	t.mu.Lock()
-	if t.term != nil && !t.closed {
+	if t.term != nil && !t.closed && !t.opts.NoExitMessage {
 		msg := "[Process exited]"
 		if code := t.code.Load(); code != 0 {
 			msg = fmt.Sprintf("[Process exited with code %d]", code)

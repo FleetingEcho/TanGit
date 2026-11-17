@@ -45,11 +45,39 @@ import (
 // look, for items of a layout of one's own.
 //
 // PopoverMenuButton draws the menu of a menu button so.
-func (e *node) PopoverMenu(build func(m *Menu)) *node {
+//
+// Its options style the panel of the menu and of its submenus, and the
+// rows of their items, as a menu button's (PopoverMenuOptions): a context
+// menu that unfolds from where it opened, as the app's drawn menu buttons
+// do.
+func (e *node) PopoverMenu(build func(m *Menu), options ...PopoverMenuOptions) *node {
+	if len(options) > 1 {
+		panic("ui: PopoverMenu takes at most one PopoverMenuOptions")
+	}
+	var o PopoverMenuOptions
+	if len(options) > 0 {
+		o = options[0]
+	}
 	e.flags |= flagContextMenu
 	e.buildMenu(false, true, build)
+	if d := e.c.rt.menu.drawn; d != nil && d.id == e.id {
+		d.panel, d.item = o.Panel, o.Item
+	}
 	e.c.rt.drawMenu(e, build)
 	return e
+}
+
+// PopoverMenuOptions are how a context menu MyGo draws in the window
+// (PopoverMenu) looks. The zero options give it the theme's look.
+type PopoverMenuOptions struct {
+	// Panel, when set, styles the panel of the menu and of each submenu
+	// that opens, after the theme's look and with the same calls, as
+	// PopoverMenuButtonOptions.Panel does a menu button's: it sets no
+	// margin and adds no children, and the menu keeps its place.
+	Panel func(panel Element)
+	// Item, when set, styles the row of each item of the menu and of its
+	// submenus, after the theme's look, as PopoverMenuButtonOptions.Item.
+	Item func(item Element)
 }
 
 // PopoverMenuButton makes the element a menu button, as Menu does, whose
@@ -123,7 +151,7 @@ func (e *node) PopoverMenuButton(build func(m *Menu), options ...PopoverMenuButt
 		if o.At != 0 || o.Self != 0 {
 			d.menu.attach = attachment(1 + min(o.At, AnchorBottomEnd)*15 + min(o.Self, AnchorBottomEnd))
 		}
-		d.panel = o.Panel
+		d.panel, d.item = o.Panel, o.Item
 	}
 	rt.drawMenu(e, build)
 	if synced != nil {
@@ -173,6 +201,17 @@ type PopoverMenuButtonOptions struct {
 	// The menu keeps its place, its gap from the button and its items'
 	// look: Panel sets no margin and adds no children.
 	Panel func(panel Element)
+	// Item, when set, styles the row of each item of the menu and of its
+	// submenus, after the theme's look and with the same calls, as Panel
+	// does the panel: a slimmer row, say, or other corners.
+	//
+	//	ui.PopoverMenuButtonOptions{Item: func(item ui.Element) {
+	//		item.Padding(4, 8).Radius(6)
+	//	}}
+	//
+	// The row keeps its content and the theme's highlight; Item adds no
+	// children.
+	Item func(item Element)
 }
 
 type menuOpenKey struct{}
@@ -873,6 +912,9 @@ type drawnMenu struct {
 	// panel styles its panels after the theme's look, as the menu button
 	// asked in this build (PopoverMenuButtonOptions.Panel).
 	panel func(panel Element)
+	// item styles the rows of its items after the theme's look
+	// (PopoverMenuButtonOptions.Item).
+	item func(item Element)
 }
 
 // drawnIcon is an icon of a drawn menu in a color: the color of the text
@@ -1197,6 +1239,9 @@ func (m *menuParts) drawnItem(d *drawnMenu, it *platform.MenuItem, mi *MenuItem,
 		row.Background(t.Accent).TextColor(color)
 	case mi.danger:
 		row.TextColor(color)
+	}
+	if d.item != nil {
+		d.item(wrapElement(row))
 	}
 	rtl := row.rtl()
 	row.Children(func() {

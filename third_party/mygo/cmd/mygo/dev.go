@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -206,7 +207,13 @@ func devSign(c *Config, sign string) string {
 		return "-"
 	}
 	out, _ := exec.Command("security", "find-identity", "-v", "-p", "codesigning").Output()
-	hash, name := developmentIdentity(string(out), signingTeam(c.MacOS.SigningIdentity))
+	team := signingTeam(c.MacOS.SigningIdentity)
+	var teams map[string]string
+	if team != "" {
+		certs, _ := exec.Command("security", "find-certificate", "-a", "-p").Output()
+		teams = certificateTeams(certs)
+	}
+	hash, name := developmentIdentity(string(out), teams, team)
 	if hash == "" {
 		warnf("Signing the development app ad hoc: macOS asks again for its permissions and Keychain items after each build. An Apple Development certificate keeps them; Xcode makes one for an Apple ID, free, in Settings > Accounts > Manage Certificates")
 		return "-"
@@ -228,6 +235,7 @@ type devSession struct {
 	icns         []byte
 	mainFor      string // the Main that mainDir is the package directory of
 	mainDir      string
+	desktopEntry string
 
 	// Used by the run loop only.
 	app *devProcess // the running build
@@ -335,6 +343,7 @@ func (s *devSession) run(ctx context.Context, c *Config) error {
 			s.app.stop()
 		}
 		stopping.Wait()
+		s.removeDesktopEntry()
 		t.stop()
 	}()
 
@@ -635,6 +644,11 @@ func (s *devSession) buildAndLaunch(ctx context.Context, t *task, running [32]by
 			return nil, sum, err
 		}
 	}
+	if runtime.GOOS == "linux" {
+		if err := s.installDesktopEntry(dc, filepath.Join(dir, name)); err != nil {
+			warnf("The desktop entry for the app's icon: %v", err)
+		}
+	}
 	copy(sum[:], h.Sum(nil))
 	if sum == running {
 		return nil, sum, errUnchanged
@@ -718,31 +732,26 @@ func hashEntitlements(w io.Writer, c *Config) error {
 	return nil
 }
 
-// placeBuild moves the executable in stage and the resources res next to
-// it into dir, and removes what an earlier build left there and this one
-// does not have.
+// placeBuild moves the executable in stage into dir, syncs the resources
+// res next to it, and removes what an earlier build left there and this
+// one does not have. Resources that did not change stay as they are, so a
+// program the running app started from them, which Windows keeps from
+// being moved, does not stop the rebuild.
 func placeBuild(stage, dir string, res []resource) error {
-	if err := copyResources(res, stage); err != nil {
-		return err
-	}
 	entries, err := os.ReadDir(stage)
 	if err != nil {
 		return err
 	}
-	placed := map[string]bool{}
+	own := map[string]bool{}
 	for _, e := range entries {
-		if err := replacePath(filepath.Join(stage, e.Name()), filepath.Join(dir, e.Name())); err != nil {
-			return err
-		}
-		placed[e.Name()] = true
+		own[e.Name()] = true
 	}
-	entries, err = os.ReadDir(dir)
-	if err != nil {
+	if err := syncResources(res, dir, stage, own); err != nil {
 		return err
 	}
 	for _, e := range entries {
-		if !placed[e.Name()] && !hiddenName(e.Name()) {
-			_ = os.RemoveAll(filepath.Join(dir, e.Name()))
+		if err := replacePath(filepath.Join(stage, e.Name()), filepath.Join(dir, e.Name())); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -781,6 +790,77 @@ func (s *devSession) icon(c *Config) ([]byte, error) {
 		s.iconKey, s.icns = key, icns
 	}
 	return s.icns, nil
+}
+
+// installDesktopEntry gives the dev build on Linux a desktop entry in the
+// user's data directory, which desktops match its windows to by the
+// executable's name, with its icon next to the executable: by path, as the
+// installed app's, which shells find without an icon theme.
+func (s *devSession) installDesktopEntry(dc *Config, exe string) error {
+	if dc.Icon == "" {
+		s.removeDesktopEntry()
+		return nil
+	}
+	src, err := os.ReadFile(dc.path(dc.Icon))
+	if err != nil {
+		return err
+	}
+	name := filepath.Base(exe)
+	icon := exe + ".png"
+	if _, err := writeIfChanged(icon, src); err != nil {
+		return err
+	}
+	entry := filepath.Join(xdgDataHome(), "applications", name+".desktop")
+	// The dev build must not take the app's files and URLs.
+	e := *dc
+	e.FileAssociations, e.URLSchemes = nil, nil
+	hidden := strings.Replace(linuxDesktopEntry(&e, exe, icon), "Type=Application\n", "Type=Application\nNoDisplay=true\n", 1)
+	if _, err := writeIfChanged(entry, []byte(hidden)); err != nil {
+		return err
+	}
+	if s.desktopEntry != "" && s.desktopEntry != entry {
+		_ = os.Remove(s.desktopEntry)
+	}
+	s.desktopEntry = entry
+	return nil
+}
+
+// removeDesktopEntry removes what installDesktopEntry wrote.
+func (s *devSession) removeDesktopEntry() {
+	if s.desktopEntry != "" {
+		_ = os.Remove(s.desktopEntry)
+		s.desktopEntry = ""
+	}
+}
+
+// xdgDataHome mirrors xdgDir in internal/linux.
+func xdgDataHome() string {
+	if d := os.Getenv("XDG_DATA_HOME"); filepath.IsAbs(d) {
+		return d
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share")
+}
+
+// desktopExec quotes path for the Exec key as execArg in internal/linux
+// does, only when it needs it.
+func desktopExec(path string) string {
+	if !strings.ContainsAny(path, " \t\"`$\\%") {
+		return path
+	}
+	return `"` + strings.NewReplacer(`\`, `\\\\`, `"`, `\\"`, "`", "\\\\`", `$`, `\\$`, `%`, `%%`).Replace(path) + `"`
+}
+
+// writeIfChanged writes data to path unless it holds it already, and
+// reports whether it wrote.
+func writeIfChanged(path string, data []byte) (bool, error) {
+	if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, data) {
+		return false, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return false, err
+	}
+	return true, os.WriteFile(path, data, 0o644)
 }
 
 // launch starts a build with args. MYGO_DEV=1 tells it that mygo dev runs

@@ -166,6 +166,10 @@ func TestMain(m *testing.M) {
 		io.WriteString(w, pipPage)
 	})
 	mux.HandleFunc("/session/", sessionPage)
+	mux.HandleFunc("/cross-origin-frame", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		io.WriteString(w, crossOriginFramePage)
+	})
 	mux.HandleFunc("POST /echo", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		fmt.Fprintf(w, "echo:%s", b)
@@ -185,6 +189,16 @@ func TestMain(m *testing.M) {
 	assets.HandleFunc("POST /data", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		fmt.Fprintf(w, "posted:%s", b)
+	})
+	// An iframe's document of another host, which loads its script and
+	// fetches through the scheme (TestSchemeCrossOriginFrame).
+	assets.HandleFunc("GET /frame.html", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		io.WriteString(w, `<!doctype html><script>parent.postMessage("inline", "*")</script><script src="/frame.js" onerror="parent.postMessage('no script', '*')"></script>`)
+	})
+	assets.HandleFunc("GET /frame.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript")
+		io.WriteString(w, `fetch("/data").then(r => r.text()).then(t => parent.postMessage("script, " + t, "*"), e => parent.postMessage("fetch failed: " + e, "*"))`)
 	})
 	if err := mygo.Protocol.Handle("assets", assets); err != nil {
 		panic(err)
@@ -2370,6 +2384,34 @@ func TestSchemeCORS(t *testing.T) {
 	}
 }
 
+// crossOriginFramePage shows an iframe of the assets scheme's demo host,
+// another origin than the page's, and keeps what it posts.
+const crossOriginFramePage = `<!doctype html>
+<script>
+window.posted = [];
+addEventListener("message", e => posted.push(e.data));
+</script>
+<iframe></iframe>
+<script>
+// On Windows, WebView2 serves assets://demo/ at http://demo.assets.localhost/.
+document.querySelector("iframe").src = location.protocol === "http:" ? "http://demo.assets.localhost/frame.html" : "assets://demo/frame.html";
+</script>`
+
+// An iframe of another custom scheme's host, another origin than the
+// page's, loads its scripts and fetches through the scheme, not only its
+// document (#1912): WebView2's older filters reach only the main frame and
+// its same-origin iframes.
+func TestSchemeCrossOriginFrame(t *testing.T) {
+	w := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200})
+	if err := w.Page().LoadURL("app://localhost/cross-origin-frame"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, w, `window.posted && posted.length === 2`)
+	if got := mustEval(t, w, `posted.join(" | ")`); got != "inline | script, asset data" {
+		t.Errorf("the iframe posted %q, want %q", got, "inline | script, asset data")
+	}
+}
+
 func TestPermissions(t *testing.T) {
 	w := newWindow(t, mygo.WindowOptions{Title: "Permissions", Width: 300, Height: 200})
 	// A secure context: notifications are not for opaque origins.
@@ -2583,9 +2625,23 @@ func TestGlobalShortcutPortal(t *testing.T) {
 		}
 		t.Fatalf("%s was not reported", acc)
 	}
-	register("Ctrl+Shift+K")
+	// The desktop tells the keys it bound to a shortcut that asks.
+	keys := make(chan string, 8)
+	opts := mygo.GlobalShortcutOptions{Description: "Test the portal", OnKeys: func(k string) { keys <- k }}
+	if err := mygo.GlobalShortcut.RegisterWith("Ctrl+Shift+K", opts, func() { pressed <- "Ctrl+Shift+K" }); err != nil {
+		t.Fatal(err)
+	}
 	defer mygo.GlobalShortcut.UnregisterAll()
 	expect("Ctrl+Shift+K", "Control_L", "Shift_L", "k")
+	select {
+	case k := <-keys:
+		if k == "" {
+			t.Error("the desktop bound Ctrl+Shift+K and told no keys for it")
+		}
+		t.Logf("the desktop bound Ctrl+Shift+K to %q", k)
+	case <-time.After(wait.Guard):
+		t.Error("the keys the desktop bound were not told")
+	}
 	register("Alt+Shift+J")
 	expect("Alt+Shift+J", "Alt_L", "Shift_L", "j")
 	expect("Ctrl+Shift+K", "Control_L", "Shift_L", "k")

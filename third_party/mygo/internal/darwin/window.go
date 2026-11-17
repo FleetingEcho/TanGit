@@ -731,7 +731,8 @@ func (w *window) cleanup() {
 	send(w.web, "stopLoading")
 	send(w.web, "setNavigationDelegate:", 0)
 	send(w.web, "setUIDelegate:", 0)
-	if w.popover != 0 {
+	popover := w.popover != 0
+	if popover {
 		w.cleanupPopover()
 	} else {
 		send(w.win, "setDelegate:", 0)
@@ -765,7 +766,7 @@ func (w *window) cleanup() {
 	release(w.view)
 	// AppKit is still closing the window; let the pool release it.
 	autorelease(w.delegate)
-	if w.popover == 0 {
+	if !popover {
 		autorelease(w.win)
 	}
 }
@@ -1231,6 +1232,24 @@ func (w *window) Blur() { send(w.win, "orderBack:", 0) }
 func (w *window) IsFocused() bool {
 	return sendBool(w.win, "isKeyWindow")
 }
+
+// CornerRadius is the radius of the window's corners: a rounded frameless
+// window's (roundContent), or the one the system draws a titled window
+// with. AppKit tells that one only through NSWindow's _cornerRadius, read
+// when the window answers it; it is 26 on macOS 26 with a toolbar, 16
+// without one, smaller before. A window in full screen has none.
+func (w *window) CornerRadius() float64 {
+	switch {
+	case w.host != nil || w.IsFullScreen():
+		return 0
+	case w.radius > 0:
+		return float64(w.radius)
+	case !w.hasStyle(styleTitled) || !respondsTo(w.win, "_cornerRadius"):
+		return 0
+	}
+	return max(msgFloat(w.win, sel("_cornerRadius")), 0)
+}
+
 func (w *window) Minimize()         { send(w.win, "miniaturize:", 0) }
 func (w *window) IsMinimized() bool { return sendBool(w.win, "isMiniaturized") }
 

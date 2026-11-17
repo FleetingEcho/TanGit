@@ -186,6 +186,8 @@ type surface struct {
 	elements      map[uint64]*accessElement
 	topLevel      id
 	updating      bool
+	accessPending *platform.AccessTree
+	accessDead    bool
 	dataDrag      *macDataSource
 	dragOperation transfer.Operation
 	// placed are where the content shows the window's web views, under

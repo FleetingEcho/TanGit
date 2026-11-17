@@ -13,12 +13,22 @@ import (
 func (v *view) paint(p *ui.Painter, r ui.Rect) {
 	v.rect = r
 	w, h := max(r.W-2*v.padX, 1), max(r.H-2*v.padY, 1)
+	// What of the text the clip shows, with a screen more above and below
+	// it, laid out ahead of a scroll.
+	if vis := p.Visible(); vis.H < h {
+		top := vis.Y - (r.Y + v.padY)
+		v.clip, v.clipped = [2]float32{top - vis.H, top + 2*vis.H}, true
+	} else {
+		v.clipped = false
+	}
 	v.layout(w, h)
 	ox, oy := r.X+v.padX, r.Y+v.padY
 	look := &v.look
 	if v.shown.Len() == 0 && v.compose == "" && v.opts.Placeholder != "" {
-		pl := ui.ShapeRichTextWith([]ui.Span{{Text: v.opts.Placeholder}}, v.paraFont(v.para(0).style), ui.TextShape{Width: w})
-		p.TextLayout(pl, ox, oy, look.Muted)
+		// where the text would start: past a list's marker, a task's box or a quote's bar, not under them
+		px, py := v.origin(0)
+		pl := ui.ShapeRichTextWith([]ui.Span{{Text: v.opts.Placeholder}}, v.paraFont(v.para(0).style), ui.TextShape{Width: max(w-px, 1)})
+		p.TextLayout(pl, ox+px, oy+float32(py-v.scroll), look.Muted)
 	}
 	a, z := v.selection()
 	focused := v.focused
@@ -94,9 +104,15 @@ func (v *view) paintBlock(p *ui.Painter, i int, st ParagraphStyle, x, top, heigh
 		// One block for the paragraphs of code next to each other, rounded
 		// at its ends.
 		radius := look.size * look.CodeBlockRadius
-		box := ui.Rect{X: x + indent, Y: top, W: width - indent, H: height}
 		first := i == 0 || !v.para(i-1).style.CodeBlock
 		last := i+1 >= len(v.paras) || !v.para(i+1).style.CodeBlock
+		if first && v.opts.Space != nil {
+			// The room an app leaves above the block, as a place opened
+			// for an item dragged, is outside it.
+			room := max(0, v.opts.Space(i))
+			top, height = top+room, height-room
+		}
+		box := ui.Rect{X: x + indent, Y: top, W: width - indent, H: height}
 		fill := box
 		if !first {
 			fill.Y, fill.H = fill.Y-2*radius, fill.H+2*radius
@@ -109,12 +125,27 @@ func (v *view) paintBlock(p *ui.Painter, i int, st ParagraphStyle, x, top, heigh
 	if st.Quote {
 		if i == 0 || !v.para(i-1).style.Quote {
 			// The spacing above the first paragraph of a quotation is
-			// outside it.
+			// outside it. A heading that starts one keeps outside only
+			// Space's room and the spacing a body paragraph would take
+			// there, the rest of its room inside, so that the room
+			// above the quotation matches the spacing below it.
 			above, _ := v.space(i, st)
+			if st.Heading > 0 {
+				var room, gap float32
+				if v.opts.Space != nil {
+					room = max(0, v.opts.Space(i))
+				}
+				if look.ParagraphSpacing > 0 && i > 0 && body(v.para(i-1).style) {
+					gap = look.size * look.ParagraphSpacing
+				}
+				above = room + min(above-room, gap)
+			}
 			top, height = top+above, height-above
 		}
 		w := look.QuoteBarWidth
-		p.Fill(ui.Rect{X: x + indent, Y: top, W: w, H: height}, look.QuoteBar, w/2)
+		for level := range st.quoteDepth() {
+			p.Fill(ui.Rect{X: x + indent + float32(level)*look.indent*0.75, Y: top, W: w, H: height}, look.QuoteBar, w/2)
+		}
 	}
 }
 

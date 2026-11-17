@@ -27,6 +27,22 @@ func TestProgramName() string {
 	return goStr(prgname())
 }
 
+// TestSetProgramName names the program (g_set_prgname) before Run, as an
+// app does that gives its windows the ID of its desktop entry. It loads
+// GLib itself, since Run has not loaded it yet.
+func TestSetProgramName(name string) error {
+	g, err := open("libglib-2.0.so.0")
+	if err != nil {
+		return err
+	}
+	var set func(name *byte)
+	if !bind(g, &set, "g_set_prgname") {
+		return fmt.Errorf("no g_set_prgname")
+	}
+	set(cs(name))
+	return nil
+}
+
 // TestActivateMenuItem activates an item of a window's menu bar, found by
 // the labels along its path. plugins/automation's menu request chooses
 // items with it too.
@@ -806,6 +822,22 @@ func TestTrayIcon() string {
 	}
 	var get func(ind ptr) ptr
 	if last == nil || !bind(libIndicator, &get, "app_indicator_get_icon") {
+		return ""
+	}
+	return goStr(get(last.ind))
+}
+
+// TestTrayID returns the ID of the tray icon made last, as libayatana
+// gives it to the panel (app_indicator_get_id).
+func TestTrayID() string {
+	var last *tray
+	for _, t := range theBackend.trays {
+		if last == nil || t.id > last.id {
+			last = t
+		}
+	}
+	var get func(ind ptr) ptr
+	if last == nil || !bind(libIndicator, &get, "app_indicator_get_id") {
 		return ""
 	}
 	return goStr(get(last.ind))

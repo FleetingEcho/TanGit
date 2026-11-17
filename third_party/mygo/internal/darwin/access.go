@@ -93,6 +93,26 @@ func announce(app id, text string, alert bool) {
 	purego.SyscallN(postAccessInfo, uintptr(app), uintptr(nsString("AXAnnouncementRequested")), uintptr(info))
 }
 
+// postSelectionChange tells VoiceOver that the selection of the text
+// field obj moved, and how (AXSelectedTextChanged with WebKit's keys):
+// without them VoiceOver reads the line the caret went to only once it
+// polls the field, a second or so later.
+func postSelectionChange(obj id, c platform.TextSelectionChange) {
+	if obj == 0 {
+		return
+	}
+	info := send(class("NSMutableDictionary"), "dictionary")
+	for _, kv := range []struct {
+		key   string
+		value int
+	}{{"AXTextStateChangeType", c.Type}, {"AXTextSelectionDirection", c.Direction}, {"AXTextSelectionGranularity", c.Granularity}} {
+		send(info, "setObject:forKey:", uintptr(nsNumberInt(kv.value)), uintptr(nsString(kv.key)))
+	}
+	send(info, "setObject:forKey:", uintptr(nsBool(false)), uintptr(nsString("AXTextSelectionChangedFocus")))
+	send(info, "setObject:forKey:", uintptr(obj), uintptr(nsString("AXTextChangeElement")))
+	purego.SyscallN(postAccessInfo, uintptr(obj), uintptr(nsString("AXSelectedTextChanged")), uintptr(info))
+}
+
 // accessRoles are the roles and subroles of node roles.
 var accessRoles = map[platform.AccessRole][2]string{
 	platform.RoleGroup:        {"AXGroup", ""},
@@ -550,19 +570,51 @@ func (s *surface) accessRequested() {
 }
 
 func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
-	if tree == nil || s.w.closed {
+	if tree == nil || s.w.closed || s.accessDead {
 		return
 	}
+	// AppKit may synchronously reenter through an accessibility notification.
+	// Finish one tree before applying the newest nested update: a nested
+	// prune must not remove elements the outer transaction still uses.
+	if s.updating {
+		s.accessPending = tree
+		return
+	}
+	defer func() { s.accessPending = nil }()
+	for tree != nil && !s.w.closed && !s.accessDead {
+		s.accessPending = nil
+		s.updateAccessibility(tree)
+		tree = s.accessPending
+	}
+}
+
+func (s *surface) updateAccessibility(tree *platform.AccessTree) {
 	loadAccess()
 	withPool(func() {
+		// Closing a window during a native callback releases its surface.
+		// Keep the receivers alive until this transaction unwinds.
+		view, win := retain(s.view), retain(s.w.win)
+		defer release(view)
+		defer release(win)
 		s.updating = true
-		defer func() { s.updating = false }()
+		defer func() {
+			s.updating = false
+			if s.accessDead {
+				s.destroyAccess()
+			}
+		}()
 		if s.elements == nil {
 			s.elements = map[uint64]*accessElement{}
 		}
 		changed := false
 		objs := make([]id, len(tree.Nodes))
 		var valueChanged, busyChanged []id
+		// Text fields whose selection alone moved, and how.
+		type moved struct {
+			obj id
+			c   platform.TextSelectionChange
+		}
+		var selMoved []moved
 		fresh := map[uint64]bool{}
 		for i, n := range tree.Nodes {
 			// VoiceOver reads no chosen state of a cell (AXSelected), nor
@@ -585,6 +637,10 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 				changed = true
 			} else {
 				wasBusy := el.node.States & platform.AccessBusy
+				o := &el.node
+				if textual(n.Role) && textual(o.Role) && n.Value == o.Value && (n.SelStart != o.SelStart || n.SelEnd != o.SelEnd) {
+					selMoved = append(selMoved, moved{el.obj, platform.SelectionChange(n.Value, o.SelStart, o.SelEnd, n.SelStart, n.SelEnd)})
+				}
 				if el.apply(n, false) {
 					valueChanged = append(valueChanged, el.obj)
 				}
@@ -593,6 +649,9 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 				}
 			}
 			objs[i] = el.obj
+		}
+		if s.w.closed || s.accessDead {
+			return
 		}
 		children := make([][]uint64, len(tree.Nodes))
 		childObjs := make([][]id, len(tree.Nodes))
@@ -631,6 +690,9 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 				send(el.obj, "setAccessibilityChildren:", uintptr(nsArray(kids...)))
 				changed = true
 			}
+		}
+		if s.w.closed || s.accessDead {
+			return
 		}
 		for _, v := range s.w.webViews {
 			if !grafted[v] {
@@ -760,6 +822,9 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 				send(el.obj, "setAccessibilitySelectedCells:", uintptr(nsArray(cells...)))
 			}
 		}
+		if s.w.closed || s.accessDead {
+			return
+		}
 		release(s.topLevel)
 		s.topLevel = retain(nsArray(top...))
 		live := make(map[uint64]bool, len(tree.Nodes))
@@ -775,10 +840,13 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 				changed = true
 			}
 		}
+		if s.w.closed || s.accessDead {
+			return
+		}
 		// What the elements control (aria-controls), among those left.
 		for _, n := range tree.Nodes {
 			el := s.elements[n.ID]
-			if len(n.Controls) == 0 && el.linked == nil {
+			if el == nil || len(n.Controls) == 0 && el.linked == nil {
 				continue
 			}
 			var linked []id
@@ -792,11 +860,17 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 				send(el.obj, "setAccessibilityLinkedUIElements:", uintptr(nsArray(linked...)))
 			}
 		}
+		if s.w.closed || s.accessDead {
+			return
+		}
 		if changed {
 			postNote(s.view, "AXLayoutChanged")
 		}
 		for _, obj := range valueChanged {
 			postNote(obj, "AXValueChanged")
+		}
+		for _, m := range selMoved {
+			postSelectionChange(m.obj, m.c)
 		}
 		for _, el := range selectionChanged {
 			postNote(el.obj, "AXSelectedRowsChanged")
@@ -823,19 +897,26 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 	})
 }
 
-// destroyAccess releases the elements of a surface.
+// destroyAccess retires a surface before notifying AppKit. A notification may
+// reenter this method or UpdateAccessibility, so detach ownership first and
+// defer releasing elements that an active update can still be using.
 func (s *surface) destroyAccess() {
+	s.accessDead = true
+	s.accessPending = nil
+	if s.updating {
+		return
+	}
+	elements, top := s.elements, s.topLevel
+	s.elements, s.topLevel, s.access = nil, 0, platform.AccessTree{}
 	for _, v := range s.w.webViews {
 		v.accessParent = 0
 	}
-	for nid, el := range s.elements {
-		postNote(el.obj, "AXUIElementDestroyed")
+	for _, el := range elements {
 		delete(s.w.b.byAccess, el.obj)
+		postNote(el.obj, "AXUIElementDestroyed")
 		release(el.obj)
-		delete(s.elements, nid)
 	}
-	release(s.topLevel)
-	s.topLevel = 0
+	release(top)
 }
 
 // accessAt returns the innermost element at a point of the view.
@@ -1327,16 +1408,62 @@ func registerAccessClass() {
 			}
 			return attributedAccessString(&el.node, r)
 		}),
-		method("accessibilityLineForIndex:", func(self id, _ objc.SEL, i int) int { return 0 }),
+		// Lines of the text, which VoiceOver reads by: a line ends after
+		// its line feed, as the Windows and Linux bridges take lines.
+		method("accessibilityLineForIndex:", func(self id, _ objc.SEL, i int) int {
+			if el := b().accessElementOf(self); el != nil {
+				return platform.LineOfUnit(el.node.Value, i)
+			}
+			return 0
+		}),
 		method("accessibilityRangeForLine:", func(self id, _ objc.SEL, line int) nsRange {
 			if el := b().accessElementOf(self); el != nil {
-				return nsRange{Length: uint(units([]rune(el.node.Value)))}
+				if start, n, ok := platform.LineUnits(el.node.Value, line); ok {
+					return nsRange{Location: uint(start), Length: uint(n)}
+				}
 			}
-			return nsRange{}
+			return nsRange{Location: nsNotFound}
 		}),
+		// The line the caret is on, which VoiceOver reads as it moves,
+		// and the text in view, found as asked rather than every frame,
+		// as they take a walk through the text.
+		method("accessibilityInsertionPointLineNumber", func(self id, _ objc.SEL) int {
+			el := b().accessElementOf(self)
+			if el == nil {
+				return 0
+			}
+			line, i := 0, 0
+			for _, r := range el.node.Value {
+				if i >= el.node.SelStart {
+					break
+				}
+				if r == '\n' {
+					line++
+				}
+				i++
+			}
+			return line
+		}),
+		method("accessibilityVisibleCharacterRange", func(self id, _ objc.SEL) nsRange {
+			el := b().accessElementOf(self)
+			if el == nil {
+				return nsRange{}
+			}
+			n := &el.node
+			if len(n.LineBoxes) == 0 {
+				return nsRange{Length: uint(units([]rune(n.Value)))}
+			}
+			first, _, _ := platform.LineUnits(n.Value, n.LineBoxes[0].Line)
+			start, count, _ := platform.LineUnits(n.Value, n.LineBoxes[len(n.LineBoxes)-1].Line)
+			return nsRange{Location: uint(first), Length: uint(max(start+count-first, 0))}
+		}),
+		// Where a range shows, which VoiceOver's cursor outlines: the
+		// lines it is on, as the content laid them out, else the element.
 		method("accessibilityFrameForRange:", func(self id, _ objc.SEL, r nsRange) NSRect {
 			if el := b().accessElementOf(self); el != nil {
-				return el.s.screenRect(el.node.Bounds)
+				lo := int(min(r.Location, uint(1<<31)))
+				n := int(min(r.Length, uint(1<<31)))
+				return el.s.screenRect(platform.RangeBounds(&el.node, lo, n))
 			}
 			return NSRect{}
 		}),

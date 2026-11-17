@@ -3,6 +3,7 @@ package richtext
 import (
 	"bytes"
 	"fmt"
+	"github.com/egoist/mygo/transfer"
 	"runtime"
 	"slices"
 	"strings"
@@ -149,6 +150,26 @@ func TestRichTextCaretFormatIsNoStep(t *testing.T) {
 	tt.Key(0, ui.KeyLeft)
 	if doc.Formatting().Bold != FormatOff {
 		t.Fatal("moving the caret kept the typing attributes")
+	}
+}
+
+// Backspace takes a combining mark, or sara am, alone, and an emoji
+// sequence whole.
+func TestRichTextBackspaceMarks(t *testing.T) {
+	for _, c := range []struct{ s, want string }{
+		{"aนี้", "aนี"},
+		{"ทำ", "ท"},
+		{"❤️", ""},
+	} {
+		doc := NewDocument(TextOf(Paragraph{Runs: []Run{{Text: c.s}}}))
+		tt, _ := richTester(t, doc)
+		n := doc.Text().Len()
+		doc.SetSelection(n, n)
+		tt.Frame()
+		tt.Key(0, ui.KeyBackspace)
+		if got := doc.Text().String(); got != c.want {
+			t.Errorf("backspace in %q leaves %q, want %q", c.s, got, c.want)
+		}
 	}
 }
 
@@ -428,6 +449,123 @@ func TestRichTextComposeDropped(t *testing.T) {
 	}
 }
 
+// TestRichTextReplaceCRLF checks that what an input method puts in with
+// \r\n line endings goes in with \n, as typed and pasted text does: a
+// composition committed, a range replaced, and a composition left as it
+// is.
+func TestRichTextReplaceCRLF(t *testing.T) {
+	doc := NewDocument(Text{})
+	tt, _ := richTester(t, doc)
+	typeRunes(tt, "ab")
+	tt.Compose("x", 1)
+	tt.Type("c\r\nd")
+	if got := doc.Text().String(); got != "abc\nd" {
+		t.Fatalf("committed %q", got)
+	}
+	v := doc.shownIn.Value()
+	v.ReplaceText(&ui.TextInputRange{Start: 0, End: 1}, "e\r\nf")
+	tt.Frame()
+	if got := doc.Text().String(); got != "e\nfbc\nd" {
+		t.Fatalf("replaced %q", got)
+	}
+	if _, caret := doc.Selection(); caret != 3 {
+		t.Fatalf("caret at %d, want 3", caret)
+	}
+	tt.Compose("g\r\nh", 4)
+	v.UnmarkText()
+	tt.Frame()
+	if got := doc.Text().String(); got != "e\nfg\nhbc\nd" {
+		t.Fatalf("left as it is %q", got)
+	}
+	if n := doc.Text().ParagraphCount(); n != 4 {
+		t.Fatalf("%d paragraphs, want 4", n)
+	}
+}
+
+// TestRichTextSetMarkedEmpty checks that SetMarkedText with an empty string
+// and nil range from idle is a no-op (leaving selection and undo intact), and
+// that clearing preedit before UnmarkText and ReplaceText (GTK commit order)
+// joins the selection-replacement undo step.
+func TestRichTextSetMarkedEmpty(t *testing.T) {
+	checkCleared := func(t *testing.T, v *view, label string) {
+		t.Helper()
+		if v.composing || v.compose != "" || v.composeCaret != 0 || v.composeSelected != (ui.TextInputRange{}) {
+			t.Fatalf("%s: composition state not cleared: composing=%v compose=%q caret=%d sel=%+v",
+				label, v.composing, v.compose, v.composeCaret, v.composeSelected)
+		}
+		if mr, marked := v.MarkedRange(); marked {
+			t.Fatalf("%s: MarkedRange() = %+v, true; want false", label, mr)
+		}
+	}
+
+	t.Run("idle", func(t *testing.T) {
+		doc := NewDocument(Text{})
+		tt, _ := richTester(t, doc)
+		typeRunes(tt, "hello")
+		v := doc.shownIn.Value()
+		v.SetMarkedText(nil, "", ui.TextInputRange{})
+		tt.Frame()
+		checkCleared(t, v, "idle")
+		if got := doc.Text().String(); got != "hello" {
+			t.Fatalf("text = %q, want %q", got, "hello")
+		}
+		tt.Key(ui.Cmd, ui.KeyZ)
+		if got := doc.Text().String(); got != "" {
+			t.Fatalf("after one undo = %q, want empty", got)
+		}
+	})
+
+	t.Run("idle with active selection", func(t *testing.T) {
+		doc := NewDocument(Text{})
+		tt, _ := richTester(t, doc)
+		typeRunes(tt, "hello")
+		doc.SetSelection(1, 4)
+		tt.Frame()
+		v := doc.shownIn.Value()
+		v.SetMarkedText(nil, "", ui.TextInputRange{})
+		tt.Frame()
+		checkCleared(t, v, "idle with active selection")
+		if got := doc.Text().String(); got != "hello" {
+			t.Fatalf("text = %q, want %q", got, "hello")
+		}
+		if a, c := doc.Selection(); a != 1 || c != 4 {
+			t.Fatalf("selection = (%d, %d), want (1, 4)", a, c)
+		}
+		tt.Key(ui.Cmd, ui.KeyZ)
+		if got := doc.Text().String(); got != "" {
+			t.Fatalf("after one undo = %q, want empty", got)
+		}
+	})
+
+	t.Run("GTK commit order", func(t *testing.T) {
+		doc := NewDocument(Text{})
+		tt, _ := richTester(t, doc)
+		typeRunes(tt, "hello")
+		doc.SetSelection(1, 4)
+		tt.Frame()
+		v := doc.shownIn.Value()
+		v.SetMarkedText(nil, "ni", ui.TextInputRange{Start: 2, End: 2})
+		v.SetMarkedText(nil, "", ui.TextInputRange{})
+		v.UnmarkText()
+		v.ReplaceText(nil, "你")
+		tt.Frame()
+		checkCleared(t, v, "GTK commit order")
+		if got := doc.Text().String(); got != "h你o" {
+			t.Fatalf("text = %q, want %q", got, "h你o")
+		}
+		if a, c := doc.Selection(); a != 2 || c != 2 {
+			t.Fatalf("selection = (%d, %d), want (2, 2)", a, c)
+		}
+		tt.Key(ui.Cmd, ui.KeyZ)
+		if got := doc.Text().String(); got != "hello" {
+			t.Fatalf("after one undo = %q, want %q", got, "hello")
+		}
+		if a, c := doc.Selection(); a != 1 || c != 4 {
+			t.Fatalf("after one undo selection = (%d, %d), want (1, 4)", a, c)
+		}
+	})
+}
+
 // TestRichTextEnterAtCheckedTask checks that Enter at the start of a
 // checked task keeps it checked, with an empty item above, as Notes.
 func TestRichTextEnterAtCheckedTask(t *testing.T) {
@@ -517,6 +655,192 @@ func TestRichTextParagraphKeys(t *testing.T) {
 	}
 }
 
+// Up and Down go to the line above and below however much room there is
+// between them, a heading's margin or Space, though it is over half a
+// line: the caret never stays where it was.
+func TestRichTextVerticalPastRoom(t *testing.T) {
+	doc := NewDocument(NewText("one\ntwo\nthree"))
+	theme := &Theme{Headings: [6]HeadingStyle{{Size: 1.5, Top: 2}}}
+	tt := ui.NewTester(func(c *ui.Context) {
+		Editor(c, doc, EditorOptions{Theme: theme, Space: func(p int) float32 {
+			if p == 1 {
+				return 40
+			}
+			return 0
+		}}).Fill()
+	}, 500, 400)
+	tt.Press(250, 380)
+	tt.Release(250, 380)
+	doc.SetSelection(5, 5) // in "two"
+	tt.Frame()
+	for _, step := range []struct {
+		key  ui.Key
+		para int
+	}{{ui.KeyUp, 0}, {ui.KeyDown, 1}, {ui.KeyDown, 2}, {ui.KeyUp, 1}} {
+		tt.Key(0, step.key)
+		if _, c := doc.Selection(); doc.Text().paraAt(c) != step.para {
+			t.Fatalf("past Space: %v to %d, want paragraph %d", step.key, c, step.para)
+		}
+	}
+	doc.SetSelection(9, 9) // in "three"
+	doc.SetHeading(1)
+	tt.Frame()
+	tt.Key(0, ui.KeyUp)
+	if _, c := doc.Selection(); doc.Text().paraAt(c) != 1 {
+		t.Fatalf("up from a heading with a wide margin to %d, want paragraph 1", c)
+	}
+}
+
+// TestRichTextVerticalCollapsesSelection checks that a plain Up or Down
+// collapses a non-empty selection to its start (up) or end (down) before
+// moving vertically, while Shift+Up/Down keeps extending from the caret.
+func TestRichTextVerticalCollapsesSelection(t *testing.T) {
+	doc := NewDocument(NewText("one\ntwo\nthree\nfour"))
+	tt, _ := richTester(t, doc)
+
+	// Backward selection from paragraph 2 ("th|ree") to paragraph 0 ("o|ne"):
+	// plain Down collapses to the selection end in paragraph 2 and steps to paragraph 3.
+	doc.SetSelection(10, 1)
+	tt.Frame()
+	tt.Key(0, ui.KeyDown)
+	if a, c := doc.Selection(); a != c || doc.Text().paraAt(c) != 3 {
+		t.Fatalf("backward selection + Down = (%d, %d) in paragraph %d, want collapsed in paragraph 3", a, c, doc.Text().paraAt(c))
+	}
+
+	// Forward selection from paragraph 1 ("t|wo") to paragraph 3 ("fo|ur"):
+	// plain Up collapses to the selection start in paragraph 1 and steps to paragraph 0.
+	doc.SetSelection(5, 16)
+	tt.Frame()
+	tt.Key(0, ui.KeyUp)
+	if a, c := doc.Selection(); a != c || doc.Text().paraAt(c) != 0 {
+		t.Fatalf("forward selection + Up = (%d, %d) in paragraph %d, want collapsed in paragraph 0", a, c, doc.Text().paraAt(c))
+	}
+
+	// Same-line backward selection on a uniform line: plain Down collapses
+	// to the end of the selection so x stays at the line end, and plain
+	// Up on a forward selection collapses to the start so x stays at 0.
+	sameDoc := NewDocument(NewText("aaa\naaa\naaa"))
+	st, _ := richTester(t, sameDoc)
+	sameDoc.SetSelection(7, 4)
+	st.Frame()
+	st.Key(0, ui.KeyDown)
+	if a, c := sameDoc.Selection(); a != c || c != 11 {
+		t.Fatalf("same-line backward selection + Down = (%d, %d), want (11, 11)", a, c)
+	}
+	sameDoc.SetSelection(4, 7)
+	st.Frame()
+	st.Key(0, ui.KeyUp)
+	if a, c := sameDoc.Selection(); a != c || c != 0 {
+		t.Fatalf("same-line forward selection + Up = (%d, %d), want (0, 0)", a, c)
+	}
+
+	// Shift+Up still extends from the caret rather than collapsing.
+	doc.SetSelection(5, 16)
+	tt.Frame()
+	tt.Key(ui.Shift, ui.KeyUp)
+	if a, c := doc.Selection(); a != 5 || doc.Text().paraAt(c) != 2 {
+		t.Fatalf("forward selection + Shift+Up = (%d, %d) in paragraph %d, want anchor 5 and caret in paragraph 2", a, c, doc.Text().paraAt(c))
+	}
+
+	t.Run("soft-wrap-boundary-affinity", func(t *testing.T) {
+		// Paragraph 0 is "top"; paragraph 1 wraps across at least three visual
+		// lines in a narrow 200px viewport.
+		wrapDoc := NewDocument(NewText("top\n" + strings.Repeat("会议", 40)))
+		wt := ui.NewTester(func(c *ui.Context) {
+			Editor(c, wrapDoc).Fill()
+		}, 200, 400)
+		wt.Press(100, 380)
+		wt.Release(100, 380)
+
+		p1Start := 4 // after "top\n"
+		wrapDoc.SetSelection(p1Start, p1Start)
+		wt.Frame()
+		wt.Key(0, ui.KeyEnd)
+		_, line0End := wrapDoc.Selection()
+		wt.Key(0, ui.KeyDown)
+		_, line1End := wrapDoc.Selection()
+		wt.Key(0, ui.KeyDown)
+		_, line2End := wrapDoc.Selection()
+		if !(p1Start < line0End && line0End < line1End && line1End < line2End) {
+			t.Fatalf("expected >= 3 wrapped lines in paragraph 1, got ends (%d, %d, %d)", line0End, line1End, line2End)
+		}
+
+		// Forward selection ending at soft-wrap boundary (Home, Shift+End):
+		// v.affinity is TextUpstream on line 0; plain Down must preserve it so
+		// it steps onto line 1 instead of flipping to TextDownstream and
+		// skipping to line 2.
+		wrapDoc.SetSelection(p1Start, p1Start)
+		wt.Frame()
+		wt.Key(0, ui.KeyHome)
+		wt.Key(ui.Shift, ui.KeyEnd)
+		if a, c := wrapDoc.Selection(); a != p1Start || c != line0End {
+			t.Fatalf("Home + Shift+End = (%d, %d), want (%d, %d)", a, c, p1Start, line0End)
+		}
+		wt.Key(0, ui.KeyDown)
+		if a, c := wrapDoc.Selection(); a != c || c != line1End {
+			t.Fatalf("soft-wrap forward selection + Down = (%d, %d), want (%d, %d) on line 1 (line 2 end is %d)", a, c, line1End, line1End, line2End)
+		}
+
+		// Backward selection whose caret (start edge) sits at the soft-wrap
+		// boundary with TextUpstream: plain Up must preserve v.affinity on
+		// v.caret so it steps up into paragraph 0 ("top") instead of flipping
+		// to TextDownstream on line 1 and moving back onto line 0.
+		wrapDoc.SetSelection(line0End+1, line0End+1)
+		wt.Frame()
+		wt.Key(ui.Shift, ui.KeyLeft) // (line0End, TextDownstream) on line 1
+		wt.Key(ui.Shift, ui.KeyLeft) // (line0End, TextUpstream) on line 0
+		if a, c := wrapDoc.Selection(); a != line0End+1 || c != line0End {
+			t.Fatalf("Shift+Left across wrap = (%d, %d), want (%d, %d)", a, c, line0End+1, line0End)
+		}
+		wt.Key(0, ui.KeyUp)
+		if a, c := wrapDoc.Selection(); a != c || wrapDoc.Text().paraAt(c) != 0 {
+			t.Fatalf("soft-wrap backward selection + Up = (%d, %d) in paragraph %d, want collapsed in paragraph 0", a, c, wrapDoc.Text().paraAt(c))
+		}
+	})
+
+	t.Run("resets-stale-desired-x", func(t *testing.T) {
+		desiredDoc := NewDocument(NewText("aaaaaa\naaaaaa\naaaaaa"))
+		dt, _ := richTester(t, desiredDoc)
+
+		// Down from col 0 sets v.desiredX to col 0 and v.hasDesired = true.
+		// Shift+End selects to the end of line 1 without clearing v.hasDesired.
+		// Plain Down must collapse to line 1 end and reset v.hasDesired so it
+		// steps to the end of line 2 (20), not col 0 of line 2 (14).
+		desiredDoc.SetSelection(0, 0)
+		dt.Frame()
+		dt.Key(0, ui.KeyDown)
+		if a, c := desiredDoc.Selection(); a != 7 || c != 7 {
+			t.Fatalf("Down from 0 = (%d, %d), want (7, 7)", a, c)
+		}
+		dt.Key(ui.Shift, ui.KeyEnd)
+		if a, c := desiredDoc.Selection(); a != 7 || c != 13 {
+			t.Fatalf("Shift+End = (%d, %d), want (7, 13)", a, c)
+		}
+		dt.Key(0, ui.KeyDown)
+		if a, c := desiredDoc.Selection(); a != c || c != 20 {
+			t.Fatalf("Down after stale desiredX + Shift+End = (%d, %d), want (20, 20)", a, c)
+		}
+
+		// Symmetric upward case: Down from line 0 end sets v.desiredX to line end;
+		// Shift+Home selects backward to col 0 without clearing v.hasDesired;
+		// plain Up must collapse to col 0 and step to 0, not line 0 end (6).
+		desiredDoc.SetSelection(6, 6)
+		dt.Frame()
+		dt.Key(0, ui.KeyDown)
+		if a, c := desiredDoc.Selection(); a != 13 || c != 13 {
+			t.Fatalf("Down from 6 = (%d, %d), want (13, 13)", a, c)
+		}
+		dt.Key(ui.Shift, ui.KeyHome)
+		if a, c := desiredDoc.Selection(); a != 13 || c != 7 {
+			t.Fatalf("Shift+Home = (%d, %d), want (13, 7)", a, c)
+		}
+		dt.Key(0, ui.KeyUp)
+		if a, c := desiredDoc.Selection(); a != c || c != 0 {
+			t.Fatalf("Up after stale desiredX + Shift+Home = (%d, %d), want (0, 0)", a, c)
+		}
+	})
+}
+
 // TestRichTextLinkOpensSafely clicks links: only those ui.SafeToOpen
 // allows open, as "calc" would run a program on Windows.
 func TestRichTextLinkOpensSafely(t *testing.T) {
@@ -568,6 +892,72 @@ func TestRichTextLinkCanceledPress(t *testing.T) {
 
 // TestRichTextCJKWords deletes and moves by words in Chinese and
 // Japanese: a character at a time, as they have no spaces (#668).
+// Left and Right go through an offset with two caret places, the edge of
+// a span padded with PaddingX (code within text here) or a line wrapped
+// within a word, in two steps, and leave the paragraph only past its start
+// or end.
+func TestRichTextArrowsThroughTwoPlaces(t *testing.T) {
+	doc := NewDocument(TextOf(
+		Paragraph{Runs: []Run{{Text: "one"}}},
+		Paragraph{Runs: []Run{{Text: "say "}, {Text: "ok", Attributes: Attributes{Code: true}}, {Text: " now"}}},
+		Paragraph{Runs: []Run{{Text: strings.Repeat("会议", 40)}}},
+		Paragraph{Runs: []Run{{Text: "three"}}},
+	))
+	tt := ui.NewTester(func(c *ui.Context) {
+		Editor(c, doc, EditorOptions{Spans: func(_ int, _ ParagraphStyle, spans []ui.Span) []ui.Span {
+			for i := range spans {
+				if spans[i].Background.A != 0 {
+					spans[i].PaddingX = 4
+				}
+			}
+			return spans
+		}}).Fill()
+	}, 300, 400)
+	tt.Press(150, 380)
+	tt.Release(150, 380)
+	walk := func(from int, key ui.Key, n int) []int {
+		doc.SetSelection(from, from)
+		tt.Frame()
+		var at []int
+		for range n {
+			tt.Key(0, key)
+			_, c := doc.Selection()
+			at = append(at, c)
+		}
+		return at
+	}
+	// "say " is 4..8, "ok" 8..10, " now" 10..14.
+	if got, want := walk(4, ui.KeyRight, 13), []int{5, 6, 7, 8, 8, 9, 10, 10, 11, 12, 13, 14, 15}; !slices.Equal(got, want) {
+		t.Fatalf("Right through the code: %v, want %v", got, want)
+	}
+	if got, want := walk(14, ui.KeyLeft, 13), []int{13, 12, 11, 10, 10, 9, 8, 8, 7, 6, 5, 4, 3}; !slices.Equal(got, want) {
+		t.Fatalf("Left through the code: %v, want %v", got, want)
+	}
+	// The wrapped paragraph is 15..95: each offset in turn, a wrap's twice.
+	for _, key := range []ui.Key{ui.KeyRight, ui.KeyLeft} {
+		from, dir, past := 15, 1, 96
+		if key == ui.KeyLeft {
+			from, dir, past = 95, -1, 14
+		}
+		at := walk(from, key, 120)
+		last, twice := from, 0
+		for _, c := range at {
+			if c == past {
+				break
+			}
+			if c == last {
+				twice++
+			} else if c != last+dir {
+				t.Fatalf("%v through the wrapped paragraph went from %d to %d: %v", key, last, c, at)
+			}
+			last = c
+		}
+		if last != from+dir*80 || twice == 0 {
+			t.Fatalf("%v through the wrapped paragraph: %v", key, at)
+		}
+	}
+}
+
 func TestRichTextCJKWords(t *testing.T) {
 	word := ui.Ctrl
 	if runtime.GOOS == "darwin" {
@@ -737,6 +1127,45 @@ func TestRichTextOnKey(t *testing.T) {
 	}
 }
 
+// OnCommand is asked about an edit command of the menus first, as a Mac's menu bar sends ⌘V: a command it takes does
+// nothing in the editor, and what it does to the document is kept; one it lets go is the editor's as before.
+func TestRichTextOnCommand(t *testing.T) {
+	doc := NewDocument(NewText("one two"))
+	var asked []string
+	tt := ui.NewTester(func(c *ui.Context) {
+		Editor(c, doc, EditorOptions{OnCommand: func(name string) bool {
+			asked = append(asked, name)
+			if name != "paste" {
+				return false
+			}
+			doc.SetLink("https://example.com")
+			return true
+		}}).Fill()
+	}, 500, 400)
+	tt.Press(10, 10)
+	tt.Release(10, 10)
+	tt.SetClipboardData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.Text, []byte("https://example.com")))))
+	doc.SetSelection(0, 3)
+	tt.Frame()
+	tt.Command("paste")
+	tt.Frame()
+	if got := doc.Text().String(); got != "one two" {
+		t.Fatalf("a command taken by OnCommand was the editor's too: %q", got)
+	}
+	if link := doc.Text().AttributesAt(1).Link; link != "https://example.com" {
+		t.Fatalf("what OnCommand did was undone: link %q", link)
+	}
+	doc.SetSelection(0, 0)
+	tt.Frame()
+	tt.Command("selectAll")
+	if a, c := doc.Selection(); a != 0 || c != 7 {
+		t.Fatalf("a command let go is not the editor's: selection %d-%d", a, c)
+	}
+	if len(asked) != 2 || asked[0] != "paste" || asked[1] != "selectAll" {
+		t.Fatalf("asked about %v", asked)
+	}
+}
+
 // Spans is given each paragraph's spans to draw them otherwise, its text the same; the layouts it made are kept until
 // SpansVersion changes.
 func TestRichTextSpans(t *testing.T) {
@@ -878,7 +1307,7 @@ func TestRichTextRightClickMovesCaret(t *testing.T) {
 func TestRichTextSpace(t *testing.T) {
 	doc := NewDocument(NewText("one\ntwo\nthree"))
 	var room float32
-	tt := ui.NewTester(func(c *ui.Context) {
+	tt := openTester(t, func(c *ui.Context) {
 		Editor(c, doc, EditorOptions{Space: func(p int) float32 {
 			if p == 1 {
 				return room
@@ -998,5 +1427,79 @@ func TestTallEditorInScroll(t *testing.T) {
 	}
 	if ink < 2000 {
 		t.Fatalf("scrolled down the text, the view shows no text (%d marked pixels)", ink)
+	}
+}
+
+// An editor as tall as its text, in a scroll container, lays out again
+// only the paragraphs the container shows when its theme or its font
+// changes, or when the app builds it anew, keeping the others' heights
+// (those of another font scaled) until they come into view; its height,
+// ContentHeight, stays what the text takes.
+func TestTallEditorNewLook(t *testing.T) {
+	paras := make([]Paragraph, 3000)
+	for i := range paras {
+		paras[i] = para(fmt.Sprintf("Paragraph %d, long enough to wrap in a window this narrow at times.", i))
+	}
+	doc := NewDocument(TextOf(paras...))
+	dark := &Theme{Text: ui.Hex("#eeeeee")}
+	var th *Theme
+	size, tree := float32(14), 0
+	tt := ui.NewTester(func(c *ui.Context) {
+		c.Key(fmt.Sprint("tree", tree))
+		ui.Scroll(c).Fill().Children(func() {
+			ed := Editor(c, doc, EditorOptions{NoScrollbar: true, Theme: th, Font: ui.Font{Size: size}}).FillWidth()
+			h, ok := doc.ContentHeight()
+			if !ok {
+				h = 3000 * 60
+			}
+			ed.Height(h)
+		})
+	}, 500, 400)
+	tt.Frame()
+	tt.Frame()
+	v := doc.shownIn.Value()
+	tall, _ := doc.ContentHeight()
+	if v.laid < len(paras) || tall < 3000*14 {
+		t.Fatalf("the first frames laid out %d of %d paragraphs, %v tall", v.laid, len(paras), tall)
+	}
+	shows := func(what string) {
+		t.Helper()
+		v := doc.shownIn.Value()
+		if v.laid > 100 {
+			t.Fatalf("%s: %d paragraphs laid out again", what, v.laid)
+		}
+	}
+	th = dark
+	tt.Frame()
+	shows("another theme")
+	if h, _ := doc.ContentHeight(); h != tall {
+		t.Fatalf("another theme: %v tall, was %v", h, tall)
+	}
+	tree++
+	tt.Frame()
+	if doc.shownIn.Value() == v {
+		t.Fatal("the tree built anew kept its editor")
+	}
+	shows("an editor built anew")
+	if h, _ := doc.ContentHeight(); h != tall {
+		t.Fatalf("an editor built anew: %v tall, was %v", h, tall)
+	}
+	size = 21
+	tt.Frame()
+	shows("another font")
+	if h, _ := doc.ContentHeight(); h < tall*1.3 {
+		t.Fatalf("a larger font: %v tall, was %v", h, tall)
+	}
+	tt.Wheel(250, 200, 0, 20000)
+	tt.Advance(time.Second)
+	v = doc.shownIn.Value()
+	far := 0
+	for i := 300; i < len(v.paras); i++ {
+		if v.paras[i].layout != nil {
+			far++
+		}
+	}
+	if far == 0 || v.laid > 300 {
+		t.Fatalf("scrolled down the text, %d paragraphs there laid out, %d in all", far, v.laid)
 	}
 }

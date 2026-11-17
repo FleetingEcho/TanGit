@@ -186,6 +186,13 @@ func openMenus(w *mygo.Window, letter byte) (supported bool) {
 	return true
 }
 
+// inMenuLoop reports whether the window runs a menu loop, which reads the
+// keys typed from then on.
+func inMenuLoop(w *mygo.Window) (in bool) {
+	mygo.RunOnMain(func() { in = win.TestInMenuLoop(w.NativeHandle()) })
+	return in
+}
+
 // closeMenus leaves the menus, as Escape does.
 func closeMenus() { mygo.RunOnMain(win.TestEndMenu) }
 
