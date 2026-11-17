@@ -63,6 +63,9 @@ func operationStatusLabel(record repository.OperationRecord) string {
 	if record.UndoneAt != 0 {
 		return tr("Undone")
 	}
+	if record.ActiveOperation != repository.OperationTypeNone || record.RebasePaused {
+		return tr("In progress")
+	}
 	switch record.Status {
 	case repository.OperationSucceeded:
 		if record.CanUndo() {
