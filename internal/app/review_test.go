@@ -42,6 +42,7 @@ func TestReviewedFileWorkflow(t *testing.T) {
 	h.tester.Key(0, ui.KeyR)
 	h.waitFor(t, "review shortcut saved", func() bool { return calls.has("review:b.txt:true") })
 	h.settle(t)
+	openChangesFilterPopover(t, h)
 	if err := h.tester.Click("Unreviewed"); err != nil {
 		t.Fatal(err)
 	}
@@ -58,6 +59,7 @@ func TestReviewedFileWorkflow(t *testing.T) {
 	if paths := changeRowPaths(h.app.changeRows); len(paths) != 0 {
 		t.Fatalf("fully reviewed filter still shows %v", paths)
 	}
+	openChangesFilterPopover(t, h)
 	if err := h.tester.Click("Unreviewed"); err != nil {
 		t.Fatal(err)
 	}

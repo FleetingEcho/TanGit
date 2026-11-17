@@ -379,12 +379,16 @@ func (a *app) closeCodeLanguageDialog() {
 		document.definitionSeq++
 		document.symbolSeq++
 		document.symbolsRequested = false
+		document.symbolsLoading = false
 		document.symbols = nil
 	}
 	a.code.languageDialog = codeLanguageDialogNone
 	a.code.languageDocument = nil
 	a.code.languageRename = ""
 	a.code.languageError = ""
+	// A symbol row closes this dialog while its owning list still has input
+	// to finish. Keep that list's frame alive; openLanguageSymbols resets all
+	// transient view state when the whole modal can safely be built again.
 	a.code.languageActions = nil
 	a.code.languageReferences = nil
 	a.code.languagePeekPath = ""
@@ -400,13 +404,16 @@ func (a *app) openLanguageSymbols(document *codeDocument) {
 	a.code.languageDialog = codeLanguageDialogSymbols
 	a.code.languageDocument = document
 	a.code.languageError = ""
+	a.code.languageSymbols = languageSymbolsViewState{selected: -1, reveal: true}
 	version := document.state.Buffer.Version()
 	if !document.symbolsRequested || document.symbolVersion != version {
 		document.symbolVersion = version
 		document.symbolsRequested = true
+		document.symbolsLoading = true
 		uri := languageServerFileURI(a.workingFilePath(document.path))
 		a.languageServerActionRequest(document, &document.symbolSeq, "textDocument/documentSymbol",
 			map[string]any{"textDocument": languageServerTextDocument{URI: uri}}, func(raw json.RawMessage, err error) bool {
+				document.symbolsLoading = false
 				if err != nil {
 					document.symbolsRequested = false
 					a.code.languageError = safeError(err)
@@ -422,14 +429,16 @@ func (a *app) codeLanguageDialogView(c *ui.Context) {
 	if a.code.languageDialog == codeLanguageDialogNone {
 		return
 	}
+	if a.code.languageDialog == codeLanguageDialogSymbols {
+		a.languageSymbolDialogView(c)
+		return
+	}
 	theme := c.Theme()
 	title, subtitle := "Rename Symbol", "Rename across the workspace"
 	if a.code.languageDialog == codeLanguageDialogActions {
 		title, subtitle = "Quick Fix", "Actions offered by the language server"
 	} else if a.code.languageDialog == codeLanguageDialogReferences {
 		title, subtitle = "References", "Locations reported by the language server"
-	} else if a.code.languageDialog == codeLanguageDialogSymbols {
-		title, subtitle = "Outline", "Symbols in the current document"
 	} else if a.code.languageDialog == codeLanguageDialogPeek {
 		title, subtitle = "Peek Definition", a.code.languagePeekPath
 	}
@@ -498,27 +507,6 @@ func (a *app) codeLanguageDialogView(c *ui.Context) {
 							}
 						})
 					})
-				case codeLanguageDialogSymbols:
-					document := a.code.languageDocument
-					if document == nil || len(document.symbols) == 0 {
-						ui.Text(c, tr("No document symbols found")).TextColor(theme.TextMuted)
-					} else {
-						ui.Scroll(c).MaxHeight(420).Children(func() {
-							ui.Column(c).FillWidth().Gap(4).Children(func() {
-								for _, symbol := range document.symbols {
-									symbol := symbol
-									label := strings.Repeat("  ", symbol.Depth) + symbol.Name
-									if symbol.Detail != "" {
-										label += "  " + symbol.Detail
-									}
-									if ui.Button(c, label).FillWidth().Clicked() {
-										a.closeCodeLanguageDialog()
-										a.openCodeLanguageServerLocation(document.path, symbol.SelectionRange.Start)
-									}
-								}
-							})
-						})
-					}
 				case codeLanguageDialogPeek:
 					if a.code.languagePeekLoading {
 						ui.Row(c).Gap(8).Children(func() { ui.Spinner(c); ui.Text(c, tr("Loading definition…")) })

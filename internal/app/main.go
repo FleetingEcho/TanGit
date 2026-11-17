@@ -367,6 +367,7 @@ type app struct {
 	fileSearch         string
 	ignoreUntracked    bool
 	changesFiltersOpen bool
+	fileStatusFilter   changesStatusFilter
 	// reviewedFiles is the content-current review state read from the local
 	// repository. The sequence/token guards reject obsolete asynchronous reads.
 	reviewedFiles      map[string]bool

@@ -255,7 +255,7 @@ func (a *app) keybindingsFilterField(c *ui.Context) {
 // global commands remain visible because they work alongside its row actions;
 // F1 bypasses this filter and still lists every section.
 func (a *app) visibleKeyBindingGroups() []keyBindingGroup {
-	groups := keyBindingGroups(a.settings.CustomCommands...)
+	groups := append(keyBindingGroups(a.settings.CustomCommands...), a.editorShortcutHelpGroup())
 	if !a.keybindingsCurrentOnly {
 		return groups
 	}
@@ -281,8 +281,10 @@ func (a *app) visibleKeyBindingGroups() []keyBindingGroup {
 			visible = append(visible, group)
 			continue
 		}
+		editorActive := group.title == "Code editor" && a.state == stateReady &&
+			a.workspaceTab == sectionCode
 		if i < 2 || (a.state != stateReady && group.title == "Home") ||
-			(a.state == stateReady && (group.title == "Workspace" || group.title == active)) {
+			(a.state == stateReady && (group.title == "Workspace" || group.title == active)) || editorActive {
 			if group.title == "Everywhere" && a.inlineConflictResultActive() {
 				bindings := group.bindings[:0]
 				for _, binding := range group.bindings {
