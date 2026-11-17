@@ -23,6 +23,7 @@ require (
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
+	github.com/ProtonMail/go-crypto v1.4.1 // indirect
 	github.com/RoaringBitmap/roaring/v2 v2.30.0 // indirect
 	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
@@ -36,6 +37,7 @@ require (
 	github.com/cli/safeexec v1.0.1 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
+	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cloudfoundry/jibber_jabber v0.0.0-20151120183258-bcc4c8345a21 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/ebitengine/purego v0.11.3 // indirect
@@ -49,6 +51,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.4 // indirect
 	github.com/jesseduffield/generics v0.0.0-20250517122708-b0b4a53a6f5c // indirect
 	github.com/karimkhaleel/jsonschema v0.0.0-20231105093532-44bdb914ed9c // indirect
+	github.com/klauspost/compress v1.20.1 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mailru/easyjson v0.9.2 // indirect
@@ -72,6 +75,7 @@ require (
 	github.com/wasilibs/go-re2 v1.13.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/xo/terminfo v1.3.1 // indirect
+	go.digitalxero.dev/rpm v0.3.4 // indirect
 	go.uber.org/atomic v1.12.0 // indirect
 	golang.org/x/exp v0.0.0-20261113113407-e3970619a1a4 // indirect
 	golang.org/x/net v0.62.0 // indirect
@@ -85,4 +89,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/egoist/mygo => github.com/FleetingEcho/mygo v0.8.2-0.20261119030955-49a93d549168
+replace github.com/egoist/mygo => github.com/FleetingEcho/mygo v0.10.1-0.20261119051513-64dd8ae6996f
