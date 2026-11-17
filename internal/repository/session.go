@@ -81,17 +81,18 @@ type Snapshot struct {
 	Branch string
 	// Head remains nonempty only for detached HEAD. HeadHash is the resolved
 	// commit on both attached and detached HEAD, independent of all-ref order.
-	Head          string
-	HeadHash      string
-	Files         []File
-	Commits       []Commit
-	Branches      []Branch
-	Remotes       []Remote
-	Stashes       []Stash
-	WorkSnapshots []WorkSnapshot
-	Operations    []OperationRecord
-	Tags          []Tag
-	Operation     string
+	Head           string
+	HeadHash       string
+	Files          []File
+	Commits        []Commit
+	Branches       []Branch
+	Remotes        []Remote
+	Stashes        []Stash
+	WorkSnapshots  []WorkSnapshot
+	FileRecoveries []FileRecoveryRecord
+	Operations     []OperationRecord
+	Tags           []Tag
+	Operation      string
 	// OperationState is populated for supported active Git operations while
 	// Operation remains the legacy display string for existing consumers.
 	OperationState *OperationState
@@ -257,6 +258,7 @@ func (s Snapshot) WithDetails(details Snapshot) Snapshot {
 	s.Remotes = details.Remotes
 	s.Stashes = details.Stashes
 	s.WorkSnapshots = details.WorkSnapshots
+	s.FileRecoveries = details.FileRecoveries
 	s.Operations = details.Operations
 	s.Tags = details.Tags
 	s.Worktrees = details.Worktrees
@@ -971,6 +973,10 @@ func (s *gitSession) DetailsSnapshot(ctx context.Context) (Snapshot, error) {
 		submodules = append(submodules, Submodule{Name: submodule.FullName(), Path: submodule.FullPath(), URL: RedactSecrets(submodule.Url)})
 	}
 	workSnapshots, _ := s.WorkSnapshots(ctx)
+	// Recovery discovery is ancillary like the V1 journal: an unreadable entry
+	// must not make unrelated repository work unavailable. Restore still reads
+	// the selected manifest explicitly and reports any failure to the user.
+	fileRecoveries, _ := s.ListFileRecovery(ctx)
 	operations, _ := s.Operations(ctx)
 	modelReflog, _ := s.recentReflog(SnapshotCommitLimit)
 	reflog := make([]Commit, 0, len(modelReflog))
@@ -982,16 +988,17 @@ func (s *gitSession) DetailsSnapshot(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	return Snapshot{
-		Commits:       commits,
-		Branches:      branches,
-		Remotes:       remotes,
-		Stashes:       stashes,
-		WorkSnapshots: workSnapshots,
-		Operations:    operations,
-		Tags:          tags,
-		Worktrees:     worktrees,
-		Submodules:    submodules,
-		Reflog:        reflog,
+		Commits:        commits,
+		Branches:       branches,
+		Remotes:        remotes,
+		Stashes:        stashes,
+		WorkSnapshots:  workSnapshots,
+		FileRecoveries: fileRecoveries,
+		Operations:     operations,
+		Tags:           tags,
+		Worktrees:      worktrees,
+		Submodules:     submodules,
+		Reflog:         reflog,
 	}, nil
 }
 
