@@ -574,14 +574,6 @@ func (a *app) branchHeaderView(c *ui.Context, branch repository.Branch) {
 			a.showRenameForm = true
 			a.renameBranch = branch.Name
 		})
-
-		label, icon := "Expand branch page", expandIcon
-		if a.branchFullscreen {
-			label, icon = "Restore branch page", shrinkIcon
-		}
-		button := compactIconButton(ui.Button(c, "")).Label(tr(label)).Tooltip(tr(label))
-		button.Children(func() { ui.Icon(c, icon).FontSize(14) })
-		button.OnClick(func() { a.branchFullscreen = !a.branchFullscreen })
 	})
 	if !branch.Head {
 		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
@@ -911,6 +903,7 @@ func (a *app) branchCommitsView(c *ui.Context, branch repository.Branch) {
 					a.clearCommitFilter(sectionBranches)
 				})
 			}
+			a.commitRefreshButton(c)
 			paneCollapseButton(c, &a.branchCommitsCollapsed, "Collapse commit list")
 		})
 		if a.branchCommitsError != "" {
