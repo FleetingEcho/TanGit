@@ -36,6 +36,15 @@ func operationTooltip(state repository.OperationState) string {
 			lines = append(lines, item.label+": "+item.sha)
 		}
 	}
+	if state.HistoryPatch != nil {
+		lines = append(lines,
+			"history kind: "+string(state.HistoryPatch.Kind),
+			"history step: "+string(state.HistoryPatch.Step),
+			"source: "+state.HistoryPatch.SourceSHA,
+			"destination: "+state.HistoryPatch.DestinationSHA,
+			"patch digest: "+state.HistoryPatch.PatchDigest,
+			"compensation digest: "+state.HistoryPatch.CompensationSHA)
+	}
 	return strings.Join(lines, "\n")
 }
 
@@ -65,6 +74,9 @@ func (a *app) operationContextView(c *ui.Context) {
 				ui.Text(c, strings.ToUpper(string(state.Type))).Bold().TextColor(theme.Accent)
 				if progress := operationProgress(*state); progress != "" {
 					ui.Badge(c, progress)
+				}
+				if state.HistoryPatch != nil {
+					ui.Badge(c, tr("Custom Patch")+" · "+string(state.HistoryPatch.Step))
 				}
 				if state.Done > 0 {
 					ui.Text(c, trf("%d completed", state.Done)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)

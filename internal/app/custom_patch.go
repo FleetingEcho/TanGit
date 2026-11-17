@@ -39,6 +39,12 @@ type customPatchState struct {
 	preview      *repository.PatchPreview
 	previewError string
 	previewToken uint64
+	// target, reverse and threeWay are the next direct Apply proposal. Their
+	// zero values deliberately preserve the traditional unstaged worktree apply.
+	target   repository.PatchTarget
+	reverse  bool
+	threeWay bool
+	history  customPatchHistoryState
 }
 
 func (a *app) customPatchActive() bool {
@@ -434,6 +440,7 @@ func (a *app) closeCustomPatchBuilder() {
 		return
 	}
 	a.customPatch.open = false
+	a.customPatch.history.open = false
 	a.customPatch.previewOpen = false
 	a.customPatch.previewLoad = false
 	a.customPatch.preview = nil
@@ -483,11 +490,15 @@ func (a *app) resetCustomPatch() {
 	a.customPatch.preview = nil
 	a.customPatch.previewError = ""
 	a.customPatch.previewToken++
+	a.customPatch.history = customPatchHistoryState{}
 }
 
 func (a *app) beginCustomPatchPreview() {
 	if a.session == nil || a.actionBusy || a.customPatch.pending > 0 || len(a.customPatch.entries) == 0 {
 		return
+	}
+	request := repository.PatchRequest{
+		Target: a.customPatch.target, Reverse: a.customPatch.reverse, ThreeWay: a.customPatch.threeWay,
 	}
 	text, err := customPatchText(a.customPatch.entries)
 	if err != nil {
@@ -498,6 +509,7 @@ func (a *app) beginCustomPatchPreview() {
 		a.customPatch.previewError = safeError(err)
 		return
 	}
+	request.Text = text
 	session := a.session
 	generation := a.generation
 	a.customPatch.previewToken++
@@ -508,7 +520,7 @@ func (a *app) beginCustomPatchPreview() {
 	a.customPatch.previewError = ""
 	go func() {
 		defer a.recoverBackground()
-		preview, err := session.PreviewPatchText(context.Background(), text)
+		preview, err := session.PreviewPatchRequest(context.Background(), request)
 		a.update(func() {
 			if generation != a.generation || token != a.customPatch.previewToken || !a.customPatch.previewOpen {
 				return
@@ -523,12 +535,31 @@ func (a *app) beginCustomPatchPreview() {
 	}()
 }
 
+func patchTargetLabel(target repository.PatchTarget) string {
+	switch target {
+	case repository.PatchIndex:
+		return tr("Index only")
+	case repository.PatchBoth:
+		return tr("Index and working tree")
+	default:
+		return tr("Working tree only")
+	}
+}
+
+func customPatchApplyMessage(preview repository.PatchPreview) string {
+	action := tr("Applied custom patch")
+	if preview.Reverse {
+		action = tr("Applied custom patch in reverse")
+	}
+	return action + " · " + patchTargetLabel(preview.Target)
+}
+
 func (a *app) beginCustomPatchApply() {
 	if a.actionBusy || a.session == nil || a.customPatch.preview == nil || !a.customPatch.preview.Clean {
 		return
 	}
 	preview := *a.customPatch.preview
-	a.beginRepositoryActionMessage(tr("Applied custom patch to the working tree"), "",
+	a.beginRepositoryActionMessage(customPatchApplyMessage(preview), "",
 		func(ctx context.Context, session repository.Session) error {
 			return session.ApplyPatch(ctx, preview)
 		}, a.clearCustomPatch)
@@ -700,16 +731,48 @@ func (a *app) customPatchEntriesBody(c *ui.Context) {
 }
 
 func (a *app) customPatchEntriesFooter(c *ui.Context) {
-	ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
-		if ui.Button(c, tr("Clear Builder")).Disabled(a.actionBusy).Clicked() {
-			a.clearCustomPatch()
-		}
-		if ui.Button(c, tr("Send to worktree…")).Disabled(a.actionBusy || len(a.customPatch.entries) == 0 || len(courierDestinations(a.snapshot)) == 0).Clicked() {
-			a.beginCustomPatchCourier()
-		}
-		if ui.PrimaryButton(c, tr("Preview Custom Patch")).Disabled(a.actionBusy || len(a.customPatch.entries) == 0).Clicked() {
-			a.beginCustomPatchPreview()
-		}
+	theme := c.Theme()
+	ui.Column(c).FillWidth().Gap(9).Children(func() {
+		// Direct application and history rewriting are deliberately separate
+		// groups: target/reverse/three-way never alter a history request.
+		ui.Row(c).AlignItems(ui.Center).Gap(7).Wrap().Children(func() {
+			ui.Text(c, tr("Direct Apply")).Bold()
+			target := a.customPatch.target
+			if ui.Button(c, tr("Target")+": "+patchTargetLabel(target)).Tooltip(tr("Choose the working tree, index, or both for the next checked Apply")).Disabled(a.actionBusy).Clicked() {
+				a.customPatch.target = (target + 1) % 3
+				if a.customPatch.target != repository.PatchBoth {
+					a.customPatch.threeWay = false
+				}
+			}
+			direction := tr("Forward")
+			if a.customPatch.reverse {
+				direction = tr("Reverse")
+			}
+			if ui.Button(c, tr("Direction")+": "+direction).Tooltip(tr("Apply the approved patch forward or in reverse")).Disabled(a.actionBusy).Clicked() {
+				a.customPatch.reverse = !a.customPatch.reverse
+			}
+			ui.Checkbox(c, &a.customPatch.threeWay, tr("Three-way")).
+				Tooltip(tr("Use Git's three-way merge; requires index and working tree")).Disabled(a.actionBusy || a.customPatch.target != repository.PatchBoth)
+			ui.Text(c, tr("The next Preview binds these exact options; changing them requires a new Preview.")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2)
+		})
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
+			ui.Text(c, tr("History commits")).Bold().Grow(1)
+			ui.Text(c, tr("Single-source changes only; preview the patch and destination before rewriting.")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2)
+			button := ui.Button(c, tr("History actions…"))
+			button.PopoverMenuButton(func(m *ui.Menu) { a.customPatchHistoryMenu(m) })
+			button.Disabled(a.actionBusy || len(a.customPatch.entries) == 0)
+		})
+		ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
+			if ui.Button(c, tr("Clear Builder")).Disabled(a.actionBusy).Clicked() {
+				a.clearCustomPatch()
+			}
+			if ui.Button(c, tr("Send to worktree…")).Disabled(a.actionBusy || len(a.customPatch.entries) == 0 || len(courierDestinations(a.snapshot)) == 0).Clicked() {
+				a.beginCustomPatchCourier()
+			}
+			if ui.PrimaryButton(c, tr("Preview Custom Patch")).Disabled(a.actionBusy || len(a.customPatch.entries) == 0).Clicked() {
+				a.beginCustomPatchPreview()
+			}
+		})
 	})
 }
 
@@ -739,11 +802,19 @@ func (a *app) customPatchPreviewBody(c *ui.Context) {
 		statusColor = theme.Danger
 		status = tr("Custom Patch cannot be applied")
 	}
+	direction := tr("Forward")
+	if preview.Reverse {
+		direction = tr("Reverse")
+	}
+	options := tr("Target") + ": " + patchTargetLabel(preview.Target) + " · " + tr("Direction") + ": " + direction
+	if preview.ThreeWay {
+		options += " · " + tr("Three-way")
+	}
 	ui.Column(c).FillWidth().Gap(12).Children(func() {
 		ui.Column(c).Gap(5).Padding(10).Background(statusColor.Alpha(0.1)).
 			Border(1, statusColor.Alpha(0.45)).Radius(theme.Radius).Children(func() {
 			ui.Text(c, status).Bold().TextColor(statusColor)
-			ui.Text(c, tr("Apply changes the working tree only; nothing will be staged."))
+			ui.Text(c, options).Bold()
 			ui.Text(c, trf("%d files · +%d · −%d", len(preview.Files), preview.Additions, preview.Deletions)).
 				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		})
