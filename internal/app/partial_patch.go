@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/egoist/mygo/ui/editor"
 	"github.com/jesseduffield/lazygit/pkg/commands/patch"
@@ -61,20 +62,35 @@ func partialPatchSelections(patchText string, file repository.File, selections [
 		return "", false, fmt.Errorf("the file diff covers %d files, not one", len(parsed))
 	}
 	lines := selectedLineIdentities(parsed[0], selections...)
+	return partialPatchForIdentities(patchText, file, lines, reverse)
+}
+
+// partialPatchForIdentities is the shared second half of selected-line and
+// current-hunk construction. Both callers use the existing identity mapping;
+// this function alone decides which canonical change indices belong in the
+// apply-ready patch.
+func partialPatchForIdentities(patchText string, file repository.File, lines []patch.LineIdentity, reverse bool) (string, bool, error) {
 	if len(lines) == 0 {
 		return "", false, nil
 	}
 	filePatch := patch.Parse(patchText)
 	indices := patch.ChangeLineIndicesForLines(filePatch, lines)
-	if len(indices) == 0 {
+	sort.Ints(indices)
+	unique := indices[:0]
+	for _, index := range indices {
+		if len(unique) == 0 || unique[len(unique)-1] != index {
+			unique = append(unique, index)
+		}
+	}
+	if len(unique) == 0 {
 		return "", false, nil
 	}
-	if len(indices) >= changeLineCount(filePatch) {
+	if len(unique) >= changeLineCount(filePatch) {
 		return "", true, nil
 	}
 	return filePatch.Transform(patch.TransformOpts{
 		Reverse:             reverse,
-		IncludedLineIndices: indices,
+		IncludedLineIndices: unique,
 		FileNameOverride:    file.Path,
 	}).FormatPlain(), false, nil
 }
