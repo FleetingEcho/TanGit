@@ -43,6 +43,9 @@ type appSettings struct {
 	DiffWrap            bool `json:"diffWrap"`
 	CommitDetailsLayout int  `json:"commitDetailsLayout"`
 	IgnoreUntracked     bool `json:"ignoreUntracked"`
+	// ConflictActionStyle controls conflict and Changes hunk buttons. Older
+	// files and unknown values normalize to icons; labels only add visible text.
+	ConflictActionStyle string `json:"conflictActionStyle"`
 	// DisableShortcuts switches the window's keyboard shortcuts off. The
 	// header icons keep working, so every action stays reachable.
 	DisableShortcuts bool `json:"disableShortcuts"`
@@ -166,6 +169,7 @@ func defaultSettings() appSettings {
 		VisibleSections:           slices.Clone(defaultVisibleSections),
 		SectionOrder:              slices.Clone(workspaceSectionIDs),
 		TerminalDock:              terminalDockBottom,
+		ConflictActionStyle:       conflictActionStyleIcons,
 	}
 }
 
@@ -229,6 +233,7 @@ func normalizeSettings(s appSettings) appSettings {
 	s.VisibleSections = normalizeVisibleSections(s.VisibleSections)
 	s.SectionOrder = normalizeSectionOrder(s.SectionOrder)
 	s.TerminalDock = normalizeTerminalDock(s.TerminalDock)
+	s.ConflictActionStyle = normalizeConflictActionStyle(s.ConflictActionStyle)
 	s.HiddenHeaderActions = normalizeHiddenToolbarActions(s.HiddenHeaderActions, headerToolbarActions)
 	s.HiddenStatusActions = normalizeHiddenToolbarActions(s.HiddenStatusActions, statusToolbarActions)
 	s.RemoteWebURLs = normalizeRemoteWebURLs(s.RemoteWebURLs)
@@ -416,6 +421,9 @@ func loadAppSettings(dir string) appSettings {
 // saveAppSettings writes the settings to dir atomically, as the history is
 // written, so a crash mid-write leaves the last good file.
 func saveAppSettings(dir string, s appSettings) error {
+	// Keep the persisted enum canonical even when a caller edits the struct
+	// directly; loading applies the same normalization for older files.
+	s.ConflictActionStyle = normalizeConflictActionStyle(s.ConflictActionStyle)
 	path := settingsStorePath(dir)
 	if path == "" {
 		return nil

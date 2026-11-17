@@ -1118,29 +1118,12 @@ func (a *app) beginStageFile(file repository.File, stage bool) {
 	}, nil)
 }
 
-// iconButton is a compact panel button showing icon, with label for
-// accessibility and tooltip for the pointer.
+// iconButton is a compact panel button showing an icon, with an accessible
+// label and the same Tooltip in enabled and disabled states.
 func iconButton(c *ui.Context, label, tooltip string, icon *ui.SVG, disabled bool, run func()) {
-	render := func() {
-		button := compactIconButton(ui.Button(c, ""))
-		if !disabled {
-			button.Tooltip(tr(tooltip))
-		}
-		clicked := button.Label(tr(label)).Disabled(disabled).Clicked()
-		button.Children(func() {
-			ui.Icon(c, icon).FontSize(14)
-		})
-		if clicked {
-			run()
-		}
-	}
-	if disabled {
-		// Disabled buttons do not receive pointer hover, so the wrapper owns
-		// the tooltip that explains why the action is unavailable.
-		ui.Row(c).Tooltip(tr(tooltip)).Children(render)
-		return
-	}
-	render()
+	renderActionControl(c, actionControl{
+		label: label, tooltip: tooltip, icon: icon, disabled: disabled, run: run,
+	}, false)
 }
 
 // rowIconButton is the small flat icon button of a file row. Its padding and
