@@ -99,6 +99,42 @@ func (s *controlledCommitDetailPublicationSession) CommitFiles(_ context.Context
 	return <-s.release, nil
 }
 
+func TestCommitDetailPublicationsRepaintOnlyWhenVisible(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		tab     int
+		repaint bool
+	}{
+		{name: "history", tab: sectionHistory, repaint: true},
+		{name: "graph", tab: sectionGraph, repaint: true},
+		{name: "reflog", tab: sectionReflog, repaint: true},
+		{name: "hidden", tab: sectionChanges, repaint: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			session := &controlledCommitDetailPublicationSession{
+				started: make(chan string, 1),
+				release: make(chan []repository.CommitFile, 1),
+			}
+			a := newApp(fakeOpener{})
+			a.session = session
+			a.workspaceTab = sectionHistory
+			acknowledged := acknowledgeAsyncPublications(a)
+			a.requestCommitDetails(repository.Commit{Hash: "commit"})
+			<-session.started
+			// The result still belongs in the page's model, but switching away
+			// before it arrives must not repaint the section now on screen.
+			a.workspaceTab = test.tab
+			session.release <- []repository.CommitFile{{Path: "current.go"}}
+			if repaint := <-acknowledged; repaint != test.repaint {
+				t.Fatalf("commit detail repaint = %v, want %v", repaint, test.repaint)
+			}
+			if a.commitFilesLoading || len(a.commitFiles) != 1 || a.commitFiles[0].Path != "current.go" {
+				t.Fatalf("commit details were not published: loading=%v files=%#v", a.commitFilesLoading, a.commitFiles)
+			}
+		})
+	}
+}
+
 func TestStaleCommitDetailsDoNotRepaintTheCommitList(t *testing.T) {
 	session := &controlledCommitDetailPublicationSession{
 		started: make(chan string, 1),
@@ -122,6 +158,51 @@ func TestStaleCommitDetailsDoNotRepaintTheCommitList(t *testing.T) {
 	session.release <- []repository.CommitFile{{Path: "stale.txt"}}
 	if repaint := <-published; repaint {
 		t.Fatal("stale commit files repainted the commit list")
+	}
+}
+
+type controlledCommitDiffPublicationSession struct {
+	fakeSession
+	started chan string
+	release chan repository.Diff
+}
+
+func (s *controlledCommitDiffPublicationSession) CommitFileDiff(_ context.Context, _ repository.Commit, file repository.CommitFile, _ repository.DiffOptions) (repository.Diff, error) {
+	s.started <- file.Path
+	return <-s.release, nil
+}
+
+func TestCommitDiffPublicationsRepaintOnlyWhenVisible(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		tab     int
+		repaint bool
+	}{
+		{name: "history", tab: sectionHistory, repaint: true},
+		{name: "graph", tab: sectionGraph, repaint: true},
+		{name: "reflog", tab: sectionReflog, repaint: true},
+		{name: "hidden", tab: sectionChanges, repaint: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			session := &controlledCommitDiffPublicationSession{
+				started: make(chan string, 1),
+				release: make(chan repository.Diff, 1),
+			}
+			a := newApp(fakeOpener{})
+			a.session = session
+			a.workspaceTab = sectionHistory
+			acknowledged := acknowledgeAsyncPublications(a)
+			a.requestCommitFileDiff(repository.Commit{Hash: "commit"}, repository.CommitFile{Path: "current.go"})
+			<-session.started
+			a.workspaceTab = test.tab
+			session.release <- repository.Diff{}
+			if repaint := <-acknowledged; repaint != test.repaint {
+				t.Fatalf("commit diff repaint = %v, want %v", repaint, test.repaint)
+			}
+			if a.commitDiffLoading || a.commitDiffState == nil {
+				t.Fatalf("commit diff was not published: loading=%v state=%p", a.commitDiffLoading, a.commitDiffState)
+			}
+		})
 	}
 }
 

@@ -525,6 +525,41 @@ func TestCodeSearchIndexPeriodicRefreshRebuildsStaleIndex(t *testing.T) {
 	}
 }
 
+func TestCodeSearchIndexUnchangedRefreshDoesNotRepaint(t *testing.T) {
+	originalSchedule := scheduleCodeSearchIndexRefresh
+	t.Cleanup(func() { scheduleCodeSearchIndexRefresh = originalSchedule })
+	var refreshes []func()
+	scheduleCodeSearchIndexRefresh = func(_ time.Duration, run func()) func() bool {
+		refreshes = append(refreshes, run)
+		return nil
+	}
+
+	h := menuTestApp(t)
+	h.app.pathCache = t.TempDir()
+	useRealCodeWorkspace(t, h, map[string]string{"source.txt": "unchanged needle\n"})
+	h.waitFor(t, "the initial index", func() bool {
+		state := h.app.code.searchIndex
+		return state.status == codeSearchIndexReady && !state.busy
+	})
+	if len(refreshes) == 0 {
+		t.Fatal("periodic refresh was not scheduled")
+	}
+	h.app.workspaceTab = sectionCode
+	acknowledged := make(chan bool, 4)
+	h.app.updateChanged = func(fn func() bool) { acknowledged <- fn() }
+
+	refreshes[len(refreshes)-1]()
+	if <-acknowledged {
+		t.Fatal("the periodic timer callback itself requested a repaint")
+	}
+	if <-acknowledged {
+		t.Fatal("an unchanged index inspection requested a repaint")
+	}
+	if state := h.app.code.searchIndex; state.status != codeSearchIndexReady || state.busy || state.err != "" {
+		t.Fatalf("the unchanged index did not remain ready: %+v", state)
+	}
+}
+
 func TestCodeSearchIndexPeriodicRefreshPausesForRemoteWorkspaces(t *testing.T) {
 	originalSchedule := scheduleCodeSearchIndexRefresh
 	t.Cleanup(func() { scheduleCodeSearchIndexRefresh = originalSchedule })

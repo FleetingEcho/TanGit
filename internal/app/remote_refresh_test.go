@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/egoist/mygo/ui/editor"
 
 	"lazygitapp/internal/repository"
 	"lazygitapp/internal/workspace"
@@ -63,6 +66,70 @@ func TestRemoteRefreshIgnoresHostStatAndReloadsSameStatusDiff(t *testing.T) {
 	local, err := os.ReadFile(filename)
 	if err != nil || string(local) != "a much longer second local version\n" {
 		t.Fatalf("remote refresh altered the unrelated host file: %q %v", local, err)
+	}
+}
+
+func TestQuietConflictRefreshRepaintsOnlyChangedContent(t *testing.T) {
+	const original = "before\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> feature\n"
+	for _, test := range []struct {
+		name          string
+		content       string
+		wantRepaint   bool
+		wantSameState bool
+	}{
+		{name: "unchanged", content: original, wantSameState: true},
+		{name: "changed", content: original + "after\n", wantRepaint: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte(test.content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			file := repository.File{
+				Path: "a.txt", Status: "UU", Tracked: true, Unstaged: true,
+				HasMergeConflicts: true, HasInlineMergeConflicts: true,
+			}
+			stages := repository.ConflictStages{
+				Base:     repository.ConflictStage{Present: true, Content: "base\n"},
+				Current:  repository.ConflictStage{Present: true, Content: "ours\n"},
+				Incoming: repository.ConflictStage{Present: true, Content: "theirs\n"},
+			}
+			a := newApp(fakeOpener{})
+			a.session = fakeSession{conflictStages: stages, patch: "combined patch"}
+			a.snapshot = repository.Snapshot{Root: root, Branch: "main", Files: []repository.File{file}}
+			a.changeRows = a.changeRowsFrom(a.snapshot.Files)
+			a.selectedFile = changeRowIndex(a.changeRows, file.Path, false)
+			a.diffKey = "conflict\x00" + file.Path
+			a.conflictState = newConflictState(file.Path, original, 0)
+			a.conflictView = &editor.State{Buffer: editor.NewBuffer(original)}
+			a.conflictStages = stages
+			a.conflictDiffState = &editor.DiffState{}
+			a.conflictDiffPatch = "combined patch"
+			state, view, review := a.conflictState, a.conflictView, a.conflictDiffState
+
+			publications := make(chan bool, 2)
+			a.update = func(fn func()) { fn(); publications <- true }
+			a.updateChanged = func(fn func() bool) { publications <- fn() }
+			repaintAtRequest := a.refreshRemoteQuietDetails()
+			var repaintAtCompletion bool
+			select {
+			case repaintAtCompletion = <-publications:
+			case <-time.After(2 * time.Second):
+				t.Fatal("quiet conflict read did not publish")
+			}
+			repainted := repaintAtRequest || repaintAtCompletion
+			if repainted != test.wantRepaint {
+				t.Fatalf("conflict refresh repaint = %v, want %v (request=%v completion=%v)",
+					repainted, test.wantRepaint, repaintAtRequest, repaintAtCompletion)
+			}
+			sameState := a.conflictState == state && a.conflictView == view && a.conflictDiffState == review
+			if sameState != test.wantSameState {
+				t.Fatalf("conflict view preservation = %v, want %v", sameState, test.wantSameState)
+			}
+			if a.diffLoading || a.cancelDiff != nil {
+				t.Fatal("completed conflict refresh left a loading operation behind")
+			}
+		})
 	}
 }
 

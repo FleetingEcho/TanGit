@@ -279,10 +279,9 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 			a.refreshRemoteQuietDetails()
 		} else if selected.path == "" || fileSignature(old, selected.path) != fileSignature(snapshot, selected.path) {
 			// A file can be saved again without its status changing, and the
-			// diff on screen is then out of date: read the chosen one again. A
-			// change to another file leaves the pane, and any conflict being
-			// resolved in it, alone.
-			a.beginDiff()
+			// diff on screen is then out of date: revalidate it without replacing
+			// the readable pane with a spinner. A changed result paints once.
+			a.requestQuietFileDiff()
 		}
 	}
 }

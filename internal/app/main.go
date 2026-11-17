@@ -276,6 +276,9 @@ type app struct {
 	commandLogOpen    bool
 	commandLog        *repository.CommandLog
 	commandLogVisible atomic.Bool
+	// commandLogFramePending coalesces output bursts into one queued UI
+	// publication, which checks tab and modal visibility when it runs.
+	commandLogFramePending atomic.Bool
 	// Custom shell jobs have one owner and a real context so closing a
 	// repository cannot leave a job running against a different checkout.
 	customCommandSeq     uint64
@@ -450,66 +453,68 @@ type app struct {
 	branchCommitFileList        ui.ListState
 	selectedBranchCommitFileRow int
 	selectedBranchCommitFile    int
-	// branchCommitFilesHeight is the room the branch commit's files take
-	// above its diff, which the line between them drags.
-	branchCommitFilesHeight  float32
-	branchCommitFilesLoading bool
-	branchCommitFilesError   string
-	branchCommitFilesHash    string
-	branchCommitDiffState    *editor.DiffState
-	branchCommitDiffMedia    *mediaReview
-	branchCommitDiffLoading  bool
-	branchCommitDiffError    string
-	branchCommitDiffHash     string
-	branchCommitDiffPath     string
-	branchCommitDiffPatch    string
-	branchCommitToken        uint64
-	branchCommitPanePercent  float32
-	branchListWidth          float32
-	branchCommitsWidth       float32
-	branchCommitsCollapsed   bool
-	branchFullscreen         bool
-	branchHeaderHeight       float32
-	remoteList               ui.ListState
-	remoteFilter             string
-	selectedRemoteRow        int
-	selectedRemote           int
-	remoteBranches           ui.ListState
-	remoteBranchFilter       string
-	selectedRemoteBranchRow  int
-	selectedRemoteBranch     int
-	stashList                ui.ListState
-	savedWorkPanel           int
-	workSnapshotList         ui.ListState
-	selectedWorkSnapshotRow  int
-	stashFilter              string
-	selectedStashRow         int
-	selectedStash            int
-	stashFiles               []repository.CommitFile
-	stashFileRows            []fileTreeRow
-	stashFilesHash           string
-	stashFilesHeight         float32
-	stashFilesLoading        bool
-	stashFilesError          string
-	stashFileList            ui.ListState
-	selectedStashFileRow     int
-	selectedStashFile        int
-	tagList                  ui.ListState
-	tagFilter                string
-	selectedTagRow           int
-	selectedTag              int
-	worktreeList             ui.ListState
-	worktreeFilter           string
-	selectedWorktreeRow      int
-	selectedWorktree         int
-	submoduleList            ui.ListState
-	submoduleFilter          string
-	selectedSubmoduleRow     int
-	selectedSubmodule        int
-	reflogList               ui.ListState
-	reflogFilter             string
-	selectedReflogRow        int
-	selectedReflog           int
+	// Branch details use the same two layouts as History, with independent
+	// divider positions and collapse state for this separate commit selection.
+	branchCommitFilesHeight    float32
+	branchCommitFilesWidth     float32
+	branchCommitFilesCollapsed bool
+	branchCommitFilesLoading   bool
+	branchCommitFilesError     string
+	branchCommitFilesHash      string
+	branchCommitDiffState      *editor.DiffState
+	branchCommitDiffMedia      *mediaReview
+	branchCommitDiffLoading    bool
+	branchCommitDiffError      string
+	branchCommitDiffHash       string
+	branchCommitDiffPath       string
+	branchCommitDiffPatch      string
+	branchCommitToken          uint64
+	branchCommitPanePercent    float32
+	branchListWidth            float32
+	branchCommitsWidth         float32
+	branchCommitsCollapsed     bool
+	branchFullscreen           bool
+	branchHeaderHeight         float32
+	remoteList                 ui.ListState
+	remoteFilter               string
+	selectedRemoteRow          int
+	selectedRemote             int
+	remoteBranches             ui.ListState
+	remoteBranchFilter         string
+	selectedRemoteBranchRow    int
+	selectedRemoteBranch       int
+	stashList                  ui.ListState
+	savedWorkPanel             int
+	workSnapshotList           ui.ListState
+	selectedWorkSnapshotRow    int
+	stashFilter                string
+	selectedStashRow           int
+	selectedStash              int
+	stashFiles                 []repository.CommitFile
+	stashFileRows              []fileTreeRow
+	stashFilesHash             string
+	stashFilesHeight           float32
+	stashFilesLoading          bool
+	stashFilesError            string
+	stashFileList              ui.ListState
+	selectedStashFileRow       int
+	selectedStashFile          int
+	tagList                    ui.ListState
+	tagFilter                  string
+	selectedTagRow             int
+	selectedTag                int
+	worktreeList               ui.ListState
+	worktreeFilter             string
+	selectedWorktreeRow        int
+	selectedWorktree           int
+	submoduleList              ui.ListState
+	submoduleFilter            string
+	selectedSubmoduleRow       int
+	selectedSubmodule          int
+	reflogList                 ui.ListState
+	reflogFilter               string
+	selectedReflogRow          int
+	selectedReflog             int
 
 	diffState *editor.DiffState
 	diffMedia *mediaReview
@@ -876,6 +881,7 @@ func newApp(opener repositoryOpener) *app {
 		stashFilesHeight:  180,
 		// The branches column is narrower, so its two panes start smaller.
 		branchCommitFilesHeight: 110,
+		branchCommitFilesWidth:  300,
 		// The branches column shows branch names, the commits column the
 		// subjects, so both stay narrow and leave the commit its room.
 		branchListWidth:    240,
@@ -1290,6 +1296,9 @@ func openAppWindow(opener repositoryOpener, path string) {
 	win := mygo.NewWindow(appWindowOptions(ui.View(s.view)))
 	s.window = win
 	s.update = win.Update
+	// Unlike Update, RunOnMain does not itself request a frame. Each page's
+	// publication path can therefore skip paint for hidden or unchanged state.
+	s.postMain = mygo.RunOnMain
 	s.invalidate = win.Invalidate
 	watchUpdater(s)
 	mainWindow = win

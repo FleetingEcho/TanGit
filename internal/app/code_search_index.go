@@ -268,11 +268,20 @@ func (a *app) ensureCodeSearchIndex() {
 				a.ensureCodeSearchIndex()
 				return false
 			}
+			previous := codeSearchIndexInfo{
+				status: current.status, documents: current.documents,
+				bytes: current.bytes, updated: current.updated,
+			}
+			previousErr := current.err
 			current.status = info.status
 			current.documents = info.documents
 			current.bytes = info.bytes
 			current.updated = info.updated
 			current.err = safeError(err)
+			visibleChanged := previous != (codeSearchIndexInfo{
+				status: current.status, documents: current.documents,
+				bytes: current.bytes, updated: current.updated,
+			}) || previousErr != current.err
 			queued := current.refreshQueued
 			current.refreshQueued = false
 			if queued {
@@ -282,7 +291,7 @@ func (a *app) ensureCodeSearchIndex() {
 			if rebuilt && a.code.searchSubmitted != "" && !a.code.searchReplaceRunning {
 				a.beginCodeSearch()
 			}
-			return a.workspaceTab == sectionCode
+			return visibleChanged && a.workspaceTab == sectionCode
 		})
 	}()
 }
