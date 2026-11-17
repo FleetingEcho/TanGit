@@ -515,6 +515,8 @@ func (a *app) branchListView(c *ui.Context) {
 			}
 			rowIconButton(c, "New branch…", "Create a branch from a local branch",
 				stageIcon, func() { a.openBranchForm("") })
+			flatIconButton(c, tr("Sync stack…"), tr("Preview frozen per-branch updates and preview-OID-leased publishes"), fetchIcon, 14, 6,
+				a.actionBusy || len(a.snapshot.Branches) == 0, a.openStackSync)
 			paneCollapseButton(c, &a.workspacePaneCollapsed[sectionBranches], "Collapse list pane")
 		})
 		if len(a.snapshot.Branches) == 0 {
