@@ -32,21 +32,21 @@ const (
 func startOpenSSH(t testing.TB) *Server {
 	t.Helper()
 	if os.Geteuid() == 0 {
-		t.Skip("local OpenSSH integration requires an unprivileged user")
+		openSSHUnavailable(t, "local OpenSSH integration requires an unprivileged user")
 	}
 	if !executableFile(openSSHDPath) {
-		t.Skipf("local OpenSSH integration requires executable %s", openSSHDPath)
+		openSSHUnavailable(t, "local OpenSSH integration requires executable %s", openSSHDPath)
 	}
 	keygen, err := exec.LookPath("ssh-keygen")
 	if err != nil {
-		t.Skipf("local OpenSSH integration requires ssh-keygen: %v", err)
+		openSSHUnavailable(t, "local OpenSSH integration requires ssh-keygen: %v", err)
 	}
 	current, err := user.Current()
 	if err != nil {
-		t.Skipf("local OpenSSH integration cannot identify the current user: %v", err)
+		openSSHUnavailable(t, "local OpenSSH integration cannot identify the current user: %v", err)
 	}
 	if err := validOpenSSHUsername(current.Username); err != nil {
-		t.Skipf("local OpenSSH integration does not support this test account: %v", err)
+		openSSHUnavailable(t, "local OpenSSH integration does not support this test account: %v", err)
 	}
 	lockedReason := lockedAccountReason(current.Username)
 	usePAM := "no"
@@ -56,7 +56,7 @@ func startOpenSSH(t testing.TB) *Server {
 		// locked password as a locked login on platforms such as Linux. All
 		// password-based SSH authentication methods remain disabled below.
 		if runtime.GOOS != "linux" {
-			t.Skipf("local OpenSSH integration cannot use this locked account without PAM: %s", lockedReason)
+			openSSHUnavailable(t, "local OpenSSH integration cannot use this locked account without PAM: %s", lockedReason)
 		}
 		usePAM = "yes"
 	}
@@ -118,7 +118,7 @@ func startOpenSSH(t testing.TB) *Server {
 	command.Stderr = &log
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := command.Start(); err != nil {
-		t.Skipf("cannot start unprivileged local OpenSSH server: %v", err)
+		openSSHUnavailable(t, "cannot start unprivileged local OpenSSH server: %v", err)
 	}
 	process := &openSSHProcess{command: command, done: make(chan struct{})}
 	go func() {
@@ -195,11 +195,11 @@ func secureStateDir(t testing.TB) string {
 	// usual secure source-tree ownership just as OpenSSH does.
 	workingDir, err := os.Getwd()
 	if err != nil {
-		t.Skipf("local OpenSSH integration cannot locate a secure state parent: %v", err)
+		openSSHUnavailable(t, "local OpenSSH integration cannot locate a secure state parent: %v", err)
 	}
 	stateDir, err := os.MkdirTemp(workingDir, ".openssh-state-")
 	if err != nil {
-		t.Skipf("local OpenSSH integration cannot create isolated server state inside the working directory: %v", err)
+		openSSHUnavailable(t, "local OpenSSH integration cannot create isolated server state inside the working directory: %v", err)
 	}
 	t.Cleanup(func() {
 		if err := os.RemoveAll(stateDir); err != nil {
@@ -214,8 +214,9 @@ func secureStateDir(t testing.TB) string {
 
 func lockedAccountReason(username string) string {
 	// passwd -S works for the calling user even when the shadow database is not
-	// readable. Only a confirmed locked status is a skip; unavailable status
-	// tools must never hide an actual helper or authentication failure.
+	// readable. Only a confirmed locked status is an environment limitation;
+	// unavailable status tools must never hide an actual helper or
+	// authentication failure.
 	passwd, err := exec.LookPath("passwd")
 	if err == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -270,7 +271,7 @@ func reserveLoopbackPort(t testing.TB) int {
 	t.Helper()
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
-		t.Skipf("local OpenSSH integration cannot reserve a loopback port: %v", err)
+		openSSHUnavailable(t, "local OpenSSH integration cannot reserve a loopback port: %v", err)
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
 	if err := listener.Close(); err != nil {
@@ -306,7 +307,7 @@ func waitForListener(t testing.TB, address string, process *openSSHProcess, log 
 func startupFailed(t testing.TB, waitErr error, output string) {
 	t.Helper()
 	if constraint := environmentConstraint(output); constraint != "" {
-		t.Skipf("local OpenSSH server cannot run in this environment: %s\nsshd output:\n%s", constraint, output)
+		openSSHUnavailable(t, "local OpenSSH server cannot run in this environment: %s\nsshd output:\n%s", constraint, output)
 	}
 	t.Fatalf("local OpenSSH server exited before accepting connections: %v\nsshd output:\n%s", waitErr, output)
 }

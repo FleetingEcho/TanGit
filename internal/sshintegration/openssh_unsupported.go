@@ -9,6 +9,6 @@ import (
 
 func startOpenSSH(t testing.TB) *Server {
 	t.Helper()
-	t.Skipf("local OpenSSH integration is unsupported on %s", runtime.GOOS)
+	openSSHUnavailable(t, "local OpenSSH integration is unsupported on %s", runtime.GOOS)
 	return nil
 }
