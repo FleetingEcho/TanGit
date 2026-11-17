@@ -43,8 +43,8 @@ type appSettings struct {
 	DiffWrap            bool `json:"diffWrap"`
 	CommitDetailsLayout int  `json:"commitDetailsLayout"`
 	IgnoreUntracked     bool `json:"ignoreUntracked"`
-	// ConflictActionStyle controls conflict and Changes hunk buttons. Older
-	// files and unknown values normalize to icons; labels only add visible text.
+	// ConflictActionStyle controls conflict and Changes hunk buttons and their
+	// optional guidance. Older files and unknown values normalize to icons.
 	ConflictActionStyle string `json:"conflictActionStyle"`
 	// DisableShortcuts switches the window's keyboard shortcuts off. The
 	// header icons keep working, so every action stays reachable.

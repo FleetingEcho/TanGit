@@ -797,6 +797,9 @@ func (a *app) conflictPane(c *ui.Context, theme *ui.Theme) {
 	} else {
 		a.conflictStageSelector(c)
 	}
+	if normalizeConflictActionStyle(a.settings.ConflictActionStyle) == conflictActionStyleGuided {
+		a.guidedConflictStageGuide(c)
+	}
 	if a.conflictStagePane(c, theme) {
 		return
 	}
