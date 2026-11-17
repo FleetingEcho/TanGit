@@ -21,6 +21,8 @@ func TestConflictActionStyleNormalizesAndPersists(t *testing.T) {
 		"icons":             conflictActionStyleIcons,
 		"icons+labels":      conflictActionStyleIconsLabels,
 		" ICONS+LABELS ":    conflictActionStyleIconsLabels,
+		"guided":            "guided",
+		" GUIDED ":          "guided",
 		"labels":            conflictActionStyleIcons,
 		"unknown-toolstrip": conflictActionStyleIcons,
 	} {
@@ -68,7 +70,8 @@ func actionPresentationSize(t *testing.T, h *harness, label, style string, width
 		bounds.X+bounds.W > float32(width)+0.5 {
 		t.Fatalf("%q is clipped or has no hit target at %dx%d: %+v", label, width, height, bounds)
 	}
-	if group, compact := h.tester.Access("Apply"); compact && group.HasPopup != ui.PopupNone && style == conflictActionStyleIconsLabels {
+	if group, compact := h.tester.Access("Apply"); compact && group.HasPopup != ui.PopupNone &&
+		(style == conflictActionStyleIconsLabels || style == conflictActionStyleGuided) {
 		// A measured compact Apply group keeps common side choices as direct
 		// icons; opening Apply supplies their visible labels and descriptions.
 		style = conflictActionStyleIcons
@@ -78,9 +81,9 @@ func actionPresentationSize(t *testing.T, h *harness, label, style string, width
 		if bounds.W != 34 {
 			t.Fatalf("icons %q width = %.1f, want the established 34 DIP", label, bounds.W)
 		}
-	case conflictActionStyleIconsLabels:
+	case conflictActionStyleIconsLabels, conflictActionStyleGuided:
 		if bounds.W <= 34 {
-			t.Fatalf("icons+labels %q width = %.1f, want room for visible text", label, bounds.W)
+			t.Fatalf("%s %q width = %.1f, want room for visible text", style, label, bounds.W)
 		}
 	}
 	return info
@@ -145,9 +148,9 @@ func TestConflictActionStyleAcrossViewportsAndThemes(t *testing.T) {
 	readWorkingFile = func(string) ([]byte, error) { return []byte(content), nil }
 	writeWorkingFile = func(string, []byte) error { return nil }
 
-	for _, viewport := range []struct{ width, height int }{{1280, 800}, {960, 640}, {720, 800}} {
+	for _, viewport := range []struct{ width, height int }{{1200, 800}, {960, 640}, {720, 800}} {
 		for _, dark := range []bool{false, true} {
-			for _, style := range []string{conflictActionStyleIcons, conflictActionStyleIconsLabels} {
+			for _, style := range []string{conflictActionStyleIcons, conflictActionStyleIconsLabels, conflictActionStyleGuided} {
 				name := fmt.Sprintf("%dx%d/dark=%v/%s", viewport.width, viewport.height, dark, style)
 				t.Run(name, func(t *testing.T) {
 					h, _ := changesTestAppIn(t, []repository.File{{
@@ -180,9 +183,9 @@ func TestConflictActionStyleAcrossViewportsAndThemes(t *testing.T) {
 }
 
 func TestChangesHunkActionStyleAcrossViewportsAndThemes(t *testing.T) {
-	for _, viewport := range []struct{ width, height int }{{1280, 800}, {960, 640}, {720, 800}} {
+	for _, viewport := range []struct{ width, height int }{{1200, 800}, {960, 640}, {720, 800}} {
 		for _, dark := range []bool{false, true} {
-			for _, style := range []string{conflictActionStyleIcons, conflictActionStyleIconsLabels} {
+			for _, style := range []string{conflictActionStyleIcons, conflictActionStyleIconsLabels, conflictActionStyleGuided} {
 				name := fmt.Sprintf("%dx%d/dark=%v/%s", viewport.width, viewport.height, dark, style)
 				t.Run(name, func(t *testing.T) {
 					h, _ := twoHunkChangesApp(t, unstagedTrackedFile())
@@ -214,6 +217,7 @@ func TestChangesHunkActionStyleAcrossViewportsAndThemes(t *testing.T) {
 
 func TestContextHelpExplainsConflictActionsWithoutInventedShortcuts(t *testing.T) {
 	a := newApp(fakeOpener{})
+	a.settings.ConflictActionStyle = conflictActionStyleGuided
 	a.state = stateReady
 	a.workspaceTab = sectionChanges
 	a.conflictState = newConflictState("conflict.txt", "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> topic\n", 0)
@@ -313,7 +317,7 @@ func TestSettingsActionStyleIsImmediatePersistentAndModalSafe(t *testing.T) {
 	writeWorkingFile = func(string, []byte) error { return nil }
 
 	for _, dark := range []bool{false, true} {
-		for _, target := range []string{conflictActionStyleIcons, conflictActionStyleIconsLabels} {
+		for _, target := range []string{conflictActionStyleIcons, conflictActionStyleIconsLabels, conflictActionStyleGuided} {
 			t.Run(fmt.Sprintf("dark=%v/target=%s", dark, target), func(t *testing.T) {
 				h, _ := changesTestAppIn(t, []repository.File{{
 					Path: "conflict.txt", Status: "UU", Unstaged: true, Tracked: true, HasMergeConflicts: true,
@@ -323,9 +327,13 @@ func TestSettingsActionStyleIsImmediatePersistentAndModalSafe(t *testing.T) {
 				initial := conflictActionStyleIconsLabels
 				targetLabel := "Icons"
 				otherLabel := "Icons + labels"
-				if target == conflictActionStyleIconsLabels {
+				switch target {
+				case conflictActionStyleIconsLabels:
 					initial = conflictActionStyleIcons
 					targetLabel, otherLabel = otherLabel, targetLabel
+				case conflictActionStyleGuided:
+					initial = conflictActionStyleIcons
+					targetLabel = "Guided"
 				}
 				h.app.settings.ConflictActionStyle = initial
 				h.tester.SetDark(dark)
@@ -376,8 +384,7 @@ func TestSettingsActionStyleIsImmediatePersistentAndModalSafe(t *testing.T) {
 				}
 				h.tester.Frame()
 				h.tester.Frame()
-				otherStyle := conflictActionStyleForChoice(1 - conflictActionStyleChoice(target))
-				action := actionPresentationSize(t, h, "Use current", otherStyle, 960, 640)
+				action := actionPresentationSize(t, h, "Use current", initial, 960, 640)
 				bounds := action.Bounds
 				h.tester.ClickAt(bounds.X+bounds.W/2, bounds.Y+bounds.H/2)
 				h.tester.Frame()
