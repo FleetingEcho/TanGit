@@ -1,0 +1,17 @@
+=== RUN   TestCommitScrollCancelsObsoleteDiffWithoutRepaint
+    performance_regression_test.go:85: "commit:old.go" was not canceled
+--- FAIL: TestCommitScrollCancelsObsoleteDiffWithoutRepaint (1.00s)
+=== RUN   TestWorktreeDiffReplacementCancelsObsoleteRead
+    performance_regression_test.go:128: "worktree:old.txt" was not canceled
+--- FAIL: TestWorktreeDiffReplacementCancelsObsoleteRead (1.00s)
+=== RUN   TestCommitFilesABACompletionDoesNotRepaintOrReplaceCurrentRead
+    performance_regression_test.go:239: stale A result repainted after A-B-A selection
+--- FAIL: TestCommitFilesABACompletionDoesNotRepaintOrReplaceCurrentRead (0.00s)
+=== RUN   TestCommitDiffABACompletionDoesNotRepaintOrReplaceCurrentRead
+    performance_regression_test.go:273: stale A diff repainted after A-B-A selection
+--- FAIL: TestCommitDiffABACompletionDoesNotRepaintOrReplaceCurrentRead (0.00s)
+=== RUN   TestQuietFileDiffSamePatchKeepsStateAndBytesWithoutRepaint
+--- PASS: TestQuietFileDiffSamePatchKeepsStateAndBytesWithoutRepaint (0.01s)
+FAIL
+FAIL	lazygitapp/internal/app	2.040s
+FAIL
