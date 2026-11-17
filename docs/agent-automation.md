@@ -256,6 +256,15 @@ explicit confirmation. Even confirmed CLI patch application does not stage or
 commit files. Task reports and passing test results similarly record
 observations, not approval to integrate.
 
+Desktop **Continue preflight** is separate too. `tangit agent ...` does not run
+the Required/Optional commands from **Settings → Behavior**, and
+`agent test-result` does not satisfy those checks, create their checkpoint, or
+approve the final operation CAS. Those desktop commands are fully trusted local
+shell commands, not sandboxed; they may use the network and write files, and
+Continue is disabled for SSH workspaces. See
+[Continue preflight and trusted checks](guide.md#continue-preflight-and-trusted-checks)
+for the exact Required/Optional refusal and Optional-failure override rules.
+
 ## Safety policy
 
 - Every task/worktree target is explicit; UI selection is never read.

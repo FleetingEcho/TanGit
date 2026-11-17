@@ -138,45 +138,91 @@ The action is bound to the reviewed operation fingerprint, which includes its
 metadata and unmerged index stages. A fingerprint change or an unsupported
 transition is refused rather than approximated against different state.
 
+### Guided conflict mode
+
+Choose **Settings → Behavior → Conflict and hunk buttons → Guided**. **Guided**
+is the third persisted presentation alongside **Icons** and **Icons + labels**
+(the stored value is `conflictActionStyle: guided`). It keeps the same conflict
+controls and operation drivers, while adding labeled actions and two kinds of
+live help:
+
+- the operation area lists **Read conflict**, **Choose or edit Result**, **Mark
+  resolved**, **Review staged**, and **Continue** with **Earlier**, **Current**,
+  **Next**, or **Available** where applicable;
+- the conflict pane explains the selected **Base**, **Current**, **Incoming**,
+  or editable **Result** view, adapting the explanation to the pane width.
+
+The checklist is derived from the current operation, actual conflict count,
+selected file, Result markers, staged files, and available operation actions.
+**Earlier** denotes position, not a durable completion attestation; an
+unresolved file never receives a false resolved tick. Guided help does not
+choose a side, stage a file, or run Continue for you. Hide or reopen the guide
+with **Hide guide** / **Show guide** without changing the repository.
+
+A normal pass is therefore: read the operation progress and current file/hunk,
+compare the three read-only stages, edit **Result**, choose **Mark resolved**,
+inspect the staged diff under **Review staged**, and then follow the Continue
+preflight below. The underlying controls and operation panel are implemented in
+[`internal/app/guided_conflict.go`](../internal/app/guided_conflict.go); the
+three persisted styles are defined in
+[`internal/app/action_controls.go`](../internal/app/action_controls.go).
+
+Recovery guidance is record-driven. With a real selected-path record it offers
+**Restore unresolved…** or **Retry…** through the ordinary confirmation path.
+Without one it says **No recovery is available for the selected file** and does
+not render either action for that file. It never invents a successful restore.
+
 ### Continue preflight and trusted checks
 
-Continue uses the commands under **Settings → Behavior → Continue preflight**.
-The **Required check command** starts empty, which disables the final Continue
-action until a command is configured. The **Optional check command** may stay
-empty and is then shown as **skipped**. The two failure policies are different:
+For a local workspace, configure **Settings → Behavior → Continue preflight**
+before choosing **Continue**. Typical entries are:
 
-- required failure, cancellation, stale state, capture errors, and checkpoint
-  failure cannot reach Continue or be overridden;
-- an optional failure leaves its output visible and offers **Override optional
-  failure and continue** only as an explicit user action;
-- optional cancellation is not a failure override and must instead be retried.
+| Setting | Example | Blank behavior | Failure policy |
+| --- | --- | --- | --- |
+| **Required check command** | `go test ./...` | Blocks Continue; Optional does not run | Must pass; failure or cancellation cannot be overridden |
+| **Optional check command** | `golangci-lint run` | Shown as **skipped** | A completed **failed** result alone may receive an explicit override |
+
+Required must pass before Optional runs. If Optional fails, inspect its output
+and either **Retry checks** or deliberately choose **Override optional failure
+and continue**. That override appears for an Optional **failed** state, not for
+Optional cancellation. No override bypasses a missing/failed/cancelled Required
+check, incomplete or stale source capture, a source-recheck error, checkpoint
+failure, or the final operation comparison.
 
 These commands have the same execution trust boundary as Custom Commands.
-`runTrustedShellCommand` runs them through `sh -c` or `cmd /C` in the repository
-root, with the desktop user's full permissions, environment, filesystem access,
-and cancellation support. **They are not sandboxed**, may access the network,
-and may create or modify files. For that reason Continue checks are explicitly
-disabled for SSH workspaces rather than running a local command against a
-remote checkout. Output, including a string such as `__IT_IS_SAFE__`, never
-changes an exit status or grants approval by itself.
+[`runTrustedShellCommand`](../internal/app/custom_commands.go) runs them through
+`sh -c` or `cmd /C` in the repository root, with the desktop user's full
+permissions, environment, filesystem access, and cancellation support. **They
+are not sandboxed**, may access the network, and may create or modify files.
+For an SSH workspace, the **Continue action itself is disabled** rather than
+running a local command against a remote checkout. Output, including a string
+such as `__IT_IS_SAFE__`, never changes an exit status or grants approval by
+itself.
 
 Preflight captures immutable `OperationState` and operation fingerprint data,
-plus canonical SHA-256 hashes of index records and actual working-tree file
-content. Same-size or same-line-count edits therefore still invalidate its
-comparison. After the commands it recaptures those inputs and displays changed
-paths, command output, cancellation, and errors. Retry captures a fresh source;
-a stale retry uses the operation that was just shown rather than repeatedly
-expecting the old fingerprint.
+plus canonical SHA-256 hashes of index records and the content/type of tracked
+paths and ordinary non-ignored untracked paths. Same-size or same-line-count
+edits therefore still invalidate this comparison. After the commands it
+recaptures those inputs and displays changed paths, output, cancellation, and
+errors. Retry captures a fresh source; a stale retry uses the operation that
+was just shown rather than repeatedly expecting the old fingerprint.
 
-Changed content requires a successful checkpoint before Continue becomes
-available. If nothing changed, the checkpoint is consistently marked
-**skipped**. TanGit's capture and recheck steps do not stage, restore, or
-create an operation commit, and do not directly change HEAD, the index, or
-working-tree contents. A configured shell command may perform any action its
-user permissions allow, including invoking Git; those effects are what the
-source recheck exposes. Finally, TanGit compares the reviewed source once more and calls
-the ordinary operation driver's expected-fingerprint CAS. It does not invoke a
-second unchecked Git Continue path.
+The comparison is not a sandbox or a complete record of process side effects:
+standard ignored files, writes outside the checkout, and network effects are
+not part of these changed-file hashes. When the captured operation is unchanged
+but its tracked/index/non-ignored content changed, that detected change needs
+a successful checkpoint before Continue becomes available. If nothing in the
+captured source changed, checkpoint is **skipped**. Capture and recheck do not
+stage, restore, or create an operation commit; a configured shell command may
+invoke Git or mutate anything else its user permissions allow.
+
+Finally, both ordinary approval and the Optional-failure override capture the
+source once more, compare it with what was reviewed, and call the ordinary
+operation driver's expected-fingerprint CAS. A fresh mismatch refuses Continue;
+there is no second unchecked Git Continue path. The repository source capture
+is in [`internal/repository/continue_review.go`](../internal/repository/continue_review.go),
+and the UI gates are in
+[`internal/app/continue_preflight.go`](../internal/app/continue_preflight.go).
 
 The conflict pane groups controls by purpose:
 
@@ -215,6 +261,18 @@ verified file-only step without blindly writing it again. New work on the same
 path causes a CAS conflict and is preserved; unrelated paths do not block
 restore. This is separate from whole-worktree checkpoints and the older Safety
 Journal.
+
+V2 input is fail-closed. Malformed JSON, binary/NUL bytes in a manifest, or
+trailing garbage, unsupported or unknown fields, invalid progress, unsafe
+paths, and inconsistent digests do not become a ready restore. Restore also validates content-addressed
+payload bytes—including binary content—before its file/index CAS. Corrupt or
+truncated payloads are rejected without overwriting newer same-path work or
+changing its index; **Retry…** remains an explicit later attempt, not an
+automatic repair or a success claim. If optional recovery metadata cannot be
+discovered, the rest of DetailsSnapshot remains available, no stale
+restore/retry action is published from that discovery, and the diagnostic is
+written to the command log. The exact corruption, concurrency, and fuzz scope
+is listed under [verification evidence](verification.md#feature-specific-evidence-and-limits).
 
 ### Changes hunks and Custom Patch history
 
@@ -344,18 +402,21 @@ distinction between these previews and task CLI mutations, see
 
 A typical interrupted-rebase workflow is:
 
-1. Read the operation card's actual type and current step. In **Changes**,
-   compare Base, Current, and Incoming before editing Result with the grouped
-   conflict controls. Optionally request and inspect Conflict Assistant
-   suggestions; accepting them still writes Result only.
+1. Read the operation card's actual type and current step. With **Guided**
+   enabled, use its live checklist, but still compare Base, Current, and
+   Incoming before editing Result with the real conflict controls. Optionally
+   request and inspect Conflict Assistant suggestions; accepting them still
+   writes Result only.
 2. Choose **Mark resolved**, inspect the staged result, and repeat for all
    conflicted files. If necessary, restore the original unresolved file and
    stages from durable Conflict recovery. If a newer same-path edit causes a
    CAS refusal, keep that work and review it instead of retrying blindly.
 3. Return to **Rebase TODO** and review current/pending entries. Continue only
-   after conflicts are resolved and staged. Use Skip only when offered and you
-   intentionally want to discard the stopped step; use Abort to abandon the
-   operation.
+   after conflicts are resolved and staged. In the local preflight, review the
+   Required/Optional output, changed captured paths, and checkpoint result;
+   then choose **Continue operation**, or explicitly override only an Optional
+   failure you intend to accept. Use Skip only when offered and you intentionally
+   want to discard the stopped step; use Abort to abandon the operation.
 4. For unrelated ordinary edits, use the Changes hunk toolbar to stage only
    what belongs in the next commit, then review and commit normally after the
    interrupted operation ends.
@@ -365,6 +426,37 @@ A typical interrupted-rebase workflow is:
    and independent push outcomes are reported separately.
 
 [Verification scope and current limits →](verification.md#feature-specific-evidence-and-limits)
+
+## Large repositories and refresh
+
+No separate mode or setting is required. Open **History**, **Graph**, and
+**Changes** normally. The shared numstat reader advances through each
+NUL-delimited record instead of splitting the entire output into temporary
+record and path slices. It preserves commit boundaries and rename path fields;
+binary `-` entries remain zero textual line additions/deletions. See the helpers in
+[`internal/repository/commit_stats.go`](../internal/repository/commit_stats.go)
+and their use for status/commit files in
+[`internal/repository/session.go`](../internal/repository/session.go).
+
+Selecting a different commit cancels obsolete `CommitFiles` and
+`CommitFileDiff` reads; selecting a different Changes file cancels the obsolete
+worktree diff. Monotonic request generations also protect both file-list and
+diff publication: if selection goes A → B → A, a late result from the first A
+cannot replace the current A view even when a repository reader ignores
+cancellation. Canceled or stale
+callbacks do not request a repaint. These paths are in
+[`internal/app/actions.go`](../internal/app/actions.go) and
+[`internal/app/view_history.go`](../internal/app/view_history.go).
+
+A quiet Changes refresh still performs its repository/Git read. For the same
+request key and generation, an existing textual state, and the same full patch
+and kind, TanGit reuses that `DiffState` and requests no repaint instead of parsing and
+laying out identical bytes again. Initial loads, changed patches, binary/media,
+and patchless paths keep their existing behavior. This is a narrow unchanged-
+patch fast path, not a claim that Git reads disappear or that `CoreSnapshot`
+is uniformly faster. The fixed fixture, stage boundaries, competing benchmark
+runs, host details, and negative results are in
+[Large-repository performance evidence](performance.md#scope-and-outcome).
 
 ## Keyboard
 
