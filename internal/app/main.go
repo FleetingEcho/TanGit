@@ -290,6 +290,10 @@ type app struct {
 	customCommandRunning bool
 	customCommandCancel  context.CancelFunc
 	customCommandDone    chan struct{}
+	// Continue preflight owns its trusted local checks independently of custom
+	// commands. Its source, cancellation and generation are repository-scoped.
+	continuePreflight  continuePreflightUIState
+	continueTestRunner continueTestRunner
 	// commandLogUser selects the user's commands instead of background Git
 	// commands; commandLogQuery filters the selected section, highlighted.
 	commandLogUser  bool
