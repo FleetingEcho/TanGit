@@ -581,6 +581,9 @@ type app struct {
 	// of the editable merge text, so the change between this branch and the
 	// incoming one can be read side by side or unified and saved.
 	conflictReview bool
+	// Guided help visibility is transient view state only. Workflow progress
+	// always comes from the live operation, index and conflict buffers.
+	guidedOperationGuideHidden bool
 	// conflictDiffState is that review, and conflictDiffPatch the combined
 	// diff Git prints for the conflicted file, kept so the review can be
 	// saved as the other diffs are.
