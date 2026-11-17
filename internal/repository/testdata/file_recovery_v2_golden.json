@@ -1,0 +1,91 @@
+{
+  "version": 2,
+  "operation_id": "000102030405060708090a0b0c0d0e0f",
+  "path": "dir/f.txt",
+  "path_digest": "1f5bc7159a5c53e57e7238e3eba9295e8572363192acdd0a704b2bea37912b38",
+  "identity": {
+    "repository_git_dir": "/old/repo/.git",
+    "worktree_git_dir": "/old/repo/.git",
+    "worktree": "/old/repo",
+    "repository_digest": "7ec5ab290b00bff82a75cdc6fb3641bf1b82b6b7977c96d1c2d4af66203d4a50",
+    "worktree_digest": "5ee6440c3c4b9b6ecf26bfef56899e3c5378aed07af547047ddd3f5841bdefe7"
+  },
+  "status": "ready",
+  "progress": "pending",
+  "attempts": 0,
+  "created_at": 1700000000,
+  "updated_at": 1700000000,
+  "initial": {
+    "worktree": {
+      "present": true,
+      "mode": "100644",
+      "size": 5,
+      "digest": "f34848ca92665c342abd5816c9e3eda0e82180671195362bcd0080544a3bc2ac"
+    },
+    "index": {
+      "stage0": {
+        "stage": 0,
+        "present": true,
+        "mode": "100644",
+        "oid": "df967b96a579e45a18b8251732d16804b2e56a55",
+        "size": 5,
+        "digest": "f34848ca92665c342abd5816c9e3eda0e82180671195362bcd0080544a3bc2ac"
+      },
+      "stage1": {
+        "stage": 1,
+        "present": false,
+        "size": 0
+      },
+      "stage2": {
+        "stage": 2,
+        "present": false,
+        "size": 0
+      },
+      "stage3": {
+        "stage": 3,
+        "present": false,
+        "size": 0
+      }
+    }
+  },
+  "after": {
+    "worktree": {
+      "present": true,
+      "mode": "100755",
+      "size": 6,
+      "digest": "7b9a72466d3960eb2aacccfc848939453490db0678bd4725def3f789b891c919"
+    },
+    "index": {
+      "stage0": {
+        "stage": 0,
+        "present": true,
+        "mode": "100755",
+        "oid": "294186e497a23bf3fbfde12aacc7f720f668fe9a",
+        "size": 6,
+        "digest": "7b9a72466d3960eb2aacccfc848939453490db0678bd4725def3f789b891c919"
+      },
+      "stage1": {
+        "stage": 1,
+        "present": false,
+        "size": 0
+      },
+      "stage2": {
+        "stage": 2,
+        "present": false,
+        "size": 0
+      },
+      "stage3": {
+        "stage": 3,
+        "present": false,
+        "size": 0
+      }
+    }
+  },
+  "journal": [
+    {
+      "time": 1700000000000000000,
+      "attempt": 0,
+      "event": "archived"
+    }
+  ]
+}
