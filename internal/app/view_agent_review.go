@@ -68,10 +68,7 @@ func (a *app) agentReviewView(c *ui.Context) {
 		a.agentCheckpointControls(c)
 		switch {
 		case review.loading:
-			ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
-				ui.Spinner(c).Label(tr("Loading agent review"))
-				ui.Text(c, tr("Loading agent review…")).TextColor(theme.TextMuted)
-			})
+			loadingPane(c, "Loading agent review", "Loading agent review…")
 			return
 		case review.err != "":
 			ui.Column(c).Grow(1).Center().Gap(8).Children(func() {
@@ -286,10 +283,7 @@ func (a *app) agentReviewDiff(c *ui.Context) {
 		ui.Text(c, commit.Hash).TextColor(theme.TextMuted).Selectable()
 		if review.commitFiles == nil {
 			a.requestAgentReviewCommitFiles()
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Spinner(c).Label(tr("Loading commit files"))
-				ui.Text(c, tr("Loading commit files…")).TextColor(theme.TextMuted)
-			})
+			loadingPane(c, "Loading commit files", "Loading commit files…")
 			return
 		}
 		if len(review.commitFiles) == 0 {
@@ -324,10 +318,7 @@ func (a *app) agentReviewDiff(c *ui.Context) {
 	a.requestAgentReviewDiff()
 	switch {
 	case review.diffLoading:
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Spinner(c).Label(tr("Loading diff"))
-			ui.Text(c, tr("Loading diff…")).TextColor(theme.TextMuted)
-		})
+		loadingPane(c, "Loading diff", "Loading diff…")
 	case review.diffError != "":
 		ui.Text(c, review.diffError).TextColor(theme.Danger).Selectable()
 	case review.diffState != nil:

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -56,10 +57,10 @@ type File struct {
 	UnstagedLinesDeleted int
 }
 
-// SnapshotCommitLimit bounds the commits a snapshot carries, keeping the read
-// on repository open and after each action fast. History and the Graph page in
-// older commits below it with RecentCommits.
-const SnapshotCommitLimit = 200
+// SnapshotCommitLimit is a viewport-sized page, not a target for eager history
+// hydration. A larger first page can spend many seconds computing numstat for
+// commits far below the visible list. History and Graph always page farther.
+const SnapshotCommitLimit = 20
 
 // ConflictStage is one immutable index-stage version of an unmerged path.
 // Present distinguishes an absent side (a deletion) from an empty file.
@@ -697,6 +698,10 @@ type gitSession struct {
 	hashPool           *utils.StringPool
 	// reviewMu keeps a read-modify-write of the repository's review file together.
 	reviewMu sync.Mutex
+	// commitTotalsMu serializes immutable per-hash statistics reads and the
+	// cache that lets History, Graph, Branches and refreshes share them.
+	commitTotalsMu sync.Mutex
+	commitTotals   map[string]commitLineStats
 	// Remote identity is optional for ordinary local sessions. owner is the
 	// session's pool lease (or another lifecycle owner), not necessarily client.
 	sshClient *sshworkspace.Client
@@ -890,10 +895,10 @@ func (s *gitSession) DetailsSnapshot(ctx context.Context) (Snapshot, error) {
 		branches = append(branches, snapshotBranch(branch))
 	}
 	modelRemotes := s.git.Loaders.RemoteLoader.GetRemotes()
-	remoteBranches, err := s.git.Loaders.RemoteLoader.GetRemoteBranchesByRemoteName()
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("load remote branches: %w", err)
-	}
+	// These metadata power optional tabs, never whether the repository opens.
+	// A bad auxiliary read degrades only that pane; keep the earlier commits and
+	// branch data. The essential history/HEAD reads above still return errors.
+	remoteBranches, _ := s.git.Loaders.RemoteLoader.GetRemoteBranchesByRemoteName()
 	remotes := make([]Remote, 0, len(modelRemotes))
 	for _, remote := range modelRemotes {
 		item := Remote{
@@ -911,18 +916,12 @@ func (s *gitSession) DetailsSnapshot(ctx context.Context) (Snapshot, error) {
 	for _, stash := range modelStashes {
 		stashes = append(stashes, Stash{Index: stash.Index, Name: stash.Name, Hash: stash.Hash, Recency: stash.Recency})
 	}
-	modelTags, err := s.git.Loaders.TagLoader.GetTags()
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("load tags: %w", err)
-	}
+	modelTags, _ := s.git.Loaders.TagLoader.GetTags()
 	tags := make([]Tag, 0, len(modelTags))
 	for _, tag := range modelTags {
 		tags = append(tags, Tag{Name: tag.Name, Message: tag.Message})
 	}
-	modelWorktrees, worktreeMetadata, err := s.sessionWorktrees()
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("load worktrees: %w", err)
-	}
+	modelWorktrees, worktreeMetadata, _ := s.sessionWorktrees()
 	worktreeStatuses := s.sessionWorktreeStatuses(modelWorktrees)
 	worktrees := make([]Worktree, 0, len(modelWorktrees))
 	for _, worktree := range modelWorktrees {
@@ -950,31 +949,22 @@ func (s *gitSession) DetailsSnapshot(ctx context.Context) (Snapshot, error) {
 			LastSubject:   status.LastSubject,
 		})
 	}
-	modelSubmodules, err := s.submoduleConfigs(nil)
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("load submodules: %w", err)
-	}
+	modelSubmodules, _ := s.submoduleConfigs(nil)
 	submodules := make([]Submodule, 0, len(modelSubmodules))
 	for _, submodule := range modelSubmodules {
 		submodules = append(submodules, Submodule{Name: submodule.FullName(), Path: submodule.FullPath(), URL: RedactSecrets(submodule.Url)})
 	}
-	workSnapshots, err := s.WorkSnapshots(ctx)
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("load recovery: %w", err)
-	}
-	operations, err := s.Operations(ctx)
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("load safety journal: %w", err)
-	}
-	modelReflog, err := s.recentReflog(SnapshotCommitLimit)
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("load reflog: %w", err)
-	}
+	workSnapshots, _ := s.WorkSnapshots(ctx)
+	operations, _ := s.Operations(ctx)
+	modelReflog, _ := s.recentReflog(SnapshotCommitLimit)
 	reflog := make([]Commit, 0, len(modelReflog))
 	for _, commit := range modelReflog {
 		reflog = append(reflog, snapshotCommit(commit))
 	}
 
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
 	return Snapshot{
 		Commits:       commits,
 		Branches:      branches,
@@ -1096,7 +1086,28 @@ func (s *gitSession) stagedLineStats() (map[string]commitLineStats, error) {
 }
 
 func (s *gitSession) unstagedLineStats() (map[string]commitLineStats, error) {
-	return s.diffLineStats(false, "")
+	stats, err := s.diffLineStats(false, "")
+	if isOptionalFilterStatsError(err) {
+		return map[string]commitLineStats{}, nil
+	}
+	return stats, err
+}
+
+// isOptionalFilterStatsError distinguishes user-configured text filters that
+// are absent or failing from object/history damage. Statistics for lines and
+// per-file counters are optional, so those filters must not make the worktree
+// unusable. A corrupt HEAD or missing object is deliberately not matched here.
+func isOptionalFilterStatsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	for _, fragment := range []string{"filter-process", "clean filter", "smudge filter", "external filter"} {
+		if strings.Contains(message, fragment) {
+			return true
+		}
+	}
+	return false
 }
 
 // headLineStats reads one side relative to HEAD. An unborn branch has no HEAD,
@@ -1109,6 +1120,9 @@ func (s *gitSession) headLineStats(cached bool) (map[string]commitLineStats, err
 	// A readable commit means HEAD itself was not the problem: another bad
 	// object or read error must not turn into an everything-is-new diff.
 	if err := s.cmd.New([]string{"git", "rev-parse", "--verify", "HEAD"}).Run(); err == nil {
+		if isOptionalFilterStatsError(headErr) {
+			return map[string]commitLineStats{}, nil
+		}
 		return nil, headErr
 	}
 	// A detached damaged HEAD has no branch to fall back from either. Only a
@@ -1128,11 +1142,26 @@ func (s *gitSession) headLineStats(cached bool) (map[string]commitLineStats, err
 	return stats, nil
 }
 
+// withoutLFSFilters keeps statistics reads independent of the optional
+// git-lfs executable. Clearing the process/clean/smudge commands is required
+// even with --no-textconv: Git can otherwise run filter-process for worktree
+// and --no-index files. The overrides live only in this child Git invocation.
+func withoutLFSFilters(args []string) []string {
+	overrides := []string{
+		args[0],
+		"-c", "filter.lfs.required=false",
+		"-c", "filter.lfs.process=",
+		"-c", "filter.lfs.clean=",
+		"-c", "filter.lfs.smudge=",
+	}
+	return append(overrides, args[1:]...)
+}
+
 func (s *gitSession) diffLineStats(cached bool, base string) (map[string]commitLineStats, error) {
-	args := []string{
+	args := withoutLFSFilters([]string{
 		"git", "diff", "--no-ext-diff", "--numstat", "-z",
 		fmt.Sprintf("--find-renames=%d%%", s.renameSimilarityThreshold),
-	}
+	})
 	if cached {
 		args = append(args, "--cached")
 	}
@@ -1147,34 +1176,79 @@ func (s *gitSession) diffLineStats(cached bool, base string) (map[string]commitL
 	return parseCommitLineStats(output), nil
 }
 
-// untrackedLineStats compares an untracked file with the empty file. Lazygit's
-// status loader leaves its line counts at zero, while --no-index gives the same
-// whole-file addition that the untracked diff pane presents. Git returns 1 when
-// the two sides differ; that is the expected result, not a failed statistics
-// read. An empty file produces no numstat record.
+// untrackedLineStats counts a new regular file directly through the local/SFTP
+// boundary. A separate git diff --no-index process for every untracked file
+// makes a large worktree needlessly expensive to open and can invoke optional
+// clean filters. Text added is newline-delimited lines, including a final line
+// without a newline. Git's first-8000-bytes NUL check marks binary content, and
+// canonical LFS pointers have no textual statistics. Directories, symlinks to
+// directories, and other non-regular files have no line statistics of their own.
 func (s *gitSession) untrackedLineStats(path string) (commitLineStats, error) {
-	command := s.cmd.New([]string{
-		"git", "diff", "--no-index", "--no-ext-diff", "--numstat", "-z",
-		"/dev/null", "--", path,
-	})
-	outputBytes, err := s.combinedOutput(command)
+	fullPath := s.joinPath(s.git.RepoPaths.WorktreePath(), path)
+	info, err := s.fileService().Stat(fullPath)
 	if err != nil {
-		if exitCode, ok := commandExitCode(err); !ok || exitCode != 1 {
-			return commitLineStats{}, fmt.Errorf("%w: %s", err, outputBytes)
-		}
-	}
-	output := string(outputBytes)
-	if output == "" {
+		// Untracked-file counters are optional presentation data. A broken
+		// link or unreadable metadata must not make the whole worktree fail.
 		return commitLineStats{}, nil
 	}
-	columns := strings.SplitN(output, "\t", 3)
-	if len(columns) != 3 {
-		return commitLineStats{}, fmt.Errorf("unexpected numstat output %q", output)
+	if !info.Mode().IsRegular() {
+		return commitLineStats{}, nil
 	}
-	// Binary files use dashes, which correctly count as no textual changes.
-	added, _ := strconv.Atoi(columns[0])
-	deleted, _ := strconv.Atoi(columns[1])
-	return commitLineStats{added: added, deleted: deleted}, nil
+	file, err := s.fileService().Open(fullPath)
+	if err != nil {
+		return commitLineStats{}, nil
+	}
+	defer file.Close()
+	stats, err := readUntrackedLineStats(file)
+	if err != nil {
+		// The status snapshot may race a delete, permission change, remote I/O
+		// failure or short read. Skip that item; never veto repository opening.
+		return commitLineStats{}, nil
+	}
+	return stats, nil
+}
+
+func readUntrackedLineStats(reader io.Reader) (commitLineStats, error) {
+	// Git treats a NUL in its first 8000 bytes as binary. Besides matching
+	// that check, sniffing lets us avoid reading the rest of a large binary.
+	sniff := make([]byte, 8000)
+	n, err := io.ReadFull(reader, sniff)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return commitLineStats{}, err
+	}
+	sniff = sniff[:n]
+	if bytes.IndexByte(sniff, 0) >= 0 {
+		return commitLineStats{}, nil
+	}
+	if len(sniff) <= 4096 {
+		if _, ok := parseLFSPointer(sniff); ok {
+			return commitLineStats{}, nil
+		}
+	}
+	added := bytes.Count(sniff, []byte{'\n'})
+	last := byte(0)
+	if n > 0 {
+		last = sniff[n-1]
+	}
+	buffer := make([]byte, 64*1024)
+	for {
+		n, readErr := reader.Read(buffer)
+		if n > 0 {
+			chunk := buffer[:n]
+			added += bytes.Count(chunk, []byte{'\n'})
+			last = chunk[n-1]
+		}
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		if readErr != nil {
+			return commitLineStats{}, readErr
+		}
+	}
+	if last != 0 && last != '\n' {
+		added++
+	}
+	return commitLineStats{added: added}, nil
 }
 
 func (s *gitSession) Stage(ctx context.Context, file File) error {
@@ -3562,9 +3636,10 @@ func (s *gitSession) CompareFileDiff(ctx context.Context, from, to string, file 
 	return Diff{Patch: patch, Kind: "Compare"}, nil
 }
 
-// BranchCommits reads the commits of branch with `git log <branch>`, so a
-// branch's history is browsable without checking it out. limit bounds the
-// list like the repository snapshot does.
+// BranchCommits reads a branch with one bounded git log query, so its
+// history is browsable without checking it out. This uses the same parser and
+// immutable-statistics cache as History, rather than hydrating and sorting a
+// second commit-loader pipeline before the first result can be shown.
 func (s *gitSession) BranchCommits(ctx context.Context, branch string, limit int) ([]Commit, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -3573,23 +3648,11 @@ func (s *gitSession) BranchCommits(ctx context.Context, branch string, limit int
 	if branch == "" {
 		return nil, fmt.Errorf("read branch commits: no branch chosen")
 	}
-	modelCommits, err := s.branchCommits(branch, limit)
-	// The library can return an empty list for an unreadable ref too. Verify
-	// unexpected emptiness so only an unborn branch becomes the empty state.
-	if err == nil && len(modelCommits) == 0 && limit > 0 && !s.isUnbornBranch(branch) {
-		_, err = s.cmd.New([]string{"git", "rev-parse", "--verify", "--end-of-options", branch + "^{commit}"}).RunWithOutput()
-	}
+	commits, err := s.SearchCommits(ctx, CommitFilter{Branch: branch, Limit: limit})
 	if err != nil {
-		if s.isUnbornBranch(branch) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("read commits of %s: %w", branch, err)
 	}
-	commits := make([]Commit, 0, len(modelCommits))
-	for _, commit := range modelCommits {
-		commits = append(commits, snapshotCommit(commit))
-	}
-	return s.withCommitLineStats(ctx, commits)
+	return commits, nil
 }
 
 // commitLogFormat is one commit per line: its fields separated by the unit

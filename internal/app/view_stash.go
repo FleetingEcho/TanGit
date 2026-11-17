@@ -623,10 +623,7 @@ func (a *app) stashView(c *ui.Context) {
 					a.requestStashDetails(stash)
 					switch {
 					case a.stashFilesLoading:
-						ui.Row(c).Grow(1).Center().Gap(8).Children(func() {
-							ui.Spinner(c).Label(tr("Loading stash files"))
-							ui.Text(c, tr("Reading the saved files…")).TextColor(theme.TextMuted)
-						})
+						loadingPane(c, "Loading stash files", "Reading the saved files…")
 						return
 					case a.stashFilesError != "":
 						ui.Column(c).Grow(1).Gap(8).Children(func() {
@@ -703,10 +700,7 @@ func (a *app) stashView(c *ui.Context) {
 							}
 							switch {
 							case a.stashDiffLoading:
-								ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-									ui.Spinner(c).Label(tr("Loading diff"))
-									ui.Text(c, tr("Loading diff…")).TextColor(theme.TextMuted)
-								})
+								loadingPane(c, "Loading diff", "Loading diff…")
 							case a.stashDiffError != "":
 								ui.Column(c).Gap(8).Children(func() {
 									ui.Text(c, a.stashDiffError).TextColor(theme.Danger)

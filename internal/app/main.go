@@ -434,15 +434,19 @@ type app struct {
 
 	// Selecting a branch reads its commits without checking it out, then the
 	// files and diff of the commit chosen from them.
-	branchCommits        []repository.Commit
-	branchCommitsBranch  string
-	branchCommitsLoading bool
-	branchCommitsError   string
-	branchCommitsToken   uint64
-	branchFilter         repository.CommitFilter
-	branchFilterDraft    repository.CommitFilter
-	branchCommitList     ui.ListState
-	selectedBranchCommit int
+	branchCommits            []repository.Commit
+	branchCommitsBranch      string
+	branchCommitsLoading     bool
+	branchCommitsLoadingMore bool
+	branchCommitsError       string
+	branchCommitsMoreError   string
+	branchCommitsMore        bool
+	branchCommitsLimit       int
+	branchCommitsToken       uint64
+	branchFilter             repository.CommitFilter
+	branchFilterDraft        repository.CommitFilter
+	branchCommitList         ui.ListState
+	selectedBranchCommit     int
 	// branchCommitsKeep is the commit a quiet refresh keeps chosen when it
 	// reads the branch's commits again, and branchCommitFilesKeepPath the
 	// file it keeps chosen within that commit. They are empty otherwise.
@@ -995,6 +999,7 @@ func newApp(opener repositoryOpener) *app {
 	a.stagedList.Label = func(row int) string { return changeLabel(a.stagedRows, row) }
 	a.mergeList.Label = func(row int) string { return changeLabel(a.mergeRows, row) }
 	a.commitList.Selected = &a.selectedCommit
+	a.commitList.EndReached = func(int) { a.requestMoreCommits() }
 	a.commitList.Key = func(row int) any {
 		commits := a.visibleCommits()
 		if row < 0 || row >= len(commits) {
@@ -1025,6 +1030,11 @@ func newApp(opener repositoryOpener) *app {
 		return branchDisplay(branch)
 	}
 	a.branchCommitList.Selected = &a.selectedBranchCommit
+	a.branchCommitList.EndReached = func(int) {
+		if a.selectedBranch >= 0 && a.selectedBranch < len(a.snapshot.Branches) {
+			a.requestMoreBranchCommits(a.snapshot.Branches[a.selectedBranch].Name)
+		}
+	}
 	a.branchCommitList.Key = func(row int) any { return a.branchCommits[row].Hash }
 	a.branchCommitList.Label = func(row int) string { return a.branchCommits[row].Subject }
 	a.branchCommitFileList.Selected = &a.selectedBranchCommitFileRow

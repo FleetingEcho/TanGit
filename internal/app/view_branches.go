@@ -630,9 +630,6 @@ func (a *app) branchHeaderView(c *ui.Context, branch repository.Branch) {
 	}
 }
 
-// branchCommitsLimit bounds the commits one branch browse reads.
-const branchCommitsLimit = 200
-
 // resetBranchCommits drops what the branch browse read, so the next frame
 // reads the branch then selected again. An action changed the commits, and a
 // read still in flight must not land on the new state.
@@ -642,7 +639,11 @@ func (a *app) resetBranchCommits() {
 	a.branchCommits = nil
 	a.branchCommitsBranch = ""
 	a.branchCommitsLoading = false
+	a.branchCommitsLoadingMore = false
 	a.branchCommitsError = ""
+	a.branchCommitsMoreError = ""
+	a.branchCommitsMore = false
+	a.branchCommitsLimit = 0
 	a.selectedBranchCommit = -1
 	a.branchCommitFiles = nil
 	a.branchCommitFilesHash = ""
@@ -679,8 +680,8 @@ func (a *app) requestBranchCommits(branch string) {
 	}
 	filter := a.branchFilter
 	filter.Branch = branch
-	filter.Limit = branchCommitsLimit
-	filtered := commitFilterNarrows(filter)
+	filter.Limit = repository.SnapshotCommitLimit
+	filtered := commitFilterNarrows(a.branchFilter)
 	session := a.session
 	repositoryGeneration := a.generation
 	// A quiet refresh names the commit it keeps chosen; a user asking for
@@ -690,6 +691,10 @@ func (a *app) requestBranchCommits(branch string) {
 	a.branchCommitsBranch = key
 	a.branchCommitsLoading = true
 	a.branchCommitsError = ""
+	a.branchCommitsMoreError = ""
+	a.branchCommitsMore = false
+	a.branchCommitsLimit = repository.SnapshotCommitLimit
+	a.branchCommitsLoadingMore = false
 	a.branchCommitsToken++
 	token := a.branchCommitsToken
 	a.branchCommits = nil
@@ -716,7 +721,7 @@ func (a *app) requestBranchCommits(branch string) {
 		if filtered {
 			commits, err = session.SearchCommits(context.Background(), filter)
 		} else {
-			commits, err = session.BranchCommits(context.Background(), branch, branchCommitsLimit)
+			commits, err = session.BranchCommits(context.Background(), branch, repository.SnapshotCommitLimit)
 		}
 		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation || token != a.branchCommitsToken {
@@ -729,6 +734,7 @@ func (a *app) requestBranchCommits(branch string) {
 				return a.workspaceTab == sectionBranches
 			}
 			a.branchCommits = commits
+			a.branchCommitsMore = len(commits) >= filter.Limit
 			// A quiet refresh keeps the commit the user was reading, by
 			// hash: the list moved because the branch did, not because they
 			// chose another commit.
@@ -736,12 +742,71 @@ func (a *app) requestBranchCommits(branch string) {
 				for i, commit := range commits {
 					if commit.Hash == keep {
 						a.selectedBranchCommit = i
-						return a.workspaceTab == sectionBranches
+						break
 					}
 				}
 			}
-			if len(commits) > 0 {
+			if a.selectedBranchCommit < 0 && len(commits) > 0 {
 				a.selectedBranchCommit = 0
+			}
+			if a.workspaceTab == sectionBranches {
+				// A new branch, filter, or refresh replaces the result set.
+				// Unlike requestMoreBranchCommits, this starts at its top.
+				a.branchCommitList.ScrollTo(0, ui.Start)
+			}
+			return a.workspaceTab == sectionBranches
+		})
+	}()
+}
+
+// requestMoreBranchCommits increases the branch's query limit while keeping
+// the selected commit and scroll position. Filtering has no Git offset, so the
+// larger response replaces the prefix with one coherent ordered list.
+func (a *app) requestMoreBranchCommits(branch string) {
+	if a.workspaceTab != sectionBranches || a.session == nil || branch == "" ||
+		a.branchCommitsLoading || a.branchCommitsLoadingMore || !a.branchCommitsMore {
+		return
+	}
+	session := a.session
+	repositoryGeneration := a.generation
+	token := a.branchCommitsToken
+	key := a.branchCommitsKey(branch)
+	firstVisible, _ := a.branchCommitList.Visible()
+	selectedHash := commitHashAt(a.branchCommits, a.selectedBranchCommit)
+	limit := a.branchCommitsLimit + repository.SnapshotCommitLimit
+	filter := a.branchFilter
+	filter.Branch = branch
+	filter.Limit = limit
+	filtered := commitFilterNarrows(a.branchFilter)
+	a.branchCommitsLoadingMore = true
+	a.branchCommitsMoreError = ""
+
+	go func() {
+		defer a.recoverBackground()
+		var commits []repository.Commit
+		var err error
+		if filtered {
+			commits, err = session.SearchCommits(context.Background(), filter)
+		} else {
+			commits, err = session.BranchCommits(context.Background(), branch, limit)
+		}
+		a.updateChanged(func() bool {
+			if repositoryGeneration != a.generation || token != a.branchCommitsToken || key != a.branchCommitsKey(branch) {
+				return false
+			}
+			a.branchCommitsLoadingMore = false
+			if err != nil {
+				a.branchCommitsMoreError = safeError(err)
+				return a.workspaceTab == sectionBranches
+			}
+			a.branchCommits = commits
+			a.branchCommitsLimit = limit
+			a.branchCommitsMore = len(commits) >= limit
+			if a.workspaceTab == sectionBranches && firstVisible >= 0 {
+				a.branchCommitList.ScrollTo(firstVisible, ui.Start)
+			}
+			if selectedHash != "" {
+				a.selectedBranchCommit = selectedCommitIndex(commits, selectedHash)
 			}
 			return a.workspaceTab == sectionBranches
 		})
@@ -887,7 +952,7 @@ func (a *app) branchCommitsView(c *ui.Context, branch repository.Branch) {
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(0, 6, 0, 0).Children(func() {
 			ui.Icon(c, branchIcon).FontSize(13).TextColor(theme.Accent)
 			ui.Text(c, tr("Commits")).Bold().Grow(1)
-			if a.branchCommitsLoading {
+			if a.branchCommitsLoading && len(a.branchCommits) > 0 {
 				ui.Spinner(c).Label(tr("Loading commits"))
 			} else if len(a.branchCommits) > 0 {
 				ui.Badge(c, fmt.Sprintf("%d", len(a.branchCommits)))
@@ -914,11 +979,11 @@ func (a *app) branchCommitsView(c *ui.Context, branch repository.Branch) {
 			return
 		}
 		if a.branchCommitsLoading && len(a.branchCommits) == 0 {
+			message := "Reading the branch's history…"
 			if filtered {
-				ui.Text(c, tr("Searching commits…")).TextColor(theme.TextMuted)
-			} else {
-				ui.Text(c, tr("Reading the branch's history…")).TextColor(theme.TextMuted)
+				message = "Searching commits…"
 			}
+			loadingPane(c, "Loading commits", message)
 			return
 		}
 		if len(a.branchCommits) == 0 {
@@ -958,7 +1023,37 @@ func (a *app) branchCommitsView(c *ui.Context, branch repository.Branch) {
 				a.commitRowMenuWithHistory(m, commit, services, branch.Head)
 			})
 		})
+		a.branchCommitListFooter(c)
 	})
+}
+
+// branchCommitListFooter makes older-history progress and failure visible
+// below the same list whose EndReached callback requested it.
+func (a *app) branchCommitListFooter(c *ui.Context) {
+	theme := c.Theme()
+	switch {
+	case a.branchCommitsLoadingMore:
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+			ui.Spinner(c).Label(tr("Loading older commits"))
+			ui.Text(c, tr("Loading older commits…")).TextColor(theme.TextMuted).
+				FontSize(theme.FontSize - 1)
+		})
+	case a.branchCommitsMoreError != "":
+		ui.Column(c).Gap(2).Children(func() {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, tr("Could not load older commits.")).TextColor(theme.Danger).
+					FontSize(theme.FontSize - 1).Grow(1)
+				if ui.Button(c, tr("Retry")).Clicked() {
+					a.requestMoreBranchCommits(a.snapshot.Branches[a.selectedBranch].Name)
+				}
+			})
+			ui.Text(c, a.branchCommitsMoreError).TextColor(theme.TextMuted).
+				FontSize(theme.FontSize - 2).SingleLine().Tooltip(a.branchCommitsMoreError)
+		})
+	case !a.branchCommitsMore:
+		ui.Text(c, tr("Beginning of history")).TextColor(theme.TextMuted).
+			FontSize(theme.FontSize - 1)
+	}
 }
 
 func (a *app) selectBranchCommitFileRow(row int) {

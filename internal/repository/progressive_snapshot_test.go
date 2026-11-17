@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,6 +49,39 @@ func TestCoreAndDetailsSnapshotsComposeTheFullSnapshot(t *testing.T) {
 	}
 	if combined.Root != core.Root || len(combined.Files) != 1 || combined.Files[0].Path != "file.txt" {
 		t.Fatalf("details replaced the working tree: %+v", combined)
+	}
+}
+
+func TestDetailsSurviveOptionalMetadataFailure(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	runGit(t, dir, "config", "user.name", "Desktop Test")
+	runGit(t, dir, "config", "user.email", "desktop@example.com")
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("first\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "file.txt")
+	runGit(t, dir, "commit", "-m", "first")
+	// A missing URL is rejected by Git's submodule configuration. That optional
+	// restore must not discard the normal commit history already read.
+	if err := os.WriteFile(filepath.Join(dir, ".gitmodules"), []byte("[submodule \"broken\"]\n\tpath = nested\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	session, err := (Opener{}).Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	details, err := session.(ProgressiveSession).DetailsSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("optional metadata blocked repository opening: %v", err)
+	}
+	if len(details.Commits) != 1 {
+		t.Fatalf("optional metadata discarded the commit history: %+v", details)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := session.(ProgressiveSession).DetailsSnapshot(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("an optional-data fallback masked cancellation: %v", err)
 	}
 }
 
