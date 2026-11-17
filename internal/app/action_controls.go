@@ -11,27 +11,40 @@ import (
 const (
 	conflictActionStyleIcons       = "icons"
 	conflictActionStyleIconsLabels = "icons+labels"
+	conflictActionStyleGuided      = "guided"
 )
 
 func normalizeConflictActionStyle(style string) string {
-	if strings.EqualFold(strings.TrimSpace(style), conflictActionStyleIconsLabels) {
+	switch strings.ToLower(strings.TrimSpace(style)) {
+	case conflictActionStyleIconsLabels:
 		return conflictActionStyleIconsLabels
+	case conflictActionStyleGuided:
+		return conflictActionStyleGuided
+	default:
+		return conflictActionStyleIcons
 	}
-	return conflictActionStyleIcons
 }
 
 func conflictActionStyleChoice(style string) int {
-	if normalizeConflictActionStyle(style) == conflictActionStyleIconsLabels {
+	switch normalizeConflictActionStyle(style) {
+	case conflictActionStyleIconsLabels:
 		return 1
+	case conflictActionStyleGuided:
+		return 2
+	default:
+		return 0
 	}
-	return 0
 }
 
 func conflictActionStyleForChoice(choice int) string {
-	if choice == 1 {
+	switch choice {
+	case 1:
 		return conflictActionStyleIconsLabels
+	case 2:
+		return conflictActionStyleGuided
+	default:
+		return conflictActionStyleIcons
 	}
-	return conflictActionStyleIcons
 }
 
 // actionControl is the complete discoverability contract for one conflict or
@@ -136,8 +149,9 @@ func renderActionControl(c *ui.Context, action actionControl, showLabel bool) {
 // conflictActionButton applies the user's action-style preference. Primary
 // text actions, such as Mark resolved, retain their established appearance.
 func (a *app) conflictActionButton(c *ui.Context, action actionControl) {
+	style := normalizeConflictActionStyle(a.settings.ConflictActionStyle)
 	a.conflictActionButtonWithLabels(c, action,
-		normalizeConflictActionStyle(a.settings.ConflictActionStyle) == conflictActionStyleIconsLabels)
+		style == conflictActionStyleIconsLabels || style == conflictActionStyleGuided)
 }
 
 func (a *app) conflictActionButtonWithLabels(c *ui.Context, action actionControl, showLabel bool) {
@@ -186,11 +200,11 @@ func (a *app) conflictCompactActionGroup(c *ui.Context, label string, icon *ui.S
 	})
 }
 
-// conflictToolbarLayoutState schedules a frame after the parent splitter has
-// committed a new size. Element.Bounds is deliberately the previous frame's
-// geometry, so the measurements themselves choose the layout; window and
-// splitter values only detect when another measurement is needed.
-type conflictToolbarLayoutState struct {
+// paneLayoutState schedules a frame after the parent splitter has committed
+// a new size. Element.Bounds is deliberately the previous frame's geometry,
+// so the measured pane itself chooses the layout; window and splitter values
+// only detect when another measurement is needed.
+type paneLayoutState struct {
 	ready                       bool
 	paneWidth, windowWidth      float32
 	fileWidth, navWidth         float32
@@ -202,10 +216,10 @@ const (
 	conflictTinyPaneWidth    = float32(240)
 )
 
-func (a *app) measuredActionGroupWidth(c *ui.Context, row ui.Element) float32 {
-	paneWidth := row.Bounds().W
+func (a *app) measuredPaneWidth(c *ui.Context, element ui.Element) float32 {
+	paneWidth := element.Bounds().W
 	windowWidth, _ := c.Size()
-	state := ui.Local(row, conflictToolbarLayoutState{}, func() conflictToolbarLayoutState { return conflictToolbarLayoutState{} })
+	state := ui.Local(element, paneLayoutState{}, func() paneLayoutState { return paneLayoutState{} })
 	measurementChanged := !state.ready || state.paneWidth != paneWidth ||
 		state.windowWidth != windowWidth || state.fileWidth != a.filePaneWidth ||
 		state.navWidth != a.navPaneWidth || state.fileCollapsed != a.filePaneCollapsed ||
@@ -223,6 +237,10 @@ func (a *app) measuredActionGroupWidth(c *ui.Context, row ui.Element) float32 {
 		state.navCollapsed = a.navPaneCollapsed
 	}
 	return paneWidth
+}
+
+func (a *app) measuredActionGroupWidth(c *ui.Context, row ui.Element) float32 {
+	return a.measuredPaneWidth(c, row)
 }
 
 func (a *app) conflictToolbarRow(c *ui.Context) (ui.Element, bool, bool) {
