@@ -350,7 +350,7 @@ func TestManagedLifecycleBusyAndUninstallingStates(t *testing.T) {
 		Path: filepath.Join(root, "bin", "ruff"), Managed: &managedLanguageServerSettings{Root: root},
 	}}
 	h.app.languageServerUninstalling = map[string]bool{"ruff": true}
-	h.app.settingsPage = settingsPageEditor
+	h.app.settingsPage = settingsPageLSP
 	h.app.openSettings()
 	h.tester.Frame()
 	h.app.languageServerCatalogQuery = "Ruff"
