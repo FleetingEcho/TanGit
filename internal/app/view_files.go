@@ -992,6 +992,10 @@ func (a *app) conflictToolbar(c *ui.Context, theme *ui.Theme) {
 		conflictToolbarSeparator(c, theme, "Hunk separator")
 		conflictToolbarGroup(c, theme, "View", func() {
 			a.conflictStageSelector(c)
+			iconButton(c, "Conflict Assistant", tr("Preview region suggestions on a clone; Accept writes Result only"), commandIcon, a.actionBusy || a.conflictStageTab != 3 || len(state.regions) == 0, func() {
+				a.openConflictAssistant()
+				c.Invalidate()
+			})
 		})
 		conflictToolbarSeparator(c, theme, "View separator")
 		conflictToolbarGroup(c, theme, "Apply", func() {

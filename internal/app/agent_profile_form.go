@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"lazygitapp/internal/agentassist"
 	"lazygitapp/internal/agentwork"
 )
 
@@ -76,6 +77,12 @@ func (a *app) agentFormProfile() (agentwork.Profile, error) {
 	if err != nil {
 		return agentwork.Profile{}, err
 	}
+	assistCommand := strings.TrimSpace(a.agents.assistCommand)
+	if assistCommand != "" {
+		if _, err := agentassist.NewCommandAdvisor(agentassist.CommandConfig{Template: assistCommand}); err != nil {
+			return agentwork.Profile{}, fmt.Errorf("invalid AssistCommand: %w", err)
+		}
+	}
 	name := ""
 	if a.agents.templateChoice != agentManualProfile {
 		name = strings.TrimSpace(a.agents.templateChoice)
@@ -87,6 +94,7 @@ func (a *app) agentFormProfile() (agentwork.Profile, error) {
 		RunCommand:    strings.TrimSpace(a.agents.runCommand),
 		SetupCommand:  strings.TrimSpace(a.agents.setupCommand),
 		TestCommand:   strings.TrimSpace(a.agents.testCommand),
+		AssistCommand: assistCommand,
 		Environment:   environment,
 		SparsePaths:   splitAgentProfilePaths(a.agents.sparsePaths),
 		IgnoredFiles:  splitAgentProfilePaths(a.agents.ignoredFiles),
@@ -154,6 +162,7 @@ func (a *app) applySelectedAgentTemplate() {
 		a.agents.setupCommand = profile.SetupCommand
 		a.agents.testCommand = profile.TestCommand
 		a.agents.runCommand = profile.RunCommand
+		a.agents.assistCommand = profile.AssistCommand
 		a.agents.sparsePaths = strings.Join(profile.SparsePaths, "\n")
 		a.agents.ignoredFiles = strings.Join(profile.IgnoredFiles, "\n")
 		a.agents.environment = formatAgentEnvironment(profile.Environment)

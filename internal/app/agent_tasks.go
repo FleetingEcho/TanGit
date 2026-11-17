@@ -42,6 +42,7 @@ type agentUIState struct {
 	setupCommand    string
 	testCommand     string
 	runCommand      string
+	assistCommand   string
 	environment     string
 	sparsePaths     string
 	ignoredFiles    string
@@ -138,6 +139,7 @@ func (a *app) beginNewAgentTask() {
 	a.agents.setupCommand = ""
 	a.agents.testCommand = ""
 	a.agents.runCommand = ""
+	a.agents.assistCommand = ""
 	a.agents.environment = ""
 	a.agents.sparsePaths = ""
 	a.agents.ignoredFiles = ""

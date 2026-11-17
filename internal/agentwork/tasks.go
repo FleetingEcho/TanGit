@@ -65,12 +65,15 @@ type Resources struct {
 // quoted shell arguments by the UI's platform-aware command runner. IgnoredFiles
 // is an explicit relative file list; agentwork never discovers or copies files.
 type Profile struct {
-	Name          string            `json:"name,omitempty"`
-	LaunchCommand string            `json:"launchCommand,omitempty"`
-	ResumeCommand string            `json:"resumeCommand,omitempty"`
-	RunCommand    string            `json:"runCommand,omitempty"`
-	SetupCommand  string            `json:"setupCommand,omitempty"`
-	TestCommand   string            `json:"testCommand,omitempty"`
+	Name          string `json:"name,omitempty"`
+	LaunchCommand string `json:"launchCommand,omitempty"`
+	ResumeCommand string `json:"resumeCommand,omitempty"`
+	RunCommand    string `json:"runCommand,omitempty"`
+	SetupCommand  string `json:"setupCommand,omitempty"`
+	TestCommand   string `json:"testCommand,omitempty"`
+	// AssistCommand is an optional provider-neutral JSON-file advice helper.
+	// It is never part of task launch/setup and runs only on an explicit assist request.
+	AssistCommand string            `json:"assistCommand,omitempty"`
 	Environment   map[string]string `json:"environment,omitempty"`
 	SparsePaths   []string          `json:"sparsePaths,omitempty"`
 	IgnoredFiles  []string          `json:"ignoredFiles,omitempty"`
