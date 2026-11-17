@@ -279,6 +279,7 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 // resetRepositoryState clears everything a frame would read from the
 // repository that was open before, so a new one starts with its own choices.
 func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
+	a.closeContinueReview()
 	a.shutdownLocalTransfers()
 	a.resetRebaseWorkspace()
 	// The first frame of the Changes section chooses its first file and
@@ -1115,6 +1116,7 @@ func (a *app) prepareShutdown(done func(bool)) {
 // the picker, so another repository can be opened without restarting.
 func (a *app) shutdown() {
 	a.generation++
+	a.shutdownContinuePreflight()
 	if a.customCommandCancel != nil {
 		a.customCommandCancel()
 		a.customCommandCancel = nil

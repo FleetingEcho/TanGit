@@ -213,8 +213,12 @@ func (a *app) rebaseOperationButtons(c *ui.Context) {
 		})
 	}
 	if a.operationCan(repository.OperationActionContinue) {
-		iconTextButtonState(c, "Continue", "Continue through the Operation driver", continueIcon, false,
-			a.actionBusy || conflicts > 0 || !planReadable, a.confirmContinueOperation)
+		tooltip := "Continue through preflight and the Operation driver"
+		if a.location.IsRemote() {
+			tooltip = "Continue checks use fully trusted local commands and are disabled for SSH workspaces"
+		}
+		iconTextButtonState(c, "Continue", tooltip, continueIcon, false,
+			a.actionBusy || conflicts > 0 || !planReadable || a.location.IsRemote(), a.confirmContinueOperation)
 	}
 	if a.operationCan(repository.OperationActionSkip) {
 		iconTextButtonState(c, "Skip…", "Skip the current Git todo step", skipIcon, false, a.actionBusy || !planReadable, a.confirmSkipOperation)
