@@ -3441,33 +3441,27 @@ type commitLineStats struct {
 // textual line additions or deletions.
 func parseCommitLineStats(output string) map[string]commitLineStats {
 	stats := make(map[string]commitLineStats)
-	fields := strings.Split(output, "\x00")
-	for i := 0; i < len(fields); {
-		columns := strings.SplitN(fields[i], "\t", 3)
-		i++
-		if len(columns) != 3 {
+	at := 0
+	for at < len(output) {
+		field, _ := nextNULField(output, &at)
+		stat, path, ok := splitNumstatField(field)
+		if !ok {
 			continue
 		}
-		added, addedErr := strconv.Atoi(columns[0])
-		deleted, deletedErr := strconv.Atoi(columns[1])
-		if addedErr != nil {
-			added = 0
-		}
-		if deletedErr != nil {
-			deleted = 0
-		}
-		path := columns[2]
 		if path == "" {
 			// Skip the old path and key the rename by its new path, matching
-			// the name-status records returned by the commit file loader.
-			if i+1 >= len(fields) {
+			// the name-status records returned by the raw records.
+			if _, oldOK := nextNULField(output, &at); !oldOK {
 				break
 			}
-			path = fields[i+1]
-			i += 2
+			newPath, newOK := nextNULField(output, &at)
+			if !newOK {
+				break
+			}
+			path = newPath
 		}
 		if path != "" {
-			stats[path] = commitLineStats{added: added, deleted: deleted}
+			stats[path] = stat
 		}
 	}
 	return stats
