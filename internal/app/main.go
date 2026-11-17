@@ -793,9 +793,15 @@ type app struct {
 	commitFilesHash      string
 	commitFilesLoading   bool
 	commitFilesError     string
-	commitDiffHash       string
-	commitDiffPath       string
-	commitDiffOptions    repository.DiffOptions
+	// File and diff reads have independent cancellation and request tokens.
+	// Tokens, not only the selected hash/path, reject an A-B-A completion.
+	cancelCommitFiles     context.CancelFunc
+	commitFilesGeneration uint64
+	commitDiffHash        string
+	commitDiffPath        string
+	commitDiffOptions     repository.DiffOptions
+	cancelCommitDiff      context.CancelFunc
+	commitDiffGeneration  uint64
 	// commitDiffPatch is the diff the pane shows, kept so it can be saved.
 	commitDiffPatch   string
 	commitDiffLoading bool
