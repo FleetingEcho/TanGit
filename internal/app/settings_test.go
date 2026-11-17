@@ -312,6 +312,7 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 		DiffSplit:                 true,
 		DiffWrap:                  true,
 		IgnoreUntracked:           true,
+		ConflictActionStyle:       conflictActionStyleIconsLabels,
 		DisableShortcuts:          true,
 		AutoFetchConfigured:       true,
 		Language:                  "zh-Hans",
