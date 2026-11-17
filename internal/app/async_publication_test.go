@@ -99,6 +99,32 @@ func (s *controlledCommitDetailPublicationSession) CommitFiles(_ context.Context
 	return <-s.release, nil
 }
 
+func TestStaleCommitDetailsDoNotRepaintTheCommitList(t *testing.T) {
+	session := &controlledCommitDetailPublicationSession{
+		started: make(chan string, 1),
+		release: make(chan []repository.CommitFile, 1),
+	}
+	a := newApp(fakeOpener{})
+	a.session = session
+	a.workspaceTab = sectionHistory
+	published := make(chan bool, 1)
+	a.update = func(fn func()) {
+		fn()
+		published <- true
+	}
+	a.updateChanged = func(fn func() bool) { published <- fn() }
+
+	a.requestCommitDetails(repository.Commit{Hash: "old"})
+	<-session.started
+	// Choosing another commit makes the in-flight result irrelevant before it
+	// arrives. Publishing it must not schedule a frame for the unchanged list.
+	a.commitFilesHash = "new"
+	session.release <- []repository.CommitFile{{Path: "stale.txt"}}
+	if repaint := <-published; repaint {
+		t.Fatal("stale commit files repainted the commit list")
+	}
+}
+
 func TestCommitDetailRetryStillRunsAfterGenerationCleanup(t *testing.T) {
 	session := &controlledCommitDetailPublicationSession{
 		started: make(chan string, 1),

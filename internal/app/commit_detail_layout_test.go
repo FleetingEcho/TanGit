@@ -48,6 +48,91 @@ func TestCommitActionButtonsUseDistinctIcons(t *testing.T) {
 	}
 }
 
+func TestCommitDetailsSplitLeavesSpaceBetweenPanes(t *testing.T) {
+	for _, layout := range []int{commitDetailsLeftRight, commitDetailsTopBottom} {
+		t.Run(fmt.Sprint(layout), func(t *testing.T) {
+			a := newApp(fakeOpener{})
+			a.commitDetailsLayout = layout
+			a.commitFilesWidth, a.commitFilesHeight = 100, 80
+			tt := ui.NewTester(func(c *ui.Context) {
+				a.commitDetailsSplit(c,
+					func() { ui.Box(c).Fill().Label("First commit details pane").Background(c.Theme().Surface) },
+					func() { ui.Box(c).Fill().Label("Second commit details pane").Background(c.Theme().Surface) },
+				).Fill()
+			}, 240, 200)
+			tt.Frame()
+			first, firstOK := tt.Find("First commit details pane")
+			second, secondOK := tt.Find("Second commit details pane")
+			if !firstOK || !secondOK {
+				t.Fatalf("split panes are missing: first=%+v second=%+v", first, second)
+			}
+			gap := second.X - (first.X + first.W)
+			if layout == commitDetailsTopBottom {
+				gap = second.Y - (first.Y + first.H)
+			}
+			if gap < commitDetailsPaneGap-1 {
+				t.Fatalf("space between commit details panes = %.1f, want at least %.1f: first=%+v second=%+v",
+					gap, commitDetailsPaneGap-1, first, second)
+			}
+		})
+	}
+}
+
+func TestCommitFilesPanelCollapsesAndRestores(t *testing.T) {
+	for _, layout := range []int{commitDetailsLeftRight, commitDetailsTopBottom} {
+		t.Run(fmt.Sprint(layout), func(t *testing.T) {
+			h, _ := historyHarness(t)
+			h.waitFor(t, "the commit files", func() bool { return len(h.app.commitFiles) > 0 })
+			h.waitFor(t, "the commit diff", func() bool {
+				return h.app.commitDiffState != nil && !h.app.commitDiffLoading
+			})
+			h.app.commitDetailsLayout = layout
+			h.tester.Frame()
+			width, height := h.app.commitFilesWidth, h.app.commitFilesHeight
+			diff, path, selected := h.app.commitDiffState, h.app.commitDiffPath, h.app.selectedCommitFile
+			if layout == commitDetailsLeftRight {
+				mode, modeOK := h.tester.Find("Show files as a flat list")
+				collapse, collapseOK := h.tester.Find("Collapse changed files")
+				grip := gripRect(t, h.tester, false)
+				buttonGap := collapse.X - (mode.X + mode.W)
+				if !modeOK || !collapseOK || buttonGap < 4 || buttonGap > 9 {
+					t.Fatalf("commit file header icon gap = %.1f, want 4–9 DIP: mode=%+v collapse=%+v",
+						buttonGap, mode, collapse)
+				}
+				if grip.X-(collapse.X+collapse.W) < 7 {
+					t.Fatalf("collapse button has no trailing margin before the divider: collapse=%+v grip=%+v",
+						collapse, grip)
+				}
+			}
+
+			if err := h.tester.Click("Collapse changed files"); err != nil {
+				t.Fatal(err)
+			}
+			h.tester.Frame()
+			if !h.app.commitFilesCollapsed || h.tester.HasText("Commit files") ||
+				!h.tester.HasText("Expand changed files") {
+				t.Fatalf("collapsed commit files left the wrong controls: %q", h.texts())
+			}
+			if h.app.commitDiffState != diff || h.app.commitDiffPath != path || h.app.selectedCommitFile != selected {
+				t.Fatal("collapsing commit files changed or unloaded the selected diff")
+			}
+
+			if err := h.tester.Click("Expand changed files"); err != nil {
+				t.Fatal(err)
+			}
+			h.tester.Frame()
+			if h.app.commitFilesCollapsed || !h.tester.HasText("Commit files") ||
+				h.app.commitFilesWidth != width || h.app.commitFilesHeight != height {
+				t.Fatalf("restoring commit files lost its pane state: collapsed=%v width=%v height=%v",
+					h.app.commitFilesCollapsed, h.app.commitFilesWidth, h.app.commitFilesHeight)
+			}
+			if h.app.commitDiffState != diff || h.app.commitDiffPath != path || h.app.selectedCommitFile != selected {
+				t.Fatal("restoring commit files changed or unloaded the selected diff")
+			}
+		})
+	}
+}
+
 func TestCommitDetailToolbarsFitNarrowPanes(t *testing.T) {
 	for _, width := range []int{260, 320, 480} {
 		for _, branchView := range []bool{false, true} {
