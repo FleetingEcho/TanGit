@@ -143,6 +143,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.changeCourierModal(c)
 	a.commandLogModal(c)
 	a.commandPromptModal(c)
+	a.continueReviewModal(c)
 	a.settingsModal(c)
 	a.keybindingsModal(c)
 	a.commitFilterModal(c)
@@ -960,8 +961,11 @@ func (a *app) headerViewWithID(c *ui.Context, keyboardID string) {
 					continueTooltip = trf("Resolve conflicts before continuing (%d remaining)", conflicts)
 				}
 				if a.operationCan(repository.OperationActionContinue) {
+					if a.location.IsRemote() {
+						continueTooltip = tr("Continue checks use fully trusted local commands and are disabled for SSH workspaces")
+					}
 					iconTextButtonState(c, "Continue", continueTooltip, continueIcon, false,
-						a.actionBusy || conflicts > 0, func() {
+						a.actionBusy || conflicts > 0 || a.location.IsRemote(), func() {
 							if a.actionBusy || hasConflictedFiles(a.snapshot.Files) {
 								return
 							}
