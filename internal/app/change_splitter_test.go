@@ -257,6 +257,12 @@ func TestChangeSplitterUIApplyStagesOnlyOneRealGitGroup(t *testing.T) {
 	}
 	h.tester.Frame()
 	h.waitFor(t, "one real index-only split Apply", func() bool { return !a.actionBusy })
+	if a.assistance.splitter.open {
+		t.Fatal("successful explicit Apply left the reviewed modal open")
+	}
+	if !a.quietRefreshAllowed() {
+		t.Fatal("successful explicit Apply did not restore quiet refresh")
+	}
 
 	wantIndex := strings.Replace(realHunkBase, "two\n", "TWO\n", 1)
 	if got := runGitIn(t, dir, "show", ":lines.txt"); got != wantIndex {
@@ -267,5 +273,88 @@ func TestChangeSplitterUIApplyStagesOnlyOneRealGitGroup(t *testing.T) {
 	}
 	if got := runGitIn(t, dir, "rev-parse", "HEAD"); got != beforeHEAD {
 		t.Fatal("split Apply created or moved a commit")
+	}
+}
+
+func TestChangeSplitterUIApplyUsesReviewedPreviewAfterPublicMutationAndExternalChange(t *testing.T) {
+	edited := strings.NewReplacer("two\n", "TWO\n", "sixteen\n", "sixteen\nsixteen and a half\n").Replace(realHunkBase)
+	dir, session := newRealHunkRepository(t, edited)
+	a := newApp(fixedSessionOpener{session: session})
+	a.workspaceTab = sectionChanges
+	h := &harness{app: a, updates: newUpdates()}
+	h.tester = ui.NewTester(a.view, 1100, 760)
+	a.update = h.updates.update
+	a.path = dir
+	openFixture(t, h.tester)
+	h.settle(t)
+	h.waitFor(t, "real unstaged Changes source", func() bool {
+		selected, ok := a.selectedChangeSplitFile()
+		return ok && selected.Path == "lines.txt"
+	})
+
+	a.assistance.advisor = &appFakeAdvisor{respond: func(request agentassist.AdviceRequest) (agentassist.Advice, error) {
+		advice := appSplitResponse(request)
+		artifact := request.Artifacts[0]
+		file := artifact.Files[0]
+		for index, hunk := range file.Hunks {
+			advice.Suggestions = append(advice.Suggestions, agentassist.Suggestion{
+				ID: "hunk-" + string(rune('a'+index)), Summary: "stage hunk " + string(rune('1'+index)),
+				Split: &agentassist.ChangeSplit{Changes: []agentassist.ChangeRef{{
+					ArtifactID: artifact.ID, FileID: file.ID, HunkID: hunk.ID,
+				}}},
+			})
+		}
+		return advice, nil
+	}}
+	a.openChangeSplitter()
+	a.beginChangeSplitAdvice()
+	h.waitFor(t, "two reviewed real Git previews", func() bool { return len(a.assistance.splitter.groups) == 2 })
+	groups := a.assistance.splitter.groups
+	reviewed := groups[0].preview
+	if reviewed == nil || !reviewed.Clean || groups[1].preview == nil || !groups[1].preview.Clean {
+		t.Fatalf("real Git previews are not clean: %#v", groups)
+	}
+
+	// Public patch text and display options are not mutation authority. Make
+	// them name the other group and another operation, then change the source
+	// as an external editor would. Apply must still consume the original
+	// private ticket and fail that ticket's state comparison before any write.
+	a.assistance.splitter.groups[0].patch = groups[1].patch
+	a.assistance.splitter.groups[0].preview.Text = groups[1].patch
+	a.assistance.splitter.groups[0].preview.Target = repository.PatchWorktree
+	a.assistance.splitter.groups[0].preview.Reverse = true
+	external := edited + "external editor\n"
+	writeRealHunkFile(t, dir, external)
+	indexBefore := runGitIn(t, dir, "show", ":lines.txt")
+	headBefore := runGitIn(t, dir, "rev-parse", "HEAD")
+
+	h.tester.Frame()
+	if !a.assistance.splitter.open || a.quietRefreshAllowed() {
+		t.Error("the open real preview did not suspend quiet refresh before the explicit Apply")
+	}
+	if err := h.tester.Click("Apply group to index"); err != nil {
+		t.Fatalf("click stale split Apply: %v", err)
+	}
+	h.tester.Frame()
+	h.waitFor(t, "stale reviewed preview refusal", func() bool { return !a.actionBusy })
+
+	if !strings.Contains(a.actionError, "repository changed since patch preview") {
+		t.Errorf("stale Apply action error = %q", a.actionError)
+	}
+	if got := runGitIn(t, dir, "show", ":lines.txt"); got != indexBefore {
+		t.Errorf("stale Apply changed the index:\n%s", got)
+	}
+	if got := readRealHunkFile(t, dir); got != external {
+		t.Error("stale Apply overwrote the external editor's working-tree changes")
+	}
+	if got := runGitIn(t, dir, "rev-parse", "HEAD"); got != headBefore {
+		t.Error("stale Apply created or moved a commit")
+	}
+	if !a.quietRefreshAllowed() {
+		t.Error("the explicit Apply did not restore quiet refresh after the refusal")
+	}
+	h.tester.Frame()
+	if !h.tester.HasText("repository changed since patch preview") {
+		t.Errorf("CAS refusal is not visible in the real UI: %q", h.tester.Texts())
 	}
 }
