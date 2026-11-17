@@ -196,12 +196,14 @@ func TestCommitRefreshButtonReloadsCommits(t *testing.T) {
 	}{
 		{"history", sectionHistory},
 		{"graph", sectionGraph},
+		{"branches", sectionBranches},
 	} {
 		t.Run(tab.name, func(t *testing.T) {
 			opener := &countingLiveOpener{liveOpener: liveOpener{snapshot: repository.Snapshot{
-				Root:    "/work/repo",
-				Branch:  "main",
-				Commits: testCommits("second", "first"),
+				Root:     "/work/repo",
+				Branch:   "main",
+				Branches: []repository.Branch{{Name: "main", Head: true, Subject: "second"}},
+				Commits:  testCommits("second", "first"),
 			}}}
 			s, tt, updated := newLiveShell(t, opener)
 			s.activeApp().workspaceTab = tab.section
@@ -220,9 +222,10 @@ func TestCommitRefreshButtonReloadsCommits(t *testing.T) {
 
 			// An external commit: only a re-read can see it.
 			external := repository.Snapshot{
-				Root:    "/work/repo",
-				Branch:  "main",
-				Commits: testCommits("made elsewhere", "second", "first"),
+				Root:     "/work/repo",
+				Branch:   "main",
+				Branches: []repository.Branch{{Name: "main", Head: true, Subject: "made elsewhere"}},
+				Commits:  testCommits("made elsewhere", "second", "first"),
 			}
 			opener.set(external)
 			if err := tt.Click("Refresh commits"); err != nil {
