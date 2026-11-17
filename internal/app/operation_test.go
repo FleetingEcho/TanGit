@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -73,11 +74,24 @@ func richRebaseOperation() repository.OperationState {
 func TestOperationContextShowsRealRefsAndProgress(t *testing.T) {
 	h, _ := operationTestApp(t, richRebaseOperation())
 	h.tester.Frame()
-	for _, want := range []string{"refs/heads/feature", "Step 2 of 5", "1 completed"} {
+	for _, want := range []string{"feature", "Step 2 of 5"} {
 		if !slices.Contains(h.texts(), want) {
 			t.Fatalf("operation context does not show %q: %q", want, h.texts())
 		}
 	}
+	card, found := h.tester.Find("Operation context")
+	if !found {
+		t.Fatal("operation context card is missing")
+	}
+	h.tester.Move(card.X+card.W/2, card.Y+card.H/2)
+	h.tester.Advance(time.Second)
+	for _, want := range []string{"refs/heads/feature", "onto: " + richRebaseOperation().OntoSHA, "orig: " + richRebaseOperation().OrigSHA} {
+		if !h.tester.HasText(want) {
+			t.Errorf("the full operation tooltip does not show %q: %q", want, h.texts())
+		}
+	}
+	h.tester.Move(0, 0)
+	h.tester.Advance(2 * time.Second)
 	if _, found := h.tester.Find("Skip…"); !found {
 		t.Fatal("rebase Skip entry is missing")
 	}
