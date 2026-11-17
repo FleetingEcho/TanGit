@@ -125,7 +125,7 @@ func (s *gitSession) runPausedEditRebase(summary, stoppedAt string, run func() e
 		return err
 	}
 	if err := run(); err != nil {
-		return s.completeJournalOperation(record, err)
+		return s.finishStartedJournalOperation(record, OperationTypeRebase, err)
 	}
 	if state := s.workingTreeState(); state.Effective().CommandName() != "rebase" {
 		return fmt.Errorf("expected an edit-stop rebase, but no rebase is active")
@@ -138,6 +138,7 @@ func (s *gitSession) runPausedEditRebase(summary, stoppedAt string, run func() e
 		return fmt.Errorf("rebase stopped at %s instead of the selected commit", strings.TrimSpace(head))
 	}
 	record.RebasePaused = true
+	record.ActiveOperation = OperationTypeRebase
 	return s.completeJournalOperation(record, nil)
 }
 
@@ -342,7 +343,7 @@ func (s *gitSession) runHistoryRebase(summary string, run func() error) error {
 	if record, err = s.pinOperationBefore(record); err != nil {
 		return err
 	}
-	return s.completeJournalOperation(record, run())
+	return s.finishStartedJournalOperation(record, OperationTypeRebase, run())
 }
 
 func (s *gitSession) requireStagedChanges() error {
