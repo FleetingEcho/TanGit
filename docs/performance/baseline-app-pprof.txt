@@ -1,0 +1,98 @@
+=== app CPU (list + diff variants, five iterations each, three runs) ===
+File: app.test
+Build ID: bc1b1f6de9be16da76273346ac069f9193430bdd
+Type: cpu
+Time: 2026-11-17 12:05:35 MST
+Duration: 690.72ms, Total samples = 1.16s (167.94%)
+Showing nodes accounting for 1.01s, 87.07% of 1.16s total
+Showing top 45 nodes out of 225
+      flat  flat%   sum%        cum   cum%
+     0.16s 13.79% 13.79%      0.16s 13.79%  runtime.cgocall
+     0.13s 11.21% 25.00%      0.13s 11.21%  <unknown>
+     0.09s  7.76% 32.76%      0.19s 16.38%  runtime.scanObject
+     0.06s  5.17% 37.93%      0.06s  5.17%  runtime.memmove
+     0.04s  3.45% 41.38%      0.06s  5.17%  github.com/egoist/mygo/internal/rope.Build
+     0.03s  2.59% 43.97%      0.03s  2.59%  [libc.so.6]
+     0.03s  2.59% 46.55%      0.03s  2.59%  internal/runtime/maps.memHashAES
+     0.03s  2.59% 49.14%      0.29s 25.00%  runtime.gcDrain
+     0.03s  2.59% 51.72%      0.03s  2.59%  runtime.spanClass.sizeclass (inline)
+     0.02s  1.72% 53.45%      0.02s  1.72%  github.com/egoist/mygo/ui.(*engine).commitElement
+     0.02s  1.72% 55.17%      0.02s  1.72%  runtime.getGCMask (inline)
+     0.02s  1.72% 56.90%      0.02s  1.72%  runtime.memclrNoHeapPointers
+     0.02s  1.72% 58.62%      0.02s  1.72%  runtime.spanOf (inline)
+     0.02s  1.72% 60.34%      0.05s  4.31%  runtime.tryDeferToSpanScan
+     0.01s  0.86% 61.21%      0.02s  1.72%  fmt.(*fmt).fmtInteger
+     0.01s  0.86% 62.07%      0.01s  0.86%  fmt.(*fmt).pad
+     0.01s  0.86% 62.93%      0.19s 16.38%  github.com/ebitengine/purego.RegisterFunc.func4
+     0.01s  0.86% 63.79%      0.09s  7.76%  github.com/egoist/mygo/internal/raster.(*renderer).render
+     0.01s  0.86% 64.66%      0.01s  0.86%  github.com/egoist/mygo/internal/raster.(*renderer).shadow
+     0.01s  0.86% 65.52%      0.01s  0.86%  github.com/egoist/mygo/internal/raster.blend
+     0.01s  0.86% 66.38%      0.01s  0.86%  github.com/egoist/mygo/internal/raster.newPainter
+     0.01s  0.86% 67.24%      0.01s  0.86%  github.com/egoist/mygo/internal/rope.Summary.add (inline)
+     0.01s  0.86% 68.10%      0.01s  0.86%  github.com/egoist/mygo/internal/scene.InnerRadii
+     0.01s  0.86% 68.97%      0.01s  0.86%  github.com/egoist/mygo/internal/svg.(*path).flatten
+     0.01s  0.86% 69.83%      0.20s 17.24%  github.com/egoist/mygo/internal/text.(*pangoEngine).layoutLines
+     0.01s  0.86% 70.69%      0.01s  0.86%  github.com/egoist/mygo/ui.(*Painter).inlineTransform
+     0.01s  0.86% 71.55%      0.01s  0.86%  github.com/egoist/mygo/ui.(*engine).prune
+     0.01s  0.86% 72.41%      0.01s  0.86%  github.com/egoist/mygo/ui.(*node).resolvedText
+     0.01s  0.86% 73.28%      0.27s 23.28%  github.com/egoist/mygo/ui.flexLayout
+     0.01s  0.86% 74.14%      0.02s  1.72%  github.com/egoist/mygo/ui.glyphSpace.inlineTransform
+     0.01s  0.86% 75.00%      0.01s  0.86%  github.com/egoist/mygo/ui.keepBox
+     0.01s  0.86% 75.86%      0.03s  2.59%  github.com/egoist/mygo/ui/editor.ParsePatch
+     0.01s  0.86% 76.72%      0.01s  0.86%  github.com/go-text/typesetting/segmenter.(*cursor).endIteration
+     0.01s  0.86% 77.59%      0.01s  0.86%  internal/runtime/atomic.(*UnsafePointer).Load (inline)
+     0.01s  0.86% 78.45%      0.01s  0.86%  internal/runtime/maps.(*groupReference).ctrls
+     0.01s  0.86% 79.31%      0.01s  0.86%  internal/runtime/maps.ctrlGroup.matchH2
+     0.01s  0.86% 80.17%      0.01s  0.86%  internal/stringslite.HasPrefix (inline)
+     0.01s  0.86% 81.03%      0.01s  0.86%  internal/stringslite.HasSuffix
+     0.01s  0.86% 81.90%      0.01s  0.86%  internal/sync.(*entry[go.shape.interface {},go.shape.interface {}]).lookup (inline)
+     0.01s  0.86% 82.76%      0.03s  2.59%  reflect.funcLayout
+     0.01s  0.86% 83.62%      0.01s  0.86%  runtime.(*gcBits).bytep
+     0.01s  0.86% 84.48%      0.01s  0.86%  runtime.(*lfstack).push
+     0.01s  0.86% 85.34%      0.02s  1.72%  runtime.(*mcache).refill
+     0.01s  0.86% 86.21%      0.02s  1.72%  runtime.(*mspan).typePointersOfUnchecked
+     0.01s  0.86% 87.07%      0.01s  0.86%  runtime.(*pallocBits).summarize
+=== app alloc_space ===
+File: app.test
+Build ID: bc1b1f6de9be16da76273346ac069f9193430bdd
+Type: alloc_space
+Time: 2026-11-17 12:05:35 MST
+Showing nodes accounting for 753.68MB, 95.14% of 792.20MB total
+Dropped 177 nodes (cum <= 3.96MB)
+Showing top 35 nodes out of 133
+      flat  flat%   sum%        cum   cum%
+  285.31MB 36.01% 36.01%   285.31MB 36.01%  strings.(*Builder).WriteString (inline)
+   94.45MB 11.92% 47.94%   175.71MB 22.18%  lazygitapp/internal/app.movedLineAnnotations
+   81.26MB 10.26% 58.19%    81.26MB 10.26%  lazygitapp/internal/app.uniqueMovedCandidates
+   68.77MB  8.68% 66.88%    84.66MB 10.69%  github.com/egoist/mygo/ui/editor.ParsePatch
+   48.19MB  6.08% 72.96%    48.19MB  6.08%  internal/stringslite.Clone (inline)
+   41.10MB  5.19% 78.15%    41.10MB  5.19%  github.com/egoist/mygo/ui.(*engine).lookState
+   21.05MB  2.66% 80.80%    28.05MB  3.54%  github.com/egoist/mygo/internal/text.(*pangoEngine).layoutLines
+   19.99MB  2.52% 83.33%   157.67MB 19.90%  lazygitapp/internal/app.BenchmarkPrincipalCommitListFrame.func1
+   19.83MB  2.50% 85.83%    19.83MB  2.50%  github.com/egoist/mygo/ui.(*context).alloc
+      19MB  2.40% 88.23%       19MB  2.40%  fmt.Sprintf
+   15.88MB  2.01% 90.23%    15.88MB  2.01%  strings.genSplit
+    9.19MB  1.16% 91.39%     9.19MB  1.16%  github.com/go-enry/go-enry/v2/data.map.init.6
+    7.02MB  0.89% 92.28%    37.07MB  4.68%  github.com/egoist/mygo/internal/text.(*System).paragraph
+    6.52MB  0.82% 93.10%     6.52MB  0.82%  runtime.mallocgc
+    5.50MB  0.69% 93.80%        6MB  0.76%  github.com/egoist/mygo/internal/text.utf8Text
+    4.09MB  0.52% 94.31%     4.09MB  0.52%  regexp/syntax.(*compiler).inst (inline)
+    2.52MB  0.32% 94.63%    40.59MB  5.12%  github.com/egoist/mygo/internal/text.(*System).LayoutFrom
+       2MB  0.25% 94.88%    50.19MB  6.34%  github.com/egoist/mygo/internal/rope.leaf
+       1MB  0.13% 95.01%    38.07MB  4.81%  github.com/egoist/mygo/internal/text.(*System).layout
+    0.51MB 0.064% 95.08%   575.54MB 72.65%  lazygitapp/internal/app.buildDiffState
+    0.50MB 0.063% 95.14%    16.29MB  2.06%  github.com/go-enry/go-enry/v2/data.init
+         0     0% 95.14%    50.19MB  6.34%  github.com/egoist/mygo/internal/rope.Build
+         0     0% 95.14%    50.19MB  6.34%  github.com/egoist/mygo/internal/rope.New (inline)
+         0     0% 95.14%    14.54MB  1.84%  github.com/egoist/mygo/internal/text.(*System).Layout (inline)
+         0     0% 95.14%    17.03MB  2.15%  github.com/egoist/mygo/internal/text.(*System).breakLines
+         0     0% 95.14%     7.52MB  0.95%  github.com/egoist/mygo/internal/text.(*System).clusterAdvances
+         0     0% 95.14%    13.02MB  1.64%  github.com/egoist/mygo/internal/text.(*System).ellipsize
+         0     0% 95.14%    28.05MB  3.54%  github.com/egoist/mygo/internal/text.(*pangoEngine).shape
+         0     0% 95.14%     7.37MB  0.93%  github.com/egoist/mygo/ui.(*Painter).element
+         0     0% 95.14%     4.22MB  0.53%  github.com/egoist/mygo/ui.(*Painter).textForeground
+         0     0% 95.14%     4.22MB  0.53%  github.com/egoist/mygo/ui.(*Painter).textLayout
+         0     0% 95.14%    61.82MB  7.80%  github.com/egoist/mygo/ui.(*Tester).Frame (inline)
+         0     0% 95.14%   118.14MB 14.91%  github.com/egoist/mygo/ui.(*Tester).settle
+         0     0% 95.14%    59.89MB  7.56%  github.com/egoist/mygo/ui.(*context).newElement
+         0     0% 95.14%     7.37MB  0.93%  github.com/egoist/mygo/ui.(*engine).paint

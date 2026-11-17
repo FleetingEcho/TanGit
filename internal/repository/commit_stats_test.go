@@ -2,9 +2,12 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -162,6 +165,124 @@ func TestCommitStatsFailurePreservesCommitHistory(t *testing.T) {
 	}
 	if result[1].LinesAdded != 0 || result[1].LinesDeleted != 0 {
 		t.Fatalf("missing object acquired fictitious statistics: %+v", result[1])
+	}
+}
+
+type firstStatsCheckContext struct {
+	context.Context
+	checked chan struct{}
+	once    sync.Once
+}
+
+func (c *firstStatsCheckContext) Err() error {
+	c.once.Do(func() { close(c.checked) })
+	return c.Context.Err()
+}
+
+func commitStatsDiffTreeReads(session Session) int {
+	count := 0
+	for _, entry := range session.CommandLog().Entries() {
+		if strings.Contains(entry.Command, "diff-tree") {
+			count++
+		}
+	}
+	return count
+}
+
+func TestCommitStatsCanceledCacheWaiterDoesNotStartAnotherGitRead(t *testing.T) {
+	dir, session := newHistoryEditingSession(t)
+	writeHistoryCommit(t, dir, "one.txt", "old\n", "root")
+	writeHistoryCommit(t, dir, "two.txt", "new\n", "second")
+	if _, err := session.RecentCommits(context.Background(), 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	olderHash := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD~1"))
+	before := commitStatsDiffTreeReads(session)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	observed := &firstStatsCheckContext{Context: ctx, checked: make(chan struct{})}
+	real := session.(*gitSession)
+	real.commitTotalsMu.Lock()
+	done := make(chan error, 1)
+	go func() {
+		_, err := real.withCommitLineStats(observed, []Commit{{Hash: olderHash}})
+		done <- err
+	}()
+	<-observed.checked // the pre-lock check passed; the goroutine is now waiting
+	cancel()
+	real.commitTotalsMu.Unlock()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled cache waiter returned %v", err)
+	}
+	if after := commitStatsDiffTreeReads(session); after != before {
+		t.Fatalf("canceled cache waiter started another diff-tree read: before=%d after=%d", before, after)
+	}
+}
+
+func TestCommitStatsConcurrentCachePopulationAndCancellation(t *testing.T) {
+	dir, session := newHistoryEditingSession(t)
+	writeHistoryCommit(t, dir, "one.txt", "one\ntwo\n", "root")
+	hash := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
+	before := commitStatsDiffTreeReads(session)
+	real := session.(*gitSession)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancellation must not corrupt the populated immutable cache
+
+	const workers, iterations = 12, 20
+	start := make(chan struct{})
+	errorsCh := make(chan error, workers)
+	var wg sync.WaitGroup
+	for worker := range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for range iterations {
+				callCtx := context.Background()
+				if worker%4 == 0 {
+					callCtx = ctx
+				}
+				commits, err := real.withCommitLineStats(callCtx, []Commit{{Hash: hash}})
+				if worker%4 == 0 {
+					if err != nil && !errors.Is(err, context.Canceled) {
+						errorsCh <- err
+						return
+					}
+					continue
+				}
+				if err != nil {
+					errorsCh <- err
+					return
+				}
+				if len(commits) == 1 && (commits[0].LinesAdded != 2 || commits[0].LinesDeleted != 0) {
+					errorsCh <- errors.New("concurrent cache returned different immutable totals")
+					return
+				}
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errorsCh)
+	for err := range errorsCh {
+		t.Error(err)
+	}
+	if after := commitStatsDiffTreeReads(session); after != before+1 {
+		t.Fatalf("concurrent cold population used %d diff-tree reads, want one (before=%d after=%d)", after-before, before, after)
+	}
+}
+
+func TestParseCommitTotalsKeepsCommitBoundariesAndRenames(t *testing.T) {
+	first := strings.Repeat("a", 40)
+	second := strings.Repeat("b", 40)
+	output := first + "\x001\t2\tone.txt\x003\t4\t\x00old.go\x00new.go\x00" +
+		second + "\x00-\t-\tbinary.dat\x005\t6\tlast.txt\x00"
+	want := map[string]commitLineStats{
+		first:  {added: 4, deleted: 6},
+		second: {added: 5, deleted: 6},
+	}
+	if got := parseCommitTotals(output); !reflect.DeepEqual(got, want) {
+		t.Fatalf("parseCommitTotals() = %#v, want %#v", got, want)
 	}
 }
 
