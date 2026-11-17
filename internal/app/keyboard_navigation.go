@@ -445,8 +445,10 @@ func (a *app) keyboardDiffViewerWithID(c *ui.Context, state *editor.DiffState, o
 
 	selectable := (state == a.diffState && state.LineSelection) ||
 		(state == a.commitDiffState && a.customPatchLineSelectionAvailable())
+	changesHunks := a.workspaceTab == sectionChanges && state == a.diffState
 	if e.FocusWithin() {
 		a.keyboardDiffCanSelect = selectable
+		a.keyboardDiffCanMutateHunks = changesHunks
 	}
 	if !a.settings.DisableShortcuts {
 		if state == a.commitDiffState && a.customPatchActive() {
@@ -454,7 +456,7 @@ func (a *app) keyboardDiffViewerWithID(c *ui.Context, state *editor.DiffState, o
 			e.OnShortcut(ui.Shift, ui.KeyB, a.openCustomPatchBuilder)
 		}
 		for _, command := range diffKeyboardCommands() {
-			if command.selection && !selectable {
+			if command.selection && !selectable || command.changesHunk && !changesHunks {
 				continue
 			}
 			command := command

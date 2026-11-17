@@ -597,9 +597,12 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 					iconButton(c, "Restore diff view", "Restore diff view", shrinkIcon, false, a.closeDiffFullscreen)
 				}
 			})
-			if a.workspaceTab == sectionChanges && a.lineSelectionAvailable() {
+			if a.workspaceTab == sectionChanges {
 				ui.Column(c).Padding(10, 14).Children(func() {
-					a.lineSelectionControls(c, false)
+					a.hunkActionControls(c)
+					if a.lineSelectionAvailable() {
+						a.lineSelectionControls(c, false)
+					}
 				})
 			}
 			ui.Divider(c)
