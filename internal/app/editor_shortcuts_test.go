@@ -28,8 +28,8 @@ func TestEditorShortcutDefaultsIncludePreferredAlternatives(t *testing.T) {
 		t.Fatalf("move-line default = %v, want Alt+Up", editorShortcutDisplayList(moving))
 	}
 	outline := resolution.byID[editorShortcutOutlineID]
-	if len(outline) != 1 || outline[0].Mods != ui.Ctrl|ui.Shift || outline[0].Key != ui.KeyO {
-		t.Fatalf("Outline default = %v, want Ctrl+Shift+O", editorShortcutDisplayList(outline))
+	if len(outline) != 1 || outline[0].Mods != ui.Ctrl|ui.Shift || outline[0].Key != ui.KeyE {
+		t.Fatalf("Outline default = %v, want Ctrl+Shift+E", editorShortcutDisplayList(outline))
 	}
 	a := &app{}
 	if len(a.outlineShortcutBindings()) != 1 {
@@ -43,15 +43,15 @@ func TestEditorShortcutDefaultsIncludePreferredAlternatives(t *testing.T) {
 
 func TestEditorShortcutOverridesRunBeforeSuppressedDefaults(t *testing.T) {
 	resolution := resolveEditorShortcutOverrides(map[string][]string{
-		editor.MoveLinesUp.String():        {"ctrl+shift+up", "f8"},
+		editor.MoveLinesUp.String():        {"ctrl+shift+up", "f9"},
 		editor.DuplicateLinesDown.String(): {"alt+shift+down"},
 	})
 	if resolution.issue != nil {
 		t.Fatal(resolution.issue)
 	}
 	moving := resolution.byID[editor.MoveLinesUp.String()]
-	if got := editorShortcutDisplayList(moving); strings.Join(got, " / ") != "Ctrl+Shift+↑ / F8" {
-		t.Fatalf("custom move up bindings = %v, want Ctrl+Shift+Up and F8", got)
+	if got := editorShortcutDisplayList(moving); strings.Join(got, " / ") != "Ctrl+Shift+↑ / F9" {
+		t.Fatalf("custom move up bindings = %v, want Ctrl+Shift+Up and F9", got)
 	}
 	firstNativeBinding := resolution.native[0]
 	if firstNativeBinding.Command != editor.MoveLinesUp || firstNativeBinding.Mods != ui.Ctrl|ui.Shift || firstNativeBinding.Key != ui.KeyUp {
@@ -318,7 +318,7 @@ func TestOutlineShortcutUsesCurrentEditorPaneAndOverrides(t *testing.T) {
 	}
 	h.app.settings.EditorKeyBindings = nil
 	h.tester.Frame()
-	h.tester.Key(ui.Ctrl|ui.Shift, ui.KeyO)
+	h.tester.Key(ui.Ctrl|ui.Shift, ui.KeyE)
 	h.tester.Frame()
 	if h.app.code.languageDialog != codeLanguageDialogSymbols {
 		t.Fatal("restored Outline shortcut did not work")
@@ -326,7 +326,7 @@ func TestOutlineShortcutUsesCurrentEditorPaneAndOverrides(t *testing.T) {
 	h.app.closeCodeLanguageDialog()
 	h.app.settings.DisableShortcuts = true
 	h.tester.Frame()
-	h.tester.Key(ui.Ctrl|ui.Shift, ui.KeyO)
+	h.tester.Key(ui.Ctrl|ui.Shift, ui.KeyE)
 	h.tester.Frame()
 	if h.app.code.languageDialog != codeLanguageDialogNone {
 		t.Fatal("Outline shortcut ignored Disable shortcuts")
