@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -130,6 +131,74 @@ func TestQuietConflictRefreshRepaintsOnlyChangedContent(t *testing.T) {
 				t.Fatal("completed conflict refresh left a loading operation behind")
 			}
 		})
+	}
+}
+
+// Resolving a hunk changes Git's combined diff but not the conflict's
+// identity. A quiet refresh must accept that new patch without replacing the
+// state that owns the original markers and undo stack.
+func TestQuietConflictRefreshPreservesUndoHistory(t *testing.T) {
+	original := "a\n<<<<<<< HEAD\n1\n=======\n2\n>>>>>>> t\nb\n<<<<<<< HEAD\n3\n=======\n4\n>>>>>>> t\nc\n<<<<<<< HEAD\n5\n=======\n6\n>>>>>>> t\n"
+	state := newConflictState("a.txt", original, 0)
+	state.resolve(conflictCurrent)
+	state.resolve(conflictCurrent)
+	if len(state.regions) != 1 || len(state.undo) != 2 {
+		t.Fatalf("test setup has %d regions and %d undo entries, want 1 and 2", len(state.regions), len(state.undo))
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte(state.text()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file := repository.File{Path: "a.txt", Status: "UU", Tracked: true, Unstaged: true, HasMergeConflicts: true, HasInlineMergeConflicts: true}
+	stages := repository.ConflictStages{
+		Base:     repository.ConflictStage{Present: true, Content: "base\n"},
+		Current:  repository.ConflictStage{Present: true, Content: "current\n"},
+		Incoming: repository.ConflictStage{Present: true, Content: "incoming\n"},
+	}
+	a := newApp(fakeOpener{})
+	a.session = fakeSession{conflictStages: stages, patch: "updated combined patch"}
+	a.snapshot = repository.Snapshot{Root: root, Branch: "main", Files: []repository.File{file}}
+	a.changeRows = a.changeRowsFrom(a.snapshot.Files)
+	a.selectedFile = changeRowIndex(a.changeRows, file.Path, false)
+	a.diffKey = "conflict\x00" + file.Path
+	a.conflictState = state
+	a.conflictView = &editor.State{Buffer: editor.NewBuffer(state.text())}
+	a.conflictStages = stages
+	a.conflictDiffState = &editor.DiffState{}
+	a.conflictDiffPatch = "old combined patch"
+	view, review := a.conflictView, a.conflictDiffState
+	originalLines := slices.Clone(state.originalLines)
+	undoLen := len(state.undo)
+
+	publications := make(chan bool, 2)
+	a.update = func(fn func()) { fn(); publications <- true }
+	a.updateChanged = func(fn func() bool) { publications <- fn() }
+	a.refreshRemoteQuietDetails()
+	select {
+	case <-publications:
+	case <-time.After(2 * time.Second):
+		t.Fatal("quiet conflict read did not publish")
+	}
+	if a.conflictState != state || a.conflictView != view || a.conflictDiffState != review {
+		t.Fatal("quiet patch refresh replaced the conflict state or its viewers")
+	}
+	if len(state.undo) != undoLen || !slices.Equal(state.originalLines, originalLines) {
+		t.Fatalf("quiet patch refresh lost history: undo=%d/%d original=%v", len(state.undo), undoLen, slices.Equal(state.originalLines, originalLines))
+	}
+	if a.conflictDiffPatch != "updated combined patch" {
+		t.Fatalf("quiet refresh kept stale patch %q", a.conflictDiffPatch)
+	}
+
+	a.undoConflictResolution()
+	if len(state.regions) != 2 {
+		t.Fatalf("Undo after refresh has %d conflicts, want 2", len(state.regions))
+	}
+	if got := state.text(); got != original {
+		// This is not the expected final text: two undos should be possible.
+		a.undoConflictResolution()
+		if got = state.text(); got != original {
+			t.Fatalf("two Undo operations after refresh produced %q, want the original three conflicts", got)
+		}
 	}
 }
 
