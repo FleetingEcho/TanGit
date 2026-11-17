@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"lazygitapp/internal/app/launch"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -79,7 +80,7 @@ func TestDetachedLaunchHelper(t *testing.T) {
 	if os.Getenv("TANGIT_DETACHED_LAUNCH_HELPER") != "1" {
 		return
 	}
-	if os.Getenv(detachedLaunchEnvironment) == "1" {
+	if os.Getenv(launch.DetachedLaunchEnvironment) == "1" {
 		record, err := json.Marshal(detachedLaunchRecord{PID: os.Getpid(), Args: os.Args})
 		if err != nil {
 			os.Exit(2)
@@ -98,7 +99,7 @@ func TestDetachedLaunchHelper(t *testing.T) {
 		// session after confirming that the launcher returned and this is alive.
 		select {}
 	}
-	launched, err := launchInBackground()
+	launched, err := launch.LaunchInBackground()
 	if err != nil {
 		t.Error(err)
 	}
@@ -112,8 +113,8 @@ func TestDetachedChildDoesNotRelaunch(t *testing.T) {
 		t.Skip("helper process")
 	}
 	t.Setenv("MYGO_ENV", "production")
-	t.Setenv(detachedLaunchEnvironment, "1")
-	launched, err := launchInBackground()
+	t.Setenv(launch.DetachedLaunchEnvironment, "1")
+	launched, err := launch.LaunchInBackground()
 	if err != nil || launched {
 		t.Fatalf("detached child relaunched itself: launched=%v err=%v (pid %s)", launched, err, strconv.Itoa(os.Getpid()))
 	}

@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"lazygitapp/internal/app/i18n"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,7 +54,7 @@ func TestLanguageServerDescriptionsUseRealCatalogs(t *testing.T) {
 	for _, choice := range languageChoices[1:] {
 		t.Run(choice.Code, func(t *testing.T) {
 			currentLanguage = choice.Code
-			catalog := translations[choice.Code]
+			catalog := i18n.Translations[choice.Code]
 			for _, profile := range languageServerProfiles {
 				want, ok := catalog[profile.Description]
 				if !ok || want == "" {

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"lazygitapp/internal/app/proc"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -243,7 +244,7 @@ func runTrustedShellCommand(ctx context.Context, root, command string) (string, 
 	}
 	cmd.Dir = root
 	repository.ConfigureBackgroundCommand(cmd)
-	configureCustomCancellation(cmd)
+	proc.ConfigureCustomCancellation(cmd)
 	output, err := cmd.CombinedOutput()
 	return string(output), err
 }

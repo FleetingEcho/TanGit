@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"lazygitapp/internal/app/i18n"
 	"os"
 	"path/filepath"
 	"sort"
@@ -135,8 +136,8 @@ func TestTranslationSourceKeysAreCataloged(t *testing.T) {
 			continue
 		}
 		var languages []string
-		for _, choice := range languageChoices[1:] {
-			if _, ok := translations[choice.Code][key]; !ok {
+		for _, choice := range i18n.Choices[1:] {
+			if _, ok := i18n.Translations[choice.Code][key]; !ok {
 				languages = append(languages, choice.Code)
 			}
 		}

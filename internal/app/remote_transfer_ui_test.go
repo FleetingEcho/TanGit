@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"lazygitapp/internal/app/i18n"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -317,7 +318,7 @@ func TestRemoteTransferToastsUseRealCatalogsAcrossStates(t *testing.T) {
 	for _, choice := range languageChoices[1:] {
 		t.Run(choice.Code, func(t *testing.T) {
 			currentLanguage = choice.Code
-			catalog := translations[choice.Code]
+			catalog := i18n.Translations[choice.Code]
 			translate := func(key string) string {
 				t.Helper()
 				value := catalog[key]

@@ -1,0 +1,98 @@
+package i18n
+
+var fileRecoveryTranslations = map[string]map[string]string{
+	"zh-Hans": {
+		"Conflict recovery": "冲突恢复", "Restore an original unresolved file and its index stages": "恢复原始未解决文件及其索引阶段",
+		"Conflict recovery restores the original unresolved file and Git stages. Discard copies and named checkpoints stay separate.": "冲突恢复会还原原始未解决文件及 Git 阶段。丢弃副本和命名检查点保持独立。",
+		"Restores saved marker bytes, deletions, executable modes, and exact unmerged index stages.":                                  "还原保存的标记字节、删除状态、可执行模式及精确的未合并索引阶段。",
+		"Restored unresolved conflict %s": "已恢复未解决冲突 %s", "Restore unresolved %s": "恢复未解决冲突 %s",
+		"Restore the original conflict markers and index stages 1/2/3…": "恢复原始冲突标记及索引阶段 1/2/3…",
+		"Restore unresolved…": "恢复未解决冲突…", "Restore Unresolved Conflict": "恢复未解决的冲突", "Restore unresolved": "恢复未解决冲突",
+		"Retry File Recovery": "重试文件恢复", "Retry restore": "重试恢复", "Retry…": "重试…",
+		"This replaces the current file and index entry with the saved unresolved worktree and original stages 1/2/3. Unrelated files stay untouched. New changes to this file stop the restore before overwriting them.": "这会以保存的未解决工作树及原始阶段 1/2/3 替换当前文件和索引条目。无关文件保持不变。如果此文件有新更改，恢复会在覆盖前停止。",
+		"Retry resumes the saved worktree/index step after verifying the current file against its after-state. Any newer work on this file is preserved when verification fails.":                                         "重试会先根据事后状态验证当前文件，再续做保存的工作树／索引步骤。验证失败时，此文件上的更新工作都会保留。",
+		"Saved file and ordinary index entry": "已保存文件和普通索引条目", "Original index stages %s": "原始索引阶段 %s",
+		"Restored": "已恢复", "Original unresolved state restored": "已恢复原始未解决状态",
+		"Interrupted · index pending": "已中断 · 索引待处理", "The file step finished; retry verifies and resumes the index step": "文件步骤已完成；重试会验证并续做索引步骤",
+		"Interrupted": "已中断", "Retry verifies the after-state before resuming": "重试会先验证事后状态，再继续恢复",
+		"Ready": "就绪", "Ready to restore": "可以恢复",
+		"Restore this saved state; newer changes to the same file stop the compare-and-swap": "恢复此保存状态；同一文件上的新更改会使比较并交换停止",
+	},
+	"zh-Hant": {
+		"Conflict recovery": "衝突復原", "Restore an original unresolved file and its index stages": "還原原始未解決檔案及其索引階段",
+		"Conflict recovery restores the original unresolved file and Git stages. Discard copies and named checkpoints stay separate.": "衝突復原會還原原始未解決檔案及 Git 階段。捨棄副本和命名檢查點保持獨立。",
+		"Restores saved marker bytes, deletions, executable modes, and exact unmerged index stages.":                                  "還原保存的標記位元組、刪除狀態、可執行模式及精確的未合併索引階段。",
+		"Restored unresolved conflict %s": "已還原未解決衝突 %s", "Restore unresolved %s": "還原未解決衝突 %s",
+		"Restore the original conflict markers and index stages 1/2/3…": "還原原始衝突標記及索引階段 1/2/3…",
+		"Restore unresolved…": "還原未解決衝突…", "Restore Unresolved Conflict": "還原未解決的衝突", "Restore unresolved": "還原未解決衝突",
+		"Retry File Recovery": "重試檔案復原", "Retry restore": "重試還原", "Retry…": "重試…",
+		"This replaces the current file and index entry with the saved unresolved worktree and original stages 1/2/3. Unrelated files stay untouched. New changes to this file stop the restore before overwriting them.": "這會以保存的未解決工作樹及原始階段 1/2/3 取代目前檔案和索引項目。無關檔案保持不變。如果此檔案有新變更，還原會在覆寫前停止。",
+		"Retry resumes the saved worktree/index step after verifying the current file against its after-state. Any newer work on this file is preserved when verification fails.":                                         "重試會先根據事後狀態驗證目前檔案，再續做保存的工作樹／索引步驟。驗證失敗時，此檔案上的較新工作都會保留。",
+		"Saved file and ordinary index entry": "已保存檔案和普通索引項目", "Original index stages %s": "原始索引階段 %s",
+		"Restored": "已還原", "Original unresolved state restored": "已還原原始未解決狀態",
+		"Interrupted · index pending": "已中斷 · 索引待處理", "The file step finished; retry verifies and resumes the index step": "檔案步驟已完成；重試會驗證並續做索引步驟",
+		"Interrupted": "已中斷", "Retry verifies the after-state before resuming": "重試會先驗證事後狀態，再繼續復原",
+		"Ready": "就緒", "Ready to restore": "可以還原",
+		"Restore this saved state; newer changes to the same file stop the compare-and-swap": "還原此保存狀態；同一檔案上的新變更會使比較並交換停止",
+	},
+	"ja": {
+		"Conflict recovery": "競合の復元", "Restore an original unresolved file and its index stages": "元の未解決ファイルとインデックスステージを復元",
+		"Conflict recovery restores the original unresolved file and Git stages. Discard copies and named checkpoints stay separate.": "競合の復元では、元の未解決ファイルと Git ステージを復元します。破棄コピーと名前付きチェックポイントは別に保持されます。",
+		"Restores saved marker bytes, deletions, executable modes, and exact unmerged index stages.":                                  "保存したマーカーのバイト列、削除状態、実行モード、正確な未マージのインデックスステージを復元します。",
+		"Restored unresolved conflict %s": "未解決の競合 %s を復元しました", "Restore unresolved %s": "未解決の競合 %s を復元",
+		"Restore the original conflict markers and index stages 1/2/3…": "元の競合マーカーとインデックスステージ 1/2/3 を復元…",
+		"Restore unresolved…": "未解決の競合を復元…", "Restore Unresolved Conflict": "未解決の競合を復元", "Restore unresolved": "未解決の競合を復元",
+		"Retry File Recovery": "ファイル復元を再試行", "Retry restore": "復元を再試行", "Retry…": "再試行…",
+		"This replaces the current file and index entry with the saved unresolved worktree and original stages 1/2/3. Unrelated files stay untouched. New changes to this file stop the restore before overwriting them.": "現在のファイルとインデックス項目を、保存した未解決のワークツリーと元のステージ 1/2/3 で置き換えます。無関係なファイルは変更しません。このファイルに新しい変更がある場合、上書きする前に復元を中止します。",
+		"Retry resumes the saved worktree/index step after verifying the current file against its after-state. Any newer work on this file is preserved when verification fails.":                                         "再試行では、現在のファイルを事後状態と照合してから、保存したワークツリー／インデックスの手順を再開します。照合に失敗した場合、このファイルの新しい作業は保持されます。",
+		"Saved file and ordinary index entry": "保存したファイルと通常のインデックス項目", "Original index stages %s": "元のインデックスステージ %s",
+		"Restored": "復元済み", "Original unresolved state restored": "元の未解決状態を復元しました",
+		"Interrupted · index pending": "中断 · インデックス待ち", "The file step finished; retry verifies and resumes the index step": "ファイルの手順は完了しています。再試行すると照合してインデックスの手順を再開します",
+		"Interrupted": "中断", "Retry verifies the after-state before resuming": "再試行では再開前に事後状態を照合します",
+		"Ready": "準備完了", "Ready to restore": "復元できます",
+		"Restore this saved state; newer changes to the same file stop the compare-and-swap": "この保存状態を復元します。同じファイルへの新しい変更があると Compare-and-Swap が停止します",
+	},
+	"es": {
+		"Conflict recovery": "Recuperación de conflictos", "Restore an original unresolved file and its index stages": "Restaura un archivo original sin resolver y sus etapas del índice",
+		"Conflict recovery restores the original unresolved file and Git stages. Discard copies and named checkpoints stay separate.": "La recuperación de conflictos restaura el archivo original sin resolver y las etapas de Git. Las copias descartadas y los puntos de control con nombre permanecen separados.",
+		"Restores saved marker bytes, deletions, executable modes, and exact unmerged index stages.":                                  "Restaura los bytes de marcadores, eliminaciones, modos ejecutables y etapas exactas del índice sin fusionar.",
+		"Restored unresolved conflict %s": "Conflicto sin resolver %s restaurado", "Restore unresolved %s": "Restaurar conflicto sin resolver %s",
+		"Restore the original conflict markers and index stages 1/2/3…": "Restaurar los marcadores de conflicto originales y las etapas 1/2/3 del índice…",
+		"Restore unresolved…": "Restaurar conflicto sin resolver…", "Restore Unresolved Conflict": "Restaurar conflicto sin resolver", "Restore unresolved": "Restaurar conflicto sin resolver",
+		"Retry File Recovery": "Reintentar recuperación de archivo", "Retry restore": "Reintentar restauración", "Retry…": "Reintentar…",
+		"This replaces the current file and index entry with the saved unresolved worktree and original stages 1/2/3. Unrelated files stay untouched. New changes to this file stop the restore before overwriting them.": "Esto sustituye el archivo y la entrada del índice actuales por el árbol de trabajo sin resolver guardado y las etapas originales 1/2/3. Los archivos no relacionados no cambian. Los cambios nuevos en este archivo detienen la restauración antes de sobrescribirlos.",
+		"Retry resumes the saved worktree/index step after verifying the current file against its after-state. Any newer work on this file is preserved when verification fails.":                                         "Reintentar comprueba el archivo actual con el estado posterior y reanuda el paso guardado del árbol de trabajo/índice. Si falla la comprobación, se conserva el trabajo más reciente de este archivo.",
+		"Saved file and ordinary index entry": "Archivo guardado y entrada normal del índice", "Original index stages %s": "Etapas originales del índice %s",
+		"Restored": "Restaurado", "Original unresolved state restored": "Estado original sin resolver restaurado",
+		"Interrupted · index pending": "Interrumpido · índice pendiente", "The file step finished; retry verifies and resumes the index step": "El paso del archivo terminó; reintentar comprueba y reanuda el paso del índice",
+		"Interrupted": "Interrumpido", "Retry verifies the after-state before resuming": "Reintentar comprueba el estado posterior antes de reanudar",
+		"Ready": "Listo", "Ready to restore": "Listo para restaurar",
+		"Restore this saved state; newer changes to the same file stop the compare-and-swap": "Restaurar este estado guardado; los cambios nuevos en el mismo archivo detienen la comparación e intercambio",
+	},
+	"fr": {
+		"Conflict recovery": "Récupération de conflit", "Restore an original unresolved file and its index stages": "Restaurer le fichier non résolu d’origine et ses étapes d’index",
+		"Conflict recovery restores the original unresolved file and Git stages. Discard copies and named checkpoints stay separate.": "La récupération de conflit restaure le fichier non résolu d’origine et les étapes Git. Les copies d’abandon et les points de contrôle nommés restent distincts.",
+		"Restores saved marker bytes, deletions, executable modes, and exact unmerged index stages.":                                  "Restaure les octets des marqueurs, les suppressions, les modes exécutables et les étapes exactes d’index non fusionné.",
+		"Restored unresolved conflict %s": "Conflit non résolu %s restauré", "Restore unresolved %s": "Restaurer le conflit non résolu %s",
+		"Restore the original conflict markers and index stages 1/2/3…": "Restaurer les marqueurs de conflit d’origine et les étapes d’index 1/2/3…",
+		"Restore unresolved…": "Restaurer le conflit non résolu…", "Restore Unresolved Conflict": "Restaurer le conflit non résolu", "Restore unresolved": "Restaurer le conflit non résolu",
+		"Retry File Recovery": "Réessayer la récupération du fichier", "Retry restore": "Réessayer la restauration", "Retry…": "Réessayer…",
+		"This replaces the current file and index entry with the saved unresolved worktree and original stages 1/2/3. Unrelated files stay untouched. New changes to this file stop the restore before overwriting them.": "Cette action remplace le fichier et l’entrée d’index actuels par l’arbre de travail non résolu enregistré et les étapes d’origine 1/2/3. Les autres fichiers restent intacts. Toute nouvelle modification de ce fichier interrompt la restauration avant écrasement.",
+		"Retry resumes the saved worktree/index step after verifying the current file against its after-state. Any newer work on this file is preserved when verification fails.":                                         "Réessayer vérifie le fichier actuel par rapport à son état ultérieur, puis reprend l’étape enregistrée de l’arbre de travail ou de l’index. Si la vérification échoue, le travail plus récent de ce fichier est conservé.",
+		"Saved file and ordinary index entry": "Fichier enregistré et entrée d’index ordinaire", "Original index stages %s": "Étapes d’index d’origine %s",
+		"Restored": "Restauré", "Original unresolved state restored": "État non résolu d’origine restauré",
+		"Interrupted · index pending": "Interrompu · index en attente", "The file step finished; retry verifies and resumes the index step": "L’étape du fichier est terminée ; réessayer vérifie et reprend l’étape de l’index",
+		"Interrupted": "Interrompu", "Retry verifies the after-state before resuming": "Réessayer vérifie l’état ultérieur avant de reprendre",
+		"Ready": "Prêt", "Ready to restore": "Prêt à restaurer",
+		"Restore this saved state; newer changes to the same file stop the compare-and-swap": "Restaurer cet état enregistré ; toute modification plus récente du même fichier arrête la comparaison-échange",
+	},
+}
+
+func init() {
+	catalogs := map[string]map[string]string{"zh-Hans": ZhHans, "zh-Hant": zhHant, "ja": japanese, "es": spanish, "fr": french}
+	for language, additions := range fileRecoveryTranslations {
+		for english, translated := range additions {
+			catalogs[language][english] = translated
+		}
+	}
+}
