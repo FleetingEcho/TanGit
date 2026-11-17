@@ -3,6 +3,7 @@
 [English overview](../README.md) · [简体中文概览](../README-CN.md)
 
 [Terminal setup](#open-a-repository-from-the-terminal) · [Workflows](#common-workflows) ·
+[Recovery and assisted review](#operation-recovery-history-and-assisted-review) ·
 [Shortcuts](#keyboard) · [Development](#development)
 
 ## Open a repository from the terminal
@@ -114,6 +115,216 @@ The Editor virtualizes large file trees, rebuilds them only when their contents 
 
 Author avatars load in the background from GitHub, GitLab.com, or self-managed GitLab, using the configured remote host (or its custom web URL). Public lookups work without a hosting CLI; restricted lookups can reuse an existing local `gh` or `glab` login. Images are cached locally. Missing accounts, unavailable images, network failures, and authentication failures silently keep the colored author initial. TanGit never starts a login flow for an avatar lookup. In SSH workspaces, avatar requests still run on the desktop; a company GitLab server must be reachable from that machine.
 
+## Operation recovery, history, and assisted review
+
+This section describes behavior in the current implementation. Availability of
+an action depends on the live repository state, not merely on the menu or panel
+being visible.
+
+### Real operation context and conflict controls
+
+When a merge, rebase, pull-with-rebase, mailbox `am`, cherry-pick, or revert
+stops, the operation card above **Changes** reads Git's own metadata. It shows
+the effective operation type, known full refs and object IDs, and actual step
+progress. It does not infer this context from the selected branch or history
+rows. During an interactive rebase, **Back to Rebase TODO** returns to Git's
+real current, pending, and completed steps.
+
+The header and rebase action area offer **Continue**, **Skip**, and **Abort**
+only when the current operation reports those transitions. In particular,
+Skip is not universal. Resolve and stage every conflict before Continue; Skip
+explicitly discards the stopped step; Abort asks Git to abandon the operation.
+The action is bound to the reviewed operation fingerprint, which includes its
+metadata and unmerged index stages. A fingerprint change or an unsupported
+transition is refused rather than approximated against different state.
+
+The conflict pane groups controls by purpose:
+
+- **Hunk**: navigate conflict regions and see the current region or whole-file
+  conflict status.
+- **View**: read immutable **Base** (stage 1), **Current** (stage 2), and
+  **Incoming** (stage 3) versions beside the editable working-tree **Result**.
+  **Review both sides** compares Current with Incoming. Conflict Assistant is
+  also in this group.
+- **Apply**: in Result, use Current, Base when present, Incoming, or Both for
+  the selected region; edit text directly; undo a region choice; or restore the
+  initial conflict. Whole-file add/delete conflicts offer meaningful side
+  choices rather than nonexistent hunk actions. Choose **Mark resolved** to
+  stage the reviewed file.
+
+The groups wrap or become compact menus as the pane narrows. Disabled controls
+report their actual reason, and switching to an immutable stage does not turn
+a Result mutation into a write to that stage.
+
+### Durable single-file conflict recovery
+
+The first resolution mutation on a supported path creates a V2 record before
+changing that path. It preserves the original working-tree bytes, executable
+mode or deletion, and exact unmerged index stages 1/2/3; later choices and
+staging update the record's after-state without replacing that baseline. Raw
+payloads are content-addressed, so restoring index stages does not depend only
+on those blobs still being reachable. Records and two-phase progress survive
+an application restart. Symbolic links, gitlinks/submodules, and non-regular
+file states are refused rather than recovered approximately.
+
+Open **Recovery & checkpoints → Recovery**, select the file's **Conflict
+recovery** entry, and explicitly choose **Restore unresolved…** (or **Retry…**
+after interruption). Restore compares the current path with the recorded
+before/after worktree and index states before each phase. It can resume a
+verified file-only step without blindly writing it again. New work on the same
+path causes a CAS conflict and is preserved; unrelated paths do not block
+restore. This is separate from whole-worktree checkpoints and the older Safety
+Journal.
+
+### Changes hunks and Custom Patch history
+
+In an ordinary textual **Changes** diff, move the caret into a hunk and use
+**Stage hunk**, **Unstage hunk**, or **Discard hunk**. The toolbar derives a
+canonical patch from that hunk—not rendered row positions—and previews the
+exact patch against the source state before applying it. Staging affects the
+index only; unstaging leaves the edit in the working tree; discarding asks for
+confirmation, reverses only that hunk in the working tree, and leaves the index
+untouched. Combined conflict diffs, binary and mode-only changes do not have
+hunk actions; a staged deletion must be unstaged as a whole file. The inline
+reason explains when a whole-file action or conflict resolution is required.
+
+Custom Patch keeps direct patch application separate from history rewriting.
+Direct **Preview Custom Patch** binds the patch bytes and selected target,
+direction, and three-way option. **History actions…** instead supports:
+
+- **Remove from original commit…**
+- **Move out into index…**
+- **Move to selected commit…**
+- **New commit before original…** and **New commit after original…**
+
+Every history edit requires selections from exactly one non-merge source
+commit, a patch checked against that source, and the expected full HEAD SHA
+and branch ref. Move destination must be another non-merge commit in current
+HEAD history. The journal saves full hashes, patch digest, replay stage, and
+stash/index progress before potentially stopping actions, so the ordinary
+Operation UI can resume after conflicts or a restart. Direct Apply target,
+reverse, and three-way options do not silently become history policy.
+
+History editing does not support multiple source commits in one replay,
+new-before on a root commit, or `commit.gpgsign=true`. The last case is refused
+before the resumable driver creates a stash, object, or rebase; an interactive
+signing/pinentry flow must not be mistaken for a recoverable non-interactive
+replay.
+
+### Visual Rebase TODO and marked-base workflows
+
+In **History → Rebase TODO**, prepare a plan for an explicit target ref. TanGit
+asks Git to generate the actual interactive todo, captures it, and aborts the
+capture-only rebase before showing the draft. It does not execute the picks
+while preparing the preview. With no marked base, this is an ordinary rebase
+preview. Use a commit's **Mark as base commit for rebase** menu action to pin a
+full commit SHA; the draft then corresponds to `git rebase --onto <target>
+<full-base-SHA>`. Preparing another fresh plan is required after the target or
+source changes.
+
+**Edit & start** binds the edited draft to its original todo, source HEAD, and
+target. Commit lines may be reordered or have their actions changed; use `drop`
+for an unwanted commit rather than deleting or duplicating a line. Non-commit
+directives such as `exec`, `update-ref`, `reset`, and `label` retain their exact
+identity. For an active rebase, **Edit TODO** compares the complete remaining
+todo and operation fingerprint, and Git's own sequence-editor handoff compares
+the todo again before replacing it. Malformed plans remain visible while Abort
+stays available. A conflict stop returns to the same real todo and operation
+driver rather than creating a parallel synthetic operation.
+
+### Stack Sync plans and publication
+
+Choose **Branches → Local branches → Sync stack…**. Planning fetches first,
+then freezes live local/remote OIDs, topology, upstreams, worktree
+observations, and other open operations into a fresh per-branch plan. Choose
+the rebase or merge divergence strategy and whether to enable **Publish changed
+branches** before reviewing the exact local action and expected remote OID.
+
+Apply validates the complete plan SourceID again. Independent non-checked-out
+ref updates use an expected-old-OID `update-ref` transaction; a rejected CAS
+rejects that whole transaction. Checked-out branches run real Git merges or
+rebases. When `rebase.updateRefs` is enabled, Git's generated TODO owns the
+refs it actually lists, rather than TanGit inventing a second set of updates.
+A stale plan must be refreshed, not reused.
+
+The batch transaction does not make every later merge, rebase, and push atomic.
+Per-branch outcomes and local progress remain inspectable when a real Git
+operation stops. Publication then attempts eligible branches independently
+with `--force-with-lease=<ref>:<preview-remote-OID>`, including fast-forward
+publication. One push failure does not roll back local updates or another
+remote branch. There is no remote stack transaction, and no failed publication
+is reported as success.
+
+### Optional external assist helpers
+
+Conflict Assistant and Change Splitter use the current Agent Profile's optional
+**AssistCommand**. Opening either dialog does not run a helper. Configure a
+trusted command such as the following shape, then explicitly request
+suggestions:
+
+```sh
+advisor {requestFile} {responseFile} {artifactDir}
+```
+
+`{requestFile}` and `{responseFile}` must each occur exactly once;
+`{artifactDir}` is optional and may occur once. TanGit writes a versioned JSON
+request to a private per-run directory, runs the expanded command through the
+platform shell in its artifact directory, validates the response's source and
+identity hashes, and removes the temporary directory after the run. This
+helper is an arbitrary user-configured program with the user's normal process
+permissions and may itself use the network. The request also contains the
+conflict text or canonical diff being reviewed. **Private files and response
+validation define the protocol; they are not an OS sandbox.** Use only a helper
+you trust with that source and with your account. There is no built-in model or
+service-provider dependency.
+
+The `agentassist` advisor has no repository or Git write capability:
+
+- Conflict suggestions replace identified regions on a cloned Result. All
+  original regions need validated suggestions before **Accept Result only** is
+  available; exclusions remain visible and make the Result incomplete. Accept
+  rechecks raw path bytes, unmerged stages, and operation fingerprint, then
+  writes Result only with V2 recovery. It does not stage, continue, commit, or
+  run a hook.
+- Change Splitter accepts groups of original file/hunk/line identities, not an
+  AI-authored patch. TanGit constructs and Git-previews each generated patch
+  against a frozen source. **Apply group to index** is a separate explicit
+  action using that same CAS preview; it stages one group, leaves the working
+  tree unchanged, and never creates a commit automatically. Uncovered source
+  identities require visible exclusions. Binary input stays local and is only
+  an indivisible whole-file group.
+
+Closing or replacing the owning dialog invalidates late responses. Changed
+bytes, index state, operation state, source selection, or preview ownership
+also prevent an old suggestion from being accepted or applied. For the
+distinction between these previews and task CLI mutations, see
+[Local agent automation](agent-automation.md#relation-to-in-app-assist-helpers).
+
+### Example normal workflow
+
+A typical interrupted-rebase workflow is:
+
+1. Read the operation card's actual type and current step. In **Changes**,
+   compare Base, Current, and Incoming before editing Result with the grouped
+   conflict controls. Optionally request and inspect Conflict Assistant
+   suggestions; accepting them still writes Result only.
+2. Choose **Mark resolved**, inspect the staged result, and repeat for all
+   conflicted files. If necessary, restore the original unresolved file and
+   stages from durable Conflict recovery. If a newer same-path edit causes a
+   CAS refusal, keep that work and review it instead of retrying blindly.
+3. Return to **Rebase TODO** and review current/pending entries. Continue only
+   after conflicts are resolved and staged. Use Skip only when offered and you
+   intentionally want to discard the stopped step; use Abort to abandon the
+   operation.
+4. For unrelated ordinary edits, use the Changes hunk toolbar to stage only
+   what belongs in the next commit, then review and commit normally after the
+   interrupted operation ends.
+5. If a later Stack Sync or Custom Patch history edit is needed, create a new
+   preview for that purpose and review its exact source and destination. Do
+   not infer success from the preview: apply results, CAS refusals, conflicts,
+   and independent push outcomes are reported separately.
+
+[Verification scope and current limits →](verification.md#feature-specific-evidence-and-limits)
 
 ## Keyboard
 
