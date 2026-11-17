@@ -96,8 +96,8 @@ func BenchmarkCommitDiffLongHunk(b *testing.B) {
 		b.ReportMetric(float64(len(appBenchDiffStateSink.Hunks())), "diff_state_hunks")
 	})
 	b.Run("RepeatedBuildSamePatch", func(b *testing.B) {
-		// This models the work requestQuietFileDiff currently does before it
-		// discovers that the already displayed raw patch has not changed.
+		// This models the work the original quiet refresh did before it
+		// discovered that the already displayed raw patch had not changed.
 		b.ReportAllocs()
 		b.SetBytes(int64(len(diff.Patch)))
 		for b.Loop() {
@@ -110,6 +110,45 @@ func BenchmarkCommitDiffLongHunk(b *testing.B) {
 			}
 		}
 		b.ReportMetric(2, "builds/op")
+	})
+	b.Run("QuietRefreshSamePatch_GitExcluded", func(b *testing.B) {
+		// The real app path still performs its Session.Diff call; an immediate
+		// controlled response excludes Git wall time, which GitReadOnly covers.
+		session := &controlledRemoteDiffSession{Session: fakeSession{}, response: diff}
+		a := newApp(fakeOpener{})
+		a.session = session
+		a.workspaceTab = sectionChanges
+		a.snapshot.Files = []repository.File{changedFile(file.Path)}
+		a.changeRows = a.changeRowsFrom(a.snapshot.Files)
+		a.selectedFile = changeRowIndex(a.changeRows, file.Path, false)
+		a.diffOptions = options
+		published := make(chan bool, 1)
+		a.updateChanged = func(fn func() bool) { published <- fn() }
+		a.requestFileDiff()
+		if !<-published {
+			b.Fatal("initial diff did not publish")
+		}
+		state := a.diffState
+		if state == nil || a.diffPatch != diff.Patch {
+			b.Fatalf("quiet benchmark could not load its real patch: selected=%d state=%p patch=%d/%d kind=%q error=%q",
+				a.selectedFile, state, len(a.diffPatch), len(diff.Patch), a.diffKind, a.diffError)
+		}
+		b.ReportAllocs()
+		// No byte stream is processed on the reuse path: report diff_bytes as
+		// context, not a fictitious ParsePatch throughput.
+		b.ResetTimer()
+		for b.Loop() {
+			a.requestQuietFileDiff()
+			if <-published {
+				b.Fatal("identical quiet patch requested a repaint")
+			}
+		}
+		b.StopTimer()
+		if a.diffState != state || a.diffPatch != diff.Patch || a.cancelDiff != nil {
+			b.Fatal("quiet refresh changed the displayed state or left work in flight")
+		}
+		b.ReportMetric(1, "same_state")
+		b.ReportMetric(float64(len(diff.Patch)), "diff_bytes")
 	})
 }
 

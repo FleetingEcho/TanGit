@@ -79,6 +79,16 @@ func (a *app) confirmAbortOperation() {
 // frame reads the chosen commit again after an action changed it.
 func (a *app) resetCommitDetails() {
 	a.codeBlameHistoryTarget = nil
+	if a.cancelCommitFiles != nil {
+		a.cancelCommitFiles()
+		a.cancelCommitFiles = nil
+	}
+	if a.cancelCommitDiff != nil {
+		a.cancelCommitDiff()
+		a.cancelCommitDiff = nil
+	}
+	a.commitFilesGeneration++
+	a.commitDiffGeneration++
 	a.commitFilesHash = ""
 	a.commitFiles = nil
 	a.commitFilesLoading = false
@@ -111,6 +121,18 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 	}
 	session := a.session
 	repositoryGeneration := a.generation
+	if a.cancelCommitFiles != nil {
+		a.cancelCommitFiles()
+	}
+	if a.cancelCommitDiff != nil {
+		a.cancelCommitDiff()
+		a.cancelCommitDiff = nil
+	}
+	a.commitFilesGeneration++
+	a.commitDiffGeneration++
+	requestGeneration := a.commitFilesGeneration
+	ctx, cancel := context.WithCancel(context.Background())
+	a.cancelCommitFiles = cancel
 	a.commitFilesHash = commit.Hash
 	a.commitFilesLoading = true
 	a.commitFilesError = ""
@@ -127,21 +149,24 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 
 	go func() {
 		defer a.recoverBackground()
-		files, err := session.CommitFiles(context.Background(), commit)
+		defer cancel()
+		files, err := session.CommitFiles(ctx, commit)
 		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation {
 				// An action rewrote the repository: drop the request so
 				// the next frame reads the commit again.
-				if a.commitFilesHash == commit.Hash {
+				if requestGeneration == a.commitFilesGeneration && a.commitFilesHash == commit.Hash {
+					a.cancelCommitFiles = nil
 					a.commitFilesHash = ""
 					a.commitFilesLoading = false
 					return a.commitDetailsVisible()
 				}
 				return false
 			}
-			if a.commitFilesHash != commit.Hash {
+			if requestGeneration != a.commitFilesGeneration || a.commitFilesHash != commit.Hash {
 				return false
 			}
+			a.cancelCommitFiles = nil
 			a.commitFilesLoading = false
 			if err != nil {
 				a.commitFilesError = safeError(err)
@@ -194,6 +219,13 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 	}
 	session := a.session
 	repositoryGeneration := a.generation
+	if a.cancelCommitDiff != nil {
+		a.cancelCommitDiff()
+	}
+	a.commitDiffGeneration++
+	requestGeneration := a.commitDiffGeneration
+	ctx, cancel := context.WithCancel(context.Background())
+	a.cancelCommitDiff = cancel
 	a.stopLineSelection()
 	a.commitDiffHash = commit.Hash
 	a.commitDiffPath = file.Path
@@ -209,7 +241,11 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 	customPatchSelection := isCommitSection(a.workspaceTab)
 	go func() {
 		defer a.recoverBackground()
-		diff, err := session.CommitFileDiff(context.Background(), commit, file, options)
+		defer cancel()
+		diff, err := session.CommitFileDiff(ctx, commit, file, options)
+		if err == nil && ctx.Err() != nil {
+			err = ctx.Err()
+		}
 		var state *editor.DiffState
 		var media *mediaReview
 		if err == nil {
@@ -221,15 +257,16 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 				}
 			}
 			if err == nil && state == nil && isMediaPath(file.Path) {
-				media, err = loadMediaReview(context.Background(), session, repository.MediaRequest{
+				media, err = loadMediaReview(ctx, session, repository.MediaRequest{
 					Source: repository.MediaCommit, Commit: commit, CommitFile: file,
 				})
 			}
 		}
 		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation {
-				if a.commitDiffHash == commit.Hash && a.commitDiffPath == file.Path &&
+				if requestGeneration == a.commitDiffGeneration && a.commitDiffHash == commit.Hash && a.commitDiffPath == file.Path &&
 					a.commitDiffOptions == options {
+					a.cancelCommitDiff = nil
 					a.commitDiffHash = ""
 					a.commitDiffPath = ""
 					a.commitDiffPatch = ""
@@ -238,10 +275,11 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 				}
 				return false
 			}
-			if a.commitDiffHash != commit.Hash || a.commitDiffPath != file.Path ||
+			if requestGeneration != a.commitDiffGeneration || a.commitDiffHash != commit.Hash || a.commitDiffPath != file.Path ||
 				a.commitDiffOptions != options {
 				return false
 			}
+			a.cancelCommitDiff = nil
 			a.commitDiffLoading = false
 			if err != nil {
 				a.commitDiffError = safeError(err)
@@ -526,8 +564,13 @@ func (a *app) selectCommitFileRow(row int) {
 	if a.selectedCommitFile >= 0 {
 		return
 	}
-	// A directory has no diff. Dropping the request identity also rejects a
-	// slower file read that was in flight when the directory was chosen.
+	// A directory has no diff. Cancel and version the old request so even a
+	// non-cooperative reader cannot repaint or populate this row later.
+	if a.cancelCommitDiff != nil {
+		a.cancelCommitDiff()
+		a.cancelCommitDiff = nil
+	}
+	a.commitDiffGeneration++
 	a.commitDiffHash = ""
 	a.commitDiffPath = ""
 	a.commitDiffPatch = ""
