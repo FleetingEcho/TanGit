@@ -741,6 +741,10 @@ func (a *app) changesHeader(c *ui.Context) {
 				if m.Item(tr("Apply patch…")).Disabled(a.actionBusy || a.session == nil).Chosen() {
 					a.beginPatchImport()
 				}
+				_, canSplit := a.selectedChangeSplitFile()
+				if m.Item(tr("Change Splitter…")).Tooltip(tr("Group original diff identities and stage only an explicitly applied group")).Disabled(a.actionBusy || a.session == nil || !canSplit).Chosen() {
+					a.openChangeSplitter()
+				}
 				if m.Item(tr("Apply mailbox patch…")).Disabled(a.actionBusy || a.session == nil).Chosen() {
 					a.beginMailboxPatchImport()
 				}
