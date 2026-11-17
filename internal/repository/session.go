@@ -979,7 +979,13 @@ func (s *gitSession) DetailsSnapshot(ctx context.Context) (Snapshot, error) {
 	// Recovery discovery is ancillary like the V1 journal: an unreadable entry
 	// must not make unrelated repository work unavailable. Restore still reads
 	// the selected manifest explicitly and reports any failure to the user.
-	fileRecoveries, _ := s.ListFileRecovery(ctx)
+	fileRecoveries, recoveryErr := s.ListFileRecovery(ctx)
+	if recoveryErr != nil {
+		// An empty list is degraded metadata, not proof that recovery is
+		// unnecessary. Leave restoration to the explicit per-manifest read and
+		// retain an inspectable failure rather than silently dropping the error.
+		s.commandLog.Record("File recovery metadata (degraded)", recoveryErr.Error(), true)
+	}
 	operations, _ := s.Operations(ctx)
 	modelReflog, _ := s.recentReflog(SnapshotCommitLimit)
 	reflog := make([]Commit, 0, len(modelReflog))
