@@ -108,6 +108,13 @@ func (p *PTY) ClearScreen() error { return nil }
 // Pid returns the process's ID.
 func (p *PTY) Pid() int { return p.cmd.Process.Pid }
 
+// HasChildProcess reports whether the terminal belongs to a child process
+// rather than the shell that started it.
+func (p *PTY) HasChildProcess() bool {
+	foreground := p.Foreground()
+	return foreground != 0 && foreground != p.Pid()
+}
+
 // Foreground returns the ID of the process group in the foreground of
 // the terminal, 0 when it can't tell.
 func (p *PTY) Foreground() int {
