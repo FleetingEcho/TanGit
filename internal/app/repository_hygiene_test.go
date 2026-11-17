@@ -24,7 +24,10 @@ func TestRepositoryTextSourcesAvoidSensitiveProductNames(t *testing.T) {
 			return walkErr
 		}
 		if entry.IsDir() {
-			if entry.Name() == ".git" {
+			switch entry.Name() {
+			case ".git", "third_party":
+				// Only customer-owned text belongs here. Public upstream and
+				// vendored dependency sources are not this product's fixtures.
 				return fs.SkipDir
 			}
 			return nil
