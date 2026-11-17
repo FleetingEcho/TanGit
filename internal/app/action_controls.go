@@ -136,7 +136,11 @@ func renderActionControl(c *ui.Context, action actionControl, showLabel bool) {
 // conflictActionButton applies the user's action-style preference. Primary
 // text actions, such as Mark resolved, retain their established appearance.
 func (a *app) conflictActionButton(c *ui.Context, action actionControl) {
-	showLabel := normalizeConflictActionStyle(a.settings.ConflictActionStyle) == conflictActionStyleIconsLabels
+	a.conflictActionButtonWithLabels(c, action,
+		normalizeConflictActionStyle(a.settings.ConflictActionStyle) == conflictActionStyleIconsLabels)
+}
+
+func (a *app) conflictActionButtonWithLabels(c *ui.Context, action actionControl, showLabel bool) {
 	if action.run != nil {
 		run := action.run
 		action.run = func() {
@@ -147,25 +151,112 @@ func (a *app) conflictActionButton(c *ui.Context, action actionControl) {
 	renderActionControl(c, action, showLabel)
 }
 
-// conflictActionToolbar keeps the project's established grouping while
-// allowing groups to wrap. Narrow icons+labels layouts use the project's
-// PopoverMenuButton container instead: every menu item has the same label and
-// disabled reason, and the group button retains a descriptive Tooltip.
-// MyGo v0.9.2's Toolbar overflow is unsuitable because its More menu does not
-// open under ui.NewTester, which would strand exactly the narrow-window tasks.
+// conflictActionToolbar lays out an ordinary hunk-action group. It must not
+// infer the group's room from the window: Changes can place it in either a
+// wide or narrow splitter child. The conflict resolver adds its own measured
+// group layout below, while this shared path retains the established wrap.
 func (a *app) conflictActionToolbar(c *ui.Context, label string, actions []actionControl) {
-	width, _ := c.Size()
-	if width < 800 && normalizeConflictActionStyle(a.settings.ConflictActionStyle) == conflictActionStyleIconsLabels {
-		renderActionControl(c, actionControl{
-			label: label, visibleLabel: "More", description: "Show this action group with labels and unavailable reasons", icon: moreIcon, menu: actions,
-		}, true)
-		return
-	}
 	ui.Row(c).MinWidth(0).MaxWidthPercent(100).AlignItems(ui.Center).Gap(6).Wrap().Label(tr(label)).Children(func() {
 		for _, action := range actions {
 			a.conflictActionButton(c, action)
 		}
 	})
+}
+
+// conflictCompactActionGroup is one indivisible unit in the measured narrow
+// conflict toolbar. The group button keeps Hunk / View / Apply visible while
+// its Popover supplies the same labels and unavailable reasons as the full
+// controls. Frequently used Apply choices remain direct icon buttons beside
+// it; the user's label preference therefore never removes their tooltips.
+func (a *app) conflictCompactActionGroup(c *ui.Context, label string, icon *ui.SVG,
+	menu, direct []actionControl, showGroupLabel bool,
+) {
+	ui.Row(c).MinWidth(0).AlignItems(ui.Center).Gap(6).Label(tr(label) + " group").Children(func() {
+		if len(menu) > 0 {
+			renderActionControl(c, actionControl{
+				label: label, visibleLabel: label, icon: icon,
+				description: "Show this action group with labels and unavailable reasons", menu: menu,
+			}, showGroupLabel)
+		} else if showGroupLabel {
+			ui.Text(c, tr(label)).SingleLine()
+		}
+		for _, action := range direct {
+			a.conflictActionButtonWithLabels(c, action, false)
+		}
+	})
+}
+
+// conflictToolbarLayoutState schedules a frame after the parent splitter has
+// committed a new size. Element.Bounds is deliberately the previous frame's
+// geometry, so the measurements themselves choose the layout; window and
+// splitter values only detect when another measurement is needed.
+type conflictToolbarLayoutState struct {
+	ready                       bool
+	paneWidth, windowWidth      float32
+	fileWidth, navWidth         float32
+	fileCollapsed, navCollapsed bool
+}
+
+const (
+	conflictCompactPaneWidth = float32(600)
+	conflictTinyPaneWidth    = float32(240)
+)
+
+func (a *app) measuredActionGroupWidth(c *ui.Context, row ui.Element) float32 {
+	paneWidth := row.Bounds().W
+	windowWidth, _ := c.Size()
+	state := ui.Local(row, conflictToolbarLayoutState{}, func() conflictToolbarLayoutState { return conflictToolbarLayoutState{} })
+	measurementChanged := !state.ready || state.paneWidth != paneWidth ||
+		state.windowWidth != windowWidth || state.fileWidth != a.filePaneWidth ||
+		state.navWidth != a.navPaneWidth || state.fileCollapsed != a.filePaneCollapsed ||
+		state.navCollapsed != a.navPaneCollapsed
+	if measurementChanged {
+		// A bounded, changed-only redraw is what makes resize and splitter input
+		// settle immediately instead of leaving the previous mode on screen.
+		c.Invalidate()
+		state.ready = true
+		state.paneWidth = paneWidth
+		state.windowWidth = windowWidth
+		state.fileWidth = a.filePaneWidth
+		state.navWidth = a.navPaneWidth
+		state.fileCollapsed = a.filePaneCollapsed
+		state.navCollapsed = a.navPaneCollapsed
+	}
+	return paneWidth
+}
+
+func (a *app) conflictToolbarRow(c *ui.Context) (ui.Element, bool, bool) {
+	row := ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(10).Wrap().Label(tr("Conflict toolbar"))
+	paneWidth := a.measuredActionGroupWidth(c, row)
+	compact := paneWidth <= 0 || paneWidth < conflictCompactPaneWidth
+	tiny := paneWidth <= 0 || paneWidth < conflictTinyPaneWidth
+	if compact {
+		row.Gap(6)
+	}
+	return row, compact, tiny
+}
+
+// conflictCompactApplyGroup keeps the two common side choices directly
+// reachable and overflows the remaining mutations. If a whole-file conflict
+// has only those two actions, its group menu repeats them rather than leaving
+// an inert Apply label beside an unexplained pair of icons.
+func (a *app) conflictCompactApplyGroup(c *ui.Context, actions []actionControl, tiny bool) {
+	if tiny {
+		a.conflictCompactActionGroup(c, "Apply", applyFileIcon, actions, nil, false)
+		return
+	}
+	var direct, overflow []actionControl
+	for _, action := range actions {
+		if action.label == "Use current" || action.label == "Use incoming" {
+			direct = append(direct, action)
+		} else {
+			overflow = append(overflow, action)
+		}
+	}
+	if len(overflow) == 0 {
+		overflow = actions
+	}
+	a.conflictCompactActionGroup(c, "Apply", applyFileIcon, overflow, direct, true)
 }
 
 // conflictMutationReason applies to Result mutations, not to immutable stage
