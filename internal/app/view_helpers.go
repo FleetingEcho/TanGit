@@ -632,6 +632,7 @@ func (a *app) anyFormOpen() bool {
 		a.showCommitTagForm ||
 		a.showCommitBranchForm ||
 		a.showCommitRewordForm ||
+		a.rebasePlanEditorOpen ||
 		a.showRenameRecent ||
 		(a.homeWorktrees.open && !a.homeWorktrees.dropdown) ||
 		a.sshProfileFormOpen ||

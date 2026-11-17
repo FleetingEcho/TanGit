@@ -62,6 +62,13 @@ type OperationState struct {
 	Step        int
 	Done        int
 	Total       int
+	// Steps is Git's actual rebase plan: completed/current entries from done
+	// followed by pending entries from git-rebase-todo. It is empty for
+	// non-interactive backends and for operation types which have no todo.
+	Steps []OperationStep
+	// StepsError keeps plan corruption visible without making the underlying
+	// operation (and especially Abort) unreadable.
+	StepsError  string
 	Actions     []OperationAction
 	Fingerprint string
 }
@@ -327,6 +334,7 @@ func (s *gitSession) OperationState(ctx context.Context) (OperationState, error)
 		}
 	case OperationTypeRebase:
 		directory := "rebase-merge"
+		var doneText, todoText string
 		if _, statErr := s.fileService().Stat(s.joinPath(s.git.RepoPaths.WorktreeGitDirPath(), directory)); os.IsNotExist(statErr) {
 			directory = "rebase-apply"
 		} else if statErr != nil {
@@ -357,10 +365,10 @@ func (s *gitSession) OperationState(ctx context.Context) (OperationState, error)
 				state.StoppedSHA, err = readOptional(directory, "stopped-sha")
 			}
 			if err == nil {
-				_, err = readOptional(directory, "done")
+				doneText, err = readOptional(directory, "done")
 			}
 			if err == nil {
-				_, err = readOptional(directory, "git-rebase-todo")
+				todoText, err = readOptional(directory, "git-rebase-todo")
 			}
 		} else {
 			messageNumber, err = readRequired(directory, "next")
@@ -385,6 +393,13 @@ func (s *gitSession) OperationState(ctx context.Context) (OperationState, error)
 			state.IncomingSHA, err = readOptional("CHERRY_PICK_HEAD")
 			if err != nil {
 				break
+			}
+		}
+		if directory == "rebase-merge" {
+			steps, stepsErr := s.rebaseOperationSteps(doneText, todoText)
+			state.Steps = steps
+			if stepsErr != nil {
+				state.StepsError = stepsErr.Error()
 			}
 		}
 	}

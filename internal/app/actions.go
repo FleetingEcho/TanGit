@@ -279,6 +279,7 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 // repository that was open before, so a new one starts with its own choices.
 func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 	a.shutdownLocalTransfers()
+	a.resetRebaseWorkspace()
 	// The first frame of the Changes section chooses its first file and
 	// reads its diff, so nothing here reads the old repository's rows.
 	a.changeRows = nil
