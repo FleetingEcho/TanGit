@@ -398,10 +398,12 @@ func paintTreeDepthGuides(p *ui.Painter, item fileTreeRow, theme *ui.Theme, sele
 	color := treeGuideColor(theme, selected)
 	for _, guide := range treeIndentSegments(item.depth) {
 		line := guide.vertical
-		var path ui.Path
-		path.MoveTo(r.X+line.X1, r.Y+line.Y1).
-			LineTo(r.X+line.X2, r.Y+line.Y2)
-		p.StrokePath(&path, 1, color)
+		p.Fill(ui.Rect{
+			X: r.X + line.X1,
+			Y: r.Y + line.Y1,
+			W: 1,
+			H: line.Y2 - line.Y1,
+		}, color, 0)
 	}
 }
 
