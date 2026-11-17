@@ -108,9 +108,6 @@ func (a *app) graphView(c *ui.Context) {
 						a.commitRowMenu(m, commit, services)
 					})
 				})
-				if a.commitList.AtEnd() {
-					a.requestMoreCommits()
-				}
 				a.commitListFooter(c)
 			})
 		}, func() {
