@@ -1,0 +1,10 @@
+go test fuzz v1
+int(2)
+string("000102030405060708090a0b0c0d0e0f")
+string("../outside")
+string("00")
+string("ready")
+string("index-restored")
+int64(-1)
+string("00")
+bool(false)
