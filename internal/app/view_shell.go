@@ -252,7 +252,9 @@ func (a *app) welcomeView(c *ui.Context) {
 			a.pickerHeaderView(c)
 			// The launcher starts near the top of what the header leaves, so
 			// the page does not open with a large empty band above it. The
-			// history follows in the same scroll view when it outgrows the window.
+			// history scrolls in a bordered view of its own below it; this
+			// scroll view takes the whole page together only on a window too
+			// short for it.
 			ui.Scroll(c).Fill().Children(func() {
 				ui.Column(c).FillWidth().MinHeight(page).
 					AlignItems(ui.Center).Justify(ui.Start).
@@ -295,6 +297,18 @@ const (
 	pickerPadBottom    float32 = 44
 	pickerContentWidth float32 = 1000
 )
+
+// recentMaxRows is how many rows of cards the home page shows at once:
+// more of them scroll inside the cards' own bordered view instead of
+// growing the page.
+const recentMaxRows = 3
+
+// recentRowHeight is the height ui.GridView gives each row of cards.
+const recentRowHeight float32 = 118
+
+// recentCardMargin spaces the cards from each other and from the border
+// of their view, at least 6 DIPs.
+const recentCardMargin float32 = 6
 
 // pickerHeaderView is the picker's own bar: the app's name on the left, the
 // three app-wide controls on the right. The window's title bar already names
@@ -555,9 +569,19 @@ func (a *app) recentSectionView(c *ui.Context) {
 				})
 				return
 			}
-			ui.GridView(c, &a.recentGrid, len(a.visibleRecent), 400, 118, func(i int) {
-				a.recentCardView(c, a.visibleRecent[i], services)
-			}).FillWidth()
+			// The cards scroll in a bordered view of their own, which
+			// shows at most recentMaxRows rows of them and no more: extra
+			// cards scroll inside it instead of growing the page. The
+			// margin around and between the cards is at least
+			// recentCardMargin.
+			ui.Box(c).FillWidth().Padding(recentCardMargin).
+				MaxHeight(recentMaxRows*recentRowHeight + (recentMaxRows-1)*recentCardMargin + 2*recentCardMargin).
+				Background(theme.Surface.Alpha(0.35)).Border(1, theme.Border).
+				Radius(theme.Radius + 6).Clip().Children(func() {
+				ui.GridView(c, &a.recentGrid, len(a.visibleRecent), 400, recentRowHeight, func(i int) {
+					a.recentCardView(c, a.visibleRecent[i], services)
+				}).Fill().Gap(recentCardMargin)
+			})
 		})
 }
 
