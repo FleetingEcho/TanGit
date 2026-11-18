@@ -283,6 +283,25 @@ func (a *app) visibleKeyBindingGroups() []keyBindingGroup {
 		}
 		if i < 2 || (a.state != stateReady && group.title == "Home") ||
 			(a.state == stateReady && (group.title == "Workspace" || group.title == active)) {
+			if group.title == "Everywhere" && a.inlineConflictResultActive() {
+				bindings := group.bindings[:0]
+				for _, binding := range group.bindings {
+					switch binding.keys {
+					case "Ctrl+Shift+Z", "p", "P", "z", "Z":
+						// Result owns its text/hunk history here; Git Operation Redo
+						// and the lower-case Git actions are not registered.
+						continue
+					case "Ctrl+Z":
+						binding.label = "Undo unsaved Result text, or the last hunk resolution when Result has no unsaved edits"
+					}
+					bindings = append(bindings, binding)
+				}
+				group.bindings = bindings
+			}
+			if group.title == "Changes" {
+				group.bindings = a.contextualChangesBindings(group.bindings)
+				group.bindings = append(group.bindings, a.changesActionHelp()...)
+			}
 			if group.title == "Diff review" {
 				custom := a.customPatchActive()
 				group.bindings = nil
@@ -340,6 +359,50 @@ func (a *app) keybindingsBody(c *ui.Context) {
 	})
 }
 
+func (a *app) inlineConflictResultActive() bool {
+	return a.state == stateReady && a.workspaceTab == sectionChanges && a.conflictSides == nil &&
+		a.conflictState != nil && a.conflictStageTab == 3
+}
+
+// contextualChangesBindings lists only shortcuts registered by the active
+// editor scope. Ordinary Changes commands do not leak into Result's modified
+// conflict shortcuts, and ordinary files do not advertise unavailable Alt+1…4.
+func (a *app) contextualChangesBindings(bindings []keyBinding) []keyBinding {
+	conflictKeys := map[string]bool{
+		"F7 / Shift+F7": true, "Alt+1 / Alt+2": true, "Alt+3 / Alt+4": true, "Alt+Z": true,
+	}
+	active := a.inlineConflictResultActive()
+	kept := make([]keyBinding, 0, len(bindings))
+	for _, binding := range bindings {
+		if conflictKeys[binding.keys] == active {
+			kept = append(kept, binding)
+		}
+	}
+	return kept
+}
+
+// changesActionHelp explains action scope without inventing keyboard
+// shortcuts. Empty keys render as explanatory rows, not as key chips.
+func (a *app) changesActionHelp() []keyBinding {
+	if a.conflictSides != nil {
+		return []keyBinding{
+			{label: "Mark resolved stages the file exactly as it is. Combined conflict diffs cannot use Stage hunk or Discard hunk; resolve the conflict or choose a whole-file action instead."},
+		}
+	}
+	if a.conflictState != nil {
+		return []keyBinding{
+			{label: "Undo resolution restores Result to before the last hunk pick. It does not change the index or Git operation history; Undo can also reverse Restore initial conflict."},
+			{label: "Restore initial conflict resets Result to the conflict first opened, including markers removed by earlier picks. It does not reset a branch, index, or commit."},
+			{label: "Mark resolved stages the file exactly as it is. Combined conflict diffs cannot use Stage hunk or Discard hunk; resolve the conflict or choose a whole-file action instead."},
+			{label: "Conflict Assistant runs only after an explicit request. It previews suggestions on a clone; Accept writes Result only with V2 recovery and never stages, continues, or commits."},
+		}
+	}
+	return []keyBinding{
+		{label: "Stage hunk applies only the current hunk to the index. Unstage hunk reverses only that index hunk and leaves its content in the working tree."},
+		{label: "Discard hunk asks for confirmation, removes only the current working-tree hunk, leaves the index untouched, and keeps a recovery copy for 7 days in Saved work."},
+	}
+}
+
 func matchingKeyBindings(group keyBindingGroup, filter string) []keyBinding {
 	if filter == "" {
 		return group.bindings
@@ -358,6 +421,11 @@ func matchingKeyBindings(group keyBindingGroup, filter string) []keyBinding {
 func (a *app) keyBindingRow(c *ui.Context, binding keyBinding) {
 	theme := c.Theme()
 	ui.Row(c).AlignItems(ui.Center).Gap(12).Padding(4, 6).Children(func() {
+		if binding.keys == "" {
+			ui.Icon(c, questionIcon).FontSize(14).TextColor(theme.Accent)
+			ui.Text(c, tr(binding.label)).TextColor(theme.TextMuted).Grow(1)
+			return
+		}
 		ui.Box(c).Width(150).Padding(3, 8).Radius(theme.Radius-1).
 			Background(theme.Surface).Border(1, theme.Border).Children(func() {
 			ui.Text(c, binding.keys).FontSize(theme.FontSize - 1).
