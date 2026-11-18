@@ -1394,22 +1394,28 @@ func (s *gitSession) Commit(ctx context.Context, summary string, description str
 	if err := s.commitReadiness(amend); err != nil {
 		return err
 	}
+	summaryLabel := "Commit " + strings.TrimSpace(summary)
 	if amend {
-		if err := s.amendHeadWithMessage(summary, description, false); err != nil {
-			return fmt.Errorf("amend commit: %w", err)
+		summaryLabel = "Amend HEAD"
+	}
+	return s.withWorkspaceMutation(ctx, OperationCommit, summaryLabel, true, func() error {
+		if amend {
+			if err := s.amendHeadWithMessage(summary, description, false); err != nil {
+				return fmt.Errorf("amend commit: %w", err)
+			}
+			return nil
+		}
+		// Build the command directly: lazygit's optional SkipHookPrefix must
+		// never turn into --no-verify. Once this command begins it is not cancelled.
+		args := []string{"git", "commit", "-m", summary}
+		if description != "" {
+			args = append(args, "-m", description)
+		}
+		if output, err := s.cmd.New(args).RunWithOutput(); err != nil {
+			return fmt.Errorf("create commit: %w: %s", err, strings.TrimSpace(output))
 		}
 		return nil
-	}
-	// Build the command directly: lazygit's optional SkipHookPrefix must never
-	// turn into --no-verify here. Once this command begins it is not cancelled.
-	args := []string{"git", "commit", "-m", summary}
-	if description != "" {
-		args = append(args, "-m", description)
-	}
-	if output, err := s.cmd.New(args).RunWithOutput(); err != nil {
-		return fmt.Errorf("create commit: %w: %s", err, strings.TrimSpace(output))
-	}
-	return nil
+	})
 }
 
 func (s *gitSession) discardFile(ctx context.Context, file File) error {
@@ -1495,13 +1501,12 @@ func (s *gitSession) DiscardFiles(ctx context.Context, files []File) error {
 }
 
 func (s *gitSession) CheckoutBranch(ctx context.Context, name string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := s.git.Branch.Checkout(name, git_commands.CheckoutOptions{}); err != nil {
-		return fmt.Errorf("checkout branch: %w", err)
-	}
-	return nil
+	return s.withWorkspaceMutation(ctx, OperationCheckout, "Checkout "+name, true, func() error {
+		if err := s.git.Branch.Checkout(name, git_commands.CheckoutOptions{}); err != nil {
+			return fmt.Errorf("checkout branch: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) CreateBranch(ctx context.Context, name string, base string) error {
@@ -1514,10 +1519,12 @@ func (s *gitSession) CreateBranch(ctx context.Context, name string, base string)
 	if base == "" {
 		base = "HEAD"
 	}
-	if err := s.git.Branch.New(name, base); err != nil {
-		return fmt.Errorf("create branch: %w", err)
-	}
-	return nil
+	return s.withWorkspaceMutation(ctx, OperationBranchCreate, "Create "+name+" from "+base, true, func() error {
+		if err := s.git.Branch.New(name, base); err != nil {
+			return fmt.Errorf("create branch: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) DeleteBranch(ctx context.Context, name string, force bool) error {
@@ -1530,7 +1537,11 @@ func (s *gitSession) DeleteBranch(ctx context.Context, name string, force bool) 
 	if err != nil {
 		return fmt.Errorf("delete branch: read its tip: %w", err)
 	}
-	record, err := s.beginOperation(OperationBranchDelete, "Delete branch "+name, UndoRecreateBranch, nil)
+	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Before deleting branch "+name)
+	if err != nil {
+		return err
+	}
+	record, err := s.beginOperation(OperationBranchDelete, "Delete branch "+name, UndoRecreateBranch, &snapshot)
 	if err != nil {
 		return err
 	}
@@ -1545,26 +1556,25 @@ func (s *gitSession) DeleteBranch(ctx context.Context, name string, force bool) 
 }
 
 func (s *gitSession) RenameBranch(ctx context.Context, oldName string, newName string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
 	if strings.TrimSpace(newName) == "" {
 		return fmt.Errorf("branch name is required")
 	}
-	if err := s.git.Branch.Rename(oldName, newName); err != nil {
-		return fmt.Errorf("rename branch: %w", err)
-	}
-	return nil
+	summary := "Rename " + oldName + " to " + newName
+	return s.withWorkspaceMutation(ctx, OperationBranchRename, summary, true, func() error {
+		if err := s.git.Branch.Rename(oldName, newName); err != nil {
+			return fmt.Errorf("rename branch: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) MergeBranch(ctx context.Context, name string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := s.git.Branch.Merge(name, git_commands.MERGE_VARIANT_REGULAR); err != nil {
-		return fmt.Errorf("merge branch: %w", err)
-	}
-	return nil
+	return s.withWorkspaceMutation(ctx, OperationMerge, "Merge "+name, true, func() error {
+		if err := s.git.Branch.Merge(name, git_commands.MERGE_VARIANT_REGULAR); err != nil {
+			return fmt.Errorf("merge branch: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) Fetch(ctx context.Context) error {
@@ -2045,10 +2055,12 @@ func (s *gitSession) ForceCheckoutBranch(ctx context.Context, name string) error
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := s.git.Branch.Checkout(name, git_commands.CheckoutOptions{Force: true}); err != nil {
-		return fmt.Errorf("force checkout branch: %w", err)
-	}
-	return nil
+	return s.withWorkspaceMutation(ctx, OperationCheckout, "Force checkout "+name, true, func() error {
+		if err := s.git.Branch.Checkout(name, git_commands.CheckoutOptions{Force: true}); err != nil {
+			return fmt.Errorf("force checkout branch: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) AddRemote(ctx context.Context, name string, url string) error {
@@ -2126,10 +2138,13 @@ func (s *gitSession) CheckoutRemoteBranch(ctx context.Context, remote string, br
 	if localName == "" {
 		localName = branch
 	}
-	if err := s.git.Branch.New(localName, remote+"/"+branch); err != nil {
-		return fmt.Errorf("checkout remote branch: %w", err)
-	}
-	return nil
+	summary := fmt.Sprintf("Checkout %s/%s as %s", remote, branch, localName)
+	return s.withWorkspaceMutation(ctx, OperationCheckout, summary, true, func() error {
+		if err := s.git.Branch.New(localName, remote+"/"+branch); err != nil {
+			return fmt.Errorf("checkout remote branch: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) DeleteRemoteBranch(ctx context.Context, remote string, branch string) error {
@@ -2155,16 +2170,18 @@ func (s *gitSession) StashChanges(ctx context.Context, message string, includeUn
 	if message == "" {
 		message = "Desktop stash"
 	}
-	var err error
-	if includeUntracked {
-		err = s.git.Stash.StashIncludeUntrackedChanges(message)
-	} else {
-		err = s.git.Stash.Push(message)
-	}
-	if err != nil {
-		return fmt.Errorf("stash changes: %w", err)
-	}
-	return nil
+	return s.withWorkspaceMutation(ctx, OperationStashSave, "Stash "+message, false, func() error {
+		var err error
+		if includeUntracked {
+			err = s.git.Stash.StashIncludeUntrackedChanges(message)
+		} else {
+			err = s.git.Stash.Push(message)
+		}
+		if err != nil {
+			return fmt.Errorf("stash changes: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) StashSelectedFiles(ctx context.Context, message string, files []File, includeUntracked bool) error {
@@ -2200,11 +2217,13 @@ func (s *gitSession) StashSelectedFiles(ctx context.Context, message string, fil
 			}
 		}
 	}
-	output, err := s.cmd.New(args).RunWithOutput()
-	if err != nil {
-		return fmt.Errorf("stash selected files: %w: %s", err, strings.TrimSpace(output))
-	}
-	return nil
+	return s.withWorkspaceMutation(ctx, OperationStashSave, "Stash "+message, false, func() error {
+		output, err := s.cmd.New(args).RunWithOutput()
+		if err != nil {
+			return fmt.Errorf("stash selected files: %w: %s", err, strings.TrimSpace(output))
+		}
+		return nil
+	})
 }
 
 // StashPatch constructs a native stash over HEAD and a temporary index holding
@@ -2223,6 +2242,12 @@ func (s *gitSession) StashPatch(ctx context.Context, message, patchText, removal
 	if message == "" {
 		message = "Desktop selected-line stash"
 	}
+	return s.withWorkspaceMutation(ctx, OperationStashSave, "Stash "+message, false, func() error {
+		return s.performStashPatch(ctx, message, patchText, removalPatch)
+	})
+}
+
+func (s *gitSession) performStashPatch(ctx context.Context, message, patchText, removalPatch string) error {
 	base, err := s.gitText("rev-parse", "--verify", "HEAD")
 	if err != nil {
 		return fmt.Errorf("stash selected lines: HEAD is required")
@@ -2285,26 +2310,32 @@ func (s *gitSession) StashStagedChanges(ctx context.Context, message string) err
 	if message == "" {
 		message = "Desktop stash"
 	}
-	if err := s.saveStagedChanges(message); err != nil {
-		return fmt.Errorf("stash staged changes: %w", err)
-	}
-	return nil
+	return s.withWorkspaceMutation(ctx, OperationStashSave, "Stash "+message, false, func() error {
+		if err := s.saveStagedChanges(message); err != nil {
+			return fmt.Errorf("stash staged changes: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) ApplyStash(ctx context.Context, index int, pop bool) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	var err error
+	action := "Apply"
 	if pop {
-		err = s.git.Stash.Pop(index)
-	} else {
-		err = s.git.Stash.Apply(index)
+		action = "Pop"
 	}
-	if err != nil {
-		return fmt.Errorf("apply stash: %w", err)
-	}
-	return nil
+	summary := fmt.Sprintf("%s stash@{%d}", action, index)
+	return s.withWorkspaceMutation(ctx, OperationStashApply, summary, false, func() error {
+		var err error
+		if pop {
+			err = s.git.Stash.Pop(index)
+		} else {
+			err = s.git.Stash.Apply(index)
+		}
+		if err != nil {
+			return fmt.Errorf("apply stash: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) RenameStash(ctx context.Context, index int, message string) error {
@@ -2314,10 +2345,12 @@ func (s *gitSession) RenameStash(ctx context.Context, index int, message string)
 	if strings.TrimSpace(message) == "" {
 		return fmt.Errorf("stash name is required")
 	}
-	if err := s.git.Stash.Rename(index, message); err != nil {
-		return fmt.Errorf("rename stash: %w", err)
-	}
-	return nil
+	return s.withWorkspaceMutation(ctx, OperationStashRewrite, fmt.Sprintf("Rename stash@{%d}", index), false, func() error {
+		if err := s.git.Stash.Rename(index, message); err != nil {
+			return fmt.Errorf("rename stash: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) DropStash(ctx context.Context, index int) error {
@@ -2332,7 +2365,11 @@ func (s *gitSession) DropStash(ctx context.Context, index int) error {
 		return fmt.Errorf("drop stash: read its commit: %w", err)
 	}
 	message, _ := s.gitText("log", "-1", "--format=%s", ref)
-	record, err := s.beginOperation(OperationStashDrop, "Drop stash "+strings.TrimSpace(message), UndoRestoreStash, nil)
+	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, fmt.Sprintf("Before dropping stash@{%d}", index))
+	if err != nil {
+		return err
+	}
+	record, err := s.beginOperation(OperationStashDrop, "Drop stash "+strings.TrimSpace(message), UndoRestoreWork, &snapshot)
 	if err != nil {
 		return err
 	}
@@ -2572,24 +2609,26 @@ func (s *gitSession) RestoreCommitFile(ctx context.Context, commit Commit, file 
 	if strings.TrimSpace(commit.Hash) == "" {
 		return fmt.Errorf("restore commit file: no commit chosen")
 	}
-	for _, name := range stashFileNames(file) {
-		_, _, present, err := s.treeEntry(commit.Hash+"^{tree}", name)
-		if err != nil {
-			return fmt.Errorf("restore commit file: %w", err)
-		}
-		if present {
-			if err := s.cmd.New([]string{
-				"git", "restore", "--source", commit.Hash, "--worktree", "--", name,
-			}).Run(); err != nil {
+	return s.withWorkspaceMutation(ctx, OperationFileRestore, "Restore file "+file.Path, false, func() error {
+		for _, name := range stashFileNames(file) {
+			_, _, present, err := s.treeEntry(commit.Hash+"^{tree}", name)
+			if err != nil {
 				return fmt.Errorf("restore commit file: %w", err)
 			}
-			continue
+			if present {
+				if err := s.cmd.New([]string{
+					"git", "restore", "--source", commit.Hash, "--worktree", "--", name,
+				}).Run(); err != nil {
+					return fmt.Errorf("restore commit file: %w", err)
+				}
+				continue
+			}
+			if err := s.dropWorktreeFile(name); err != nil {
+				return fmt.Errorf("restore commit file: %w", err)
+			}
 		}
-		if err := s.dropWorktreeFile(name); err != nil {
-			return fmt.Errorf("restore commit file: %w", err)
-		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // ApplyStashFile writes one saved file's version into the working tree and
@@ -2598,6 +2637,12 @@ func (s *gitSession) ApplyStashFile(ctx context.Context, index int, file CommitF
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	return s.withWorkspaceMutation(ctx, OperationStashApply, fmt.Sprintf("Apply file from stash@{%d}", index), false, func() error {
+		return s.performStashFileApply(index, file)
+	})
+}
+
+func (s *gitSession) performStashFileApply(index int, file CommitFile) error {
 	ref := fmt.Sprintf("refs/stash@{%d}", index)
 	// A saved version sits in the work commit's tree; a file that was
 	// untracked when saved rides in a small commit beside it, so look
@@ -2665,6 +2710,13 @@ func (s *gitSession) DiscardStashFile(ctx context.Context, index int, file Commi
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	summary := fmt.Sprintf("Discard file %s from stash@{%d}", name, index)
+	return s.withWorkspaceMutation(ctx, OperationStashRewrite, summary, false, func() error {
+		return s.performDiscardStashFile(index, file, name)
+	})
+}
+
+func (s *gitSession) performDiscardStashFile(index int, file CommitFile, name string) error {
 	ref := fmt.Sprintf("refs/stash@{%d}", index)
 	names := stashFileNames(file)
 
@@ -2817,14 +2869,9 @@ func (s *gitSession) CherryPickCommit(ctx context.Context, commit Commit) error 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	// Cherry-pick only needs the hash and whether the commit is a merge, so
-	// the model is built from the commit the app holds. Reading it back from
-	// a bounded recent list would fail for a commit deeper than that page.
-	model := models.NewCommit(&utils.StringPool{}, models.NewCommitOpts{
-		Hash:    commit.Hash,
-		Parents: append([]string(nil), commit.Parents...),
-	})
-	if err := s.git.Rebase.CherryPickCommits([]*models.Commit{model}); err != nil {
+	// Keep the exact model/hash from the visible commit. Bounded recent-history
+	// lists must not be needed to undo or cherry-pick an older visible entry.
+	if err := s.CherryPickCommits(ctx, []Commit{commit}); err != nil {
 		return fmt.Errorf("cherry-pick commit: %w", err)
 	}
 	return nil
@@ -2834,10 +2881,12 @@ func (s *gitSession) RevertCommit(ctx context.Context, commit Commit) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := s.git.Commit.Revert([]string{commit.Hash}, len(commit.Parents) > 1); err != nil {
-		return fmt.Errorf("revert commit: %w", err)
-	}
-	return nil
+	return s.withWorkspaceMutation(ctx, OperationRevert, "Revert "+commit.ShortHash, true, func() error {
+		if err := s.git.Commit.Revert([]string{commit.Hash}, len(commit.Parents) > 1); err != nil {
+			return fmt.Errorf("revert commit: %w", err)
+		}
+		return nil
+	})
 }
 
 // ResetToCommit moves HEAD to commit. Soft keeps the difference staged, mixed
@@ -2928,13 +2977,12 @@ func (s *gitSession) resetToCommit(ctx context.Context, commit Commit, mode Rese
 
 // CheckoutCommit checks out commit without moving or creating a branch.
 func (s *gitSession) CheckoutCommit(ctx context.Context, commit Commit) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := s.cmd.New([]string{"git", "checkout", "--detach", commit.Hash}).Run(); err != nil {
-		return fmt.Errorf("checkout commit %s: %w", commit.ShortHash, err)
-	}
-	return nil
+	return s.withWorkspaceMutation(ctx, OperationCheckout, "Checkout "+commit.ShortHash, true, func() error {
+		if err := s.cmd.New([]string{"git", "checkout", "--detach", commit.Hash}).Run(); err != nil {
+			return fmt.Errorf("checkout commit %s: %w", commit.ShortHash, err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) ConflictStages(ctx context.Context, file File) (ConflictStages, error) {

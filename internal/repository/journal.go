@@ -49,9 +49,9 @@ type OperationRecord struct {
 	Kind    string `json:"kind"`
 	Summary string `json:"summary"`
 	Status  string `json:"status"`
-	// Partial marks a failed multi-file discard after at least one file was
-	// completely discarded. Its recorded final state and snapshot still support
-	// the same revalidated Undo as a successful discard.
+	// Partial marks a changed workspace after a failed or conflict-stopped
+	// action. Exact before and after recovery points support a revalidated
+	// Undo without assuming that a non-zero Git exit means that nothing ran.
 	Partial              bool              `json:"partial,omitempty"`
 	CreatedAt            int64             `json:"created_at"`
 	FinishedAt           int64             `json:"finished_at,omitempty"`
@@ -355,14 +355,19 @@ func (s *gitSession) completeJournalOperation(record OperationRecord, actionErr 
 		}
 	}
 	var stashErr error
-	if actionErr == nil && record.UndoKind == UndoRestoreStash {
+	if stashStateTrackedOperation(record.Kind) {
 		record.StashAfter, stashErr = s.stashOperationState()
 	}
 	record.FinishedAt = time.Now().Unix()
 	record.Status = OperationSucceeded
+	if actionErr != nil && record.WorkspaceGuardBefore != "" {
+		if record.Snapshot != nil && record.AfterSnapshot != nil {
+			record.Partial = record.GitStateAfter != record.GitStateBefore || record.WorkspaceGuardAfter != record.WorkspaceGuardBefore
+		}
+	}
 	if actionErr != nil {
-		record.Status = OperationFailed
 		record.Error = RedactSecrets(actionErr.Error())
+		record.Status = OperationFailed
 		if !record.Partial {
 			record.UndoKind = ""
 		}
@@ -469,7 +474,7 @@ func (s *gitSession) requireUnchangedOperation(record OperationRecord) error {
 	if record.Worktree != s.git.RepoPaths.WorktreePath() {
 		return fmt.Errorf("operation belongs to a different worktree")
 	}
-	if state := s.workingTreeState(); state.Any() {
+	if state := s.workingTreeState(); state.Any() && (record.WorkspaceGuardAfter == "" || record.GitStateAfter == "" || record.AfterSnapshot == nil) {
 		return fmt.Errorf("cannot undo while %s is in progress", state.Effective().CommandName())
 	}
 	branch, head, err := s.currentOperationIdentity()
@@ -491,6 +496,15 @@ func (s *gitSession) requireUnchangedOperation(record OperationRecord) error {
 	if state != record.AfterState {
 		return fmt.Errorf("the worktree changed after this operation; preserve the newer work instead of undoing")
 	}
+	if stashStateTrackedOperation(record.Kind) {
+		stashState, err := s.stashOperationState()
+		if err != nil {
+			return err
+		}
+		if stashState != record.StashAfter {
+			return fmt.Errorf("the stash list changed after this operation; preserve the newer stash state instead of undoing")
+		}
+	}
 	scope, enabled, guardErr := storedWorkspaceScope(s, record.Snapshot)
 	if guardErr != nil {
 		return guardErr
@@ -511,15 +525,6 @@ func (s *gitSession) requireUnchangedOperation(record OperationRecord) error {
 		}
 		if current.GitStateGuard != record.GitStateAfter || current.WorkspaceGuard != record.WorkspaceGuardAfter {
 			return fmt.Errorf("the worktree changed after this operation; preserve the newer work and Git metadata instead of undoing")
-		}
-	}
-	if record.UndoKind == UndoRestoreStash {
-		stashState, err := s.stashOperationState()
-		if err != nil {
-			return err
-		}
-		if stashState != record.StashAfter {
-			return fmt.Errorf("the stash list changed after this operation; preserve the newer stash state instead of undoing")
 		}
 	}
 	if err := s.validateJournalSnapshot(record.Snapshot); err != nil {
@@ -617,7 +622,19 @@ func (s *gitSession) restoreSnapshotUntracked(snapshot WorkSnapshot) error {
 // restoreResetWorkSnapshot restores tracked index/worktree state separately
 // from the pure-untracked parent. Reset can overwrite or remove an untracked
 // file when the target tracks the same path, so that parent is still required.
-func (s *gitSession) restoreResetWorkSnapshot(ctx context.Context, snapshot WorkSnapshot) error {
+func (s *gitSession) restoreResetWorkSnapshot(ctx context.Context, snapshot WorkSnapshot, expectedAfter ...*WorkSnapshot) error {
+	if len(expectedAfter) > 1 {
+		return fmt.Errorf("reset recovery has multiple reviewed post states")
+	}
+	if len(expectedAfter) == 1 {
+		handled, err := s.restoreCompleteWorkspaceSnapshot(ctx, snapshot, expectedAfter[0])
+		if handled || err != nil {
+			return err
+		}
+	}
+	// Legacy snapshots retain the stash-aware path. The public RestoreWorkSnapshot
+	// overlap guard must not reject pre-existing untracked work which was part
+	// of the exact after-state already checked by the journal CAS.
 	if err := s.reconcileWorkspacePaths(snapshot.Hash); err != nil {
 		return err
 	}
@@ -625,7 +642,7 @@ func (s *gitSession) restoreResetWorkSnapshot(ctx context.Context, snapshot Work
 	if err != nil {
 		return err
 	}
-	if err := s.RestoreWorkSnapshot(ctx, tracked); err != nil {
+	if err := s.applyWorkSnapshot(tracked); err != nil {
 		return err
 	}
 	if err := s.restoreSnapshotUntracked(snapshot); err != nil {
@@ -640,7 +657,21 @@ func (s *gitSession) restoreResetWorkSnapshot(ctx context.Context, snapshot Work
 // restoreJournalWorkSnapshot undoes discard after its exact after-state has
 // matched. Tracked state uses stash's index-aware apply; surviving untracked
 // files are then overwritten only where the saved tree has a version.
-func (s *gitSession) restoreJournalWorkSnapshot(snapshot WorkSnapshot) error {
+func (s *gitSession) restoreJournalWorkSnapshot(snapshot WorkSnapshot, expectedAfter ...*WorkSnapshot) error {
+	return s.restoreJournalWorkSnapshotContext(context.Background(), snapshot, expectedAfter...)
+}
+
+func (s *gitSession) restoreJournalWorkSnapshotContext(ctx context.Context, snapshot WorkSnapshot, expectedAfter ...*WorkSnapshot) error {
+	if len(expectedAfter) > 1 {
+		return fmt.Errorf("workspace recovery has multiple reviewed post states")
+	}
+	if len(expectedAfter) == 1 {
+		handled, err := s.restoreCompleteWorkspaceSnapshot(ctx, snapshot, expectedAfter[0])
+		if handled || err != nil {
+			return err
+		}
+	}
+	// Legacy snapshots retain the stash-aware apply and untracked parent path.
 	if err := s.reconcileWorkspacePaths(snapshot.Hash); err != nil {
 		return err
 	}
@@ -723,7 +754,7 @@ func (s *gitSession) UndoOperation(ctx context.Context, id string) error {
 		// against this operation's final state. Unselected pre-existing changes
 		// therefore are not newer conflicts: they are part of the exact state
 		// being replaced by the saved snapshot.
-		if err := s.restoreJournalWorkSnapshot(*record.Snapshot); err != nil {
+		if err := s.restoreJournalWorkSnapshotContext(ctx, *record.Snapshot, record.AfterSnapshot); err != nil {
 			return s.failJournalOperation(record, err)
 		}
 	case UndoResetHead:
@@ -733,12 +764,23 @@ func (s *gitSession) UndoOperation(ctx context.Context, id string) error {
 		if _, err := s.gitText("rev-parse", "--verify", record.RefName); record.RefName == "" || err != nil {
 			return fmt.Errorf("undo operation: the previous HEAD is no longer pinned")
 		}
-		if err := s.git.Commit.ResetToCommit(record.HeadBefore, string(ResetHard), nil); err != nil {
-			return fmt.Errorf("restore previous HEAD: %w", err)
-		}
-		if record.Snapshot != nil {
-			if err := s.restoreResetWorkSnapshot(ctx, *record.Snapshot); err != nil {
-				return fmt.Errorf("HEAD was restored, but saved work still needs recovery: %w", err)
+		if record.WorkspaceGuardBefore != "" && record.Snapshot != nil {
+			// New checkpoints already contain the raw target tree, index,
+			// operation metadata and local refs. Restore them without a hard reset.
+			if err := s.restoreResetWorkSnapshot(ctx, *record.Snapshot, record.AfterSnapshot); err != nil {
+				return s.failJournalOperation(record, fmt.Errorf("HEAD was restored, but saved work still needs recovery: %w", err))
+			}
+			if err := s.restoreOperationHead(record); err != nil {
+				return s.failJournalOperation(record, err)
+			}
+		} else {
+			if err := s.git.Commit.ResetToCommit(record.HeadBefore, string(ResetHard), nil); err != nil {
+				return fmt.Errorf("restore previous HEAD: %w", err)
+			}
+			if record.Snapshot != nil {
+				if err := s.restoreResetWorkSnapshot(ctx, *record.Snapshot); err != nil {
+					return fmt.Errorf("HEAD was restored, but saved work still needs recovery: %w", err)
+				}
 			}
 		}
 	case UndoRecreateBranch:
@@ -748,7 +790,11 @@ func (s *gitSession) UndoOperation(ctx context.Context, id string) error {
 		if err := s.cmd.New([]string{"git", "show-ref", "--verify", "--quiet", "refs/heads/" + record.Branch}).Run(); err == nil {
 			return fmt.Errorf("branch %s already exists; it will not be replaced", record.Branch)
 		}
-		if err := s.git.Branch.New(record.Branch, record.RefName); err != nil {
+		if record.WorkspaceGuardBefore != "" && record.Snapshot != nil {
+			if _, err := s.restoreCompleteWorkspaceSnapshot(ctx, *record.Snapshot, record.AfterSnapshot); err != nil {
+				return s.failJournalOperation(record, err)
+			}
+		} else if err := s.git.Branch.New(record.Branch, record.RefName); err != nil {
 			return fmt.Errorf("recreate branch: %w", err)
 		}
 	case UndoRestoreStash:
@@ -774,6 +820,9 @@ func (s *gitSession) UndoOperation(ctx context.Context, id string) error {
 		}
 	default:
 		return fmt.Errorf("undo operation: unsupported recovery plan")
+	}
+	if err := s.verifyWorkspaceUndo(record); err != nil {
+		return err
 	}
 	return s.markOperationUndone(record)
 }
@@ -823,28 +872,17 @@ func (s *gitSession) finalizeActiveOperationJournal(ctx context.Context, finishe
 		record.RebasePaused = false
 		switch action {
 		case "continue", "skip":
-			branch, head, identityErr := s.currentOperationIdentity()
+			branch, _, identityErr := s.currentOperationIdentity()
 			if identityErr != nil {
 				return fmt.Errorf("finish operation recovery: %w", identityErr)
 			}
 			if record.Branch != "" && branch != record.Branch {
 				return fmt.Errorf("operation finished on %s instead of the original branch %s", branch, record.Branch)
 			}
-			var afterState string
-			var stateErr error
-			if record.UndoKind == UndoResetHead {
-				afterState, stateErr = s.resetRepositoryState(record.HeadBefore, head)
-			} else {
-				afterState, stateErr = s.patchRepositoryState()
-			}
-			if stateErr != nil {
-				return fmt.Errorf("finish operation recovery: %w", stateErr)
-			}
-			record.BranchAfter, record.HeadAfter = branch, head
-			record.AfterState = afterState
-			record.Status = OperationSucceeded
 			record.Error = ""
-			record.FinishedAt = time.Now().Unix()
+			// Completion is no longer the paused state. Refresh the durable
+			// post snapshot and both guard fingerprints before offering Undo.
+			return s.completeJournalOperation(record, nil)
 		case "abort":
 			record.Status = OperationInterrupted
 			record.Message = fmt.Sprintf("The active %s was aborted.", active)

@@ -77,6 +77,9 @@ func (s *gitSession) captureWorkSnapshotWithIgnored(ctx context.Context, kind, n
 	if err := ctx.Err(); err != nil {
 		return WorkSnapshot{}, err
 	}
+	if err := s.checkWorkspaceIndexLock(); err != nil {
+		return WorkSnapshot{}, err
+	}
 	listing, err := s.recoveryUntrackedListing(ignored)
 	if err != nil {
 		return WorkSnapshot{}, err
