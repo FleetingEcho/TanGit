@@ -303,12 +303,18 @@ const (
 // growing the page.
 const recentMaxRows = 3
 
-// recentRowHeight is the height ui.GridView gives each row of cards.
+// recentRowHeight is the fixed height of each row of cards.
 const recentRowHeight float32 = 118
+
+// recentCardMinWidth determines when another column fits in the card grid.
+const recentCardMinWidth float32 = 400
 
 // recentCardMargin spaces the cards from each other and from the border
 // of their view, at least 6 DIPs.
 const recentCardMargin float32 = 6
+
+// recentSectionBorderWidth is the stroke around the cards' scrolling view.
+const recentSectionBorderWidth float32 = 1
 
 // pickerHeaderView is the picker's own bar: the app's name on the left, the
 // three app-wide controls on the right. The window's title bar already names
@@ -528,6 +534,13 @@ func (a *app) initPromptView(c *ui.Context) {
 	})
 }
 
+// recentColumnCount mirrors the page's width constraints while keeping each
+// card at least recentCardMinWidth wide.
+func recentColumnCount(windowWidth float32) int {
+	available := max(min(windowWidth-2*pickerPadSide, pickerContentWidth)-2*(recentCardMargin+recentSectionBorderWidth), 0)
+	return max(1, int((available+recentCardMargin)/(recentCardMinWidth+recentCardMargin)))
+}
+
 // recentSectionView is the active Home tab's searchable Git or plain-folder
 // history. Its filtered grid carries original indices through to every card.
 func (a *app) recentSectionView(c *ui.Context) {
@@ -575,12 +588,21 @@ func (a *app) recentSectionView(c *ui.Context) {
 			// margin around and between the cards is at least
 			// recentCardMargin.
 			ui.Box(c).FillWidth().Padding(recentCardMargin).
-				MaxHeight(recentMaxRows*recentRowHeight + (recentMaxRows-1)*recentCardMargin + 2*recentCardMargin).
-				Background(theme.Surface.Alpha(0.35)).Border(1, theme.Border).
+				// Include the gaps, outer padding, and both sides of the border so
+				// the third row remains fully visible.
+				MaxHeight(recentMaxRows*recentRowHeight+(recentMaxRows-1)*recentCardMargin+2*recentCardMargin+2*recentSectionBorderWidth).
+				Background(theme.Surface.Alpha(0.35)).Border(recentSectionBorderWidth, theme.Border).
 				Radius(theme.Radius + 6).Clip().Children(func() {
-				ui.GridView(c, &a.recentGrid, len(a.visibleRecent), 400, recentRowHeight, func(i int) {
-					a.recentCardView(c, a.visibleRecent[i], services)
-				}).Fill().Gap(recentCardMargin)
+				width, _ := c.Size()
+				ui.Scroll(c).Fill().Children(func() {
+					ui.Grid(c).FillWidth().Columns(recentColumnCount(width)).Gap(recentCardMargin).Children(func() {
+						for _, i := range a.visibleRecent {
+							ui.Box(c).Height(recentRowHeight).Children(func() {
+								a.recentCardView(c, i, services)
+							})
+						}
+					})
+				})
 			})
 		})
 }
