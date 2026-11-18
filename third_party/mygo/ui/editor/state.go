@@ -146,6 +146,9 @@ type State struct {
 	// where they are as the text is edited: compute them again when the
 	// buffer's Version changes.
 	TextBackgrounds []TextBackground
+	// SemanticTokens override syntax colors for byte ranges classified by a
+	// language server. Ranges are recomputed when the buffer version changes.
+	SemanticTokens []SemanticToken
 	// OnInput sees each input event before the editor, as keys for a
 	// mode of the app's such as Vim's: returning true takes it, and the
 	// editor leaves it. Text typed at the carets comes as InputText;
@@ -246,6 +249,14 @@ type TextBackground struct {
 	Color      ui.Color
 }
 
+// SemanticToken colors bytes Start to End as Kind, using the editor theme's
+// existing token palette so language-server highlighting stays coherent with
+// the built-in lexer.
+type SemanticToken struct {
+	Start, End int
+	Kind       TokenKind
+}
+
 func (st *State) options() options {
 	scrollMargin := defaultScrollMargin
 	if st.ScrollMargin > 0 {
@@ -261,7 +272,7 @@ func (st *State) options() options {
 		keepScrollbars: st.KeepScrollbars, hideScrollbars: st.NoScrollbars, scrollbar: st.Scrollbar,
 		autoClose: !st.NoAutoClose, folding: !st.NoFolding, activeLine: !st.NoActiveLine, cursorShape: st.CursorShape, fitContent: st.FitContent,
 		placeholder: st.Placeholder, label: st.Label, theme: st.Theme, bindings: st.Bindings, gutterMarks: st.GutterMarks,
-		backgrounds: st.LineBackgrounds, textBgs: st.TextBackgrounds, diffBase: st.DiffBase, onCompletion: st.OnCompletion, onHover: st.OnHover, onDefinition: st.OnDefinition,
+		backgrounds: st.LineBackgrounds, textBgs: st.TextBackgrounds, semantic: st.SemanticTokens, diffBase: st.DiffBase, onCompletion: st.OnCompletion, onHover: st.OnHover, onDefinition: st.OnDefinition,
 		hoverDelay: st.HoverDelay, noPointerHover: st.NoPointerHover,
 		noDefinitionClick: st.NoDefinitionClick, noDefinitionLink: st.NoDefinitionLink,
 		onGutterClick: st.OnGutterClick, contextMenu: st.ContextMenu, onInput: st.OnInput, noInputMethod: st.NoInputMethod, minDigits: 3,
