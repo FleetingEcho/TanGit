@@ -288,8 +288,9 @@ func TestCommitDetailToolbarsFitNarrowPanes(t *testing.T) {
 					copyHash.Y >= hash.Y+hash.H || copyHash.Y+copyHash.H <= hash.Y {
 					t.Fatalf("copy control is not immediately after the hash on its row: hash=%+v copy=%+v", hash, copyHash)
 				}
-				if _, ok := tt.Find("Expand diff"); ok {
-					t.Fatal("commit details should use their draggable middle divider, not a maximize control")
+				button, ok := tt.Find("Expand diff")
+				if !ok || button.X < 0 || button.X+button.W > float32(width)+1 {
+					t.Fatalf("the restored commit-title maximize control is missing or overflows: %+v", button)
 				}
 				if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
 					saveScreenshot(t, dir, fmt.Sprintf("commit-detail-%d-branch-%v", width, branchView), tt)
