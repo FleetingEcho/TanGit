@@ -1,0 +1,110 @@
+=== focused principal commit scroll ===
+File: app.test
+Build ID: bc1b1f6de9be16da76273346ac069f9193430bdd
+Type: cpu
+Time: 2026-11-17 12:06:38 MST
+Duration: 2.42s, Total samples = 2.96s (122.27%)
+Showing nodes accounting for 2.31s, 78.04% of 2.96s total
+Dropped 139 nodes (cum <= 0.01s)
+Showing top 45 nodes out of 215
+      flat  flat%   sum%        cum   cum%
+     1.13s 38.18% 38.18%      1.13s 38.18%  runtime.cgocall
+     0.11s  3.72% 41.89%      0.25s  8.45%  runtime.scanObject
+     0.08s  2.70% 44.59%      0.09s  3.04%  github.com/egoist/mygo/ui.(*engine).commitElement
+     0.05s  1.69% 46.28%      1.36s 45.95%  github.com/egoist/mygo/internal/text.(*pangoEngine).layoutLines
+     0.05s  1.69% 47.97%      0.10s  3.38%  runtime.tryDeferToSpanScan
+     0.04s  1.35% 49.32%      0.05s  1.69%  github.com/egoist/mygo/ui.(*context).alloc
+     0.04s  1.35% 50.68%      0.05s  1.69%  github.com/egoist/mygo/ui.(*engine).finalizeInputs.func4
+     0.04s  1.35% 52.03%      0.05s  1.69%  github.com/egoist/mygo/ui.(*engine).prune
+     0.04s  1.35% 53.38%      0.04s  1.35%  github.com/egoist/mygo/ui.(*node).resolvedText
+     0.04s  1.35% 54.73%      0.05s  1.69%  reflect.funcLayout
+     0.04s  1.35% 56.08%      0.07s  2.36%  runtime.scanObjectsSmall
+     0.03s  1.01% 57.09%      0.03s  1.01%  [libc.so.6]
+     0.03s  1.01% 58.11%      0.06s  2.03%  github.com/egoist/mygo/internal/raster.(*renderer).fill
+     0.03s  1.01% 59.12%      0.15s  5.07%  github.com/egoist/mygo/ui.(*Painter).element
+     0.03s  1.01% 60.14%      0.03s  1.01%  runtime.memmove
+     0.03s  1.01% 61.15%      0.03s  1.01%  runtime.spanClass.noscan (inline)
+     0.03s  1.01% 62.16%      0.03s  1.01%  runtime.typePointers.nextFast (inline)
+     0.02s  0.68% 62.84%      0.02s  0.68%  <unknown>
+     0.02s  0.68% 63.51%      0.06s  2.03%  github.com/egoist/mygo/internal/raster.(*renderer).maskOpaque
+     0.02s  0.68% 64.19%      0.02s  0.68%  github.com/egoist/mygo/internal/raster.over (inline)
+     0.02s  0.68% 64.86%      0.02s  0.68%  github.com/egoist/mygo/internal/scene.Color.Premul (inline)
+     0.02s  0.68% 65.54%      0.04s  1.35%  github.com/egoist/mygo/internal/text.(*System).glyph
+     0.02s  0.68% 66.22%      0.11s  3.72%  github.com/egoist/mygo/ui.(*Painter).textForeground
+     0.02s  0.68% 66.89%      0.14s  4.73%  github.com/egoist/mygo/ui.(*engine).lookState
+     0.02s  0.68% 67.57%      0.02s  0.68%  github.com/egoist/mygo/ui.(*glyphRun).flush
+     0.02s  0.68% 68.24%      0.02s  0.68%  github.com/go-text/typesetting/segmenter.(*attributeIterator).next
+     0.02s  0.68% 68.92%      0.02s  0.68%  internal/runtime/maps.ctrlGroup.matchH2 (inline)
+     0.02s  0.68% 69.59%      0.02s  0.68%  internal/sync.(*HashTrieMap[go.shape.interface {},go.shape.interface {}]).Load
+     0.02s  0.68% 70.27%      0.02s  0.68%  math.archExp
+     0.02s  0.68% 70.95%      0.02s  0.68%  reflect.(*abiSeq).stepsForValue
+     0.02s  0.68% 71.62%      0.02s  0.68%  runtime.findfunc
+     0.02s  0.68% 72.30%      0.02s  0.68%  runtime.heapArenaOf (inline)
+     0.02s  0.68% 72.97%      0.02s  0.68%  runtime.heapSetTypeSmallHeader (inline)
+     0.02s  0.68% 73.65%      0.02s  0.68%  runtime.mallocgcTinySC2
+     0.02s  0.68% 74.32%      0.02s  0.68%  runtime.scanObjectSmall
+     0.02s  0.68% 75.00%      0.03s  1.01%  runtime.typePointers.next
+     0.01s  0.34% 75.34%      0.04s  1.35%  github.com/egoist/mygo/internal/raster.(*renderer).shadow
+     0.01s  0.34% 75.68%      0.02s  0.68%  github.com/egoist/mygo/internal/raster.blendSpan
+     0.01s  0.34% 76.01%      0.03s  1.01%  github.com/egoist/mygo/internal/raster.gaussian
+     0.01s  0.34% 76.35%      0.02s  0.68%  github.com/egoist/mygo/internal/scene.(*Differ).same
+     0.01s  0.34% 76.69%      1.56s 52.70%  github.com/egoist/mygo/internal/text.(*System).LayoutFrom
+     0.01s  0.34% 77.03%      1.48s 50.00%  github.com/egoist/mygo/internal/text.(*System).paragraph
+     0.01s  0.34% 77.36%      1.65s 55.74%  github.com/egoist/mygo/ui.flexLayout
+     0.01s  0.34% 77.70%      0.02s  0.68%  github.com/go-text/typesetting/segmenter.(*cursor).applyLineBoundaryRules
+     0.01s  0.34% 78.04%      0.02s  0.68%  github.com/go-text/typesetting/segmenter.(*cursor).startIteration
+=== focused app buildDiffState ===
+File: app.test
+Build ID: bc1b1f6de9be16da76273346ac069f9193430bdd
+Type: cpu
+Time: 2026-11-17 12:06:41 MST
+Duration: 2.35s, Total samples = 5.04s (214.17%)
+Showing nodes accounting for 4.39s, 87.10% of 5.04s total
+Dropped 107 nodes (cum <= 0.03s)
+Showing top 45 nodes out of 129
+      flat  flat%   sum%        cum   cum%
+     0.81s 16.07% 16.07%      1.69s 33.53%  runtime.scanObject
+     0.50s  9.92% 25.99%      0.50s  9.92%  runtime.memmove
+     0.47s  9.33% 35.32%      0.68s 13.49%  github.com/egoist/mygo/internal/rope.Build
+     0.39s  7.74% 43.06%      0.46s  9.13%  runtime.tryDeferToSpanScan
+     0.33s  6.55% 49.60%      0.33s  6.55%  runtime.memclrNoHeapPointers
+     0.31s  6.15% 55.75%      0.31s  6.15%  runtime.typePointers.nextFast (inline)
+     0.13s  2.58% 58.33%      0.13s  2.58%  internal/runtime/maps.ctrlGroup.matchH2 (inline)
+     0.13s  2.58% 60.91%      0.17s  3.37%  runtime.typePointers.next
+     0.11s  2.18% 63.10%      0.11s  2.18%  internal/runtime/maps.memHashAES
+     0.11s  2.18% 65.28%      0.11s  2.18%  runtime.futex
+     0.11s  2.18% 67.46%      0.28s  5.56%  runtime.scanObjectsSmall
+     0.09s  1.79% 69.25%      0.09s  1.79%  indexbytebody
+     0.09s  1.79% 71.03%      0.16s  3.17%  runtime.findObject
+     0.06s  1.19% 72.22%      0.06s  1.19%  countbody
+     0.05s  0.99% 73.21%      0.68s 13.49%  lazygitapp/internal/app.movedLineAnnotations
+     0.05s  0.99% 74.21%      0.32s  6.35%  runtime.mapaccess2_faststr
+     0.05s  0.99% 75.20%      0.05s  0.99%  runtime.spanOf (inline)
+     0.04s  0.79% 75.99%      0.04s  0.79%  runtime.(*gcBitsArena).tryAlloc (inline)
+     0.04s  0.79% 76.79%      0.04s  0.79%  runtime.extractHeapBitsSmall
+     0.04s  0.79% 77.58%      0.04s  0.79%  runtime.madvise
+     0.04s  0.79% 78.37%      0.06s  1.19%  runtime.scanblock
+     0.03s   0.6% 78.97%      0.04s  0.79%  github.com/egoist/mygo/internal/rope.CountRunes (inline)
+     0.03s   0.6% 79.56%      0.31s  6.15%  github.com/egoist/mygo/ui/editor.ParsePatch
+     0.03s   0.6% 80.16%      2.25s 44.64%  runtime.gcDrain
+     0.03s   0.6% 80.75%      0.03s   0.6%  runtime.heapArenaOf (inline)
+     0.03s   0.6% 81.35%      0.04s  0.79%  runtime.stealWork
+     0.03s   0.6% 81.94%      0.03s   0.6%  unicode/utf8.DecodeRuneInString (inline)
+     0.02s   0.4% 82.34%      1.37s 27.18%  github.com/egoist/mygo/ui/editor.(*DiffState).SetPatch
+     0.02s   0.4% 82.74%      0.05s  0.99%  runtime.(*gcControllerState).enlistWorker
+     0.02s   0.4% 83.13%      0.03s   0.6%  runtime.(*spanSet).pop
+     0.02s   0.4% 83.53%      0.03s   0.6%  runtime.(*spanSet).push
+     0.02s   0.4% 83.93%      0.03s   0.6%  runtime.(*unwinder).resolveInternal
+     0.02s   0.4% 84.33%      0.03s   0.6%  runtime.lock2
+     0.02s   0.4% 84.72%      0.09s  1.79%  runtime.mapassign_faststr
+     0.02s   0.4% 85.12%      0.05s  0.99%  runtime.wbBufFlush1
+     0.01s   0.2% 85.32%      0.08s  1.59%  internal/stringslite.Index
+     0.01s   0.2% 85.52%      0.10s  1.98%  internal/stringslite.IndexByte (inline)
+     0.01s   0.2% 85.71%      0.03s   0.6%  runtime.(*unwinder).next
+     0.01s   0.2% 85.91%      0.04s  0.79%  runtime.futexsleep
+     0.01s   0.2% 86.11%      0.05s  0.99%  runtime.notesleep
+     0.01s   0.2% 86.31%      0.04s  0.79%  runtime.scanObjectSmall
+     0.01s   0.2% 86.51%      0.17s  3.37%  runtime.schedule
+     0.01s   0.2% 86.71%      0.14s  2.78%  runtime.sweepone
+     0.01s   0.2% 86.90%      2.52s 50.00%  runtime.systemstack
+     0.01s   0.2% 87.10%      0.03s   0.6%  runtime.unlockWithRank (inline)

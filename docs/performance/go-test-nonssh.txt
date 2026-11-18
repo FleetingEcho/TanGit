@@ -1,0 +1,11 @@
+?   	lazygitapp/cmd/tangit	[no test files]
+ok  	lazygitapp/internal/agentassist	0.113s
+ok  	lazygitapp/internal/agentcli	0.521s
+ok  	lazygitapp/internal/agentwork	0.649s
+ok  	lazygitapp/internal/app	66.399s
+ok  	lazygitapp/internal/repository	42.319s
+ok  	lazygitapp/internal/sshintegration	0.002s
+ok  	lazygitapp/internal/sshpool	0.003s
+ok  	lazygitapp/internal/sshworkspace	0.163s
+ok  	lazygitapp/internal/transfer	0.005s
+ok  	lazygitapp/internal/workspace	0.003s
