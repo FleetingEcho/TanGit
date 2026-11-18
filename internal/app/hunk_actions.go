@@ -233,18 +233,25 @@ func navigateDiffHunk(state *editor.DiffState, direction int) {
 }
 
 // hunkActionControls is the one-click hunk workflow for the focused Changes
-// diff. Icons and compact sizing match the existing diff/file toolbars, and
-// disabled wrappers retain explanatory hover tooltips.
+// diff. It shares conflictActionToolbar with conflict Hunk/Apply actions;
+// wrapping and narrow-window grouping keep labels reachable without squeezing text.
 func (a *app) hunkActionControls(c *ui.Context) {
 	status := a.currentHunkActionStatus()
-	reason := status.reason
-	mutationReason := reason
+	mutationReason := status.reason
 	if mutationReason == "" && status.hunk < 0 {
 		mutationReason = "Move the caret into a diff hunk first."
 	}
-	disabled := a.actionBusy || a.session == nil || mutationReason != ""
+	if mutationReason == "" {
+		switch {
+		case a.actionBusy:
+			mutationReason = "Wait for the current Git action to finish."
+		case a.session == nil:
+			mutationReason = "Open a repository before changing hunks."
+		}
+	}
+	disabled := mutationReason != ""
 	theme := c.Theme()
-	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(5).Children(func() {
+	ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(5).Children(func() {
 		if mutationReason != "" {
 			ui.Text(c, tr(mutationReason)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2).
 				SingleLine().Width(0).Grow(1).Tooltip(tr(mutationReason))
@@ -252,28 +259,47 @@ func (a *app) hunkActionControls(c *ui.Context) {
 			ui.Text(c, trf("Hunk %d/%d", status.hunk+1, status.count)).TextColor(theme.TextMuted).
 				FontSize(theme.FontSize - 2).Grow(1)
 		}
+		actions := make([]actionControl, 0, 4)
 		if status.staged {
-			tooltip := "Unstage only the current hunk (s); leave it in the working tree"
-			if mutationReason != "" {
-				tooltip = mutationReason
-			}
-			iconButton(c, "Unstage hunk", tooltip, unstageIcon, disabled, a.beginCurrentHunkAction)
+			actions = append(actions, actionControl{
+				label: "Unstage hunk", shortcut: "s", description: "Unstage only the current hunk; leave it in the working tree", icon: unstageIcon,
+				disabled: disabled, disabledReason: mutationReason, run: a.beginCurrentHunkAction,
+			})
 		} else {
-			stageTooltip := "Stage only the current hunk (s), leaving other hunks unstaged"
-			discardTooltip := "Discard the current hunk after confirmation (d); keep the index untouched"
-			if mutationReason != "" {
-				stageTooltip, discardTooltip = mutationReason, mutationReason
-			}
-			iconButton(c, "Stage hunk", stageTooltip, stageIcon, disabled, a.beginCurrentHunkAction)
-			iconButton(c, "Discard hunk", discardTooltip, revertIcon, disabled, a.confirmDiscardCurrentHunk)
+			actions = append(actions,
+				actionControl{label: "Stage hunk", shortcut: "s", description: "Stage only the current hunk, leaving other hunks unstaged", icon: stageIcon,
+					disabled: disabled, disabledReason: mutationReason, run: a.beginCurrentHunkAction},
+				actionControl{label: "Discard hunk", shortcut: "d", description: "Discard the current hunk after confirmation; keep the index untouched", icon: revertIcon,
+					disabled: disabled, disabledReason: mutationReason, run: a.confirmDiscardCurrentHunk},
+			)
 		}
-		previousDisabled := a.actionBusy || status.count == 0 || status.hunk <= 0
-		nextDisabled := a.actionBusy || status.count == 0 || status.hunk >= status.count-1
-		iconButton(c, "Previous hunk", "Go to the previous diff hunk ([)", chevronUpIcon, previousDisabled, func() {
-			navigateDiffHunk(a.diffState, -1)
-		})
-		iconButton(c, "Next hunk", "Go to the next diff hunk (])", chevronDownIcon, nextDisabled, func() {
-			navigateDiffHunk(a.diffState, 1)
-		})
+		navigationReason := ""
+		if a.actionBusy {
+			navigationReason = "Wait for the current Git action to finish."
+		}
+		previousReason, nextReason := navigationReason, navigationReason
+		if previousReason == "" {
+			switch {
+			case status.count == 0:
+				previousReason = "No diff hunk is available."
+			case status.hunk <= 0:
+				previousReason = "Already at the first diff hunk."
+			}
+		}
+		if nextReason == "" {
+			switch {
+			case status.count == 0:
+				nextReason = "No diff hunk is available."
+			case status.hunk >= status.count-1:
+				nextReason = "Already at the last diff hunk."
+			}
+		}
+		actions = append(actions,
+			actionControl{label: "Previous hunk", shortcut: "[", description: "Go to the previous diff hunk", icon: chevronUpIcon,
+				disabled: previousReason != "", disabledReason: previousReason, run: func() { navigateDiffHunk(a.diffState, -1) }},
+			actionControl{label: "Next hunk", shortcut: "]", description: "Go to the next diff hunk", icon: chevronDownIcon,
+				disabled: nextReason != "", disabledReason: nextReason, run: func() { navigateDiffHunk(a.diffState, 1) }},
+		)
+		a.conflictActionToolbar(c, "Diff hunk actions", actions)
 	})
 }
