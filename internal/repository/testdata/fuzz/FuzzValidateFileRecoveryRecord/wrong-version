@@ -1,0 +1,10 @@
+go test fuzz v1
+int(1)
+string("000102030405060708090a0b0c0d0e0f")
+string("dir/f.txt")
+string("1f5bc7159a5c53e57e7238e3eba9295e8572363192acdd0a704b2bea37912b38")
+string("ready")
+string("pending")
+int64(5)
+string("f34848ca92665c342abd5816c9e3eda0e82180671195362bcd0080544a3bc2ac")
+bool(true)
