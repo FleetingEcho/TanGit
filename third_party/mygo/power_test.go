@@ -3,6 +3,7 @@
 package mygo
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -107,6 +108,71 @@ func TestDockMenuAndRelaunch(t *testing.T) {
 	}
 	if onMainValue(func() bool { return App.relaunch || App.relaunchArgs != nil }) {
 		t.Error("a canceled relaunch is still pending, or its arguments")
+	}
+}
+
+// TanGit cancels the window close to confirm edits and flush remote writes.
+// Retrying that request must still relaunch after Relaunch clears its flags.
+func TestQuitRetryPreservesRelaunchAfterWindowCancellation(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		relaunch bool
+		args     []string
+	}{
+		{name: "quit"},
+		{name: "relaunch", relaunch: true},
+		{name: "relaunch with arguments", relaunch: true, args: []string{"--repo", "a path/with spaces"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w, _ := testWindow(t, WindowOptions{})
+			var retry func()
+			attempts := 0
+			off := App.OnBeforeQuit(func(e *QuitEvent) {
+				attempts++
+				if attempts == 1 {
+					retry = e.Retry
+					return
+				}
+				// Inspect the resumed request without actually ending the test app.
+				e.PreventDefault()
+				if App.relaunch != tc.relaunch || !slices.Equal(App.relaunchArgs, tc.args) {
+					t.Errorf("resumed request = relaunch %v args %q, want %v %q", App.relaunch, App.relaunchArgs, tc.relaunch, tc.args)
+				}
+			})
+			defer off()
+			w.OnClose(func(e *CloseEvent) { e.PreventDefault() })
+			if tc.relaunch {
+				App.Relaunch(tc.args...)
+			} else {
+				App.Quit()
+			}
+			onMain(func() {
+				if attempts != 1 || retry == nil || w.IsDestroyed() {
+					t.Error("window cancellation did not preserve the pending confirmation")
+					return
+				}
+				if App.relaunch || App.relaunchArgs != nil {
+					t.Error("canceled relaunch remained pending")
+					return
+				}
+				// This represents the asynchronous confirmation/save completing.
+				retry()
+			})
+			onMain(func() {
+				if attempts != 2 {
+					t.Errorf("quit attempts = %d, want 2", attempts)
+				}
+			})
+		})
+	}
+}
+
+func TestQuitRetryDoesNothingWhenSessionEnding(t *testing.T) {
+	called := false
+	e := &QuitEvent{SessionEnding: true, retry: func() { called = true }}
+	e.Retry()
+	if called {
+		t.Fatal("session-ending quit was retried")
 	}
 }
 

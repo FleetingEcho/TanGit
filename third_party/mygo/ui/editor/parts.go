@@ -531,9 +531,15 @@ func (ed *editor) buildCompletions(c *ui.Context, anchor ui.Element) {
 // RenderHover builds it: the diagnostics there, and what the app gave
 // ShowHover.
 type HoverCard struct {
-	c  *ui.Context
-	ed *editor
+	c      *ui.Context
+	ed     *editor
+	anchor ui.Element
 }
+
+// Anchor is the current frame's element for the hovered source range. A
+// custom renderer can reattach a large card so it remains inside the window.
+// Like other build elements, it must not be retained after rendering.
+func (h *HoverCard) Anchor() ui.Element { return h.anchor }
 
 // Diagnostics are the diagnostics of the text hovered.
 func (h *HoverCard) Diagnostics() []Diagnostic { return h.ed.hover.diags }
@@ -600,7 +606,7 @@ func (ed *editor) buildHover(c *ui.Context, anchor ui.Element) {
 		if render == nil {
 			render = DefaultHover
 		}
-		render(c, panel, &HoverCard{c: c, ed: ed})
+		render(c, panel, &HoverCard{c: c, ed: ed, anchor: anchor})
 	})
 }
 
