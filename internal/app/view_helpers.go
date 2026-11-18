@@ -666,6 +666,7 @@ func (a *app) modalOpenIncludingDiffFullscreen(includeDiffFullscreen bool) bool 
 		a.commandLogOpen ||
 		a.commandPromptOpen ||
 		a.patchPreviewOpen ||
+		a.stackSync.open ||
 		a.customPatch.open ||
 		a.courier.open ||
 		a.sshWorkspaceOpen ||
