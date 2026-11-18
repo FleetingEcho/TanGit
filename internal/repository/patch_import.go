@@ -18,6 +18,58 @@ import (
 
 const patchPreviewTextLimit = 256 * 1024
 
+// PatchTarget is the Git state a checked patch may change. Keeping this as
+// part of PatchRequest makes the worktree-only, index-only, and combined
+// forms explicit instead of encoding them in unrelated command wrappers.
+type PatchTarget uint8
+
+const (
+	PatchWorktree PatchTarget = iota
+	PatchIndex
+	PatchBoth
+)
+
+// PatchRequest is the complete mutation proposal. Text is the canonical patch
+// and Target, Reverse, and ThreeWay are the exact git apply options to check
+// and then use. Git's --3way implies --index, so its only unambiguous target is
+// PatchBoth; incompatible requests are rejected rather than silently widened.
+type PatchRequest struct {
+	Text     string
+	Target   PatchTarget
+	Reverse  bool
+	ThreeWay bool
+}
+
+func (r PatchRequest) validate() error {
+	if r.Target != PatchWorktree && r.Target != PatchIndex && r.Target != PatchBoth {
+		return fmt.Errorf("unknown patch target %d", r.Target)
+	}
+	if r.ThreeWay && r.Target != PatchBoth {
+		return fmt.Errorf("three-way patch application requires the index and working tree target")
+	}
+	return nil
+}
+
+// args is the complete set of mutation-shaping options. Preview and Apply
+// both derive their Git commands from this private copy, never public display
+// metadata on PatchPreview.
+func (r PatchRequest) args() []string {
+	var args []string
+	switch r.Target {
+	case PatchIndex:
+		args = append(args, "--cached")
+	case PatchBoth:
+		args = append(args, "--index")
+	}
+	if r.Reverse {
+		args = append(args, "--reverse")
+	}
+	if r.ThreeWay {
+		args = append(args, "--3way")
+	}
+	return args
+}
+
 // PatchPreview describes the exact patch file contents that were checked.
 // Its private fields bind ApplyPatch to those contents, this repository, and
 // the repository status observed during the preview.
@@ -30,7 +82,17 @@ type PatchPreview struct {
 	Files         []PatchFile
 	Additions     int
 	Deletions     int
+	// Target, Reverse, and ThreeWay describe the approved request to users and
+	// test doubles. They are display metadata: ApplyPatch uses only the private
+	// copies below, so editing these fields cannot redirect a real mutation.
+	Target   PatchTarget
+	Reverse  bool
+	ThreeWay bool
 
+	requestTarget   PatchTarget
+	requestReverse  bool
+	requestThreeWay bool
+	requestDigest   string
 	digest          string
 	repositoryRoot  string
 	repositoryState string
@@ -218,30 +280,72 @@ func (s *gitSession) PreviewPatch(ctx context.Context, path string) (PatchPrevie
 	})
 }
 
-// PreviewPatchText is the in-memory counterpart of PreviewPatch. The approved
-// bytes stay private, so changing the public display metadata cannot change a
-// later application and a large patch can still be exported in full.
+// PreviewPatchText is the ordinary worktree-only in-memory workflow. More
+// precise mutations use PreviewPatchRequest so their options are approved and
+// checked together with the exact patch bytes.
 func (s *gitSession) PreviewPatchText(ctx context.Context, text string) (PatchPreview, error) {
+	return s.PreviewPatchRequest(ctx, PatchRequest{Text: text, Target: PatchWorktree})
+}
+
+// PreviewPatchRequest is the in-memory counterpart of PreviewPatch with a
+// complete mutation proposal. Approved bytes, options, repository identity,
+// and the private state digest stay together in the returned opaque preview.
+func (s *gitSession) PreviewPatchRequest(ctx context.Context, request PatchRequest) (PatchPreview, error) {
 	if err := ctx.Err(); err != nil {
 		return PatchPreview{}, err
 	}
-	source, err := s.newBytePatchSource([]byte(text))
+	if err := request.validate(); err != nil {
+		return PatchPreview{}, fmt.Errorf("preview patch: %w", err)
+	}
+	source, err := s.newBytePatchSource([]byte(request.Text))
 	if err != nil {
 		return PatchPreview{}, err
 	}
 	defer source.close()
 
 	return s.previewPatchSource(source, PatchPreview{
-		Text:           source.text,
-		TextTruncated:  source.textLimited,
-		digest:         source.digest,
-		repositoryRoot: s.repositoryIdentity(),
-		patchBytes:     source.patchBytes,
-		byteBacked:     true,
+		Text:            source.text,
+		TextTruncated:   source.textLimited,
+		Target:          request.Target,
+		Reverse:         request.Reverse,
+		ThreeWay:        request.ThreeWay,
+		requestTarget:   request.Target,
+		requestReverse:  request.Reverse,
+		requestThreeWay: request.ThreeWay,
+		digest:          source.digest,
+		repositoryRoot:  s.repositoryIdentity(),
+		patchBytes:      source.patchBytes,
+		byteBacked:      true,
 	})
 }
 
+func approvedPatchRequestDigest(patchDigest string, request PatchRequest) string {
+	digest := sha256.Sum256([]byte(fmt.Sprintf("patch\x00%s\x00target\x00%d\x00reverse\x00%t\x00three-way\x00%t",
+		patchDigest, request.Target, request.Reverse, request.ThreeWay)))
+	return fmt.Sprintf("%x", digest)
+}
+
+func (p PatchPreview) approvedRequest() (PatchRequest, error) {
+	request := PatchRequest{Target: p.requestTarget, Reverse: p.requestReverse, ThreeWay: p.requestThreeWay}
+	if err := request.validate(); err != nil {
+		return PatchRequest{}, err
+	}
+	if p.requestDigest == "" || approvedPatchRequestDigest(p.digest, request) != p.requestDigest {
+		return PatchRequest{}, fmt.Errorf("approved patch options failed their integrity check")
+	}
+	return request, nil
+}
+
 func (s *gitSession) previewPatchSource(source patchSource, preview PatchPreview) (PatchPreview, error) {
+	request := PatchRequest{Target: preview.Target, Reverse: preview.Reverse, ThreeWay: preview.ThreeWay}
+	if err := request.validate(); err != nil {
+		return PatchPreview{}, fmt.Errorf("preview patch: %w", err)
+	}
+	// File-backed previews use the default zero-valued request. In-memory
+	// previews already carry their private copies; assigning both here keeps
+	// every constructor on exactly the same path.
+	preview.requestTarget, preview.requestReverse, preview.requestThreeWay = request.Target, request.Reverse, request.ThreeWay
+	preview.requestDigest = approvedPatchRequestDigest(source.digest, request)
 	state, err := s.patchRepositoryState()
 	if err != nil {
 		return PatchPreview{}, fmt.Errorf("preview patch: %w", err)
@@ -250,9 +354,11 @@ func (s *gitSession) previewPatchSource(source patchSource, preview PatchPreview
 
 	// Successful Git commands can still write warnings to stderr. Keep it out
 	// of the NUL-delimited numstat stream (RunWithOutput combines both).
-	numstat, numstatStderr, statErr := s.cmd.New([]string{
-		"git", "--no-optional-locks", "apply", "--numstat", "-z", source.temporary,
-	}).RunWithOutputs()
+	numstatArgs := []string{"git", "--no-optional-locks", "apply", "--numstat", "-z"}
+	if request.Reverse {
+		numstatArgs = append(numstatArgs, "--reverse")
+	}
+	numstat, numstatStderr, statErr := s.cmd.New(append(numstatArgs, source.temporary)).RunWithOutputs()
 	if statErr == nil {
 		preview.Files, preview.Additions, preview.Deletions, err = parsePatchNumstat(numstat)
 		if err != nil {
@@ -260,9 +366,11 @@ func (s *gitSession) previewPatchSource(source patchSource, preview PatchPreview
 		}
 	}
 
-	summary, summaryErr := s.cmd.New([]string{
-		"git", "--no-optional-locks", "apply", "--summary", source.temporary,
-	}).RunWithOutput()
+	summaryArgs := []string{"git", "--no-optional-locks", "apply", "--summary"}
+	if request.Reverse {
+		summaryArgs = append(summaryArgs, "--reverse")
+	}
+	summary, summaryErr := s.cmd.New(append(summaryArgs, source.temporary)).RunWithOutput()
 	if summaryErr == nil && statErr == nil {
 		preview.Files = applyPatchSummaries(preview.Files, summary)
 		if err := s.applyPatchHeaderMetadata(preview.Files, source.temporary); err != nil {
@@ -275,12 +383,15 @@ func (s *gitSession) previewPatchSource(source patchSource, preview PatchPreview
 		}
 	}
 
-	checkOutput, checkErr := s.cmd.New([]string{
-		"git", "--no-optional-locks", "apply", "--check", source.temporary,
-	}).RunWithOutput()
-	blocked, err := s.patchOperationDiagnostic()
-	if err != nil {
-		return PatchPreview{}, fmt.Errorf("preview patch: %w", err)
+	checkArgs := append([]string{"git", "--no-optional-locks", "apply"}, request.args()...)
+	checkArgs = append(checkArgs, "--check", source.temporary)
+	checkOutput, checkErr := s.cmd.New(checkArgs).RunWithOutput()
+	blocked := ""
+	if request.Target != PatchIndex {
+		blocked, err = s.patchOperationDiagnostic()
+		if err != nil {
+			return PatchPreview{}, fmt.Errorf("preview patch: %w", err)
+		}
 	}
 
 	switch {
@@ -583,23 +694,25 @@ func (s *gitSession) patchOperationDiagnostic() (string, error) {
 	return "", nil
 }
 
-func (s *gitSession) checkImportedPatch(source patchSource) error {
-	output, err := s.cmd.New([]string{
-		"git", "--no-optional-locks", "apply", "--check", source.temporary,
-	}).RunWithOutput()
+func (s *gitSession) checkImportedPatch(source patchSource, request PatchRequest) error {
+	args := append([]string{"git", "--no-optional-locks", "apply"}, request.args()...)
+	args = append(args, "--check", source.temporary)
+	output, err := s.cmd.New(args).RunWithOutput()
 	if err != nil {
 		return fmt.Errorf("repository changed since patch preview; preview the patch again: %s", patchCommandDiagnostic(output, err))
 	}
 	return nil
 }
 
-func (s *gitSession) validateImportedPatch(preview PatchPreview, source patchSource) error {
-	blocked, err := s.patchOperationDiagnostic()
-	if err != nil {
-		return err
-	}
-	if blocked != "" {
-		return fmt.Errorf("%s", blocked)
+func (s *gitSession) validateImportedPatch(preview PatchPreview, source patchSource, request PatchRequest) error {
+	if request.Target != PatchIndex {
+		blocked, err := s.patchOperationDiagnostic()
+		if err != nil {
+			return err
+		}
+		if blocked != "" {
+			return fmt.Errorf("%s", blocked)
+		}
 	}
 	state, err := s.patchRepositoryState()
 	if err != nil {
@@ -608,7 +721,7 @@ func (s *gitSession) validateImportedPatch(preview PatchPreview, source patchSou
 	if state != preview.repositoryState {
 		return fmt.Errorf("repository changed since patch preview; preview the patch again")
 	}
-	return s.checkImportedPatch(source)
+	return s.checkImportedPatch(source, request)
 }
 
 func (s *gitSession) repositoryHasWork() (bool, error) {
@@ -622,16 +735,21 @@ func (s *gitSession) repositoryHasWork() (bool, error) {
 	return output != "", nil
 }
 
-// ApplyPatch applies the exact bytes approved by PreviewPatch or
-// PreviewPatchText. Ordinary git apply writes only working-tree files; it never
-// stages the imported changes.
+// ApplyPatch applies the exact bytes and options approved by one private
+// preview. Public Text, Target, Reverse, and ThreeWay edits are intentionally
+// irrelevant; the private request and state digest are checked again while the
+// worktree mutation lock is held.
 func (s *gitSession) ApplyPatch(ctx context.Context, preview PatchPreview) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if preview.digest == "" || preview.repositoryRoot == "" || preview.repositoryState == "" ||
 		(!preview.byteBacked && preview.sourcePath == "") || (preview.byteBacked && preview.sourcePath != "") {
-		return fmt.Errorf("apply patch: a complete PreviewPatch result is required")
+		return fmt.Errorf("apply patch: a complete patch preview is required")
+	}
+	request, err := preview.approvedRequest()
+	if err != nil {
+		return fmt.Errorf("apply patch: %w", err)
 	}
 	if preview.repositoryRoot != s.repositoryIdentity() ||
 		(!preview.byteBacked && preview.sourcePath != preview.Path) {
@@ -651,7 +769,6 @@ func (s *gitSession) ApplyPatch(ctx context.Context, preview PatchPreview) error
 	defer unlock()
 
 	var source patchSource
-	var err error
 	if preview.byteBacked {
 		source, err = s.newBytePatchSource(preview.patchBytes)
 	} else {
@@ -667,8 +784,18 @@ func (s *gitSession) ApplyPatch(ctx context.Context, preview PatchPreview) error
 		}
 		return fmt.Errorf("apply patch: patch file changed since preview; preview it again")
 	}
-	if err := s.validateImportedPatch(preview, source); err != nil {
+	if err := s.validateImportedPatch(preview, source, request); err != nil {
 		return fmt.Errorf("apply patch: %w", err)
+	}
+
+	// Index-only stage/unstage historically needs no recovery: its working
+	// tree is untouched. Combined application has no old wrapper semantics to
+	// preserve, but uses the same checked command and CAS boundary.
+	if request.Target == PatchIndex || (request.Target == PatchBoth && !request.Reverse) {
+		return s.applyCheckedPatch(source, request)
+	}
+	if request.Reverse {
+		return s.applyDiscardedPatchPreview(ctx, preview, source, request)
 	}
 
 	record, err := s.beginOperation(OperationPatchApply, "Apply patch", UndoReversePatch, nil)
@@ -702,7 +829,7 @@ func (s *gitSession) ApplyPatch(ctx context.Context, preview PatchPreview) error
 		// Recovery construction runs several Git commands. Close the window
 		// between the first check and mutation, and remove our just-created
 		// ref if this final preflight fails.
-		if err := s.validateImportedPatch(preview, source); err != nil {
+		if err := s.validateImportedPatch(preview, source, request); err != nil {
 			cleanupErr := s.DeleteWorkSnapshot(context.Background(), snapshot)
 			if cleanupErr != nil {
 				return fmt.Errorf("apply patch: %w (also could not remove unused recovery entry: %v)", err, cleanupErr)
@@ -711,19 +838,51 @@ func (s *gitSession) ApplyPatch(ctx context.Context, preview PatchPreview) error
 		}
 	}
 
-	output, err := s.cmd.New([]string{
-		"git", "--no-optional-locks", "apply", source.temporary,
-	}).RunWithOutput()
-	if err != nil {
-		return s.failJournalOperation(record, fmt.Errorf("apply patch: %w: %s", err, strings.TrimSpace(RedactSecrets(output))))
+	if err := s.applyCheckedPatch(source, request); err != nil {
+		return s.failJournalOperation(record, err)
 	}
 	if err := s.completeJournalOperation(record, nil); err != nil {
 		return err
 	}
 	if captured {
-		if err := s.pruneRecovery(ctx); err != nil {
-			return err
-		}
+		return s.pruneRecovery(ctx)
 	}
 	return nil
+}
+
+func (s *gitSession) applyCheckedPatch(source patchSource, request PatchRequest) error {
+	args := append([]string{"git", "--no-optional-locks", "apply"}, request.args()...)
+	args = append(args, source.temporary)
+	output, err := s.cmd.New(args).RunWithOutput()
+	if err != nil {
+		return fmt.Errorf("apply patch: %w: %s", err, strings.TrimSpace(RedactSecrets(output)))
+	}
+	return nil
+}
+
+// applyDiscardedPatchPreview keeps the previous hunk-discard behavior: one
+// recovery snapshot before deleting work, again CAS/check after the slower
+// capture, then a restore-work journal entry rather than an index reset.
+func (s *gitSession) applyDiscardedPatchPreview(ctx context.Context, preview PatchPreview, source patchSource, request PatchRequest) error {
+	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Discard patch changes")
+	if err != nil {
+		return err
+	}
+	if err := s.validateImportedPatch(preview, source, request); err != nil {
+		if cleanupErr := s.DeleteWorkSnapshot(context.Background(), snapshot); cleanupErr != nil {
+			return fmt.Errorf("apply patch: %w (also could not remove unused recovery entry: %v)", err, cleanupErr)
+		}
+		return fmt.Errorf("apply patch: %w", err)
+	}
+	record, err := s.beginOperation(OperationDiscard, "Discard patch changes", UndoRestoreWork, &snapshot)
+	if err != nil {
+		return err
+	}
+	if err := s.applyCheckedPatch(source, request); err != nil {
+		return s.failJournalOperation(record, err)
+	}
+	if err := s.completeJournalOperation(record, nil); err != nil {
+		return err
+	}
+	return s.pruneRecovery(ctx)
 }

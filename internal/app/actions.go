@@ -512,6 +512,11 @@ func (a *app) requestFileDiffMode(quiet bool) {
 				media, err = loadMediaReview(ctx, session, repository.MediaRequest{Source: repository.MediaWorkingTree, File: file})
 			}
 			if err == nil && state != nil {
+				// A newly loaded Changes diff has an actionable hunk immediately;
+				// the caret otherwise starts just before the first one.
+				if len(state.Hunks()) > 0 {
+					state.GoToHunk(0)
+				}
 				state.LineSelection = canonicalDiffOptions(options) && diffSupportsLineStaging(file, diff.Kind)
 				if state.LineSelection {
 					// Clicks on the numbers are reported back so the mode

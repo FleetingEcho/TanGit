@@ -312,11 +312,14 @@ type Session interface {
 	// ApplyWorkingTreePatch applies a canonical patch to files only, leaving
 	// the index untouched. Reverse is used to discard selected hunks.
 	ApplyWorkingTreePatch(context.Context, string, bool) error
-	// PreviewPatch checks an external patch without changing the repository.
-	// PreviewPatchText does the same for a patch already held in memory.
-	// ApplyPatch applies the exact approved bytes to the working tree only.
+	// PreviewPatch checks an external worktree patch without changing Git.
+	// PreviewPatchText is its ordinary in-memory form. PreviewPatchRequest
+	// additionally binds index/worktree destination, direction, and three-way
+	// behavior. ApplyPatch accepts only that exact private, state-digested
+	// preview; public preview text is display data, not mutation authority.
 	PreviewPatch(context.Context, string) (PatchPreview, error)
 	PreviewPatchText(context.Context, string) (PatchPreview, error)
+	PreviewPatchRequest(context.Context, PatchRequest) (PatchPreview, error)
 	ApplyPatch(context.Context, PatchPreview) error
 	StageAll(context.Context) error
 	UnstageAll(context.Context) error
@@ -1271,61 +1274,30 @@ func (s *gitSession) Unstage(ctx context.Context, file File) error {
 	return nil
 }
 
-// ApplyCachedPatch applies a partial diff to the index only, leaving the
-// working tree untouched: forward it stages the lines the patch holds, and
-// reversed it takes them back out of the index. The patch names the file it
-// changes, so no path has to be passed with it.
+// ApplyCachedPatch is retained for callers of the original selected-line
+// API. It now crosses the same request/preview/CAS boundary as every other
+// patch mutation; new UI code holds its private preview explicitly.
 func (s *gitSession) ApplyCachedPatch(ctx context.Context, patchText string, reverse bool) error {
-	if err := ctx.Err(); err != nil {
+	preview, err := s.PreviewPatchRequest(ctx, PatchRequest{
+		Text: patchText, Target: PatchIndex, Reverse: reverse,
+	})
+	if err != nil {
 		return err
 	}
-	// Git reads the patch from a file of the app's own, which is absolute:
-	// the command runs in the worktree, so a relative path would resolve
-	// against it rather than against the process' temporary folder.
-	name, cleanup, err := s.temporaryFile("tangit-line-stage-*.patch", []byte(patchText), 0o600)
-	if err != nil {
-		return fmt.Errorf("write the patch: %w", err)
-	}
-	defer cleanup()
-	args := []string{"git", "apply", "--cached"}
-	if reverse {
-		args = append(args, "--reverse")
-	}
-	args = append(args, name)
-	output, err := s.cmd.New(args).RunWithOutput()
-	if err != nil {
-		return fmt.Errorf("apply lines to the index: %w: %s", err, strings.TrimSpace(output))
-	}
-	return nil
+	return s.ApplyPatch(ctx, preview)
 }
 
-// ApplyWorkingTreePatch applies a partial diff to the working tree only. The
-// check runs immediately before the mutation so a stale or inapplicable patch
-// cannot partially change a file; the real index is never involved.
+// ApplyWorkingTreePatch is the corresponding compatibility path for ordinary
+// worktree patches. Reverse application also keeps the established recovery
+// snapshot and restore-work behavior.
 func (s *gitSession) ApplyWorkingTreePatch(ctx context.Context, patchText string, reverse bool) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	unlock := s.lockWorktreeMutation()
-	defer unlock()
-	if !reverse {
-		return s.applyWorkingTreePatch(ctx, patchText, false)
-	}
-	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Discard a hunk")
+	preview, err := s.PreviewPatchRequest(ctx, PatchRequest{
+		Text: patchText, Target: PatchWorktree, Reverse: reverse,
+	})
 	if err != nil {
 		return err
 	}
-	record, err := s.beginOperation(OperationDiscard, "Discard a hunk", UndoRestoreWork, &snapshot)
-	if err != nil {
-		return err
-	}
-	if err := s.applyWorkingTreePatch(ctx, patchText, true); err != nil {
-		return s.failJournalOperation(record, err)
-	}
-	if err := s.completeJournalOperation(record, nil); err != nil {
-		return err
-	}
-	return s.pruneRecovery(ctx)
+	return s.ApplyPatch(ctx, preview)
 }
 
 func (s *gitSession) applyWorkingTreePatch(ctx context.Context, patchText string, reverse bool) error {
