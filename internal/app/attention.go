@@ -110,10 +110,15 @@ func (a *app) confirmContinueOperation() {
 		return
 	}
 	expected := snapshotOperationFingerprint(a.snapshot)
+	historyPatch := a.snapshot.OperationState != nil && a.snapshot.OperationState.HistoryPatch != nil
 	a.confirmAttention("Continue", a.snapshot.Operation,
 		"This continues the interrupted Git operation using the current staged resolutions. Review them before continuing.", func() {
 			a.beginRepositoryActionMessage(tr("Continued the operation"), "", func(ctx context.Context, s repository.Session) error {
 				return driveOperation(ctx, s, repository.OperationActionContinue, expected)
-			}, nil)
+			}, func() {
+				if historyPatch {
+					a.clearCustomPatch()
+				}
+			})
 		})
 }

@@ -15,8 +15,11 @@ import (
 
 type remoteRebaseOptions struct {
 	autosquash bool
-	message    []byte
-	transform  func([]todo.Todo) ([]todo.Todo, error)
+	// keepEmpty corresponds to --empty=keep for commits which become empty
+	// during the replay; --keep-empty alone preserves originally-empty commits.
+	keepEmpty bool
+	message   []byte
+	transform func([]todo.Todo) ([]todo.Todo, error)
 }
 
 // interactiveRebase keeps Lazygit's local behavior and replaces its embedded
@@ -260,6 +263,9 @@ func moveSessionFixup(todos []todo.Todo, originalHash, fixupHash string, changeT
 // transformed plan is then installed by a one-off POSIX shell editor.
 func (s *gitSession) runRemoteRebase(base string, options remoteRebaseOptions) error {
 	args := []string{"git", "rebase", "--interactive", "--autostash", "--keep-empty"}
+	if options.keepEmpty {
+		args = append(args, "--empty=keep")
+	}
 	if options.autosquash {
 		args = append(args, "--autosquash")
 	} else {

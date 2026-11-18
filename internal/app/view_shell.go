@@ -135,6 +135,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.sshWorkspaceModal(c)
 	a.patchPreviewModal(c)
 	a.customPatchModal(c)
+	a.customPatchHistoryModal(c)
 	a.changeCourierModal(c)
 	a.commandLogModal(c)
 	a.commandPromptModal(c)
