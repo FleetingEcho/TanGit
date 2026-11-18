@@ -13,6 +13,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
+	"github.com/jesseduffield/lazygit/pkg/commands/models"
 )
 
 // These benchmarks are opt-in: `go test` never builds the repository. The
@@ -171,18 +172,74 @@ func (f *largeRepositoryFixture) clearCommitTotals(b *testing.B) {
 	s.commitTotalsMu.Unlock()
 }
 
+// parseCommitLineStatsWithSplit is the pre-optimization implementation kept
+// only in this benchmark. Both variants consume the same real 12k-file Git
+// output; this is a component A/B, not a synthetic end-to-end speedup claim.
+func parseCommitLineStatsWithSplit(output string) map[string]commitLineStats {
+	stats := make(map[string]commitLineStats)
+	fields := strings.Split(output, "\x00")
+	for i := 0; i < len(fields); {
+		columns := strings.SplitN(fields[i], "\t", 3)
+		i++
+		if len(columns) != 3 {
+			continue
+		}
+		added, addedErr := strconv.Atoi(columns[0])
+		deleted, deletedErr := strconv.Atoi(columns[1])
+		if addedErr != nil {
+			added = 0
+		}
+		if deletedErr != nil {
+			deleted = 0
+		}
+		path := columns[2]
+		if path == "" {
+			if i+1 >= len(fields) {
+				break
+			}
+			path = fields[i+1]
+			i += 2
+		}
+		if path != "" {
+			stats[path] = commitLineStats{added: added, deleted: deleted}
+		}
+	}
+	return stats
+}
+
 var (
-	perfSnapshotSink Snapshot
-	perfCommitsSink  []Commit
-	perfFilesSink    []CommitFile
-	perfDiffSink     Diff
-	perfPatchesSink  []editor.FilePatch
-	perfStateSink    *editor.DiffState
+	perfSnapshotSink  Snapshot
+	perfLineStatsSink map[string]commitLineStats
+	perfCommitsSink   []Commit
+	perfFilesSink     []CommitFile
+	perfDiffSink      Diff
+	perfPatchesSink   []editor.FilePatch
+	perfStateSink     *editor.DiffState
 )
 
 func BenchmarkLargeRepository(b *testing.B) {
 	f := newLargeRepositoryFixture(b)
 	ctx := context.Background()
+
+	numstat := runPerfGit(b, f.root, "diff", "--no-ext-diff", "--numstat", "-z",
+		models.EmptyTreeCommitHash, f.rootCommit.Hash)
+	b.Run("ParseNumstat12k", func(b *testing.B) {
+		for _, variant := range []string{"split_original", "streaming"} {
+			b.Run(variant, func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64(len(numstat)))
+				for b.Loop() {
+					if variant == "split_original" {
+						perfLineStatsSink = parseCommitLineStatsWithSplit(numstat)
+					} else {
+						perfLineStatsSink = parseCommitLineStats(numstat)
+					}
+				}
+				b.ReportMetric(float64(len(numstat)), "diff_bytes")
+				b.ReportMetric(float64(len(perfLineStatsSink)), "files")
+			})
+		}
+	})
 
 	b.Run("CoreSnapshot_git_status_and_12k_numstat", func(b *testing.B) {
 		b.ReportAllocs()
