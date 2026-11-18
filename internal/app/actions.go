@@ -474,6 +474,12 @@ func (a *app) requestFileDiffMode(quiet bool) {
 
 	session := a.session
 	repositoryGeneration := a.generation
+	if a.cancelDiff != nil {
+		// A newer file replaces the old read, not just its publication.
+		a.cancelDiff()
+	}
+	previousTextDiff := quiet && a.diffState != nil
+	previousPatch, previousKind := a.diffPatch, a.diffKind
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancelDiff = cancel
 	a.diffGeneration++
@@ -507,10 +513,19 @@ func (a *app) requestFileDiffMode(quiet bool) {
 	options := a.diffOptions
 	go func() {
 		defer a.recoverBackground()
+		defer cancel()
 		diff, err := session.Diff(ctx, file, options)
+		if err == nil && ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		// Quiet reloads used to parse and lay out the complete patch before
+		// discovering these same bytes. Reuse only an existing textual state;
+		// binary media and patchless buffers still take their original paths.
+		reused := quiet && previousTextDiff && err == nil && diff.Patch != "" &&
+			diff.Patch == previousPatch && diff.Kind == previousKind
 		var state *editor.DiffState
 		var media *mediaReview
-		if err == nil {
+		if err == nil && !reused {
 			state, err = buildDiffState(layout, wrap, file, diff, options)
 			if err == nil && state == nil && isMediaPath(file.Path) {
 				media, err = loadMediaReview(ctx, session, repository.MediaRequest{Source: repository.MediaWorkingTree, File: file})
