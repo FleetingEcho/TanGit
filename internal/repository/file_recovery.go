@@ -563,19 +563,19 @@ func (s *gitSession) ArchiveFileRecovery(ctx context.Context, archive FileRecove
 	if err := validateFileRecoveryPath(archive.Path); err != nil {
 		return FileRecoveryRecord{}, err
 	}
-	initial, err := s.captureFileRecoveryState(archive.Path)
+	initial, err := s.capturePreparedFileRecoveryState(archive.Path)
 	if err != nil {
 		return FileRecoveryRecord{}, fmt.Errorf("capture initial file recovery state: %w", err)
 	}
-	initial.Worktree, err = prepareFileRecoveryWorktree(initial.Worktree)
-	if err != nil {
-		return FileRecoveryRecord{}, err
-	}
-	initial.Index, err = s.prepareFileRecoveryIndex(initial.Index)
-	if err != nil {
-		return FileRecoveryRecord{}, fmt.Errorf("capture initial index: %w", err)
-	}
-	after := archive.After
+	return s.archivePreparedFileRecovery(ctx, archive.Path, initial, archive.After)
+}
+
+// archivePreparedFileRecovery persists an exact already-captured initial state.
+// The caller holds lockWorktreeMutation, so CAS validation, recovery publication
+// and a subsequent approved file mutation all use the same repository view.
+func (s *gitSession) archivePreparedFileRecovery(ctx context.Context, path string, initial FileRecoveryState, proposed FileRecoveryState) (FileRecoveryRecord, error) {
+	after := proposed
+	var err error
 	after.Worktree, err = prepareFileRecoveryWorktree(after.Worktree)
 	if err != nil {
 		return FileRecoveryRecord{}, fmt.Errorf("invalid after-state worktree: %w", err)
@@ -594,7 +594,7 @@ func (s *gitSession) ArchiveFileRecovery(ctx context.Context, archive FileRecove
 	now := time.Now()
 	record := FileRecoveryRecord{
 		Version: FileRecoveryManifestVersion, OperationID: hex.EncodeToString(random[:]),
-		Path: archive.Path, PathDigest: fileRecoveryDigest([]byte(archive.Path)),
+		Path: path, PathDigest: fileRecoveryDigest([]byte(path)),
 		Identity: s.fileRecoveryIdentity(), Status: FileRecoveryReady, Progress: FileRecoveryPending,
 		CreatedAt: now.Unix(), UpdatedAt: now.Unix(), Initial: initial, After: after,
 	}

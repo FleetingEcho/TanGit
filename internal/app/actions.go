@@ -398,6 +398,7 @@ func (a *app) resetCommitPaging(snapshot repository.Snapshot) {
 
 // resetFileDiff drops the working-tree diff and anything reading one.
 func (a *app) resetFileDiff() {
+	a.cancelAssistance()
 	if a.cancelDiff != nil {
 		a.cancelDiff()
 		a.cancelDiff = nil

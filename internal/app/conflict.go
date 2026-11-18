@@ -914,6 +914,7 @@ func (a *app) writeConflictFileToDisk() error {
 // in-app conflict write. Its bytes could still arrive from disk or SSH later,
 // but they must not repaint an older resolution over the user's latest edit.
 func (a *app) invalidateConflictRead() {
+	a.invalidateConflictAssistant()
 	a.diffGeneration++
 	if cancel := a.cancelDiff; cancel != nil {
 		a.cancelDiff = nil
