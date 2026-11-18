@@ -121,6 +121,9 @@ var zhHans = map[string]string{
 	"Hotkeys":                   "快捷键",
 	"Enable hotkeys":            "启用快捷键",
 	"Enable keyboard shortcuts": "启用键盘快捷键",
+	"Run a one-off shell command": "运行一次性 Shell 命令",
+	"Shortcut notifications":    "快捷键通知",
+	"Show shortcut acknowledgements while keeping Command Log and operation notifications visible.": "显示快捷键触发提示，同时保留命令日志和其他操作通知。",
 
 	// Operations requiring attention.
 	"Edit remote":      "编辑远程",

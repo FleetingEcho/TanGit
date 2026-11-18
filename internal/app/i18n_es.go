@@ -39,6 +39,9 @@ var spanish = map[string]string{
 	"Hotkeys":                   "Atajos",
 	"Enable hotkeys":            "Activar atajos",
 	"Enable keyboard shortcuts": "Activar atajos de teclado",
+	"Run a one-off shell command": "Ejecutar un comando shell puntual",
+	"Shortcut notifications":    "Notificaciones de atajos",
+	"Show shortcut acknowledgements while keeping Command Log and operation notifications visible.": "Muestra avisos de atajos y mantiene visibles el registro de comandos y las notificaciones de operaciones.",
 
 	// Operations requiring attention.
 	"Edit remote":      "Editar remoto",

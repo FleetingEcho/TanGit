@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/egoist/mygo/ui"
 
@@ -23,8 +24,8 @@ func (a *app) registerTerminalModalShortcuts(back ui.Element) {
 	if a.state != stateReady {
 		return
 	}
-	back.OnShortcut(ui.Ctrl, ui.KeyBackquote, a.toggleTerminal)
-	back.OnShortcut(ui.Ctrl|ui.Shift, ui.KeyBackquote, a.toggleTerminal)
+	a.onElementShortcut(back, ui.Ctrl, ui.KeyBackquote, shortcut("terminal/modal-toggle", "Ctrl+`", tr("Toggle terminal")), a.toggleTerminal)
+	a.onElementShortcut(back, ui.Ctrl|ui.Shift, ui.KeyBackquote, shortcut("terminal/modal-toggle-shifted", "Ctrl+~", tr("Toggle terminal")), a.toggleTerminal)
 }
 
 // registerShortcuts installs the page's action shortcuts and the terminal's
@@ -39,43 +40,43 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		// Ctrl+` works regardless of focus, terminal ownership, open forms or
 		// the general shortcuts switch. Also accept the shifted physical key,
 		// commonly written Ctrl+~, rather than making the user release Shift.
-		c.OnWindowShortcut(ui.Ctrl, ui.KeyBackquote, a.toggleTerminal)
-		c.OnWindowShortcut(ui.Ctrl|ui.Shift, ui.KeyBackquote, a.toggleTerminal)
+		a.onWindowShortcut(c, ui.Ctrl, ui.KeyBackquote, shortcut("terminal/toggle", "Ctrl+`", tr("Toggle terminal")), a.toggleTerminal)
+		a.onWindowShortcut(c, ui.Ctrl|ui.Shift, ui.KeyBackquote, shortcut("terminal/toggle-shifted", "Ctrl+~", tr("Toggle terminal")), a.toggleTerminal)
 	}
 	// An open question owns Escape, whether or not the shortcuts themselves
 	// are switched on. Its modal owns Enter, ahead of the focused button.
 	if a.confirm != nil {
-		c.OnShortcut(0, ui.KeyEscape, a.cancelConfirm)
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("confirmation/cancel", "Escape", tr("Cancel")), a.cancelConfirm)
 		return
 	}
 	// An open shortcut list owns Escape: it is how the dialog is dismissed,
 	// whether or not the shortcuts themselves are switched on.
 	if a.keybindingsOpen {
-		c.OnShortcut(0, ui.KeyEscape, a.closeKeybindings)
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("keybindings/close", "Escape", tr("Close a dialog or cancel the current step")), a.closeKeybindings)
 		return
 	}
 	if a.commandLogOpen {
-		c.OnShortcut(0, ui.KeyEscape, a.closeCommandLog)
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("command-log/close", "Escape", tr("Close command log")), a.closeCommandLog)
 		return
 	}
 	if a.commandPromptOpen {
-		c.OnShortcut(0, ui.KeyEscape, a.closeCommandPrompt)
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("command-prompt/close", "Escape", tr("Close a dialog or cancel the current step")), a.closeCommandPrompt)
 		return
 	}
 	if a.prChecksOpen {
-		c.OnShortcut(0, ui.KeyEscape, func() { a.prChecksOpen = false; a.prChecksToken++ })
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("branches/pr-checks-close", "Escape", tr("Close a dialog or cancel the current step")), func() { a.prChecksOpen = false; a.prChecksToken++ })
 		return
 	}
 	if a.settingsOpen {
-		c.OnShortcut(0, ui.KeyEscape, a.closeSettings)
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("settings/close", "Escape", tr("Close settings")), a.closeSettings)
 		return
 	}
 	if a.patchPreviewOpen {
-		c.OnShortcut(0, ui.KeyEscape, a.discardPatchPreview)
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("patch-preview/close", "Escape", tr("Close a dialog or cancel the current step")), a.discardPatchPreview)
 		return
 	}
 	if a.customPatch.open {
-		c.OnShortcut(0, ui.KeyEscape, func() {
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("history/custom-patch-close", "Escape", tr("Close a dialog or cancel the current step")), func() {
 			if a.customPatch.previewOpen {
 				a.backToCustomPatchBuilder()
 			} else {
@@ -85,58 +86,58 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		return
 	}
 	if a.diffFullscreen {
-		c.OnShortcut(0, ui.KeyEscape, a.closeDiffFullscreen)
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("diff/close-fullscreen", "Escape", tr("Close a dialog or cancel the current step")), a.closeDiffFullscreen)
 		return
 	}
 	if a.showCommitRewordForm {
-		c.OnShortcut(0, ui.KeyEscape, a.closeCommitRewordForm)
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("history/reword-cancel", "Escape", tr("Close a dialog or cancel the current step")), a.closeCommitRewordForm)
 		return
 	}
 	if a.showCommitTagForm || a.showCommitBranchForm {
-		c.OnShortcut(0, ui.KeyEscape, func() {
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("commit-form/close-tag-branch", "Escape", tr("Close a dialog or cancel the current step")), func() {
 			a.showCommitTagForm, a.showCommitBranchForm = false, false
 		})
 		return
 	}
 	if a.branchFullscreen {
-		c.OnShortcut(0, ui.KeyEscape, a.escapeBranchFullscreen)
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("branches/close-fullscreen", "Escape", tr("Close a dialog or cancel the current step")), a.escapeBranchFullscreen)
 		if !a.settings.DisableShortcuts {
-			c.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
-			c.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })
+			a.onShortcut(c, 0, ui.KeyF6, shortcut("panes/cycle-next-fullscreen", "F6", tr("Move between panels")), func() { a.cycleKeyboardPane(c, 1) })
+			a.onShortcut(c, ui.Shift, ui.KeyF6, shortcut("panes/cycle-previous-fullscreen", "Shift+F6", tr("Move between panels")), func() { a.cycleKeyboardPane(c, -1) })
 		}
 		return
 	}
 	if a.cloneOpen {
-		c.OnShortcut(0, ui.KeyEscape, a.closeCloneForm)
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("clone/close-form", "Escape", tr("Close a dialog or cancel the current step")), a.closeCloneForm)
 		return
 	}
 	if a.state == stateCloning {
-		c.OnShortcut(0, ui.KeyEscape, a.cancelCloneOperation)
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("clone/cancel", "Escape", tr("Cancel cloning or close the clone form")), a.cancelCloneOperation)
 		if !a.settings.DisableShortcuts {
-			c.OnShortcut(0, ui.KeyF1, a.openKeybindings)
+			a.onShortcut(c, 0, ui.KeyF1, shortcut("keybindings/cloning-help", "F1", tr("Open the complete shortcut list")), a.openKeybindings)
 			if !c.FocusTakesText() {
-				c.OnShortcut(ui.Shift, ui.KeySlash, a.openCurrentKeybindings)
+				a.onShortcut(c, ui.Shift, ui.KeySlash, shortcut("keybindings/cloning-current", "?", tr("Show shortcuts for the current page")), a.openCurrentKeybindings)
 			}
 		}
 		return
 	}
 	if a.state == stateLoading {
-		c.OnShortcut(0, ui.KeyEscape, a.cancelLoading)
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("repository/cancel-loading", "Escape", tr("Close a dialog or cancel the current step")), a.cancelLoading)
 		return
 	}
 	if a.showCommitForm {
 		if !a.settings.DisableShortcuts {
-			c.OnShortcut(ui.Ctrl, ui.KeyEnter, a.beginCommit)
+			a.onShortcut(c, ui.Ctrl, ui.KeyEnter, shortcut("changes/commit-staged", "Ctrl+Enter", tr("Commit the staged changes")), a.beginCommit)
 		}
-		c.OnShortcut(0, ui.KeyEscape, func() { a.showCommitForm = false })
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("changes/cancel-commit", "Escape", tr("Cancel")), func() { a.showCommitForm = false })
 		return
 	}
 	// Picking a range of lines is a mode of the Changes page: Escape is how it
 	// is left, the same as its Cancel button.
 	if a.lineSelectMode {
-		c.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
-		c.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })
-		c.OnShortcut(0, ui.KeyEscape, a.stopLineSelection)
+		a.onShortcut(c, 0, ui.KeyF6, shortcut("panes/cycle-next-line-selection", "F6", tr("Move between panels")), func() { a.cycleKeyboardPane(c, 1) })
+		a.onShortcut(c, ui.Shift, ui.KeyF6, shortcut("panes/cycle-previous-line-selection", "Shift+F6", tr("Move between panels")), func() { a.cycleKeyboardPane(c, -1) })
+		a.onShortcut(c, 0, ui.KeyEscape, shortcut("diff/stop-line-selection", "Escape", tr("Close a dialog or cancel the current step")), a.stopLineSelection)
 		return
 	}
 	// Custom commands are registered before the Code save shortcuts too.
@@ -148,27 +149,27 @@ func (a *app) registerShortcuts(c *ui.Context) {
 
 	// Saving belongs to editing, including while the file explorer has focus.
 	if a.workspaceTab == sectionCode && a.state == stateReady {
-		c.OnShortcut(ui.Cmd, ui.KeyS, func() { a.saveCodeDocument(a.activeCodeDocument()) })
+		a.onShortcut(c, ui.Cmd, ui.KeyS, shortcut("code/save-active", cmdShortcutChord()+"+S", tr("Save")), func() { a.saveCodeDocument(a.activeCodeDocument()) })
 		if ui.Cmd != ui.Ctrl {
-			c.OnShortcut(ui.Ctrl, ui.KeyS, func() { a.saveCodeDocument(a.activeCodeDocument()) })
+			a.onShortcut(c, ui.Ctrl, ui.KeyS, shortcut("code/save-active-control", "Ctrl+S", tr("Save")), func() { a.saveCodeDocument(a.activeCodeDocument()) })
 		}
-		c.OnShortcut(ui.Cmd|ui.Shift, ui.KeyS, a.saveCodeEdits)
+		a.onShortcut(c, ui.Cmd|ui.Shift, ui.KeyS, shortcut("code/save-all", cmdShortcutChord()+"+Shift+S", tr("Save")), a.saveCodeEdits)
 	}
 	// Preferences and the shortcut reference are always reachable, on the
 	// picker as in the workspace, and so is the command log.
-	c.OnShortcut(ui.Ctrl, ui.KeyComma, a.openSettings)
-	c.OnShortcut(0, ui.KeyF1, a.openKeybindings)
+	a.onShortcut(c, ui.Ctrl, ui.KeyComma, shortcut("settings/open", "Ctrl+,", tr("Open settings")), a.openSettings)
+	a.onShortcut(c, 0, ui.KeyF1, shortcut("keybindings/open-all", "F1", tr("Open the complete shortcut list")), a.openKeybindings)
 	if !c.FocusTakesText() {
-		c.OnShortcut(ui.Shift, ui.KeySlash, a.openCurrentKeybindings)
+		a.onShortcut(c, ui.Shift, ui.KeySlash, shortcut("keybindings/open-current", "?", tr("Show shortcuts for the current page")), a.openCurrentKeybindings)
 	}
 	if !a.editorOnlyWorkspace() {
-		c.OnShortcut(ui.Ctrl, ui.KeyL, a.openCommandLog)
+		a.onShortcut(c, ui.Ctrl, ui.KeyL, shortcut("command-log/open", "Ctrl+L", tr("Show the command log")), a.openCommandLog)
 	}
-	c.OnShortcut(0, ui.KeyF6, func() { a.cycleKeyboardPane(c, 1) })
-	c.OnShortcut(ui.Shift, ui.KeyF6, func() { a.cycleKeyboardPane(c, -1) })
-	c.OnShortcut(0, ui.KeyEscape, func() { a.keyboardBack(c) })
+	a.onShortcut(c, 0, ui.KeyF6, shortcut("panes/cycle-next", "F6", tr("Move between panels")), func() { a.cycleKeyboardPane(c, 1) })
+	a.onShortcut(c, ui.Shift, ui.KeyF6, shortcut("panes/cycle-previous", "Shift+F6", tr("Move between panels")), func() { a.cycleKeyboardPane(c, -1) })
+	a.onShortcut(c, 0, ui.KeyEscape, shortcut("navigation/back", "Escape", tr("Close a dialog or cancel the current step")), func() { a.keyboardBack(c) })
 	if (a.state == stateEmpty || a.state == stateError) && !c.FocusTakesText() {
-		c.OnShortcut(0, ui.KeyC, a.openCloneForm)
+		a.onShortcut(c, 0, ui.KeyC, shortcut("picker/clone", "C", tr("Clone a remote repository")), a.openCloneForm)
 	}
 	if a.state != stateReady {
 		return
@@ -178,11 +179,11 @@ func (a *app) registerShortcuts(c *ui.Context) {
 	}
 
 	if a.terminalVisible() {
-		c.OnShortcut(ui.Ctrl, ui.KeyF, a.openTerminalSearch)
+		a.onShortcut(c, ui.Ctrl, ui.KeyF, shortcut("terminal/search", "Ctrl+F", tr("Search the active terminal")), a.openTerminalSearch)
 		if active := a.activeTerminal(); active != nil && active.searchOpen {
-			c.OnShortcut(0, ui.KeyEscape, a.closeActiveTerminalSearch)
-			c.OnShortcut(0, ui.KeyF3, func() { a.navigateTerminalSearch(1) })
-			c.OnShortcut(ui.Shift, ui.KeyF3, func() { a.navigateTerminalSearch(-1) })
+			a.onShortcut(c, 0, ui.KeyEscape, shortcut("terminal/search-close", "Escape", tr("Close a dialog or cancel the current step")), a.closeActiveTerminalSearch)
+			a.onShortcut(c, 0, ui.KeyF3, shortcut("terminal/search-next", "F3", tr("Move to the next / previous quick-search result")), func() { a.navigateTerminalSearch(1) })
+			a.onShortcut(c, ui.Shift, ui.KeyF3, shortcut("terminal/search-previous", "Shift+F3", tr("Move to the next / previous quick-search result")), func() { a.navigateTerminalSearch(-1) })
 		}
 		// The shell owns the other keys while its pane shows, so digits and
 		// letters reach it instead of switching sections or acting on rows.
@@ -193,29 +194,29 @@ func (a *app) registerShortcuts(c *ui.Context) {
 	// takes are text, not section switches or actions on the chosen file.
 	if a.fileEditing || (a.workspaceTab == sectionChanges && a.conflictState != nil && a.conflictStageTab == 3) {
 		if a.fileEditing {
-			c.OnShortcut(0, ui.KeyEscape, a.closeFileEdit)
+			a.onShortcut(c, 0, ui.KeyEscape, shortcut("editor/close-file-edit", "Escape", tr("Close a dialog or cancel the current step")), a.closeFileEdit)
 		} else {
 			// Conflict choices use modified keys so typing in the marker editor
 			// stays ordinary text. Navigation and undo match the toolbar exactly.
-			c.OnShortcut(0, ui.KeyF7, func() { a.moveConflictSelection(1) })
-			c.OnShortcut(ui.Shift, ui.KeyF7, func() { a.moveConflictSelection(-1) })
-			c.OnShortcut(ui.Alt, ui.Key1, func() { a.resolveConflictSide(conflictCurrent) })
-			c.OnShortcut(ui.Alt, ui.Key2, func() { a.resolveConflictSide(conflictBase) })
-			c.OnShortcut(ui.Alt, ui.Key3, func() { a.resolveConflictSide(conflictIncoming) })
-			c.OnShortcut(ui.Alt, ui.Key4, func() { a.resolveConflictSide(conflictBoth) })
+			a.onShortcut(c, 0, ui.KeyF7, shortcut("conflicts/next", "F7", tr("Move to the next / previous conflict")), func() { a.moveConflictSelection(1) })
+			a.onShortcut(c, ui.Shift, ui.KeyF7, shortcut("conflicts/previous", "Shift+F7", tr("Move to the next / previous conflict")), func() { a.moveConflictSelection(-1) })
+			a.onShortcut(c, ui.Alt, ui.Key1, shortcut("conflicts/keep-current", "Alt+1", tr("Keep the current / ancestor conflict hunk")), func() { a.resolveConflictSide(conflictCurrent) })
+			a.onShortcut(c, ui.Alt, ui.Key2, shortcut("conflicts/keep-ancestor", "Alt+2", tr("Keep the current / ancestor conflict hunk")), func() { a.resolveConflictSide(conflictBase) })
+			a.onShortcut(c, ui.Alt, ui.Key3, shortcut("conflicts/keep-incoming", "Alt+3", tr("Keep the incoming conflict hunk / both hunks")), func() { a.resolveConflictSide(conflictIncoming) })
+			a.onShortcut(c, ui.Alt, ui.Key4, shortcut("conflicts/keep-both", "Alt+4", tr("Keep the incoming conflict hunk / both hunks")), func() { a.resolveConflictSide(conflictBoth) })
 			// While Result has no unsaved manual text, conventional undo applies
 			// to the hunk resolutions too. A dirty editor keeps its native text
 			// undo until that buffer is saved, so the two histories do not race.
 			if a.conflictView == nil || a.conflictView.Buffer == nil || !a.conflictView.Buffer.Modified() {
-				c.OnShortcut(ui.Cmd, ui.KeyZ, a.undoConflictResolution)
+				a.onShortcut(c, ui.Cmd, ui.KeyZ, shortcut("conflicts/undo-command", cmdShortcutChord()+"+Z", tr("Undo the last conflict resolution")), a.undoConflictResolution)
 				if ui.Cmd != ui.Ctrl {
-					c.OnShortcut(ui.Ctrl, ui.KeyZ, a.undoConflictResolution)
+					a.onShortcut(c, ui.Ctrl, ui.KeyZ, shortcut("conflicts/undo-control", "Ctrl+Z", tr("Undo the last conflict resolution")), a.undoConflictResolution)
 				}
 			}
-			c.OnShortcut(ui.Alt, ui.KeyZ, a.undoConflictResolution)
+			a.onShortcut(c, ui.Alt, ui.KeyZ, shortcut("conflicts/undo-resolution", "Alt+Z", tr("Undo the last conflict resolution")), a.undoConflictResolution)
 		}
 		if !a.editorOnlyWorkspace() {
-			c.OnShortcut(0, ui.KeyF5, a.beginRefresh)
+			a.onShortcut(c, 0, ui.KeyF5, shortcut("repository/refresh-editing", "F5", tr("Refresh the repository")), a.beginRefresh)
 		}
 		return
 	}
@@ -223,34 +224,34 @@ func (a *app) registerShortcuts(c *ui.Context) {
 	// Custom bindings take precedence not just over Git commands but also F5,
 	// Ctrl+L, section digits and navigation globals registered below.
 	if !a.editorOnlyWorkspace() {
-		c.OnShortcut(0, ui.KeyF5, a.beginRefresh)
+		a.onShortcut(c, 0, ui.KeyF5, shortcut("repository/refresh", "F5", tr("Refresh the repository")), a.beginRefresh)
 	}
 	if a.workspaceTab == sectionCode {
-		c.OnShortcut(ui.Cmd, ui.KeyP, a.focusCodeQuickOpen)
-		c.OnShortcut(ui.Cmd|ui.Shift, ui.KeyF, a.focusCodeSearch)
-		c.OnShortcut(ui.Cmd|ui.Shift, ui.KeyH, a.focusCodeReplace)
-		c.OnShortcut(ui.Cmd, ui.KeyW, func() { a.closeCodeFile(a.code.active) })
+		a.onShortcut(c, ui.Cmd, ui.KeyP, shortcut("code/quick-open", cmdShortcutChord()+"+P", tr("Search files")), a.focusCodeQuickOpen)
+		a.onShortcut(c, ui.Cmd|ui.Shift, ui.KeyF, shortcut("code/search", cmdShortcutChord()+"+Shift+F", tr("Search files")), a.focusCodeSearch)
+		a.onShortcut(c, ui.Cmd|ui.Shift, ui.KeyH, shortcut("code/replace", cmdShortcutChord()+"+Shift+H", tr("Search files")), a.focusCodeReplace)
+		a.onShortcut(c, ui.Cmd, ui.KeyW, shortcut("code/close-file", cmdShortcutChord()+"+W", tr("Close the active tab")), func() { a.closeCodeFile(a.code.active) })
 	}
-	c.OnShortcut(0, ui.KeyF3, func() { a.navigateActiveSearch(1) })
-	c.OnShortcut(ui.Shift, ui.KeyF3, func() { a.navigateActiveSearch(-1) })
+	a.onShortcut(c, 0, ui.KeyF3, shortcut("search/next", "F3", tr("Move to the next / previous quick-search result")), func() { a.navigateActiveSearch(1) })
+	a.onShortcut(c, ui.Shift, ui.KeyF3, shortcut("search/previous", "Shift+F3", tr("Move to the next / previous quick-search result")), func() { a.navigateActiveSearch(-1) })
 	if c.FocusTakesText() {
 		return
 	}
 	if !a.editorOnlyWorkspace() {
-		c.OnShortcut(ui.Shift, ui.KeyW, a.openCompare)
-		c.OnShortcut(0, ui.KeyW, a.openCompare)
-		c.OnShortcut(ui.Alt, ui.KeyW, a.toggleDiffWhitespace)
-		c.OnShortcut(ui.Alt, ui.KeyU, a.cycleDiffContext)
+		a.onShortcut(c, ui.Shift, ui.KeyW, shortcut("compare/open-shifted", "Shift+W", tr("Compare two refs")), a.openCompare)
+		a.onShortcut(c, 0, ui.KeyW, shortcut("compare/open", "W", tr("Compare two refs")), a.openCompare)
+		a.onShortcut(c, ui.Alt, ui.KeyW, shortcut("diff/toggle-whitespace", "Alt+W", tr("Ignore or show whitespace-only diff changes")), a.toggleDiffWhitespace)
+		a.onShortcut(c, ui.Alt, ui.KeyU, shortcut("diff/context-lines", "Alt+U", tr("Cycle ordinary diff context lines")), a.cycleDiffContext)
 	}
 	if a.workspaceTab == sectionChanges {
-		c.OnShortcut(ui.Alt, ui.KeyJ, func() { a.changedFileNavigation(1) })
-		c.OnShortcut(ui.Alt, ui.KeyK, func() { a.changedFileNavigation(-1) })
+		a.onShortcut(c, ui.Alt, ui.KeyJ, shortcut("changes/next-file", "Alt+J", tr("Go to the next changed file")), func() { a.changedFileNavigation(1) })
+		a.onShortcut(c, ui.Alt, ui.KeyK, shortcut("changes/previous-file", "Alt+K", tr("Go to the previous changed file")), func() { a.changedFileNavigation(-1) })
 	}
-	c.OnShortcut(0, ui.KeySlash, a.focusActiveSearch)
+	a.onShortcut(c, 0, ui.KeySlash, shortcut("search/focus-active", "/", tr("Search the active panel")), a.focusActiveSearch)
 	if !a.editorOnlyWorkspace() {
-		c.OnShortcut(ui.Shift, ui.KeySemicolon, a.openCommandPrompt)
-		c.OnShortcut(ui.Ctrl, ui.KeyZ, a.confirmUndo)
-		c.OnShortcut(ui.Ctrl|ui.Shift, ui.KeyZ, a.confirmRedo)
+		a.onShortcut(c, ui.Shift, ui.KeySemicolon, shortcut("commands/prompt", ":", tr("Run a one-off shell command")), a.openCommandPrompt)
+		a.onShortcut(c, ui.Ctrl, ui.KeyZ, shortcut("repository/undo", "Ctrl+Z", tr("Undo the latest eligible Git operation")), a.confirmUndo)
+		a.onShortcut(c, ui.Ctrl|ui.Shift, ui.KeyZ, shortcut("repository/redo", "Ctrl+Shift+Z", tr("Redo the latest undone Git operation")), a.confirmRedo)
 	}
 	// The digits number the sections that show, so 1 is always the first
 	// sidebar row even after some are hidden.
@@ -260,7 +261,7 @@ func (a *app) registerShortcuts(c *ui.Context) {
 			break
 		}
 		tab := visible[i]
-		c.OnShortcut(0, key, func() { a.setWorkspaceTab(tab) })
+		a.onShortcut(c, 0, key, shortcut(fmt.Sprintf("workspace/open-section-%d", i+1), fmt.Sprintf("%d", (i+1)%10), tr("Switch to a workspace section")), func() { a.setWorkspaceTab(tab) })
 	}
 
 	a.registerGitCommands(c)

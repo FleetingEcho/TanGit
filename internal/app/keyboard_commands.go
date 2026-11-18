@@ -226,7 +226,9 @@ func (a *app) registerCustomCommandKeys(c *ui.Context) {
 			continue
 		}
 		command := command
-		c.OnShortcut(mods, key, func() { a.runCustomCommandByMenu(command) })
+		a.onShortcut(c, mods, key, customShortcutDefinition(command), func() {
+			a.runCustomCommandByMenu(command)
+		})
 	}
 }
 
@@ -244,7 +246,13 @@ func (a *app) registerGitCommands(c *ui.Context) {
 			continue
 		}
 		command := command
-		c.OnShortcut(command.mods, command.key, func() { command.run(a) })
+		definition := shortcutDefinition{
+			id:    "git/" + command.group + "/" + command.label,
+			chord: command.keys, label: tr(command.label),
+		}
+		a.onShortcut(c, command.mods, command.key, definition, func() {
+			command.run(a)
+		})
 	}
 }
 
