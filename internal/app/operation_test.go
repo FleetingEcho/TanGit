@@ -128,6 +128,40 @@ func TestOperationControlsDriveConfirmedFingerprint(t *testing.T) {
 	}
 }
 
+func TestGuidedStyleKeepsExistingOperationDrivers(t *testing.T) {
+	for _, test := range []struct {
+		action repository.OperationAction
+		button string
+	}{
+		{action: repository.OperationActionContinue, button: "Continue"},
+		{action: repository.OperationActionSkip, button: "Skip…"},
+		{action: repository.OperationActionAbort, button: "Abort…"},
+	} {
+		t.Run(string(test.action), func(t *testing.T) {
+			h, calls := operationTestApp(t, richRebaseOperation())
+			h.app.settings.ConflictActionStyle = conflictActionStyleGuided
+			h.tester.Frame()
+			if err := h.tester.Click(test.button); err != nil {
+				t.Fatalf("open the existing %s confirmation: %v", test.action, err)
+			}
+			h.tester.Frame()
+			if h.app.confirm == nil {
+				t.Fatalf("guided style removed %s preflight", test.action)
+			}
+			if test.action == repository.OperationActionContinue && h.app.confirm.title != "Continue" {
+				t.Fatalf("guided style replaced Continue preflight: %#v", h.app.confirm)
+			}
+			h.app.confirm.run()
+			h.tester.Frame()
+			h.settle(t)
+			want := "drive:" + string(test.action) + ":approved-operation"
+			if !calls.has(want) {
+				t.Fatalf("guided %s bypassed the fingerprint driver: %q", test.action, calls.all())
+			}
+		})
+	}
+}
+
 func TestMergeDoesNotOfferSkip(t *testing.T) {
 	state := richRebaseOperation()
 	state.Type = repository.OperationTypeMerge
