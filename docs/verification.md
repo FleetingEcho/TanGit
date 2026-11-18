@@ -27,7 +27,35 @@ command has the same required-OpenSSH setting at job scope. The job installs
 `build-essential`, `openssh-client`, and `openssh-server`, checks that it is not
 root, and prints the Go, MyGo, Git, and SSH versions in its log.
 
-### Native build and smoke matrix
+### MyGo 0.10 verification and local extensions
+
+The current MyGo dependency is **0.10.0**. Its vendored code, `go.mod`, pruning
+script and upstream LICENSE are kept in sync. TanGit preserves its own batch
+highlight, Quit/Relaunch, hover-anchor, foreground-process and CJK baseline
+behavior while using the newer upstream UI and engine implementation; no
+validation-only stub or changed public behavior substitutes for those APIs.
+
+Nested-module checks include `ui`, `editor`, `terminal` and `pty`, including
+real shell foreground-process transitions. The whole TanGit suite and the
+Linux native build / CLI smoke test also run on the upgraded sources.
+
+Three upstream checks are classified separately rather than silently dropped:
+
+- `TestTwoTestersInParallel` intentionally drives concurrent glyph-atlas
+  access documented as **issue #1722** in the upstream MyGo test suite.
+- `TestDiffFrameAllocs` and `TestOutlineRowAllocs` compare frame-allocation
+  counts whose values change under race-instrumented execution.
+- `TestPathContains` is likewise an allocation-count assertion, not an ordinary
+  repository functional check.
+
+The race-only run reports these limits explicitly and uses
+`-skip '^TestTwoTestersInParallel$|^TestDiffFrameAllocs$|^TestOutlineRowAllocs$|^TestPathContains$'`
+to avoid treating multithreaded glyph drawing or instrumentation-sensitive
+performance assertions as a correctness failure. They are not product-
+compatibility suite skips and must not be used to waive other tests. Standard
+non-race UI/terminal checks still execute these upstream assertions.
+
+## Native build and smoke matrix
 
 Each build runs on its native hosted OS. The artifacts deliberately omit
 installers, DMGs, notarization, and update uploads so pull requests need no
@@ -54,7 +82,7 @@ pinned** by this workflow.
 | Tool or capability | Configured source | Supported verification claim |
 | --- | --- | --- |
 | Go | The `go` directive in `go.mod` (currently `1.27.3`) | Checks using `actions/setup-go` ran with the version recorded in their logs |
-| MyGo | The `tool github.com/egoist/mygo/cmd/mygo` dependency in `go.mod` (currently MyGo `0.9.2`) | The `go tool mygo` command selected by that checkout ran successfully for the completed job |
+| MyGo | The `tool github.com/egoist/mygo/cmd/mygo` dependency in `go.mod` (currently MyGo `0.10.0`) | The `go tool mygo` command selected by that checkout ran successfully for the completed job |
 | Git in the Ubuntu test job | The hosted image's installed Git; `git --version` is printed | Tests exercised exactly that logged version, not an implied minimum or broad version range |
 | OpenSSH in the Ubuntu test job | Ubuntu packages installed by the job; `ssh -V` is printed | Loopback tests exercised the logged client/server package family on that image |
 | Hosted operating systems | Moving `ubuntu-latest`, `macos-latest`, and `windows-latest` labels | Results apply to the concrete runner image recorded by GitHub, not to every OS release |
