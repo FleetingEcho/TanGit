@@ -1991,46 +1991,9 @@ func (s *gitSession) fetchUpstream(branch *models.Branch) (string, error) {
 }
 
 func (s *gitSession) RebaseOntoBranch(ctx context.Context, name string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	unlock := s.lockWorktreeMutation()
-	defer unlock()
-	current, err := s.currentBranch()
-	if err != nil {
-		return err
-	}
-	if current.Name == name {
-		return fmt.Errorf("rebase: cannot rebase %s onto itself", name)
-	}
-	var snapshot *WorkSnapshot
-	hasWork, err := s.repositoryHasWork()
-	if err != nil {
-		return err
-	}
-	if hasWork {
-		captured, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Before rebase onto "+name)
-		if err != nil {
-			return err
-		}
-		snapshot = &captured
-	}
-	record, err := s.beginOperation(OperationRebase, "Rebase onto "+name, UndoResetHead, snapshot)
-	if err != nil {
-		return err
-	}
-	if record, err = s.pinOperationBefore(record); err != nil {
-		return err
-	}
-	// The library's rebase runs this program as Git's sequence editor, which
-	// a GUI cannot answer; a plain rebase with no editor replays the commits
-	// as they are, which is what "rebase current onto this" means.
-	cmd := s.cmd.New([]string{"git", "rebase", "--autostash", name})
-	cmd.AddEnvVars("GIT_EDITOR=:", "GIT_SEQUENCE_EDITOR=:")
-	if err := cmd.Run(); err != nil {
-		return s.finishStartedJournalOperation(record, OperationTypeRebase, fmt.Errorf("rebase onto %s: %w", name, err))
-	}
-	return s.completeJournalOperation(record, nil)
+	// A plain rebase deliberately has no marked-base or --onto input. The
+	// shared implementation adds --onto only for an explicitly marked commit.
+	return s.rebaseOntoBranch(ctx, name, "", "", "", nil)
 }
 
 func (s *gitSession) SetUpstream(ctx context.Context, remote string, remoteBranch string, localBranch string) error {
