@@ -654,19 +654,21 @@ func (a *app) stashView(c *ui.Context) {
 								ui.Badge(c, fmt.Sprintf("%d", len(a.stashFiles)))
 								a.fileTreeButtons(c, fileTreeStashScope, paths)
 							})
+							guides := treeGuideGroups(a.stashFileRows)
 							list := a.keyboardList(c, &a.stashFileList, len(a.stashFileRows)).Grow(1).Rows(func(row ui.ListRow) {
 								item := a.stashFileRows[row.Index]
 								if item.isDirectory() {
-									a.fileTreeDirectoryRow(row.Context, fileTreeStashScope, item, row.Selected(), func() {
+									directory := a.fileTreeDirectoryRow(row.Context, fileTreeStashScope, item, row.Selected(), func() {
 										a.selectStashFileRow(row.Index)
 									})
+									guides.decorate(directory, item, row)
 									return
 								}
 								file := a.stashFiles[item.source]
 								services := row.Context.Services()
 								element := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(6, 8, 6, float32(8+16*item.depth))
 								reveal := element.Hovered() || row.Selected()
-								element.Children(func() {
+								guides.decorate(element, item, row).Children(func() {
 									fileTypeMark(row.Context, file.Path, 13, row.Selected())
 									ui.Text(row.Context, item.name).Grow(1).SingleLine().Tooltip(file.Path)
 									if file.PreviousPath != "" {
