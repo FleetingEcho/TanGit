@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -58,51 +57,65 @@ func (a *app) operationContextView(c *ui.Context) {
 	}
 	theme := c.Theme()
 	tooltip := operationTooltip(*state)
-	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Padding(8, 10).
-		Background(theme.Accent.Alpha(0.09)).Border(1, theme.Accent.Alpha(0.28)).Radius(theme.Radius).
-		Tooltip(tooltip).Children(func() {
-		ui.Icon(c, branchIcon).FontSize(16).TextColor(theme.Accent)
-		context := strings.Join(state.FullRefs, " · ")
-		if context == "" {
-			context = shortOperationSHA(state.StoppedSHA)
-			if context == "" {
-				context = shortOperationSHA(state.OntoSHA)
+	card := ui.Box(c).FillWidth().Label(tr("Operation context"))
+	card.Children(func() {
+		// Adjust on the Changes pane's own width rather than the window's.
+		// Compact space is spent on the operation and its resolution.
+		compact := card.Bounds().W > 0 && card.Bounds().W < 360
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Padding(8, 10).
+			Background(theme.Accent.Alpha(0.09)).Border(1, theme.Accent.Alpha(0.28)).Radius(theme.Radius).
+			Tooltip(tooltip).Children(func() {
+			ui.Icon(c, branchIcon).FontSize(16).TextColor(theme.Accent)
+			context := strings.Join(state.FullRefs, " · ")
+			if compact {
+				context = strings.TrimPrefix(context, "refs/heads/")
+				context = strings.TrimPrefix(context, "refs/remotes/")
 			}
-		}
-		ui.Column(c).Gap(2).Grow(1).Children(func() {
-			ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
-				ui.Text(c, strings.ToUpper(string(state.Type))).Bold().TextColor(theme.Accent)
-				if progress := operationProgress(*state); progress != "" {
-					ui.Badge(c, progress)
+			if context == "" {
+				context = shortOperationSHA(state.StoppedSHA)
+				if context == "" {
+					context = shortOperationSHA(state.OntoSHA)
 				}
-				if state.HistoryPatch != nil {
-					ui.Badge(c, tr("Custom Patch")+" · "+string(state.HistoryPatch.Step))
+			}
+			ui.Column(c).Gap(2).Grow(1).Children(func() {
+				ui.Row(c).AlignItems(ui.Center).Gap(7).Wrap().Children(func() {
+					ui.Text(c, strings.ToUpper(string(state.Type))).Bold().TextColor(theme.Accent)
+					if progress := operationProgress(*state); progress != "" {
+						ui.Badge(c, progress)
+					}
+					if state.HistoryPatch != nil {
+						ui.Badge(c, tr("Custom Patch")+" · "+string(state.HistoryPatch.Step))
+					}
+					if state.Done > 0 && !compact {
+						ui.Text(c, trf("%d completed", state.Done)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+					}
+				})
+				if context != "" {
+					ui.Text(c, context).SingleLine().TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Tooltip(tooltip)
 				}
-				if state.Done > 0 {
-					ui.Text(c, trf("%d completed", state.Done)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+				if conflicts := conflictedFileCount(a.snapshot.Files); conflicts > 0 {
+					ui.Textf(c, tr("%d conflict%s to resolve"), conflicts, plural(conflicts)).
+						Bold().TextColor(theme.Danger).FontSize(theme.FontSize - 1)
+					// Keep the guidance on its own line instead of squeezing it
+					// into the conflict count when space is tight.
+					ui.Text(c, tr("Pick a side, then Continue.")).
+						TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 				}
 			})
-			if context != "" {
-				ui.Text(c, context).SingleLine().TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Tooltip(tooltip)
+			if state.Type == repository.OperationTypeRebase || state.Type == repository.OperationTypePullRebase {
+				after := ui.ButtonBase(c).Size(30, 26).Center().Label(tr("Back to Rebase TODO")).
+					Tooltip(tr("Return to the real rebase steps after resolving conflicts"))
+				after.Children(func() { ui.Icon(c, rebaseIcon).FontSize(15).TextColor(theme.Accent) })
+				if after.Clicked() {
+					a.openRebaseWorkspace()
+				}
 			}
-			if conflicts := conflictedFileCount(a.snapshot.Files); conflicts > 0 {
-				ui.Text(c, fmt.Sprintf(tr("%d conflict%s to resolve"), conflicts, plural(conflicts))+" · "+tr("Pick a side, then Continue.")).
-					TextColor(theme.Danger).FontSize(theme.FontSize - 1).SingleLine()
+			if a.hasRestorableFileRecovery() {
+				rowIconButton(c, tr("Conflict recovery"), tr("Restore an original unresolved file and its index stages"), softResetIcon, func() {
+					a.savedWorkPanel = 0
+					a.showRecoveryModal = true
+				})
 			}
 		})
-		if state.Type == repository.OperationTypeRebase || state.Type == repository.OperationTypePullRebase {
-			after := ui.ButtonBase(c).Size(30, 26).Center().Label(tr("Back to Rebase TODO")).
-				Tooltip(tr("Return to the real rebase steps after resolving conflicts"))
-			after.Children(func() { ui.Icon(c, rebaseIcon).FontSize(15).TextColor(theme.Accent) })
-			if after.Clicked() {
-				a.openRebaseWorkspace()
-			}
-		}
-		if a.hasRestorableFileRecovery() {
-			rowIconButton(c, tr("Conflict recovery"), tr("Restore an original unresolved file and its index stages"), softResetIcon, func() {
-				a.savedWorkPanel = 0
-				a.showRecoveryModal = true
-			})
-		}
 	})
 }

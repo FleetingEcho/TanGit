@@ -596,6 +596,7 @@ var zhHans = map[string]string{
 	"Resolve with the current side and stage it":                         "使用当前版本解决并暂存",
 	"Resolve with the incoming side and stage it":                        "使用传入版本解决并暂存",
 	"Pick a side, then Continue.":                                        "选择一方，然后继续。",
+	"Operation context":                                                  "操作上下文",
 	"Git left conflict markers in this file. Choose a side, or edit them away and mark it resolved.": "Git 在此文件中留下了冲突标记。选择一方，或手动编辑后标记为已解决。",
 	"A rebase or bisect is active in this worktree.":                                                 "此工作树中有正在进行的变基或二分查找。",
 
