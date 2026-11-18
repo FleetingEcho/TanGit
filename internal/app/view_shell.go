@@ -108,6 +108,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.branchFullscreenView(c, overlayTopInset)
 	a.diffFullscreenView(c, overlayTopInset)
 	a.commitActionModals(c)
+	a.rebasePlanModal(c)
 	a.branchFormModal(c)
 	a.moveCommitsModal(c)
 	a.recoveryModal(c)

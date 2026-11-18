@@ -120,6 +120,17 @@ func (a *app) commitRowMenuWithHistory(m *ui.Menu, commit repository.Commit, ser
 	}
 	m.Separator()
 	if historyEditable {
+		markLabel := tr("Mark as base commit for rebase")
+		if a.markedBaseCommit.Hash == commit.Hash {
+			markLabel = tr("Cancel marked base commit")
+		}
+		if m.Item(markLabel).Disabled(a.actionBusy || a.snapshot.Operation != "").Chosen() {
+			a.markRebaseBase(commit)
+		}
+		if a.markedBaseCommit.Hash != "" && m.Item(tr("Open Rebase TODO workspace")).Disabled(a.actionBusy).Chosen() {
+			a.openRebaseWorkspace()
+		}
+		m.Separator()
 		if m.Item(tr("Edit commit (pause rebase)…")).Shortcut(0, ui.KeyE).Disabled(a.actionBusy).Chosen() {
 			a.confirmEditCommit(commit)
 		}

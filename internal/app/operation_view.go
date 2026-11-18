@@ -78,5 +78,13 @@ func (a *app) operationContextView(c *ui.Context) {
 					TextColor(theme.Danger).FontSize(theme.FontSize - 1).SingleLine()
 			}
 		})
+		if state.Type == repository.OperationTypeRebase || state.Type == repository.OperationTypePullRebase {
+			after := ui.ButtonBase(c).Size(30, 26).Center().Label(tr("Back to Rebase TODO")).
+				Tooltip(tr("Return to the real rebase steps after resolving conflicts"))
+			after.Children(func() { ui.Icon(c, rebaseIcon).FontSize(15).TextColor(theme.Accent) })
+			if after.Clicked() {
+				a.openRebaseWorkspace()
+			}
+		}
 	})
 }
