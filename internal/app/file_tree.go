@@ -328,11 +328,6 @@ func (a *app) fileTreeDirectoryRow(c *ui.Context, scope string, item fileTreeRow
 	row := ui.ButtonBase(c).Grow(1).Gap(7).AlignItems(ui.Center).
 		Padding(6, 8, 6, float32(8+treeIndentStep*item.depth)).
 		Label(tr(action) + " " + item.path).Tooltip(item.path)
-	if item.depth > 0 {
-		row.Draw(func(p *ui.Painter, r ui.Rect) {
-			paintTreeDepthGuides(p, item, theme, selected, r)
-		})
-	}
 	row.Children(func() {
 		arrowColor := theme.TextMuted
 		folderColor := theme.Accent
@@ -356,55 +351,132 @@ func (a *app) fileTreeDirectoryRow(c *ui.Context, scope string, item fileTreeRow
 	return row
 }
 
-// treeGuideSegment is one parent rail and the elbow connecting it toward the
-// current directory. Root folders have no parent and therefore no such chrome.
-type treeGuideSegment struct {
-	vertical, horizontal struct{ X1, Y1, X2, Y2 float32 }
-}
-
 const treeIndentStep = 12
 
-// treeIndentSegments computes a consistent grid of vertical guides. Child
-// rows keep their native padding and icons; repaint only the rail layout.
-func treeIndentSegments(depth int) []treeGuideSegment {
-	if depth <= 0 {
-		return nil
-	}
-	// Git paths originate in this repository, but cap malformed/degenerate
-	// groups as a precaution for display-only state supplied by an editor.
-	depth = min(depth, 128)
-	guides := make([]treeGuideSegment, 0, depth+1)
-	for level := 0; level < depth; level++ {
-		var segment treeGuideSegment
-		segment.vertical.X1 = 12 + treeIndentStep*float32(level)
-		segment.vertical.Y1 = 0
-		segment.vertical.X2 = segment.vertical.X1
-		segment.vertical.Y2 = 64
-		guides = append(guides, segment)
-	}
-	x := 12 + treeIndentStep*float32(depth-1)
-	var segment treeGuideSegment
-	segment.vertical.X1 = x
-	segment.vertical.Y1 = 0.5
-	segment.vertical.X2 = x + treeIndentStep/2
-	segment.horizontal.Y2 = 64
-	guides = append(guides, treeGuideSegment{horizontal: struct{ X1, Y1, X2, Y2 float32 }{
-		X1: x, Y1: 0.5, X2: x + treeIndentStep/2, Y2: 0.5,
-	}})
-	return guides
+// treeGuideGroup is the branch of one expanded parent in the actual row
+// order. parent and end are inclusive row indexes: end is its last visible
+// descendant after folds are applied, not a depth-derived guess.
+type treeGuideGroup struct {
+	parent, end int
+	depth       int
 }
 
-func paintTreeDepthGuides(p *ui.Painter, item fileTreeRow, theme *ui.Theme, selected bool, r ui.Rect) {
-	color := treeGuideColor(theme, selected)
-	for _, guide := range treeIndentSegments(item.depth) {
-		line := guide.vertical
-		p.Fill(ui.Rect{
-			X: r.X + line.X1,
-			Y: r.Y + line.Y1,
-			W: 1,
-			H: line.Y2 - line.Y1,
-		}, color, 0)
+// treeGuideLayout keys each real branch by its parent directory's full path.
+type treeGuideLayout map[string]treeGuideGroup
+
+// treeGuideGroups extracts the visible tree's skeleton once, before a List
+// virtualizes its rows. A parent without visible descendants has no branch.
+func treeGuideGroups(rows []fileTreeRow) treeGuideLayout {
+	type openGroup struct {
+		path  string
+		group treeGuideGroup
 	}
+	groups := make(treeGuideLayout)
+	var open []openGroup
+	closeGroup := func(group openGroup, end int) {
+		if end > group.group.parent {
+			group.group.end = end
+			groups[group.path] = group.group
+		}
+	}
+	for index, item := range rows {
+		depth := max(item.depth, 0)
+		for len(open) > 0 && depth <= open[len(open)-1].group.depth {
+			last := len(open) - 1
+			closeGroup(open[last], index-1)
+			open = open[:last]
+		}
+		if item.isDirectory() && item.path != "" {
+			open = append(open, openGroup{
+				path:  item.path,
+				group: treeGuideGroup{parent: index, depth: depth},
+			})
+		}
+	}
+	for len(open) > 0 {
+		last := len(open) - 1
+		closeGroup(open[last], len(rows)-1)
+		open = open[:last]
+	}
+	return groups
+}
+
+// treeGuideSegment is in one row's coordinates. X values are DIPs; Y values
+// are fractions of that row's height. Adjacent rows therefore meet at exactly
+// the same absolute Y even when their heights differ.
+type treeGuideSegment struct {
+	X1, Y1, X2, Y2 float32
+}
+
+// segments clips the parent's branch intervals to a row that is actually
+// built. It also adds the child's horizontal elbow. Root rows never acquire
+// an incoming guide; their outgoing rail exists only with visible children.
+func (groups treeGuideLayout) segments(item fileTreeRow, row int) []treeGuideSegment {
+	if len(groups) == 0 || row < 0 || item.depth < 0 {
+		return nil
+	}
+	depth := min(item.depth, 128)
+	var segments []treeGuideSegment
+	parts := strings.Split(item.path, "/")
+	for level := 0; level < min(depth, len(parts)-1); level++ {
+		group, ok := groups[strings.Join(parts[:level+1], "/")]
+		if !ok || group.depth != level || row <= group.parent || row > group.end {
+			continue
+		}
+		x := float32(12 + treeIndentStep*level)
+		y2 := float32(1)
+		if group.end == row {
+			y2 = 0.5
+		}
+		segments = append(segments, treeGuideSegment{X1: x, X2: x, Y2: y2})
+		if level == depth-1 {
+			// Start beside the vertical's one DIP, sharing an edge rather than
+			// blending the elbow's pixel twice when this is the last child.
+			segments = append(segments, treeGuideSegment{
+				X1: x + 1, Y1: 0.5, X2: x + treeIndentStep/2, Y2: 0.5,
+			})
+		}
+	}
+	if item.isDirectory() {
+		if group, ok := groups[item.path]; ok && group.parent == row && group.depth == depth {
+			x := float32(12 + treeIndentStep*depth)
+			segments = append(segments, treeGuideSegment{X1: x, Y1: 0.5, X2: x, Y2: 1})
+		}
+	}
+	return segments
+}
+
+// decorate paints only this row's portion of the shared parent branches.
+// There is one uniform-alpha stroke at any pixel, and an off-screen parent
+// is unnecessary: every built descendant carries the same extracted branch.
+func (groups treeGuideLayout) decorate(element ui.Element, item fileTreeRow, row ui.ListRow) ui.Element {
+	segments := groups.segments(item, row.Index)
+	if len(segments) == 0 {
+		return element
+	}
+	color := treeGuideColor(row.Context.Theme(), row.Selected())
+	return element.Draw(func(p *ui.Painter, r ui.Rect) {
+		for _, line := range segments {
+			if line.X1 == line.X2 {
+				height := (line.Y2 - line.Y1) * r.H
+				if line.Y1 == 0 && line.Y2 == 0.5 {
+					// Fill's lower edge is exclusive. Include the midpoint pixel
+					// so the terminal vertical and its elbow share an edge, not
+					// merely diagonal corners, without entering the next row.
+					height++
+				}
+				p.Fill(ui.Rect{
+					X: r.X + line.X1, Y: r.Y + line.Y1*r.H,
+					W: 1, H: height,
+				}, color, 0)
+				continue
+			}
+			p.Fill(ui.Rect{
+				X: r.X + line.X1, Y: r.Y + line.Y1*r.H,
+				W: line.X2 - line.X1, H: 1,
+			}, color, 0)
+		}
+	})
 }
 
 func treeGuideColor(theme *ui.Theme, selected bool) ui.Color {

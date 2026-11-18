@@ -555,17 +555,20 @@ func (a *app) compareResults(c *ui.Context, theme *ui.Theme) {
 					})
 					return
 				}
+				guides := treeGuideGroups(a.compare.fileRows)
 				list := a.keyboardList(c, &a.compare.list, len(a.compare.fileRows)).Grow(1).Rows(func(row ui.ListRow) {
 					item := a.compare.fileRows[row.Index]
 					if item.isDirectory() {
-						a.fileTreeDirectoryRow(row.Context, fileTreeCompareScope, item, row.Selected(), func() {
+						directory := a.fileTreeDirectoryRow(row.Context, fileTreeCompareScope, item, row.Selected(), func() {
 							a.selectCompareFileRow(row.Index)
 						})
+						guides.decorate(directory, item, row)
 						return
 					}
 					file := a.compare.files[item.source]
-					ui.Row(row.Context).Gap(8).AlignItems(ui.Center).
-						Padding(6, 8, 6, float32(8+16*item.depth)).Children(func() {
+					fileRow := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).
+						Padding(6, 8, 6, float32(8+16*item.depth))
+					guides.decorate(fileRow, item, row).Children(func() {
 						fileTypeMark(row.Context, file.Path, 13, row.Selected())
 						ui.Text(row.Context, item.name).Grow(1).SingleLine().Tooltip(file.Path)
 						fileDiffStatCounts(row.Context, file.Path, file.LinesAdded, file.LinesDeleted)
