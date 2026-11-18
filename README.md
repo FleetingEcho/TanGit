@@ -53,7 +53,7 @@ keyboard navigation and visual tools for the work that needs a closer look.
 
 - **Turn mixed edits into clean commits.** Stage, unstage, or stash selected lines across separate hunks, keeping the rest of your changes untouched.
 - **Shape history visually.** Follow the commit graph and file history, then batch cherry-pick, squash, fix up, drop, or reorder commits.
-- **Resolve conflicts in place.** Compare Base, Current, Incoming, and Result views; choose individual hunks, edit the result, and undo a choice before staging. Durable per-file recovery preserves the original unresolved file and index stages.
+- **Resolve conflicts in place.** Compare Base, Current, Incoming, and Result views; choose individual hunks, edit the result, and undo a choice before staging. Enable **Guided** for a live resolution checklist and stage-specific help. Durable per-file recovery preserves the original unresolved file and index stages.
 - **Keep your development tools together.** Switch repository tabs, edit code with syntax highlighting and language-server assistance, run a shell in the built-in terminal, and open your configured editor with one click.
 - **Make the workspace yours.** Resize and expand panels, browse directory trees, and choose from 20 palettes, custom fonts, and six interface languages.
 
@@ -96,6 +96,38 @@ from the visible branch. The operation type and Git state determine which of
 resolved and staged before Continue, which revalidates the reviewed operation
 fingerprint and unmerged index instead of acting on a stale card.
 
+For guided resolution, choose **Settings → Behavior → Conflict and hunk
+buttons → Guided**, the third saved presentation alongside **Icons** and
+**Icons + labels**. The operation area lists **Read conflict**, **Choose or
+edit Result**, **Mark resolved**, **Review staged**, and **Continue** with
+live **Earlier / Current / Next** (or **Available**) positions. Those labels
+come from the current Git state, selected file, and Result; they are not saved
+completion ticks and do not resolve, stage, or continue automatically. If the
+selected file has no durable recovery record, the panel says so and does not
+offer a fictitious **Restore unresolved…** or **Retry…** action. See the
+[guided workflow](docs/guide.md#guided-conflict-mode).
+
+On a local repository, **Continue** opens **Continue preflight**. Configure a
+**Required check command** such as `go test ./...` and, optionally, an
+**Optional check command** such as `golangci-lint run` under **Settings →
+Behavior**. A blank Required command blocks Continue and Optional does not
+run; Required must pass before Optional runs. A blank Optional command is
+skipped. Only an Optional **failed** result can be explicitly overridden with
+**Override optional failure and continue**, after every other gate passes.
+Cancellation, stale or unreadable source state, and checkpoint failure have no
+override. These are fully trusted local shell commands with your permissions,
+network access, and filesystem access—**not a sandbox**. Continue is disabled
+in SSH workspaces rather than running local commands against a remote
+checkout.
+
+After the commands, TanGit compares the operation fingerprint, canonical index
+records, and tracked plus ordinary non-ignored untracked file content. It
+shows changed paths and requires a checkpoint for detected content changes.
+Ignored files, writes outside the checkout, and network effects are outside
+that comparison. Both ordinary approval and an Optional override perform a
+fresh comparison before the operation driver's expected-fingerprint CAS.
+[Preflight rules and an example →](docs/guide.md#continue-preflight-and-trusted-checks)
+
 **Recovery & checkpoints → Recovery** stores one file's original unresolved
 worktree bytes and index stages separately from its later state. Restore uses
 per-path before/after compare-and-swap checks and resumes its durable worktree
@@ -122,10 +154,11 @@ remote stack transaction.
 1. Read the operation type and current step, then open a conflict in **Changes**.
 2. Compare **Base**, **Current**, and **Incoming**; edit **Result** directly or use the grouped side/hunk actions. Optionally preview Conflict Assistant suggestions before accepting Result only.
 3. Choose **Mark resolved**, review the staged diff, and repeat for every conflicted file. Use durable conflict recovery if you need the original unresolved file and stages.
-4. In **Rebase TODO**, check the current and pending steps, then choose **Continue**. Choose **Skip** only if that operation offers it and you intend to discard the stopped step; **Abort** is the separate abandon path.
+4. In **Rebase TODO**, check the current and pending steps, then choose **Continue**. Review Required/Optional output, source changes, and the checkpoint result before **Continue operation**; use the explicit Optional override only when appropriate. Choose **Skip** only if that operation offers it and you intend to discard the stopped step; **Abort** is the separate abandon path.
 5. Review the resulting history and ordinary Changes before committing anything else. A CAS mismatch means refresh and review again, not that newer work was overwritten.
 
-[Detailed workflows, constraints, and assistant protocol →](docs/guide.md#operation-recovery-history-and-assisted-review)
+[Detailed workflows, constraints, and assistant protocol →](docs/guide.md#operation-recovery-history-and-assisted-review) ·
+[Large-repository refresh behavior and measurements →](docs/guide.md#large-repositories-and-refresh)
 
 ## Get started
 
