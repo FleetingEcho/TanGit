@@ -16,8 +16,7 @@ func (a *app) graphView(c *ui.Context) {
 	// follows a checkout while it holds that default.
 	a.keepCommitFilterDefault(sectionGraph)
 	commits := a.visibleCommits()
-	rows := graphLayout(commits)
-	laneCount := graphLaneCount(rows)
+	rows, laneCount := a.graphLayoutFor(commits)
 	filtered := a.graphFilter.narrows()
 	a.collapsibleContentPaneSplitPercent(c, &a.graphListPercent, &a.workspacePaneCollapsed[sectionGraph],
 		"Expand list pane", func() {

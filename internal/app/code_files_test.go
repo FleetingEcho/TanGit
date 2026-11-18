@@ -2,11 +2,14 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestFilterCodePathsMatchesRepositoryPathsCaseInsensitively(t *testing.T) {
@@ -144,7 +147,11 @@ func TestListPlainCodeFilesIncludesRegularFilesAndEmptyDirectories(t *testing.T)
 		t.Fatal(err)
 	}
 
-	files, empty, err := listPlainCodeFiles(root)
+	found, err := listPlainCodeFiles(root)
+	files, empty, skipped := found.Paths, found.EmptyDirectories, found.Skipped
+	if skipped != 0 {
+		t.Fatalf("readable folder reported %d skipped entries, want 0", skipped)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,8 +165,92 @@ func TestListPlainCodeFilesIncludesRegularFilesAndEmptyDirectories(t *testing.T)
 
 func TestListPlainCodeFilesReportsTraversalErrors(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing")
-	_, _, err := listPlainCodeFiles(missing)
+	_, err := listPlainCodeFiles(missing)
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("listPlainCodeFiles(%q) error = %v, want os.ErrNotExist", missing, err)
 	}
+}
+
+// An unreadable subtree inside a readable root is skipped, not fatal, and is
+// counted so the caller can tell the user.
+func TestListPlainCodeFilesSkipsUnreadableSubtrees(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read any directory")
+	}
+	root := t.TempDir()
+	for name, content := range map[string]string{
+		"README.md":       "# Sample\n",
+		"src/main.go":     "package sample\n",
+		"data/huge/f.bin": "binary\n",
+	} {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A sysfs-like unreadable directory inside the folder.
+	unreadable := filepath.Join(root, "data", "huge")
+	if err := os.Chmod(unreadable, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(unreadable, 0o755) })
+
+	found, err := listPlainCodeFiles(root)
+	files, empty, skipped := found.Paths, found.EmptyDirectories, found.Skipped
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skipped == 0 {
+		t.Fatal("the unreadable subtree was not reported")
+	}
+	for _, file := range files {
+		if strings.HasPrefix(file, "data/huge") {
+			t.Fatalf("an unreadable file was listed: %q", file)
+		}
+	}
+	for _, name := range []string{"README.md", "src/main.go"} {
+		found := false
+		for _, file := range files {
+			if file == name {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("readable file %q missing from %v", name, files)
+		}
+	}
+	_ = empty
+}
+
+// A plain-folder root that holds far more files than the explorer index
+// limit stops at the limit, in lexical order, and reports truncation.
+func TestListPlainCodeFilesStopsAtTheLimit(t *testing.T) {
+	root := t.TempDir()
+	for index := range plainFileLimit + 3 {
+		path := filepath.Join(root, fmt.Sprintf("file-%05d.txt", index))
+		if err := os.WriteFile(path, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	start := time.Now()
+	found, err := listPlainCodeFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	elapsed := time.Since(start)
+	if !found.Truncated {
+		t.Fatal("a folder over the limit was not reported as truncated")
+	}
+	if len(found.Paths) != plainFileLimit {
+		t.Fatalf("paths = %d, want %d", len(found.Paths), plainFileLimit)
+	}
+	for i := 1; i < len(found.Paths); i++ {
+		if found.Paths[i-1] > found.Paths[i] {
+			t.Fatalf("the listing is not in lexical order at %d: %q > %q", i, found.Paths[i-1], found.Paths[i])
+		}
+	}
+	t.Logf("indexed the limit in %s", elapsed)
 }

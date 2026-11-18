@@ -1046,7 +1046,7 @@ func (a *app) languageSelect(c *ui.Context) {
 // without a name to read.
 func (a *app) accentPicker(c *ui.Context) {
 	theme := c.Theme()
-	palette := themeForSettings(appSettings{Theme: a.settings.Theme}, theme.Dark).Accent
+	palette := themeForSettingsCached(appSettings{Theme: a.settings.Theme}, theme.Dark).Accent
 	ui.Row(c).AlignItems(ui.Center).Gap(5).Wrap().Children(func() {
 		a.accentThemeSwatch(c, palette)
 		for _, name := range accentNames {
@@ -1120,7 +1120,7 @@ func (a *app) accentSwatch(c *ui.Context, name string) {
 // themePreview draws the chosen palette's own colors, so a theme can be
 // judged without leaving the dialog.
 func (a *app) themePreview(c *ui.Context) {
-	preview := themeForSettings(a.settings, c.Theme().Dark)
+	preview := themeForSettingsCached(a.settings, c.Theme().Dark)
 	settingRow(c, "Palette", "The theme's own colors", func() {
 		a.themeSwatch(c, preview.Background, "Background")
 		a.themeSwatch(c, preview.Surface, "Surface")

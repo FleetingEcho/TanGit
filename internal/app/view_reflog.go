@@ -9,7 +9,7 @@ import (
 )
 
 func (a *app) visibleReflog() []int {
-	return filteredSourceRows(len(a.snapshot.Reflog), a.reflogFilter, func(source int) string {
+	return filteredCached(&a.reflogVisibleCache, a.snapshotSeq, len(a.snapshot.Reflog), a.reflogFilter, func(source int) string {
 		entry := a.snapshot.Reflog[source]
 		return strings.Join([]string{entry.Subject, entry.Hash, entry.ShortHash,
 			entry.AuthorName, entry.AuthorEmail}, "\x00")

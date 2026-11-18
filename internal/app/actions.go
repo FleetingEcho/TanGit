@@ -273,6 +273,12 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 	} else {
 		a.startRepositoryWatch(session)
 	}
+	if len(snapshot.Warnings) > 0 {
+		// The repository opened with some optional data unavailable (see the
+		// load log). Say so once, at the moment it happened, rather than on
+		// every refresh.
+		a.notify("error", "Repository opened with limited data", strings.Join(snapshot.Warnings, "; "))
+	}
 	a.refreshWindowTitle()
 }
 

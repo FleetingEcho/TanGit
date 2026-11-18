@@ -255,6 +255,49 @@ func graphRowOf(pipes []graphPipe) graphRow {
 	return row
 }
 
+// graphLayoutCacheState memoizes one graph layout keyed by the visible
+// commit list, so an idle frame recomputes nothing.
+type graphLayoutCacheState struct {
+	set      bool
+	snapshot uint64
+	narrows  bool
+	query    string
+	author   string
+	branch   string
+	limit    int
+	length   int
+	first    string
+	last     string
+	rows     []graphRow
+	lanes    int
+}
+
+// graphLayoutFor returns the visible list's rows and the widest lane,
+// recomputing only when the list, the filter or the repository changed.
+func (a *app) graphLayoutFor(commits []repository.Commit) ([]graphRow, int) {
+	narrows := a.graphFilter.narrows()
+	applied := a.graphFilter.applied
+	first, last := "", ""
+	if len(commits) > 0 {
+		first, last = commits[0].Hash, commits[len(commits)-1].Hash
+	}
+	if cached := &a.graphLayoutCache; cached.set && cached.snapshot == a.snapshotSeq &&
+		cached.narrows == narrows && cached.query == applied.Query &&
+		cached.author == applied.Author && cached.branch == applied.Branch &&
+		cached.limit == applied.Limit && cached.length == len(commits) &&
+		cached.first == first && cached.last == last {
+		return cached.rows, cached.lanes
+	}
+	rows := graphLayout(commits)
+	lanes := graphLaneCount(rows)
+	a.graphLayoutCache = graphLayoutCacheState{
+		set: true, snapshot: a.snapshotSeq, narrows: narrows,
+		query: applied.Query, author: applied.Author, branch: applied.Branch, limit: applied.Limit,
+		length: len(commits), first: first, last: last, rows: rows, lanes: lanes,
+	}
+	return rows, lanes
+}
+
 // graphLaneCount is the widest row's lane count, which every row pads to so
 // the commit columns line up.
 func graphLaneCount(rows []graphRow) int {

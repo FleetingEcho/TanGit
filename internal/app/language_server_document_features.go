@@ -41,13 +41,23 @@ func (a *app) syncLanguageDocumentFeatures(document *codeDocument) {
 		return
 	}
 	version := document.state.Buffer.Version()
-	text := document.state.Buffer.String()
+	// The buffer is copied only when a request is actually issued below, not
+	// on every frame this runs on.
+	var text string
+	textLoaded := false
+	bufferText := func() string {
+		if !textLoaded {
+			text = document.state.Buffer.String()
+			textLoaded = true
+		}
+		return text
+	}
 	uri := languageServerFileURI(a.workingFilePath(document.path))
 	settings := effectiveBuiltInEditorPreferences(a.settings)
 	if settings.EditorInlayHints && a.languageServerDocumentFeatureSupported(document, "textDocument/inlayHint") && (!document.inlayRequested || document.inlayVersion != version) {
 		document.inlayVersion = version
 		document.inlayRequested = true
-		end := languageServerPositionAt(text, len(text))
+		end := languageServerPositionAt(bufferText(), len(bufferText()))
 		params := map[string]any{"textDocument": languageServerTextDocument{URI: uri},
 			"range": languageServerRange{Start: languageServerPosition{}, End: end}}
 		a.languageServerActionRequest(document, &document.inlaySeq, "textDocument/inlayHint", params,
@@ -56,7 +66,7 @@ func (a *app) syncLanguageDocumentFeatures(document *codeDocument) {
 					document.inlayRequested = false
 					return false
 				}
-				document.languageInlays = parseLanguageServerInlayHints(raw, text)
+				document.languageInlays = parseLanguageServerInlayHints(raw, bufferText())
 				syncCodeDocumentInlays(document)
 				return true
 			})
@@ -77,7 +87,7 @@ func (a *app) syncLanguageDocumentFeatures(document *codeDocument) {
 					document.semanticRequested = false
 					return false
 				}
-				document.state.SemanticTokens = parseLanguageServerSemanticTokens(raw, text, tokenTypes)
+				document.state.SemanticTokens = parseLanguageServerSemanticTokens(raw, bufferText(), tokenTypes)
 				return true
 			})
 	} else if !settings.EditorSemanticHighlighting {
@@ -88,8 +98,8 @@ func (a *app) syncLanguageDocumentFeatures(document *codeDocument) {
 		document.signatureVersion = version
 		document.signatureRequested = true
 		offset, ok := codeLanguageOffset(document)
-		if ok && offset > 0 && strings.ContainsRune("(,", rune(text[offset-1])) && a.languageServerDocumentFeatureSupported(document, "textDocument/signatureHelp") {
-			params := languageServerTextPosition{TextDocument: languageServerTextDocument{URI: uri}, Position: languageServerPositionAt(text, offset)}
+		if ok && offset > 0 && strings.ContainsRune("(,", rune(bufferText()[offset-1])) && a.languageServerDocumentFeatureSupported(document, "textDocument/signatureHelp") {
+			params := languageServerTextPosition{TextDocument: languageServerTextDocument{URI: uri}, Position: languageServerPositionAt(bufferText(), offset)}
 			a.languageServerActionRequest(document, &document.signatureSeq, "textDocument/signatureHelp", params,
 				func(raw json.RawMessage, err error) bool {
 					content := parseLanguageServerSignatureHelp(raw)
