@@ -92,9 +92,12 @@ type Snapshot struct {
 	Operations    []OperationRecord
 	Tags          []Tag
 	Operation     string
-	Worktrees     []Worktree
-	Submodules    []Submodule
-	Reflog        []Commit
+	// OperationState is populated for supported active Git operations while
+	// Operation remains the legacy display string for existing consumers.
+	OperationState *OperationState
+	Worktrees      []Worktree
+	Submodules     []Submodule
+	Reflog         []Commit
 	// Bisect reports an in-progress or finished bisect, or nil when none is
 	// running. It is read on every snapshot so the banner and menus can
 	// react without a separate probe.
@@ -770,8 +773,17 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 	}
 	workingTreeState := s.workingTreeState()
 	operation := ""
+	var operationState *OperationState
 	if workingTreeState.Any() {
 		operation = workingTreeState.Effective().CommandName()
+		state, stateErr := s.OperationState(ctx)
+		if stateErr != nil {
+			return Snapshot{}, fmt.Errorf("load operation state: %w", stateErr)
+		}
+		if state.Type != OperationTypeNone {
+			operation = string(state.Type)
+			operationState = &state
+		}
 	}
 
 	// Snapshots run unattended and the filesystem watcher observes .git. Keep
@@ -860,13 +872,14 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 	// not fail the snapshot: treat it as "no bisect".
 	bisectState, _ := s.BisectState(ctx)
 	return Snapshot{
-		Root:      s.git.RepoPaths.WorktreePath(),
-		Branch:    branchInfo.DisplayName,
-		Head:      head,
-		HeadHash:  headHash,
-		Files:     files,
-		Operation: operation,
-		Bisect:    bisectState,
+		Root:           s.git.RepoPaths.WorktreePath(),
+		Branch:         branchInfo.DisplayName,
+		Head:           head,
+		HeadHash:       headHash,
+		Files:          files,
+		Operation:      operation,
+		OperationState: operationState,
+		Bisect:         bisectState,
 	}, nil
 }
 
@@ -1575,6 +1588,16 @@ func (s *gitSession) pull(ctx context.Context, strategy PullStrategy) error {
 	if branch.UpstreamRemote == "" || branch.UpstreamBranch == "" {
 		return fmt.Errorf("pull: branch %s: %w", branch.Name, ErrNoUpstream)
 	}
+	var journal *OperationRecord
+	if strategy == PullRebase {
+		unlock := s.lockWorktreeMutation()
+		defer unlock()
+		record, recordErr := s.beginOperation(OperationRebase, "Pull with rebase", "", nil)
+		if recordErr != nil {
+			return recordErr
+		}
+		journal = &record
+	}
 	var pullErr error
 	if strategy == pullConfigured {
 		pullErr = s.git.Sync.Pull(nil, git_commands.PullOptions{
@@ -1593,7 +1616,14 @@ func (s *gitSession) pull(ctx context.Context, strategy PullStrategy) error {
 			Run()
 	}
 	if pullErr != nil {
-		return fmt.Errorf("pull: %w", safeNetworkError(pullErr, false))
+		pullErr = fmt.Errorf("pull: %w", safeNetworkError(pullErr, false))
+		if journal != nil {
+			return s.finishStartedJournalOperation(*journal, OperationTypePullRebase, pullErr)
+		}
+		return pullErr
+	}
+	if journal != nil {
+		return s.completeJournalOperation(*journal, nil)
 	}
 	return nil
 }
@@ -1988,7 +2018,7 @@ func (s *gitSession) RebaseOntoBranch(ctx context.Context, name string) error {
 	cmd := s.cmd.New([]string{"git", "rebase", "--autostash", name})
 	cmd.AddEnvVars("GIT_EDITOR=:", "GIT_SEQUENCE_EDITOR=:")
 	if err := cmd.Run(); err != nil {
-		return s.failJournalOperation(record, fmt.Errorf("rebase onto %s: %w", name, err))
+		return s.finishStartedJournalOperation(record, OperationTypeRebase, fmt.Errorf("rebase onto %s: %w", name, err))
 	}
 	return s.completeJournalOperation(record, nil)
 }
@@ -2959,26 +2989,11 @@ func (s *gitSession) ResolveConflict(ctx context.Context, file File, current boo
 }
 
 func (s *gitSession) ContinueOperation(ctx context.Context) error {
-	return s.finishOperation(ctx, "continue")
+	return s.DriveOperation(ctx, OperationDriveOptions{Action: OperationActionContinue})
 }
 
 func (s *gitSession) AbortOperation(ctx context.Context) error {
-	return s.finishOperation(ctx, "abort")
-}
-
-func (s *gitSession) finishOperation(ctx context.Context, action string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	state := s.workingTreeState()
-	if state.None() {
-		return fmt.Errorf("no merge, rebase, cherry-pick, or revert is in progress")
-	}
-	operation := state.Effective().CommandName()
-	if err := s.finishGitOperation(operation, action); err != nil {
-		return fmt.Errorf("%s %s: %w", action, operation, err)
-	}
-	return s.finalizePausedRebaseJournal(ctx, action)
+	return s.DriveOperation(ctx, OperationDriveOptions{Action: OperationActionAbort})
 }
 
 // ResolveCommit freezes a user-selected base ref to the commit an agent task

@@ -29,6 +29,9 @@ func signSnapshotForWorkspace(snapshot repository.Snapshot, remote bool) snapsho
 func remoteFilesSignature(snapshot repository.Snapshot) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\x00%s\x00", snapshot.Root, snapshot.Operation)
+	if snapshot.OperationState != nil {
+		fmt.Fprintf(&b, "%+v\x00", *snapshot.OperationState)
+	}
 	for _, file := range snapshot.Files {
 		fmt.Fprintf(&b, "%+v\x00\x00", file)
 	}

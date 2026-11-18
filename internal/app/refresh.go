@@ -343,7 +343,7 @@ func operationsSignature(snapshot repository.Snapshot) string {
 			record.Branch, record.BranchAfter, record.HeadBefore, record.HeadAfter,
 			record.BeforeState, record.AfterState, record.StashAfter, record.ObjectID,
 			record.RefName, record.Message, record.UndoKind)
-		fmt.Fprintf(&b, "%s\x00", record.Error)
+		fmt.Fprintf(&b, "%s\x00%s\x00%t\x00", record.Error, record.ActiveOperation, record.RebasePaused)
 		writeWorkSnapshotSignature(&b, record.Snapshot)
 	}
 	return b.String()
@@ -388,6 +388,9 @@ func codeFilesSignature(snapshot repository.Snapshot) string {
 func filesSignature(snapshot repository.Snapshot) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\x00%s\x00", snapshot.Root, snapshot.Operation)
+	if snapshot.OperationState != nil {
+		fmt.Fprintf(&b, "%+v\x00", *snapshot.OperationState)
+	}
 	for _, file := range snapshot.Files {
 		b.WriteString(fileState(snapshot.Root, file))
 		b.WriteString("\x00")

@@ -59,6 +59,7 @@ func (a *app) confirmAbortOperation() {
 		return
 	}
 	operation := a.snapshot.Operation
+	expected := snapshotOperationFingerprint(a.snapshot)
 	a.askConfirm(confirmRequest{
 		title:        "Abort Operation",
 		message:      trf("Abort the current %s?", operation),
@@ -68,7 +69,7 @@ func (a *app) confirmAbortOperation() {
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Aborted the %s", operation), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.AbortOperation(ctx)
+					return driveOperation(ctx, session, repository.OperationActionAbort, expected)
 				}, nil)
 		},
 	})
