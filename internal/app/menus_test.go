@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -122,7 +123,22 @@ func (h *harness) waitFor(t *testing.T, what string, cond func() bool) {
 		h.tester.Frame()
 	}
 	if !cond() {
-		t.Fatalf("timed out waiting for %s", what)
+		state := "no app"
+		if h.app != nil {
+			focused := []string{}
+			if h.tester != nil {
+				for _, info := range h.tester.AccessAll() {
+					if info.Focused {
+						focused = append(focused, info.Name)
+					}
+				}
+			}
+			state = fmt.Sprintf("page=%d focus=%q native_focus=%v action_busy=%v command_running=%v forms=%v terminal=%v editor_only=%v shortcuts_disabled=%v",
+				h.app.workspaceTab, h.app.keyboardFocus, focused, h.app.actionBusy,
+				h.app.customCommandRunning, h.app.anyFormOpen(), h.app.terminalVisible(),
+				h.app.editorOnlyWorkspace(), h.app.settings.DisableShortcuts)
+		}
+		t.Fatalf("timed out waiting for %s (%s)", what, state)
 	}
 }
 
