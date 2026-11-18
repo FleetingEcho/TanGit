@@ -1,0 +1,73 @@
+File: app-candidate.test
+Build ID: a222c60ac3d66d44a1ea8787f0b04b109fd6fd72
+Type: cpu
+Time: 2026-11-17 12:34:22 MST
+Duration: 1.67s, Total samples = 2.75s (165.16%)
+Showing nodes accounting for 1.97s, 71.64% of 2.75s total
+Dropped 162 nodes (cum <= 0.01s)
+Showing top 30 nodes out of 234
+      flat  flat%   sum%        cum   cum%
+     0.35s 12.73% 12.73%      0.39s 14.18%  runtime.cgocall
+     0.21s  7.64% 20.36%      0.48s 17.45%  runtime.scanObject
+     0.18s  6.55% 26.91%      0.18s  6.55%  runtime.memmove
+     0.15s  5.45% 32.36%      0.15s  5.45%  runtime.memclrNoHeapPointers
+     0.10s  3.64% 36.00%      0.16s  5.82%  runtime.tryDeferToSpanScan
+     0.07s  2.55% 38.55%      0.07s  2.55%  [libc.so.6]
+     0.07s  2.55% 41.09%      0.07s  2.55%  internal/runtime/maps.ctrlGroup.matchH2 (inline)
+     0.06s  2.18% 43.27%      0.06s  2.18%  runtime.heapSetTypeSmallHeader (inline)
+     0.06s  2.18% 45.45%      0.08s  2.91%  runtime.scanblock
+     0.05s  1.82% 47.27%      0.05s  1.82%  <unknown>
+     0.05s  1.82% 49.09%      0.14s  5.09%  github.com/egoist/mygo/internal/rope.Build
+     0.05s  1.82% 50.91%      0.09s  3.27%  runtime.findObject
+     0.05s  1.82% 52.73%      0.05s  1.82%  runtime.futex
+     0.05s  1.82% 54.55%      0.11s  4.00%  runtime.scanObjectsSmall
+     0.05s  1.82% 56.36%      0.06s  2.18%  runtime.typePointers.next
+     0.05s  1.82% 58.18%      0.05s  1.82%  unicode/utf8.DecodeRuneInString (inline)
+     0.04s  1.45% 59.64%      0.51s 18.55%  github.com/egoist/mygo/internal/text.(*pangoEngine).layoutLines
+     0.04s  1.45% 61.09%      0.04s  1.45%  internal/runtime/maps.memHashAES
+     0.04s  1.45% 62.55%      0.04s  1.45%  runtime.typePointers.nextFast (inline)
+     0.03s  1.09% 63.64%      0.06s  2.18%  github.com/egoist/mygo/ui.(*engine).lookState
+     0.03s  1.09% 64.73%      0.03s  1.09%  runtime.alignDown (inline)
+     0.03s  1.09% 65.82%      0.03s  1.09%  runtime.spanOf (inline)
+     0.02s  0.73% 66.55%      0.02s  0.73%  github.com/egoist/mygo/internal/raster.(*renderer).clipSolid
+     0.02s  0.73% 67.27%      0.04s  1.45%  github.com/egoist/mygo/internal/text.(*System).glyph
+     0.02s  0.73% 68.00%      0.02s  0.73%  github.com/egoist/mygo/ui.(*engine).finalizeInputs.func4
+     0.02s  0.73% 68.73%      0.22s  8.00%  github.com/egoist/mygo/ui.measureIntrinsic
+     0.02s  0.73% 69.45%      0.02s  0.73%  indexbytebody
+     0.02s  0.73% 70.18%      0.06s  2.18%  runtime.(*sweepLocked).sweep
+     0.02s  0.73% 70.91%      0.02s  0.73%  runtime.findfunc
+     0.02s  0.73% 71.64%      0.06s  2.18%  runtime.mapassign_faststr
+=== after alloc_space ===
+File: app-candidate.test
+Build ID: a222c60ac3d66d44a1ea8787f0b04b109fd6fd72
+Type: alloc_space
+Time: 2026-11-17 12:34:24 MST
+Showing nodes accounting for 2687.23MB, 97.00% of 2770.25MB total
+Dropped 204 nodes (cum <= 13.85MB)
+Showing top 25 nodes out of 110
+      flat  flat%   sum%        cum   cum%
+ 1117.57MB 40.34% 40.34%  1117.57MB 40.34%  strings.(*Builder).WriteString (inline)
+  399.35MB 14.42% 54.76%   711.80MB 25.69%  lazygitapp/internal/app.movedLineAnnotations
+  312.45MB 11.28% 66.04%   312.45MB 11.28%  lazygitapp/internal/app.uniqueMovedCandidates
+  270.90MB  9.78% 75.81%   342.06MB 12.35%  github.com/egoist/mygo/ui/editor.ParsePatch
+  218.85MB  7.90% 83.71%   218.85MB  7.90%  internal/stringslite.Clone (inline)
+  119.27MB  4.31% 88.02%   119.27MB  4.31%  github.com/egoist/mygo/ui.(*engine).lookState
+   74.17MB  2.68% 90.70%    89.67MB  3.24%  github.com/egoist/mygo/internal/text.(*pangoEngine).layoutLines
+   71.16MB  2.57% 93.27%    71.16MB  2.57%  strings.genSplit
+      25MB   0.9% 94.17%       25MB   0.9%  fmt.Sprintf
+   20.55MB  0.74% 94.91%   112.23MB  4.05%  github.com/egoist/mygo/internal/text.(*System).paragraph
+   20.49MB  0.74% 95.65%   328.55MB 11.86%  lazygitapp/internal/app.BenchmarkPrincipalCommitListFrame.func1
+   13.94MB   0.5% 96.15%    13.94MB   0.5%  github.com/egoist/mygo/ui.(*context).alloc
+      12MB  0.43% 96.59%   124.23MB  4.48%  github.com/egoist/mygo/internal/text.(*System).layout
+    5.50MB   0.2% 96.79%   223.35MB  8.06%  github.com/egoist/mygo/internal/rope.leaf
+       3MB  0.11% 96.89%   128.24MB  4.63%  github.com/egoist/mygo/internal/text.(*System).LayoutFrom
+    2.04MB 0.073% 96.97%  2319.92MB 83.74%  lazygitapp/internal/app.buildDiffState
+       1MB 0.036% 97.00%   230.35MB  8.32%  github.com/egoist/mygo/internal/rope.Build
+         0     0% 97.00%   230.35MB  8.32%  github.com/egoist/mygo/internal/rope.New (inline)
+         0     0% 97.00%    40.60MB  1.47%  github.com/egoist/mygo/internal/text.(*System).Layout (inline)
+         0     0% 97.00%    50.08MB  1.81%  github.com/egoist/mygo/internal/text.(*System).breakLines
+         0     0% 97.00%    23.58MB  0.85%  github.com/egoist/mygo/internal/text.(*System).clusterAdvances
+         0     0% 97.00%    41.60MB  1.50%  github.com/egoist/mygo/internal/text.(*System).ellipsize
+         0     0% 97.00%    89.67MB  3.24%  github.com/egoist/mygo/internal/text.(*pangoEngine).shape
+         0     0% 97.00%   233.26MB  8.42%  github.com/egoist/mygo/ui.(*Tester).Frame (inline)
+         0     0% 97.00%   282.99MB 10.22%  github.com/egoist/mygo/ui.(*Tester).settle

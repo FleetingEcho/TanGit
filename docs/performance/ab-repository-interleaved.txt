@@ -1,0 +1,135 @@
+A=repository.test (45cc31a + benchmark harness 1e3408a)
+B=repository-candidate.test (final streaming numstat code)
+order=A1 B1 A2 B2 A3 B3; each run -test.count=3 -test.benchtime=5x
+
+===== variant=A round=1 =====
+goos: linux
+goarch: amd64
+pkg: lazygitapp/internal/repository
+cpu: Intel(R) Core(TM) Ultra 7 265
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 585466993 ns/op	     12000 snapshot_files	12283230 B/op	   25391 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 569632020 ns/op	     12000 snapshot_files	12244608 B/op	   25341 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 575604241 ns/op	     12000 snapshot_files	12259825 B/op	   25350 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  69903792 ns/op	        20.00 page_commits	 2108724 B/op	    3171 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  70963648 ns/op	        20.00 page_commits	 2142009 B/op	    3178 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  71235636 ns/op	        20.00 page_commits	 2136992 B/op	    3173 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  11613618 ns/op	        20.00 returned_commits	         0 skip	   85280 B/op	     571 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  10788259 ns/op	        20.00 returned_commits	         0 skip	   77651 B/op	     569 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  11984530 ns/op	        20.00 returned_commits	         0 skip	   77651 B/op	     569 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  16723208 ns/op	        20.00 returned_commits	       480.0 skip	  370758 B/op	    4894 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  16769516 ns/op	        20.00 returned_commits	       480.0 skip	  370624 B/op	    4893 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  15233937 ns/op	        20.00 returned_commits	       480.0 skip	  372052 B/op	    4895 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  30874536 ns/op	     12002 commit_files	 6683280 B/op	   24429 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  30280327 ns/op	     12002 commit_files	 6682044 B/op	   24423 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  31481021 ns/op	     12002 commit_files	 6690326 B/op	   24430 allocs/op
+PASS
+
+===== variant=B round=1 =====
+goos: linux
+goarch: amd64
+pkg: lazygitapp/internal/repository
+cpu: Intel(R) Core(TM) Ultra 7 265
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 590273494 ns/op	     12000 snapshot_files	11487632 B/op	   13376 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 889106679 ns/op	     12000 snapshot_files	11495590 B/op	   13349 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 637763805 ns/op	     12000 snapshot_files	11488744 B/op	   13345 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	 109678998 ns/op	        20.00 page_commits	 2106286 B/op	    3130 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	 100976755 ns/op	        20.00 page_commits	 2108974 B/op	    3133 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  69315911 ns/op	        20.00 page_commits	 2127116 B/op	    3135 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  11140023 ns/op	        20.00 returned_commits	         0 skip	   77648 B/op	     569 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  11535942 ns/op	        20.00 returned_commits	         0 skip	   77520 B/op	     568 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  11376253 ns/op	        20.00 returned_commits	         0 skip	   85424 B/op	     572 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  17006037 ns/op	        20.00 returned_commits	       480.0 skip	  370620 B/op	    4893 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  17755401 ns/op	        20.00 returned_commits	       480.0 skip	  370758 B/op	    4894 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  17302308 ns/op	        20.00 returned_commits	       480.0 skip	  371294 B/op	    4894 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  30900025 ns/op	     12002 commit_files	 5917577 B/op	   12425 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  30819994 ns/op	     12002 commit_files	 5908702 B/op	   12422 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  32525617 ns/op	     12002 commit_files	 5910649 B/op	   12424 allocs/op
+PASS
+
+===== variant=A round=2 =====
+goos: linux
+goarch: amd64
+pkg: lazygitapp/internal/repository
+cpu: Intel(R) Core(TM) Ultra 7 265
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 604015987 ns/op	     12000 snapshot_files	12285244 B/op	   25385 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 651293071 ns/op	     12000 snapshot_files	12259880 B/op	   25348 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 657023434 ns/op	     12000 snapshot_files	12243417 B/op	   25342 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  70465720 ns/op	        20.00 page_commits	 2140899 B/op	    3180 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  71306800 ns/op	        20.00 page_commits	 2118512 B/op	    3175 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  69262862 ns/op	        20.00 page_commits	 2131180 B/op	    3178 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  13051811 ns/op	        20.00 returned_commits	         0 skip	   77737 B/op	     569 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  12268202 ns/op	        20.00 returned_commits	         0 skip	   77516 B/op	     568 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  12522696 ns/op	        20.00 returned_commits	         0 skip	   77513 B/op	     568 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  17777765 ns/op	        20.00 returned_commits	       480.0 skip	  381780 B/op	    4899 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  17935058 ns/op	        20.00 returned_commits	       480.0 skip	  372619 B/op	    4896 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  18213335 ns/op	        20.00 returned_commits	       480.0 skip	  371864 B/op	    4895 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  30701513 ns/op	     12002 commit_files	 6690694 B/op	   24432 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  30259812 ns/op	     12002 commit_files	 6690406 B/op	   24431 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  30454561 ns/op	     12002 commit_files	 6683860 B/op	   24428 allocs/op
+PASS
+
+===== variant=B round=2 =====
+goos: linux
+goarch: amd64
+pkg: lazygitapp/internal/repository
+cpu: Intel(R) Core(TM) Ultra 7 265
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 616714547 ns/op	     12000 snapshot_files	11491584 B/op	   13372 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 624004600 ns/op	     12000 snapshot_files	11486563 B/op	   13343 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 643091477 ns/op	     12000 snapshot_files	11473683 B/op	   13345 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  68523109 ns/op	        20.00 page_commits	 2116390 B/op	    3134 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  70423488 ns/op	        20.00 page_commits	 2106852 B/op	    3128 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  68232041 ns/op	        20.00 page_commits	 2125377 B/op	    3131 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  12512675 ns/op	        20.00 returned_commits	         0 skip	   85529 B/op	     573 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  11275613 ns/op	        20.00 returned_commits	         0 skip	   77513 B/op	     568 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  10971890 ns/op	        20.00 returned_commits	         0 skip	   77520 B/op	     568 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  16650706 ns/op	        20.00 returned_commits	       480.0 skip	  371046 B/op	    4894 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  17141799 ns/op	        20.00 returned_commits	       480.0 skip	  379457 B/op	    4897 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  16019893 ns/op	        20.00 returned_commits	       480.0 skip	  370758 B/op	    4894 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  29939046 ns/op	     12002 commit_files	 5898078 B/op	   12422 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  30343171 ns/op	     12002 commit_files	 5908680 B/op	   12422 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  31018586 ns/op	     12002 commit_files	 5916372 B/op	   12425 allocs/op
+PASS
+
+===== variant=A round=3 =====
+goos: linux
+goarch: amd64
+pkg: lazygitapp/internal/repository
+cpu: Intel(R) Core(TM) Ultra 7 265
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 598170984 ns/op	     12000 snapshot_files	12276795 B/op	   25382 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 596805459 ns/op	     12000 snapshot_files	12265057 B/op	   25350 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 590764714 ns/op	     12000 snapshot_files	12276779 B/op	   25355 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  71890960 ns/op	        20.00 page_commits	 2164422 B/op	    3189 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  82217821 ns/op	        20.00 page_commits	 2127648 B/op	    3180 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  76050136 ns/op	        20.00 page_commits	 2139625 B/op	    3183 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  12603698 ns/op	        20.00 returned_commits	         0 skip	   85171 B/op	     570 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  13098580 ns/op	        20.00 returned_commits	         0 skip	   77520 B/op	     568 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  12754140 ns/op	        20.00 returned_commits	         0 skip	   77744 B/op	     569 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  17326390 ns/op	        20.00 returned_commits	       480.0 skip	  370617 B/op	    4893 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  17787443 ns/op	        20.00 returned_commits	       480.0 skip	  370758 B/op	    4894 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  18168518 ns/op	        20.00 returned_commits	       480.0 skip	  370630 B/op	    4893 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  30997800 ns/op	     12002 commit_files	 6682953 B/op	   24428 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  30324821 ns/op	     12002 commit_files	 6682953 B/op	   24428 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  30292369 ns/op	     12002 commit_files	 6690816 B/op	   24433 allocs/op
+PASS
+
+===== variant=B round=3 =====
+goos: linux
+goarch: amd64
+pkg: lazygitapp/internal/repository
+cpu: Intel(R) Core(TM) Ultra 7 265
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 760932136 ns/op	     12000 snapshot_files	11465864 B/op	   13370 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 669325018 ns/op	     12000 snapshot_files	11492747 B/op	   13345 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 666456555 ns/op	     12000 snapshot_files	11473795 B/op	   13344 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  72063013 ns/op	        20.00 page_commits	 2095892 B/op	    3119 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  71140850 ns/op	        20.00 page_commits	 2114886 B/op	    3136 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  69617607 ns/op	        20.00 page_commits	 2114400 B/op	    3130 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  13053436 ns/op	        20.00 returned_commits	         0 skip	   85276 B/op	     571 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  12724401 ns/op	        20.00 returned_commits	         0 skip	   77654 B/op	     569 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_0-20                	       5	  12636772 ns/op	        20.00 returned_commits	         0 skip	   77648 B/op	     569 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  17595619 ns/op	        20.00 returned_commits	       480.0 skip	  370624 B/op	    4893 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  17374938 ns/op	        20.00 returned_commits	       480.0 skip	  370633 B/op	    4893 allocs/op
+BenchmarkLargeRepository/RecentCommits_warm_totals_skip_480-20              	       5	  15943161 ns/op	        20.00 returned_commits	       480.0 skip	  370617 B/op	    4893 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  30017280 ns/op	     12002 commit_files	 5909904 B/op	   12422 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  30808575 ns/op	     12002 commit_files	 5908113 B/op	   12419 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  32145759 ns/op	     12002 commit_files	 5910576 B/op	   12426 allocs/op
+PASS

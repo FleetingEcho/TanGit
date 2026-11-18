@@ -1,0 +1,72 @@
+File: repository-candidate.test
+Build ID: d459e9b5e5a1aee69bed555936b7f82ffa9b15cd
+Type: cpu
+Time: 2026-11-17 12:34:08 MST
+Duration: 11.89s, Total samples = 680ms ( 5.72%)
+Showing nodes accounting for 510ms, 75.00% of 680ms total
+Showing top 30 nodes out of 324
+      flat  flat%   sum%        cum   cum%
+      70ms 10.29% 10.29%       70ms 10.29%  internal/runtime/syscall/linux.Syscall6
+      40ms  5.88% 16.18%       80ms 11.76%  runtime.scanObject
+      30ms  4.41% 20.59%       30ms  4.41%  internal/runtime/maps.memHashAES
+      30ms  4.41% 25.00%       30ms  4.41%  runtime.futex
+      30ms  4.41% 29.41%       50ms  7.35%  runtime.scanObjectsSmall
+      20ms  2.94% 32.35%       20ms  2.94%  runtime.cgocall
+      20ms  2.94% 35.29%       30ms  4.41%  runtime.findObject
+      20ms  2.94% 38.24%       20ms  2.94%  runtime.madvise
+      20ms  2.94% 41.18%       20ms  2.94%  runtime.memclrNoHeapPointers
+      20ms  2.94% 44.12%       20ms  2.94%  runtime.memmove
+      20ms  2.94% 47.06%       20ms  2.94%  runtime.procyieldAsm
+      10ms  1.47% 48.53%       10ms  1.47%  <unknown>
+      10ms  1.47% 50.00%       20ms  2.94%  bufio.(*Scanner).Text
+      10ms  1.47% 51.47%       20ms  2.94%  github.com/egoist/mygo/internal/raster.(*renderer).maskOpaque
+      10ms  1.47% 52.94%       10ms  1.47%  github.com/egoist/mygo/internal/raster.mixMask (inline)
+      10ms  1.47% 54.41%       10ms  1.47%  github.com/egoist/mygo/internal/text.(*Layout).AppendSelection
+      10ms  1.47% 55.88%       40ms  5.88%  github.com/egoist/mygo/internal/text.(*System).glyph
+      10ms  1.47% 57.35%       10ms  1.47%  github.com/egoist/mygo/ui.(*glyphRun).flush
+      10ms  1.47% 58.82%       30ms  4.41%  github.com/jesseduffield/lazygit/pkg/commands/git_commands.(*FileLoader).GetStatusFiles
+      10ms  1.47% 60.29%       20ms  2.94%  github.com/jesseduffield/lazygit/pkg/commands/git_commands.(*FileLoader).gitStatus
+      10ms  1.47% 61.76%       10ms  1.47%  indexbytebody
+      10ms  1.47% 63.24%       10ms  1.47%  internal/poll.(*fdMutex).rwunlock
+      10ms  1.47% 64.71%       10ms  1.47%  internal/runtime/atomic.(*Bool).Load
+      10ms  1.47% 66.18%       10ms  1.47%  internal/runtime/maps.(*Map).getWithKeySmall
+      10ms  1.47% 67.65%       10ms  1.47%  internal/runtime/maps.ctrlGroup.matchEmptyOrDeleted
+      10ms  1.47% 69.12%       10ms  1.47%  internal/runtime/maps.ctrlGroup.matchH2
+      10ms  1.47% 70.59%       40ms  5.88%  io.copyBuffer
+      10ms  1.47% 72.06%       10ms  1.47%  runtime.(*lfstack).push
+      10ms  1.47% 73.53%       10ms  1.47%  runtime.(*spanSet).push
+      10ms  1.47% 75.00%       20ms  2.94%  runtime.(*unwinder).resolveInternal
+=== after alloc_space ===
+File: repository-candidate.test
+Build ID: d459e9b5e5a1aee69bed555936b7f82ffa9b15cd
+Type: alloc_space
+Time: 2026-11-17 12:34:20 MST
+Showing nodes accounting for 620.04MB, 94.80% of 654.02MB total
+Dropped 183 nodes (cum <= 3.27MB)
+Showing top 25 nodes out of 130
+      flat  flat%   sum%        cum   cum%
+  142.33MB 21.76% 21.76%   142.33MB 21.76%  bytes.growSlice
+   97.53MB 14.91% 36.67%    97.53MB 14.91%  strings.(*Builder).WriteString (inline)
+   62.81MB  9.60% 46.28%    62.81MB  9.60%  lazygitapp/internal/repository.parseCommitLineStats
+   58.19MB  8.90% 55.17%    66.97MB 10.24%  github.com/jesseduffield/lazygit/pkg/commands/git_commands.(*FileLoader).gitStatus
+   31.54MB  4.82% 60.00%    99.06MB 15.15%  github.com/jesseduffield/lazygit/pkg/commands/git_commands.(*FileLoader).GetStatusFiles
+   30.25MB  4.62% 64.62%    30.25MB  4.62%  github.com/jesseduffield/lazygit/pkg/commands/oscommands.sanitisedCommandOutput
+   28.72MB  4.39% 69.01%    28.72MB  4.39%  strings.genSplit
+   21.27MB  3.25% 72.27%    25.08MB  3.83%  github.com/egoist/mygo/ui/editor.ParsePatch
+   20.92MB  3.20% 75.47%   152.85MB 23.37%  lazygitapp/internal/repository.(*gitSession).CoreSnapshot
+   20.26MB  3.10% 78.56%    30.16MB  4.61%  lazygitapp/internal/repository.parseCommitLineStatsWithSplit
+   18.57MB  2.84% 81.40%    18.57MB  2.84%  internal/stringslite.Clone (inline)
+   14.02MB  2.14% 83.55%    30.53MB  4.67%  github.com/egoist/mygo/internal/diff.tokens
+   13.50MB  2.06% 85.61%    13.50MB  2.06%  github.com/egoist/mygo/internal/diff.wordTokens
+   11.11MB  1.70% 87.31%    11.11MB  1.70%  bytes.(*Buffer).String (inline)
+    9.54MB  1.46% 88.77%    50.42MB  7.71%  lazygitapp/internal/repository.(*gitSession).CommitFiles
+    9.50MB  1.45% 90.22%    15.85MB  2.42%  github.com/jesseduffield/lazygit/pkg/commands/git_commands.getCommitFilesFromFilenames
+    6.03MB  0.92% 91.15%     6.03MB  0.92%  syscall.SlicePtrFromStrings
+    5.98MB  0.91% 92.06%     5.98MB  0.91%  github.com/egoist/mygo/ui.(*glyphRun).flush
+    4.64MB  0.71% 92.77%     4.64MB  0.71%  regexp.(*bitState).reset
+    4.26MB  0.65% 93.42%     4.26MB  0.65%  github.com/egoist/mygo/internal/scene.(*Differ).Remember
+    4.01MB  0.61% 94.03%     4.01MB  0.61%  github.com/jesseduffield/lazygit/pkg/commands/oscommands.(*CmdObj).AddEnvVars (inline)
+       3MB  0.46% 94.49%        4MB  0.61%  github.com/jesseduffield/lazygit/pkg/commands/models.NewCommit
+    1.03MB  0.16% 94.65%    32.99MB  5.04%  github.com/egoist/mygo/ui/editor.(*diffModel).wordsOf
+    0.51MB 0.078% 94.73%   109.44MB 16.73%  lazygitapp/internal/repository.BenchmarkLargeRepository.func8
+    0.50MB 0.076% 94.80%     9.04MB  1.38%  os/exec.(*Cmd).Start

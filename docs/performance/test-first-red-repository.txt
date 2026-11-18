@@ -1,0 +1,4 @@
+# lazygitapp/internal/repository [lazygitapp/internal/repository.test]
+internal/repository/commit_stats_test.go:290:12: undefined: parseCombinedCommitFiles
+FAIL	lazygitapp/internal/repository [build failed]
+FAIL

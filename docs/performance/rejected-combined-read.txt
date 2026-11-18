@@ -1,0 +1,24 @@
+revision=1e3408a2c29b6305dc474c6f700aaeed6392c957
+working_changes=combined raw+numstat CommitFiles; streaming NUL numstat/totals parsers; post-lock cancellation check
+command=go test ./internal/repository -run ^$ -bench "^BenchmarkLargeRepository/(CoreSnapshot|DetailsSnapshot|CommitFiles_root)" -benchtime=5x -count=5
+goos: linux
+goarch: amd64
+pkg: lazygitapp/internal/repository
+cpu: Intel(R) Core(TM) Ultra 7 265
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 720341338 ns/op	     12000 snapshot_files	11486312 B/op	   13374 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 724671683 ns/op	     12000 snapshot_files	11481385 B/op	   13350 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 939023022 ns/op	     12000 snapshot_files	11462112 B/op	   13332 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 953138473 ns/op	     12000 snapshot_files	11448144 B/op	   13336 allocs/op
+BenchmarkLargeRepository/CoreSnapshot_git_status_and_12k_numstat-20         	       5	 941917920 ns/op	     12000 snapshot_files	11482715 B/op	   13336 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  82209940 ns/op	        20.00 page_commits	 2128428 B/op	    3133 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  83052922 ns/op	        20.00 page_commits	 2106366 B/op	    3126 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  81585998 ns/op	        20.00 page_commits	 2115568 B/op	    3133 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  79022034 ns/op	        20.00 page_commits	 2116932 B/op	    3139 allocs/op
+BenchmarkLargeRepository/DetailsSnapshot_cold_commit_numstat-20             	       5	  79171898 ns/op	        20.00 page_commits	 2116548 B/op	    3133 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  32987624 ns/op	     12002 commit_files	 8205459 B/op	     286 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  31927631 ns/op	     12002 commit_files	 8182004 B/op	     277 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  31886727 ns/op	     12002 commit_files	 8205073 B/op	     286 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  31611789 ns/op	     12002 commit_files	 8205035 B/op	     286 allocs/op
+BenchmarkLargeRepository/CommitFiles_root_12k_name_status_and_numstat-20    	       5	  32293788 ns/op	     12002 commit_files	 8205571 B/op	     286 allocs/op
+PASS
+ok  	lazygitapp/internal/repository	24.346s
