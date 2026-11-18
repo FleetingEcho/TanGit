@@ -96,6 +96,7 @@ func (a *app) codeFileExplorer(c *ui.Context) {
 			listSearchEmpty(c, message)
 			return
 		}
+		guides := treeGuideGroups(a.code.rows)
 		list := a.keyboardList(c, &a.code.list, len(a.code.rows)).Grow(1).Rows(func(row ui.ListRow) {
 			if row.Index < 0 || row.Index >= len(a.code.rows) {
 				return
@@ -107,7 +108,8 @@ func (a *app) codeFileExplorer(c *ui.Context) {
 					// fileTreeDirectoryRow toggles folding after this callback. Defer
 					// the one necessary rebuild until the next build pass.
 					a.code.treeDirty = true
-				}).Drag(codeExplorerDrag{path: item.path})
+				})
+				guides.decorate(directory, item, row).Drag(codeExplorerDrag{path: item.path})
 				if a.remoteTransfersAvailable() {
 					directory.MinHeight(38)
 				}
@@ -138,7 +140,7 @@ func (a *app) codeFileExplorer(c *ui.Context) {
 			if a.remoteTransfersAvailable() {
 				button.MinHeight(38)
 			}
-			button.Children(func() {
+			guides.decorate(button, item, row).Children(func() {
 				fileTypeMark(row.Context, item.path, 13, row.Selected())
 				ui.Text(row.Context, item.name).Grow(1).SingleLine()
 				if status := a.codeFileStatus(item.path); status != "" {
