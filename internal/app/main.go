@@ -132,6 +132,7 @@ type app struct {
 	term terminalState
 	// agents links durable tasks to this repository family's worktrees.
 	agents           agentUIState
+	assistance       assistUIState
 	agentIntegration agentIntegrationUIState
 	agentStore       *agentwork.Store
 
