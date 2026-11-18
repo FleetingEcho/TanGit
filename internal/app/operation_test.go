@@ -131,25 +131,38 @@ func TestGuidedStyleKeepsExistingOperationDrivers(t *testing.T) {
 		action repository.OperationAction
 		button string
 	}{
-		{action: repository.OperationActionContinue, button: "Continue"},
+		{action: repository.OperationActionContinue, button: "Continue operation"},
 		{action: repository.OperationActionSkip, button: "Skip…"},
 		{action: repository.OperationActionAbort, button: "Abort…"},
 	} {
 		t.Run(string(test.action), func(t *testing.T) {
-			h, calls := operationTestApp(t, richRebaseOperation())
+			h, _, calls := continueHarness(t, "required", "", continueTestRunnerFunc(func(context.Context, string, string) (string, error) {
+				return "required check passed", nil
+			}))
 			h.app.settings.ConflictActionStyle = conflictActionStyleGuided
 			h.tester.Frame()
-			if err := h.tester.Click(test.button); err != nil {
-				t.Fatalf("open the existing %s confirmation: %v", test.action, err)
+			switch test.action {
+			case repository.OperationActionContinue:
+				h.app.confirmContinueOperation()
+				waitContinueComplete(t, h)
+				if !h.tester.HasText("Continue preflight") {
+					t.Fatalf("guided style removed Continue preflight: %q", h.texts())
+				}
+			default:
+				if err := h.tester.Click(test.button); err != nil {
+					t.Fatalf("open the existing %s confirmation: %v", test.action, err)
+				}
+				h.tester.Frame()
+				if h.app.confirm == nil {
+					t.Fatalf("guided style removed %s confirmation", test.action)
+				}
+				h.app.confirm.run()
 			}
-			h.tester.Frame()
-			if h.app.confirm == nil {
-				t.Fatalf("guided style removed %s preflight", test.action)
+			if test.action == repository.OperationActionContinue {
+				if err := h.tester.Click(test.button); err != nil {
+					t.Fatalf("approve Continue after preflight: %v", err)
+				}
 			}
-			if test.action == repository.OperationActionContinue && h.app.confirm.title != "Continue" {
-				t.Fatalf("guided style replaced Continue preflight: %#v", h.app.confirm)
-			}
-			h.app.confirm.run()
 			h.tester.Frame()
 			h.settle(t)
 			want := "drive:" + string(test.action) + ":approved-operation"
