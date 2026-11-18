@@ -57,7 +57,7 @@ func clearCodeBlameAnnotations(document *codeDocument) {
 	document.blameOffsets = nil
 	document.blameAnnotationSet = false
 	if document.state != nil {
-		document.state.SetInlays(nil)
+		syncCodeDocumentInlays(document)
 	}
 }
 
@@ -110,19 +110,29 @@ func (a *app) syncCodeBlameActiveLine(document *codeDocument) {
 	document.blameOffsets = nil
 	document.blameAnnotationSet = false
 	if line < 0 || line >= len(document.blameLines) {
-		document.state.SetInlays(nil)
+		syncCodeDocumentInlays(document)
 		return
 	}
 	blame := document.blameLines[line]
 	if !committedBlameHash(blame.Hash) && !uncommittedBlameHash(blame.Hash) {
-		document.state.SetInlays(nil)
+		syncCodeDocumentInlays(document)
 		return
 	}
 	offset := document.state.Buffer.Snapshot().LineEnd(line)
 	document.blameInlays = []editor.Inlay{{Offset: offset, Text: formatCodeBlame(blame), Trailing: true, Ellipsis: "…"}}
 	document.blameOffsets = map[int]int{offset: line}
 	document.blameAnnotationSet = true
-	document.state.SetInlays(document.blameInlays)
+	syncCodeDocumentInlays(document)
+}
+
+func syncCodeDocumentInlays(document *codeDocument) {
+	if document == nil || document.state == nil {
+		return
+	}
+	inlays := make([]editor.Inlay, 0, len(document.languageInlays)+len(document.blameInlays))
+	inlays = append(inlays, document.languageInlays...)
+	inlays = append(inlays, document.blameInlays...)
+	document.state.SetInlays(inlays)
 }
 
 func (a *app) toggleCodeBlame(document *codeDocument) {

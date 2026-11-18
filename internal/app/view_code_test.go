@@ -21,8 +21,10 @@ import (
 func stubCodeWorkspace(t *testing.T, files map[string]string) map[string]string {
 	t.Helper()
 	originalList, originalRead, originalWrite := listCodeFiles, readWorkingFile, writeWorkingFile
+	originalCheckedWrite := writeWorkingFileChecked
 	t.Cleanup(func() {
 		listCodeFiles, readWorkingFile, writeWorkingFile = originalList, originalRead, originalWrite
+		writeWorkingFileChecked = originalCheckedWrite
 	})
 	listCodeFiles = func(string) ([]string, error) {
 		paths := make([]string, 0, len(files))
@@ -43,8 +45,23 @@ func stubCodeWorkspace(t *testing.T, files map[string]string) map[string]string 
 	written := make(map[string]string)
 	writeWorkingFile = func(name string, data []byte) error {
 		path := strings.TrimPrefix(filepath.ToSlash(name), "/work/project/")
-		written[path] = string(data)
+		content := string(data)
+		written[path] = content
+		files[path] = content
 		return nil
+	}
+	writeWorkingFileChecked = func(name string, data []byte, expected localFileStamp, known bool) error {
+		if known {
+			path := strings.TrimPrefix(filepath.ToSlash(name), "/work/project/")
+			content, ok := files[path]
+			if !ok {
+				return errors.New("file not found")
+			}
+			if stampLocalFile([]byte(content)) != expected {
+				return errLocalFileModified
+			}
+		}
+		return writeWorkingFile(name, data)
 	}
 	return written
 }

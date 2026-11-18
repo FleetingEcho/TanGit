@@ -43,6 +43,19 @@ type languageServerFormattingTarget struct {
 func (a *app) codeDocumentContextMenu(menu *ui.Menu, document *codeDocument) {
 	disabled := document == nil || document.state == nil || document.state.Buffer == nil ||
 		document.readOnly || document.state.ReadOnly || document.formatting
+	if menu.Item(tr("Quick Fix…")).Disabled(disabled).Chosen() {
+		a.requestLanguageCodeActions(document)
+	}
+	if menu.Item(tr("Rename Symbol")).Shortcut(0, ui.KeyF2).Disabled(disabled || a.location.IsRemote()).Chosen() {
+		a.openLanguageRename(document)
+	}
+	if menu.Item(tr("Find References")).Disabled(document == nil || document.state == nil).Chosen() {
+		a.requestLanguageReferences(document)
+	}
+	if menu.Item(tr("Peek Definition")).Shortcut(ui.Alt, ui.KeyF12).Disabled(document == nil || document.state == nil).Chosen() {
+		a.requestLanguagePeekDefinition(document)
+	}
+	menu.Separator()
 	if menu.Item(tr("Format Document")).Disabled(disabled).Chosen() {
 		a.formatCodeDocument(document)
 	}
