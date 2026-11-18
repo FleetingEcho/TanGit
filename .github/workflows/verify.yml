@@ -1,0 +1,95 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test and vet
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TANGIT_TEST_REQUIRE_OPENSSH: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install OpenSSH and race-test prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends build-essential openssh-client openssh-server
+      - name: Show verification tool versions
+        run: |
+          go version
+          go tool mygo version
+          git --version
+          ssh -V
+      - name: Check the required OpenSSH test environment
+        run: |
+          if [ "$(id -u)" -eq 0 ]; then
+            echo "OpenSSH integration tests require an unprivileged user" >&2
+            exit 1
+          fi
+          test -x /usr/sbin/sshd
+          command -v ssh-keygen
+      - name: Vet Go and MyGo UI lifetimes
+        run: go tool mygo vet .
+      - name: Test all packages with required OpenSSH coverage
+        run: CGO_ENABLED=0 go test ./...
+      - name: Race-test shared repository and agent state
+        run: go test -race ./internal/repository ./internal/agentwork ./internal/agentcli ./internal/app
+
+  build-smoke:
+    name: ${{ matrix.name }} build and smoke
+    needs: test
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+            platform: linux/amd64
+            executable: build/linux-amd64/tangit
+          - name: macOS
+            os: macos-latest
+            platform: darwin/universal
+            executable: build/darwin-universal/TanGit.app/Contents/MacOS/TanGit
+          - name: Windows
+            os: windows-latest
+            platform: windows/amd64
+            executable: build/windows-amd64/TanGit.exe
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build a smoke-test artifact
+        shell: bash
+        # Universal macOS runs on either hosted-runner architecture. Skipping
+        # installers, DMGs and notarization keeps PR builds independent of
+        # NSIS, signing identities, Apple credentials and updater secrets.
+        run: >-
+          go tool mygo build
+          -platform "${{ matrix.platform }}"
+          -skip-dmg -skip-installer -skip-notarize -sign -
+      - name: Smoke the native executable through the headless CLI
+        shell: bash
+        run: |
+          set +e
+          output="$("${{ matrix.executable }}" agent help 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+          grep --fixed-strings "tangit agent" <<<"$output"
