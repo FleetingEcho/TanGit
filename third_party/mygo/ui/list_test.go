@@ -450,6 +450,73 @@ func TestListSelection(t *testing.T) {
 	}
 }
 
+func TestListRowHighlightedDoesNotChangeSelection(t *testing.T) {
+	sel := 0
+	s := ListState{Selected: &sel, RowHighlighted: func(row int) bool { return row == 1 }}
+	shown := map[int]bool{}
+	tt := NewTester(func(c *Context) {
+		List(c, &s, 2).Rows(func(row ListRow) {
+			// Custom row decoration sees the independent highlight, not the cursor.
+			shown[row.Index] = row.Selected()
+			Textf(row.Context, "Row %d", row.Index)
+		})
+	}, 200, 100)
+	if sel != 0 || shown[0] || !shown[1] {
+		t.Fatalf("paint override changed selection or missed its row: selected=%d shown=%v", sel, shown)
+	}
+	if err := tt.Click("Row 1"); err != nil {
+		t.Fatal(err)
+	}
+	if sel != 1 || shown[0] || !shown[1] {
+		t.Fatalf("click behavior changed under the paint override: selected=%d shown=%v", sel, shown)
+	}
+	s.RowHighlighted = nil
+	tt.Frame()
+	if sel != 1 || shown[0] || !shown[1] {
+		t.Fatalf("restoring ordinary selection paint failed: selected=%d shown=%v", sel, shown)
+	}
+}
+
+func TestListRowHighlightedDoesNotChangeEditableSelection(t *testing.T) {
+	sel := 0
+	name := "Name"
+	s := ListState{Selected: &sel, RowHighlighted: func(int) bool { return false }}
+	tt := NewTester(func(c *Context) {
+		List(c, &s, 1).Rows(func(row ListRow) {
+			EditableText(row.Context, &name)
+		})
+	}, 200, 100)
+	if err := tt.Click("Name"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(renameDelay + 50*time.Millisecond)
+	tt.Type("renamed")
+	tt.Key(0, KeyEnter)
+	if name != "renamed" {
+		t.Fatalf("highlight override changed click-to-edit selection: name = %q", name)
+	}
+}
+
+func TestListRowHighlightedOnlyVisitsBuiltRows(t *testing.T) {
+	sel, built, highlighted := 0, 0, 0
+	s := ListState{Selected: &sel, RowHighlighted: func(row int) bool {
+		highlighted++
+		return row%2 == 0
+	}}
+	NewTester(func(c *Context) {
+		List(c, &s, 10000).Rows(func(row ListRow) {
+			built++
+			Textf(row.Context, "Row %d", row.Index)
+		})
+	}, 200, 100)
+	if built == 0 || built >= 100 {
+		t.Fatalf("list built %d of 10000 rows; virtualization regressed", built)
+	}
+	if highlighted != built {
+		t.Fatalf("highlight callback ran %d times for %d built rows", highlighted, built)
+	}
+}
+
 func TestListKeysKeepTheChoice(t *testing.T) {
 	ids := []string{"a", "b", "c", "d"}
 	sel := 2
