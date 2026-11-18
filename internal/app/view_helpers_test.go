@@ -6,6 +6,62 @@ import (
 	"lazygitapp/internal/repository"
 )
 
+func TestAssistantPreviewEditorsOwnModalAndQuietRefreshLifecycle(t *testing.T) {
+	tests := []struct {
+		name   string
+		open   func(*app)
+		close  func(*app)
+		isOpen func(*app) bool
+	}{
+		{
+			name: "Conflict Assistant Result preview and AssistCommand editor",
+			open: (*app).openConflictAssistant, close: (*app).closeConflictAssistant,
+			isOpen: func(a *app) bool { return a.assistance.conflict.open },
+		},
+		{
+			name: "Change Splitter patch previews and AssistCommand editor",
+			open: (*app).openChangeSplitter, close: (*app).closeChangeSplitter,
+			isOpen: func(a *app) bool { return a.assistance.splitter.open },
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			a := newApp(fakeOpener{})
+			a.session = fakeSession{}
+			a.state = stateReady
+			assertClosed := func() {
+				t.Helper()
+				if test.isOpen(a) || a.anyFormOpen() || a.modalOpen() || a.modalOpenExceptDiffFullscreen() ||
+					a.modalOpenIncludingDiffFullscreen(false) || a.modalOpenIncludingDiffFullscreen(true) {
+					t.Fatal("closed assistant preview still owns the modal or text-input keyboard")
+				}
+				if !a.quietRefreshAllowed() {
+					t.Fatal("closing an assistant preview did not restore quiet refresh")
+				}
+			}
+			assertClosed()
+
+			test.open(a)
+			if !test.isOpen(a) {
+				t.Fatal("assistant preview did not open")
+			}
+			if !a.anyFormOpen() {
+				t.Fatal("AssistCommand editor does not own text-input shortcuts")
+			}
+			if !a.modalOpen() || !a.modalOpenExceptDiffFullscreen() ||
+				!a.modalOpenIncludingDiffFullscreen(false) || !a.modalOpenIncludingDiffFullscreen(true) {
+				t.Fatal("assistant result/patch preview is absent from modal ownership")
+			}
+			if a.quietRefreshAllowed() {
+				t.Fatal("assistant result/patch preview permits a quiet refresh")
+			}
+
+			test.close(a)
+			assertClosed()
+		})
+	}
+}
+
 func TestAheadBehindHidesGitPlaceholders(t *testing.T) {
 	known := repository.Branch{Ahead: "3", Behind: "2"}
 	if ahead, behind, ok := aheadBehind(known); !ok || ahead != "3" || behind != "2" {

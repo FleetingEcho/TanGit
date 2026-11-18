@@ -574,6 +574,7 @@ func (a *app) closeAllForms() {
 	a.showWorktreeRepairForm = false
 	a.showWorktreePruneForm = false
 	a.worktreePruneToken++
+	a.cancelAssistance()
 	a.agents.formOpen = false
 	a.showSubmoduleForm = false
 	a.showCommitTagForm = false
@@ -627,6 +628,8 @@ func (a *app) anyFormOpen() bool {
 		a.showWorktreeLockForm ||
 		a.showWorktreeRepairForm ||
 		a.showWorktreePruneForm ||
+		a.assistance.conflict.open ||
+		a.assistance.splitter.open ||
 		a.agents.formOpen ||
 		a.showSubmoduleForm ||
 		a.showCommitTagForm ||
@@ -667,6 +670,8 @@ func (a *app) modalOpenIncludingDiffFullscreen(includeDiffFullscreen bool) bool 
 		a.commandLogOpen ||
 		a.commandPromptOpen ||
 		a.patchPreviewOpen ||
+		a.assistance.conflict.open ||
+		a.assistance.splitter.open ||
 		a.stackSync.open ||
 		a.customPatch.open ||
 		a.courier.open ||

@@ -239,9 +239,9 @@ func (a *app) changeSplitterModal(c *ui.Context) {
 								}
 							}
 						}
-						applyDisabled := a.actionBusy || group.patch == "" || group.previewError != "" || group.preview == nil || !group.preview.Clean
+						applyDisabled := a.actionBusy || group.previewError != "" || group.preview == nil || !group.preview.Clean
 						ui.Row(c).Justify(ui.End).Children(func() {
-							if ui.PrimaryButton(c, tr("Apply group to index")).Tooltip(tr("Re-preview and stage only this group; keep the working tree unchanged and never commit automatically")).Disabled(applyDisabled).Clicked() {
+							if ui.PrimaryButton(c, tr("Apply group to index")).Tooltip(tr("Revalidate the reviewed preview and stage only this group; keep the working tree unchanged and never commit automatically")).Disabled(applyDisabled).Clicked() {
 								a.applyChangeSplitGroup(index)
 							}
 						})
