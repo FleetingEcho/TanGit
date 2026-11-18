@@ -101,7 +101,7 @@ func (s *gitSession) FinalFiles(ctx context.Context, base string, options DiffOp
 	if err != nil {
 		return nil, fmt.Errorf("load final files: %w", err)
 	}
-	nameArgs, err := s.agentReviewDiffArgs(baseHash, "--name-status", options)
+	nameArgs, err := s.agentReviewDiffArgs(baseHash, "--name-status", diffFileListOptions(options))
 	if err != nil {
 		return nil, fmt.Errorf("load final files: %w", err)
 	}

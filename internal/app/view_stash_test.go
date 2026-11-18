@@ -75,7 +75,7 @@ func TestStashFilesAndDiffShareTheirHeight(t *testing.T) {
 	h.waitFor(t, "the stash files", func() bool { return calls.has("stash-files:0") })
 	h.waitFor(t, "the first file's diff", func() bool { return h.app.stashDiffState != nil })
 
-	row, ok := h.tester.Find("one.txt")
+	_, ok := h.tester.Find("one.txt")
 	if !ok {
 		t.Fatalf("the pane lists no file: %q", h.texts())
 	}
@@ -84,9 +84,8 @@ func TestStashFilesAndDiffShareTheirHeight(t *testing.T) {
 		t.Fatalf("the pane has no files header: %q", h.texts())
 	}
 	lineY := func() float32 { return header.Y + h.app.stashFilesHeight }
-	x := row.X + 200
 	before := h.app.stashFilesHeight
-	dragTo(t, h.tester, x, lineY(), 0, -50)
+	dragVerticalPaneGrip(t, h.tester, header, lineY(), -50)
 	if h.app.stashFilesHeight > before-30 {
 		t.Fatalf("dragging the line up left the files %v high, was %v",
 			h.app.stashFilesHeight, before)

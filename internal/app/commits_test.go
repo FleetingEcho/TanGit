@@ -757,7 +757,7 @@ func TestTheCommitFilesAndDiffShareTheirHeight(t *testing.T) {
 		return h.app.commitDiffState != nil && !h.app.commitDiffLoading
 	})
 
-	row, ok := h.tester.Find("one.txt")
+	_, ok := h.tester.Find("one.txt")
 	if !ok {
 		t.Fatalf("the pane lists no file: %q", h.texts())
 	}
@@ -768,17 +768,15 @@ func TestTheCommitFilesAndDiffShareTheirHeight(t *testing.T) {
 		t.Fatalf("the pane has no files header: %q", h.texts())
 	}
 	lineY := func() float32 { return header.Y + h.app.commitFilesHeight }
-	x := row.X + 200
-
 	before := h.app.commitFilesHeight
-	dragTo(t, h.tester, x, lineY(), 0, -60)
+	dragVerticalPaneGrip(t, h.tester, header, lineY(), -60)
 	if h.app.commitFilesHeight > before-40 {
 		t.Fatalf("dragging the line up left the files %v high, was %v",
 			h.app.commitFilesHeight, before)
 	}
 	// Dragging it back down gives the files their room again.
 	grown := h.app.commitFilesHeight
-	dragTo(t, h.tester, x, lineY(), 0, 60)
+	dragVerticalPaneGrip(t, h.tester, header, lineY(), 60)
 	if h.app.commitFilesHeight < grown+40 {
 		t.Fatalf("dragging the line down left the files %v high, was %v",
 			h.app.commitFilesHeight, grown)

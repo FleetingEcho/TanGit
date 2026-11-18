@@ -90,6 +90,17 @@ func TestUntrackedDiffWorksWithOptions(t *testing.T) {
 	}
 }
 
+func TestDiffFileListOptionsPreserveWhitespaceOnlyPaths(t *testing.T) {
+	options := DiffOptions{ContextLines: 0, IgnoreWhitespace: true}
+	listOptions := diffFileListOptions(options)
+	if listOptions.IgnoreWhitespace || listOptions.ContextLines != 0 {
+		t.Fatalf("file-list options = %+v, want unchanged context and no whitespace filtering", listOptions)
+	}
+	if !options.IgnoreWhitespace {
+		t.Fatal("file-list normalization mutated the patch options")
+	}
+}
+
 func assertDiffOptionsWhitespace(t *testing.T, readDiff func(DiffOptions) (Diff, error)) {
 	t.Helper()
 	visible, err := readDiff(DiffOptions{ContextLines: 3})
