@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"version\":2,\"operation_id\":\"000102030405060708090a0b0c0d0e0f\",\"path\":\"f.txt\",\"path_digest\":\"e4723ca5")
