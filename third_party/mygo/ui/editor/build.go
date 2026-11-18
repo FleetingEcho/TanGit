@@ -154,7 +154,7 @@ func (ed *editor) build(c *ui.Context, buf *Buffer, o options) ui.Element {
 			caretAnchor, hasCaret = anchor("code caret", ed.complete.at)
 		}
 		if h.shown {
-			hoverAnchor, hasHover = anchor("code hover anchor", h.start)
+			hoverAnchor, hasHover = anchor("code hover anchor", h.start+(h.end-h.start)/2)
 		}
 		ed.buildReplacements(c)
 		if ds, ok := ed.o.decor.(*diffSide); ok {

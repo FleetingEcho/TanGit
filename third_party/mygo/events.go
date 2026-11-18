@@ -27,11 +27,23 @@ type CloseEvent struct {
 // Preventing it cancels the quit, unless SessionEnding is set.
 type QuitEvent struct {
 	Preventable
+	retry func()
 	// SessionEnding is true when the OS ends the session (logout, restart,
 	// shutdown) on Windows and macOS: the quit cannot be canceled, and the
 	// process may end once the quit listeners return, so they must do
 	// their work synchronously (see Application.OnBeforeQuit).
 	SessionEnding bool
+}
+
+// Retry starts the same quit or relaunch request again, preserving relaunch
+// arguments. A listener may prevent a quit while it asks for confirmation or
+// saves asynchronously, then call Retry only after that work succeeds. The
+// retry runs asynchronously and emits the quit events again. It does nothing
+// for an OS session-ending event.
+func (e *QuitEvent) Retry() {
+	if !e.SessionEnding && e.retry != nil {
+		e.retry()
+	}
 }
 
 // NavigateEvent is passed to Page.OnWillNavigate listeners. Preventing it
