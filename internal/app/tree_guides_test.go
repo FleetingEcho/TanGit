@@ -54,7 +54,7 @@ func TestTreeGuideGroupsFollowActualVisibleBranches(t *testing.T) {
 	// outgoing rail when it has visible descendants.
 	src := rows[indexes["src"]]
 	segments := groups.segments(src, indexes["src"])
-	wantOutgoing := treeGuideSegment{X1: 12, Y1: 0.5, X2: 12, Y2: 1}
+	wantOutgoing := treeGuideSegment{X1: 11, Y1: 0.5, X2: 11, Y2: 1}
 	if !slices.Contains(segments, wantOutgoing) {
 		t.Fatalf("root's outgoing branch = %+v, want %+v", segments, wantOutgoing)
 	}
@@ -73,9 +73,9 @@ func TestTreeGuideGroupsFollowActualVisibleBranches(t *testing.T) {
 	uiIndex := indexes["src/ui"]
 	uiSegments := groups.segments(rows[uiIndex], uiIndex)
 	for _, want := range []treeGuideSegment{
-		{X1: 12, X2: 12, Y2: 1},
-		{X1: 13, Y1: 0.5, X2: 18, Y2: 0.5},
-		{X1: 24, Y1: 0.5, X2: 24, Y2: 1},
+		{X1: 11, X2: 11, Y2: 1},
+		{X1: 12, Y1: 0.5, X2: 17, Y2: 0.5},
+		{X1: 23, Y1: 0.5, X2: 23, Y2: 1},
 	} {
 		if !slices.Contains(uiSegments, want) {
 			t.Errorf("adjacent nested directory missed %+v in %+v", want, uiSegments)
@@ -83,14 +83,14 @@ func TestTreeGuideGroupsFollowActualVisibleBranches(t *testing.T) {
 	}
 	lastUI := indexes["src/ui/app.go"]
 	lastUISegments := groups.segments(rows[lastUI], lastUI)
-	if !slices.Contains(lastUISegments, treeGuideSegment{X1: 12, X2: 12, Y2: 1}) {
+	if !slices.Contains(lastUISegments, treeGuideSegment{X1: 11, X2: 11, Y2: 1}) {
 		t.Errorf("src stopped with its nested sibling: %+v", lastUISegments)
 	}
-	if !slices.Contains(lastUISegments, treeGuideSegment{X1: 24, X2: 24, Y2: 0.5}) {
+	if !slices.Contains(lastUISegments, treeGuideSegment{X1: 23, X2: 23, Y2: 0.5}) {
 		t.Errorf("ui did not end at its own last descendant: %+v", lastUISegments)
 	}
 	for _, segment := range lastUISegments {
-		if segment.X1 == 36 && segment.X2 == 36 {
+		if segment.X1 == 35 && segment.X2 == 35 {
 			t.Errorf("already terminated tree sibling leaked into app.go: %+v", lastUISegments)
 		}
 	}
@@ -310,8 +310,8 @@ func TestTreeGuideRenderingHasAbsoluteYContinuityAndIndependentEnds(t *testing.T
 	img := f.tester.Image()
 	saveTreeGuidePNG(t, "expanded-selected", img)
 
-	srcRail := treeGuideTestListX + 12
-	uiRail := treeGuideTestListX + 24
+	srcRail := treeGuideTestListX + 11
+	uiRail := treeGuideTestListX + 23
 	backgroundX := 280 - treeGuideTestListX - 10
 	srcRect := f.rowRect(t, "src")
 	start := rowCenter(srcRect)
@@ -420,7 +420,7 @@ func TestTreeGuideRenderingSurvivesVirtualizationAndClipsToList(t *testing.T) {
 	}
 	img := f.tester.Image()
 	saveTreeGuidePNG(t, "scrolled-clipped", img)
-	rail := treeGuideTestListX + 12
+	rail := treeGuideTestListX + 11
 	background := img.RGBAAt(0, 0)
 	bottom := treeGuideTestListY + 120
 	inside := 0
