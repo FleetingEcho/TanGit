@@ -93,10 +93,12 @@ func (s *gitSession) unpushedBase(ctx context.Context, branch string) (string, e
 		}
 		return base, nil
 	}
-	if upstream, err := s.cmd.New([]string{"git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", branch + "@{u}"}).DontLog().RunWithOutput(); err == nil {
+	if upstream, err := s.cmd.New([]string{"git", "rev-parse", "--symbolic-full-name", branch + "@{u}"}).DontLog().RunWithOutput(); err == nil {
+		// Upstream resolution already knows whether this is a local or remote
+		// branch. Preserve that full ref instead of re-introducing namespaces.
 		return mergeBase(strings.TrimSpace(upstream))
 	}
-	for _, candidate := range []string{"origin/HEAD", "main", "master", "trunk"} {
+	for _, candidate := range []string{"refs/remotes/origin/HEAD", "refs/heads/main", "refs/heads/master", "refs/heads/trunk"} {
 		if err := s.cmd.New([]string{"git", "rev-parse", "--verify", "--quiet", candidate}).DontLog().Run(); err != nil {
 			continue
 		}

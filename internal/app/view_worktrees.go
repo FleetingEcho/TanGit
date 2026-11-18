@@ -64,15 +64,15 @@ func (a *app) worktreeRefOptions() []string {
 		}
 	}
 	for _, branch := range a.snapshot.Branches {
-		add(branch.Name)
+		add("refs/heads/" + branch.Name)
 	}
 	for _, remote := range a.snapshot.Remotes {
 		for _, branch := range remote.Branches {
-			add(remote.Name + "/" + branch.Name)
+			add("refs/remotes/" + remote.Name + "/" + branch.Name)
 		}
 	}
 	for _, tag := range a.snapshot.Tags {
-		add(tag.Name)
+		add("refs/tags/" + tag.Name)
 	}
 	return options
 }

@@ -467,7 +467,7 @@ func (a *app) compareRefChoices(typed string, filtering bool) []string {
 	add("HEAD")
 	add("HEAD~1")
 	for _, branch := range a.snapshot.Branches {
-		add(branch.Name)
+		add("refs/heads/" + branch.Name)
 	}
 	for _, remote := range a.snapshot.Remotes {
 		for _, branch := range remote.Branches {
@@ -476,12 +476,12 @@ func (a *app) compareRefChoices(typed string, filtering bool) []string {
 				name = remote.Name
 			}
 			if name != "" && branch.Name != "" {
-				add(name + "/" + branch.Name)
+				add("refs/remotes/" + name + "/" + branch.Name)
 			}
 		}
 	}
 	for _, tag := range a.snapshot.Tags {
-		add(tag.Name)
+		add("refs/tags/" + tag.Name)
 	}
 	if filtering {
 		needle := strings.ToLower(strings.TrimSpace(typed))
