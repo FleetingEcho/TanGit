@@ -980,19 +980,16 @@ func (s *gitSession) ApplyStackSync(ctx context.Context, plan StackSyncPlan) (St
 
 	if plan.Publish {
 		for index, branch := range plan.Branches {
-			if !branch.PublishAllowed || branch.Error != "" {
+			if !branch.Publish || !branch.PublishAllowed || branch.Error != "" {
 				continue
 			}
 			localOID := localOIDs[branch.Name]
 			if localOID == branch.Upstream.OID {
 				continue
 			}
-			// A skipped rewrite/divergence may not publish the old unresolved
-			// state. Ordinary local-ahead branches remain publishable even when
-			// checked out in another worktree.
-			if branch.Action == StackSyncActionSkip && branch.Relation != StackSyncLocalAheadOnly && branch.Relation != StackSyncUpToDate {
-				continue
-			}
+			// Publish exactly the operations approved in the preview. In
+			// particular, a skipped parent-moved or diverged branch must never
+			// publish its old unresolved state merely because it is publishable.
 			remoteAncestor, err := s.stackSyncAncestor(ctx, branch.Upstream.OID, localOID)
 			if err != nil {
 				return result, err
