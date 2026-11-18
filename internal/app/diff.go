@@ -416,7 +416,8 @@ func (a *app) diffViewOptions(c *ui.Context) {
 
 // diffViewOptionsWith adds pane-specific controls before the ordinary diff
 // actions and optionally includes their expand control. Commit details lead
-// with the file/diff orientation switch and put expansion in their title row.
+// with the file/diff orientation switch; their resizable message/file panes
+// use middle dividers instead of a maximize control.
 func (a *app) diffViewOptionsWith(c *ui.Context, leading func(*ui.Context), includeExpand bool) {
 	// Own the gap here rather than inheriting each pane's header spacing. Text
 	// buttons keep their natural width, so translations never collide with the

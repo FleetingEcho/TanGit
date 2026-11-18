@@ -69,7 +69,7 @@ func TestCommitDetailsLoadAndRetainEveryBodyLine(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var reads atomic.Int32
-			body := "Release notes for this version.\n\n- Add the native client.\n- Preserve every body line."
+			body := "## Release notes\n\n- Add the **native** client.\n- Preserve every body line."
 			session := &commitMessageDetailSession{read: func(_ context.Context, commit repository.Commit) (repository.CommitMessage, error) {
 				reads.Add(1)
 				return repository.CommitMessage{Summary: commit.Subject, Description: body}, nil
@@ -79,8 +79,9 @@ func TestCommitDetailsLoadAndRetainEveryBodyLine(t *testing.T) {
 			h.waitFor(t, "the complete commit body", func() bool {
 				return h.tester.HasText("Preserve every body line.")
 			})
-			if !h.tester.HasText(body) {
-				t.Fatalf("commit body lost its multiline content: %q", h.texts())
+			if !h.tester.HasText("Release notes") || !h.tester.HasText("Add the native client.") ||
+				h.tester.HasText("## Release notes") || h.tester.HasText("**native**") {
+				t.Fatalf("commit body is not rendered as Markdown: %q", h.texts())
 			}
 			h.tester.Frame()
 			h.tester.Frame()
@@ -91,40 +92,130 @@ func TestCommitDetailsLoadAndRetainEveryBodyLine(t *testing.T) {
 	}
 }
 
-func TestCommitMessageBodyStaysCompactAndExpands(t *testing.T) {
-	var lines []string
-	for i := range 40 {
-		lines = append(lines, fmt.Sprintf("Detailed release note line %02d with enough words to wrap in its pane.", i+1))
-	}
-	body := strings.Join(lines, "\n\n")
+func TestCommitMessageRenderedAndRawModesAllowSelectionAndCopy(t *testing.T) {
+	body := "Add the **native** client.\n\nSee the release notes."
 	session := &commitMessageDetailSession{read: func(_ context.Context, commit repository.Commit) (repository.CommitMessage, error) {
 		return repository.CommitMessage{Summary: commit.Subject, Description: body}, nil
 	}}
 	h, _ := commitMessageDetailHarness(t, sectionHistory, session)
 	h.tester.Frame()
-	h.waitFor(t, "the long commit body", func() bool { return h.tester.HasText(body) })
-	compact, ok := h.tester.Find("Commit message")
-	if !ok || compact.H <= 0 || compact.H > 144 {
-		t.Fatalf("compact commit message height = %+v, want a bounded scroll area of at most 144 DIP", compact)
+	h.waitFor(t, "the rendered commit body", func() bool {
+		return h.tester.HasText("Add the native client.")
+	})
+	if h.tester.HasText("Add the **native** client.") {
+		t.Fatalf("default commit body exposes raw Markdown: %q", h.texts())
 	}
-	if _, ok := h.tester.Find("Commit files"); !ok {
-		t.Fatal("the long commit message squeezed out the changed-files pane")
-	}
-	if err := h.tester.Click("Expand commit message"); err != nil {
-		t.Fatal(err)
-	}
-	h.tester.Frame()
-	expanded, ok := h.tester.Find("Commit message")
-	if !ok || expanded.H <= compact.H {
-		t.Fatalf("expanded commit message did not grow: compact=%+v expanded=%+v", compact, expanded)
-	}
-	if err := h.tester.Click("Collapse commit message"); err != nil {
-		t.Fatal(err)
+	copyCommitMessageLine(t, h, "Add the native client.", "native")
+
+	if err := h.tester.Click("Show raw commit message"); err != nil {
+		t.Fatalf("switch to raw Markdown: %v", err)
 	}
 	h.tester.Frame()
-	restored, ok := h.tester.Find("Commit message")
-	if !ok || restored.H > 144 {
-		t.Fatalf("collapsed commit message did not restore its compact bound: %+v", restored)
+	if !h.tester.HasText(body) {
+		t.Fatalf("raw mode does not expose the original Markdown source: %q", h.texts())
+	}
+	h.tester.SetClipboard("")
+	copyCommitMessageLine(t, h, "Commit message", "**native**")
+
+	if err := h.tester.Click("Show rendered commit message"); err != nil {
+		t.Fatalf("switch back to rendered Markdown: %v", err)
+	}
+	h.tester.Frame()
+	if !h.tester.HasText("Add the native client.") || h.tester.HasText("Add the **native** client.") {
+		t.Fatalf("rendered mode did not return: %q", h.texts())
+	}
+}
+
+func copyCommitMessageLine(t *testing.T, h *harness, label, want string) {
+	t.Helper()
+	paragraph, ok := h.tester.Find(label)
+	if !ok || paragraph.W < 8 || paragraph.H <= 0 {
+		t.Fatalf("cannot select commit message %q: %+v", label, paragraph)
+	}
+	y := paragraph.Y + paragraph.H/2
+	if label == "Commit message" {
+		// Raw mode is one multiline text element rather than separate
+		// paragraph labels. Start on its first source line.
+		y = paragraph.Y + 7
+	}
+	h.tester.Press(paragraph.X+2, y)
+	h.tester.Move(paragraph.X+paragraph.W-2, y)
+	h.tester.Frame()
+	h.tester.Release(paragraph.X+paragraph.W-2, y)
+	h.tester.Frame()
+	h.tester.Key(ui.Ctrl, ui.KeyC)
+	h.tester.Frame()
+	if copied := h.tester.Clipboard(); !strings.Contains(copied, want) {
+		t.Fatalf("selecting and copying %q produced %q, want it to contain %q", label, copied, want)
+	}
+}
+
+func TestCommitMessageMiddleDividerResizesAndScrollsBody(t *testing.T) {
+	var lines []string
+	for i := range 40 {
+		lines = append(lines, fmt.Sprintf("Detailed release note line %02d with enough words to wrap in its pane.", i+1))
+	}
+	body := strings.Join(lines, "\n\n")
+	for _, tab := range []int{sectionHistory, sectionBranches} {
+		t.Run(fmt.Sprintf("section_%d", tab), func(t *testing.T) {
+			session := &commitMessageDetailSession{read: func(_ context.Context, commit repository.Commit) (repository.CommitMessage, error) {
+				return repository.CommitMessage{Summary: commit.Subject, Description: body}, nil
+			}}
+			h, _ := commitMessageDetailHarness(t, tab, session)
+			messageState := &h.app.commitDetailMessage
+			if tab == sectionBranches {
+				messageState = &h.app.branchCommitDetailMessage
+			}
+			h.tester.Frame()
+			h.waitFor(t, "the long commit body", func() bool { return h.tester.HasText(lines[len(lines)-1]) })
+			h.tester.Frame()
+			before, ok := h.tester.Find("Commit message")
+			if !ok || before.H <= 0 {
+				t.Fatalf("missing visible commit body: %+v", before)
+			}
+			for _, label := range []string{"Expand diff", "Expand commit message", "Collapse commit message"} {
+				if button, exists := h.tester.Find(label); exists {
+					t.Errorf("details maximize control %q is still present at %+v", label, button)
+				}
+			}
+			if _, ok := h.tester.Find("Commit files"); !ok {
+				t.Fatal("the commit message displaced the changed-files pane")
+			}
+
+			pane := ui.Rect{X: before.X, W: before.W}
+			dragVerticalPaneGrip(t, h.tester, pane, before.Y+before.H, 80)
+			grown, grownOK := h.tester.Find("Commit message")
+			if !grownOK || grown.H <= before.H {
+				t.Fatalf("dragging the middle divider did not enlarge the body: before=%+v after=%+v", before, grown)
+			}
+			if _, ok := h.tester.Find("Commit files"); !ok {
+				t.Fatal("enlarging the commit body displaced the changed-files pane")
+			}
+
+			// Even with the divider dragged to its lower limit, a very long
+			// body scrolls inside Details until its final paragraph is visible.
+			dragVerticalPaneGrip(t, h.tester, pane, grown.Y+grown.H, 10000)
+			fullyGrown, grownOK := h.tester.Find("Commit message")
+			if !grownOK || messageState.scroll.MaxY <= 0 {
+				t.Fatalf("the oversized body has no internal scrolling: body=%+v maxY=%v", fullyGrown, messageState.scroll.MaxY)
+			}
+			h.tester.Scroll(fullyGrown.X+fullyGrown.W/2, fullyGrown.Y+fullyGrown.H/2, 0, 100000)
+			h.tester.Frame()
+			h.tester.Frame()
+			if messageState.scroll.Y <= 0 {
+				t.Fatalf("scrolling inside Details did not move the body: Y=%v maxY=%v", messageState.scroll.Y, messageState.scroll.MaxY)
+			}
+			last, lastOK := h.tester.Access(lines[len(lines)-1])
+			if !lastOK || last.Offscreen {
+				t.Fatalf("the final body paragraph is still hidden after internal scrolling: %+v", last)
+			}
+
+			dragVerticalPaneGrip(t, h.tester, pane, fullyGrown.Y+fullyGrown.H, -40)
+			shrunk, shrunkOK := h.tester.Find("Commit message")
+			if !shrunkOK || shrunk.H >= fullyGrown.H {
+				t.Fatalf("dragging the middle divider back did not shrink the body: grown=%+v shrunk=%+v", fullyGrown, shrunk)
+			}
+		})
 	}
 }
 

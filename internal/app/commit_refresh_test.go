@@ -109,9 +109,12 @@ func gripRect(t *testing.T, tester *ui.Tester, horizontal bool) ui.Rect {
 	case 1:
 		return grips[0]
 	default:
+		// With the commit message's horizontal sash present too, the
+		// file/diff divider is the lower of the two. Left/right dividers
+		// are still distinguished from right to left.
 		inner := grips[0]
 		for _, grip := range grips[1:] {
-			if grip.X > inner.X {
+			if horizontal && grip.Y > inner.Y || !horizontal && grip.X > inner.X {
 				inner = grip
 			}
 		}
@@ -256,8 +259,9 @@ func TestCommitRefreshButtonReloadsCommits(t *testing.T) {
 	}
 }
 
-// maximizedFixture opens a repository whose diff is showing, expanded over
-// the whole window, with a recording session behind it.
+// maximizedFixture opens a working-tree diff over the whole window, with a
+// recording session behind it. Commit details no longer offer maximization;
+// the shared whole-window diff remains available from Changes.
 func maximizedFixture(t *testing.T) (*harness, *callRecorder) {
 	t.Helper()
 	calls := &callRecorder{}
@@ -284,7 +288,7 @@ func maximizedFixture(t *testing.T) (*harness, *callRecorder) {
 		}},
 	}
 	a := newApp(recordingOpener{snapshot: snapshot, calls: calls})
-	a.workspaceTab = sectionHistory
+	a.workspaceTab = sectionChanges
 	h := &harness{app: a, updates: newUpdates()}
 	h.tester = ui.NewTester(a.view, 1280, 800)
 	a.update = h.updates.update
@@ -292,7 +296,7 @@ func maximizedFixture(t *testing.T) (*harness, *callRecorder) {
 	a.pathUserData = t.TempDir()
 	openFixture(t, h.tester)
 	h.settle(t)
-	h.waitFor(t, "the commit diff", func() bool { return h.app.commitDiffState != nil && !h.app.commitDiffLoading })
+	h.waitFor(t, "the working-tree diff", func() bool { return h.app.diffState != nil })
 	if err := h.tester.Click("Expand diff"); err != nil {
 		t.Fatalf("expand the diff: %v", err)
 	}

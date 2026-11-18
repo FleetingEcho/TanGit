@@ -921,14 +921,15 @@ func newApp(opener repositoryOpener) *app {
 		// The whole-window diff's file list starts wide enough for a path.
 		diffFullscreenFile:       -1,
 		diffFullscreenFilesWidth: 300,
-		// The commit's files start at the height they had before the line
-		// between them and the diff could be dragged.
-		commitFilesHeight: 150,
-		commitFilesWidth:  300,
-		stashFilesHeight:  180,
-		// The branches column is narrower, so its two panes start smaller.
-		branchCommitFilesHeight: 110,
-		branchCommitFilesWidth:  300,
+		// Commit message and file/diff panes have independently adjustable heights.
+		commitDetailMessage: commitMessageDetailState{height: commitMessageDefaultHeight},
+		commitFilesHeight:   150,
+		commitFilesWidth:    300,
+		stashFilesHeight:    180,
+		// Branch details keep their own message and file/diff pane sizes.
+		branchCommitDetailMessage: commitMessageDetailState{height: commitMessageDefaultHeight},
+		branchCommitFilesHeight:   110,
+		branchCommitFilesWidth:    300,
 		// Give commit metadata (subject/hash/author/time) enough horizontal room
 		// to read without cramping CJK labels or burying names in the diff stats.
 		// The splitter remains available for further manual adjustment.
