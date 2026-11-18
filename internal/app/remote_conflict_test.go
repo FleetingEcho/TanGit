@@ -139,6 +139,20 @@ func TestRemoteConflictReadsEditsAndWritesOnlyThroughSSH(t *testing.T) {
 	if h.app.conflictView.Buffer.Modified() {
 		t.Fatal("completed remote manual save left the saved buffer modified")
 	}
+
+	// Restoring is also safe after manual Result edits, and remains an SSH
+	// operation. Undo returns to the exact text that preceded the restore.
+	manual := h.app.conflictState.text()
+	h.app.restoreInitialConflict()
+	waitRemoteConflictSave(t, h)
+	if got := remoteConflictContents(t, client, filename); got != remoteConflictText {
+		t.Fatalf("remote restore wrote %q, want the initial conflict", got)
+	}
+	h.app.undoConflictResolution()
+	waitRemoteConflictSave(t, h)
+	if got := remoteConflictContents(t, client, filename); got != manual {
+		t.Fatalf("undoing remote restore wrote %q, want the pre-restore manual Result %q", got, manual)
+	}
 	if atomic.LoadInt32(localReads) != 0 || atomic.LoadInt32(localWrites) != 0 {
 		t.Fatalf("remote conflict used local seams: reads=%d writes=%d", *localReads, *localWrites)
 	}

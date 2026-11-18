@@ -786,7 +786,15 @@ func (a *app) conflictPane(c *ui.Context, theme *ui.Theme) {
 		})
 		return
 	}
-	a.conflictStageSelector(c)
+	// Every view of an inline conflict shares the same toolbar. Selecting an
+	// immutable Base/Current/Incoming stage replaces only the content below;
+	// it must not collapse the Hunk and Apply groups back to a bare selector.
+	hasConflictToolbar := a.conflictSides != nil || (a.conflictState != nil && a.conflictView != nil)
+	if hasConflictToolbar {
+		a.conflictToolbar(c, theme)
+	} else {
+		a.conflictStageSelector(c)
+	}
 	if a.conflictStagePane(c, theme) {
 		return
 	}
@@ -800,7 +808,6 @@ func (a *app) conflictPane(c *ui.Context, theme *ui.Theme) {
 		})
 		return
 	}
-	a.conflictToolbar(c, theme)
 	if a.conflictSaveError != "" {
 		ui.Text(c, trf("Could not save the file: %s", a.conflictSaveError)).
 			TextColor(theme.Danger).FontSize(theme.FontSize - 1)
@@ -860,25 +867,8 @@ func (a *app) conflictReviewButton(c *ui.Context) {
 // buttons resolve the whole file rather than one hunk.
 func (a *app) conflictSidesPane(c *ui.Context, theme *ui.Theme) {
 	sides := a.conflictSides
-	ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
-		ui.Badge(c, tr(conflictStatusLabel(sides.file.Status))).Background(theme.Danger).TextColor(ui.Hex("#ffffff"))
-		ui.Spacer(c).Grow(1)
-		if compactTextButton(ui.Button(c, tr("Use current"))).Label(tr("Use current")).Tooltip(tr("Resolve with the current side")).
-			Disabled(a.actionBusy).Clicked() {
-			a.resolveConflictFile(sides.file, true)
-			c.Invalidate()
-		}
-		if compactTextButton(ui.Button(c, tr("Use incoming"))).Label(tr("Use incoming")).Tooltip(tr("Resolve with the incoming side")).
-			Disabled(a.actionBusy).Clicked() {
-			a.resolveConflictFile(sides.file, false)
-			c.Invalidate()
-		}
-		if compactTextButton(ui.PrimaryButton(c, tr("Mark resolved"))).Label(tr("Mark resolved")).Tooltip(tr("Stage the file as it is")).
-			Disabled(a.actionBusy).Clicked() {
-			a.beginStageFile(sides.file, true)
-			c.Invalidate()
-		}
-	})
+	// Resolution belongs to conflictToolbar above the content, exactly as it
+	// is for inline files. This pane only explains and displays the kept side.
 	ui.Column(c).Grow(1).Gap(6).Children(func() {
 		if note := conflictSidesNote(sides.file.Status, !sides.current); note != "" {
 			ui.Text(c, tr(note)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
@@ -900,32 +890,91 @@ func (a *app) conflictSidesPane(c *ui.Context, theme *ui.Theme) {
 	})
 }
 
+// conflictSuccessBadgeText chooses a label color with enough contrast over
+// the success fill, rather than assuming the theme's ordinary text is legible.
+func conflictSuccessBadgeText(theme *ui.Theme) ui.Color {
+	return accentText(theme.Success)
+}
+
+// conflictToolbarGroup builds one titled action group shared by inline and
+// whole-file conflicts, so Deleted can never fall back to a different toolbar.
+func conflictToolbarGroup(c *ui.Context, theme *ui.Theme, label string, content func()) {
+	ui.Column(c).Gap(5).Children(func() {
+		ui.Text(c, tr(label)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+		ui.Row(c).AlignItems(ui.Center).Gap(6).Children(content)
+	})
+}
+
+// conflictToolbarSeparator is a fixed-height vertical line between groups.
+func conflictToolbarSeparator(c *ui.Context, theme *ui.Theme, label string) {
+	ui.Box(c).Width(1).Height(31).MaxHeight(31).Margin(0, 2).
+		AlignSelf(ui.Center).Shrink(0).Background(theme.Border).Label(tr(label))
+}
+
+// conflictSidesToolbar resolves a conflict that has no textual hunks. Its
+// status badge describes a whole-file resolution; Use both and initial-hunk
+// Restore would have no meaning, so they do not consume slots here.
+func (a *app) conflictSidesToolbar(c *ui.Context, theme *ui.Theme) {
+	sides := a.conflictSides
+	disabled := a.actionBusy || a.conflictStageTab != 3
+	ui.Row(c).AlignItems(ui.Center).Gap(10).Wrap().Children(func() {
+		conflictToolbarGroup(c, theme, "Hunk", func() {
+			ui.Badge(c, tr(conflictStatusLabel(sides.file.Status))).Background(theme.Danger).TextColor(ui.Hex("#ffffff"))
+		})
+		conflictToolbarSeparator(c, theme, "Hunk separator")
+		conflictToolbarGroup(c, theme, "View", func() {
+			a.conflictStageSelector(c)
+		})
+		conflictToolbarSeparator(c, theme, "View separator")
+		conflictToolbarGroup(c, theme, "Apply", func() {
+			iconButton(c, "Use current", tr("Use current")+" · "+tr("Resolve with the current side"), useCurrentIcon, disabled, func() {
+				a.resolveConflictFile(sides.file, true)
+				c.Invalidate()
+			})
+			iconButton(c, "Use incoming", tr("Use incoming")+" · "+tr("Resolve with the incoming side"), useIncomingIcon, disabled, func() {
+				a.resolveConflictFile(sides.file, false)
+				c.Invalidate()
+			})
+		})
+		ui.Spacer(c).Grow(1)
+		conflictToolbarSeparator(c, theme, "Apply separator")
+		if compactTextButton(ui.PrimaryButton(c, tr("Mark resolved"))).Label(tr("Mark resolved")).Tooltip(tr("Stage the file as it is")).Disabled(a.actionBusy).Clicked() {
+			a.beginStageFile(sides.file, true)
+			c.Invalidate()
+		}
+	})
+}
+
 // conflictToolbar is the row above a conflicted file: which conflict is
 // selected, the hunk to keep from it, the undo of the last pick, and the way
 // to mark the file resolved once its markers are gone. The file's own
 // controls, editing and the review, sit beside its name.
 func (a *app) conflictToolbar(c *ui.Context, theme *ui.Theme) {
+	if a.conflictSides != nil {
+		a.conflictSidesToolbar(c, theme)
+		return
+	}
 	state := a.conflictState
 	count := len(state.regions)
 	region, hasRegion := state.current()
-	// The toolbar is two rows: which conflict is selected, then the hunks to
-	// keep from it. Both wrap when the pane is too narrow for them, so the
-	// resolution of a conflict never hides past the edge.
-	ui.Column(c).Gap(6).Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
+	// Looking at an immutable stage is deliberately read-only. Keep Apply
+	// visible in exactly the same place, but enable it only on Result.
+	resolveDisabled := count == 0 || a.actionBusy || a.conflictStageTab != 3
+	// Each labeled group wraps as one unit. This preserves the target
+	// Hunk | View | Apply hierarchy instead of scattering its buttons.
+	ui.Row(c).AlignItems(ui.Center).Gap(10).Wrap().Children(func() {
+		conflictToolbarGroup(c, theme, "Hunk", func() {
 			if count == 0 {
-				ui.Badge(c, tr("No conflict markers")).Background(theme.Success)
+				ui.Row(c).Padding(0, theme.Space(1.5)).Radius(999).
+					Background(theme.Success).Shrink(0).Children(func() {
+					ui.Text(c, tr("No conflict markers")).FontSize(theme.FontSize - 2).
+						TextColor(conflictSuccessBadgeText(theme)).SingleLine()
+				})
 			} else {
-				ui.Badge(c, trf("Conflict %d of %d", state.selected+1, count)).Background(theme.Danger).TextColor(ui.Hex("#ffffff"))
-			}
-			ui.Spacer(c).Grow(1)
-			// Labeled actions precede icon-only navigation and undo in mixed
-			// toolbars. Mark resolved stays on this row rather than moving
-			// into the file header above.
-			if compactTextButton(ui.PrimaryButton(c, tr("Mark resolved"))).Label(tr("Mark resolved")).Tooltip(tr("Stage the file as it is")).Disabled(a.actionBusy).Clicked() {
-				if change, ok := a.selectedChange(); ok {
-					a.beginStageFile(change.file, true)
-				}
+				ui.Badge(c, trf("%d / %d", state.selected+1, count)).
+					Label(trf("Conflict %d of %d", state.selected+1, count)).
+					Tooltip(trf("Conflict %d of %d", state.selected+1, count)).
+					Background(theme.Danger).TextColor(ui.Hex("#ffffff"))
 			}
 			if count > 0 {
 				iconButton(c, "Previous conflict", "Select the conflict above (Shift+F7)", chevronUpIcon, state.selected == 0, func() {
@@ -937,31 +986,50 @@ func (a *app) conflictToolbar(c *ui.Context, theme *ui.Theme) {
 					c.Invalidate()
 				})
 			}
-			iconButton(c, "Undo resolution", "Put back the content before the last pick (Alt+Z)", revertIcon, a.actionBusy || len(state.undo) == 0, func() {
-				a.undoConflictResolution()
-				c.Invalidate()
-			})
 		})
-		resolveDisabled := count == 0 || a.actionBusy
-		ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
-			if compactTextButton(ui.Button(c, tr("Use current"))).Label(tr("Use current")).Tooltip(tr("Keep the current side's hunk") + " (Alt+1)").Disabled(resolveDisabled).Clicked() {
+		conflictToolbarSeparator(c, theme, "Hunk separator")
+		conflictToolbarGroup(c, theme, "View", func() {
+			a.conflictStageSelector(c)
+		})
+		conflictToolbarSeparator(c, theme, "View separator")
+		conflictToolbarGroup(c, theme, "Apply", func() {
+			iconButton(c, "Use current", tr("Use current")+" · Alt+1 · "+tr("Keep the current side's hunk"), useCurrentIcon, resolveDisabled, func() {
 				a.resolveConflictSide(conflictCurrent)
 				c.Invalidate()
-			}
+			})
 			if hasRegion && region.hasBase() {
-				if compactTextButton(ui.Button(c, tr("Use base"))).Label(tr("Use base")).Tooltip(tr("Keep the common ancestor's hunk") + " (Alt+2)").Disabled(resolveDisabled).Clicked() {
+				iconButton(c, "Use base", tr("Use base")+" · Alt+2 · "+tr("Keep the common ancestor's hunk"), historyIcon, resolveDisabled, func() {
 					a.resolveConflictSide(conflictBase)
 					c.Invalidate()
-				}
+				})
 			}
-			if compactTextButton(ui.Button(c, tr("Use incoming"))).Label(tr("Use incoming")).Tooltip(tr("Keep the incoming side's hunk") + " (Alt+3)").Disabled(resolveDisabled).Clicked() {
+			iconButton(c, "Use incoming", tr("Use incoming")+" · Alt+3 · "+tr("Keep the incoming side's hunk"), useIncomingIcon, resolveDisabled, func() {
 				a.resolveConflictSide(conflictIncoming)
 				c.Invalidate()
-			}
-			if compactTextButton(ui.Button(c, tr("Use both"))).Label(tr("Use both")).Tooltip(tr("Keep the hunks of both sides, without the ancestor") + " (Alt+4)").Disabled(resolveDisabled).Clicked() {
+			})
+			iconButton(c, "Use both", tr("Use both")+" · Alt+4 · "+tr("Keep the hunks of both sides, without the ancestor"), diffSplitIcon, resolveDisabled, func() {
 				a.resolveConflictSide(conflictBoth)
 				c.Invalidate()
+			})
+			iconButton(c, "Restore initial conflict", tr("Restore initial conflict")+" · "+tr("Restore every conflict marker this file had before any resolutions"), hardResetIcon, a.actionBusy || a.conflictStageTab != 3 || state.isInitial(), func() {
+				a.restoreInitialConflict()
+				c.Invalidate()
+			})
+			// Do not spend a target-layout slot on an unavailable action. Once
+			// something can be undone, the single-step action appears here.
+			if len(state.undo) > 0 {
+				iconButton(c, "Undo resolution", "Undo the last conflict resolution (Ctrl/Cmd+Z or Alt+Z)", revertIcon, a.actionBusy || a.conflictStageTab != 3, func() {
+					a.undoConflictResolution()
+					c.Invalidate()
+				})
 			}
 		})
+		ui.Spacer(c).Grow(1)
+		conflictToolbarSeparator(c, theme, "Apply separator")
+		if compactTextButton(ui.PrimaryButton(c, tr("Mark resolved"))).Label(tr("Mark resolved")).Tooltip(tr("Stage the file as it is")).Disabled(a.actionBusy).Clicked() {
+			if change, ok := a.selectedChange(); ok {
+				a.beginStageFile(change.file, true)
+			}
+		}
 	})
 }
