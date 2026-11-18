@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 )
@@ -80,25 +81,50 @@ func decodeWorkspaceScope(payload []byte) (workspaceArchiveScope, error) {
 	return scope, nil
 }
 
-func (s *gitSession) currentWorkspaceScope(scope workspaceArchiveScope) (workspaceArchiveScope, error) {
+func (s *gitSession) currentWorkspaceArchive(scope workspaceArchiveScope) (*workspaceArchive, error) {
 	ignored := append([]string(nil), scope.IgnoredPaths...)
 	if scope.AllIgnored {
 		var err error
 		ignored, err = s.ignoredWorkspacePaths()
 		if err != nil {
-			return workspaceArchiveScope{}, err
+			return nil, err
 		}
 	}
 	scope.IgnoredPaths = ignored
 	listing, err := s.recoveryUntrackedListing(ignored)
 	if err != nil {
-		return workspaceArchiveScope{}, err
+		return nil, err
 	}
-	archive, err := s.captureWorkspaceArchive(listing, scope)
+	return s.captureWorkspaceArchive(listing, scope)
+}
+
+func (s *gitSession) currentWorkspaceScope(scope workspaceArchiveScope) (workspaceArchiveScope, error) {
+	archive, err := s.currentWorkspaceArchive(scope)
 	if err != nil {
 		return workspaceArchiveScope{}, err
 	}
 	return archive.Scope, nil
+}
+
+// checkWorkspaceIndexLock refuses to capture or mutate through an existing
+// Git index lock. The lock belongs to another writer and is never removed or
+// replaced by TanGit's recovery machinery.
+func (s *gitSession) checkWorkspaceIndexLock() error {
+	index, err := s.cmd.New([]string{"git", "rev-parse", "--path-format=absolute", "--git-path", "index"}).RunWithOutput()
+	if err != nil {
+		return fmt.Errorf("resolve Git index for recovery: %w: %s", err, strings.TrimSpace(index))
+	}
+	name := strings.TrimSuffix(index, "\n")
+	if name == "" {
+		return fmt.Errorf("resolve Git index for recovery: empty index path")
+	}
+	lock := name + ".lock"
+	if _, err := s.fileService().Lstat(lock); err == nil {
+		return fmt.Errorf("cannot capture or modify the workspace while Git's %s is held by another process", lock)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect Git index lock %s: %w", lock, err)
+	}
+	return nil
 }
 
 // workspaceGitStateDigest protects everything the metadata restore can alter:
