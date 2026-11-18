@@ -939,7 +939,7 @@ func (a *app) resolveConflictSide(side conflictSide) {
 	if a.location.IsRemote() {
 		view := a.conflictView
 		lockRemoteConflictResolution(view)
-		started := a.startRemoteConflictWrite(state, state.text(), 0, func(err error) {
+		started := a.startRemoteConflictRecoveryWrite(state, state.text(), func(err error) {
 			unlockRemoteConflictResolution(view)
 			if err != nil {
 				state.undoResolution()
@@ -954,11 +954,13 @@ func (a *app) resolveConflictSide(side conflictSide) {
 		}
 		return
 	}
-	if err := a.writeConflictFileToDisk(); err != nil {
+	err := runFileRecoveryMutation(context.Background(), a.session, state.path, a.writeConflictFileToDisk)
+	if err != nil {
 		state.undoResolution()
 		a.notify("error", "Could not write the resolved file", safeError(err))
 		return
 	}
+	a.refreshFileRecoveries()
 	a.scrollToSelectedConflict()
 	a.refreshConflictViewer()
 }
@@ -994,7 +996,7 @@ func (a *app) undoConflictResolution() {
 	if a.location.IsRemote() {
 		view := a.conflictView
 		lockRemoteConflictResolution(view)
-		started := a.startRemoteConflictWrite(state, state.text(), 0, func(err error) {
+		started := a.startRemoteConflictRecoveryWrite(state, state.text(), func(err error) {
 			unlockRemoteConflictResolution(view)
 			if err != nil {
 				writeFailed(err)
@@ -1008,10 +1010,12 @@ func (a *app) undoConflictResolution() {
 		}
 		return
 	}
-	if err := a.writeConflictFileToDisk(); err != nil {
+	err := runFileRecoveryMutation(context.Background(), a.session, state.path, a.writeConflictFileToDisk)
+	if err != nil {
 		writeFailed(err)
 		return
 	}
+	a.refreshFileRecoveries()
 	a.scrollToSelectedConflict()
 	a.refreshConflictViewer()
 }
@@ -1042,7 +1046,7 @@ func (a *app) restoreInitialConflict() {
 	if a.location.IsRemote() {
 		view := a.conflictView
 		lockRemoteConflictResolution(view)
-		started := a.startRemoteConflictWrite(state, state.text(), 0, func(err error) {
+		started := a.startRemoteConflictRecoveryWrite(state, state.text(), func(err error) {
 			unlockRemoteConflictResolution(view)
 			if err != nil {
 				writeFailed(err)
@@ -1056,10 +1060,12 @@ func (a *app) restoreInitialConflict() {
 		}
 		return
 	}
-	if err := a.writeConflictFileToDisk(); err != nil {
+	err := runFileRecoveryMutation(context.Background(), a.session, state.path, a.writeConflictFileToDisk)
+	if err != nil {
 		writeFailed(err)
 		return
 	}
+	a.refreshFileRecoveries()
 	a.scrollToSelectedConflict()
 	a.refreshConflictViewer()
 }
