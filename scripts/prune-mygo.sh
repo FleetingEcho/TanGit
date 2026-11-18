@@ -19,6 +19,7 @@ cd "$(dirname "$0")/../third_party/mygo"
 rm -rf \
   website \
   docs \
+  docs-zh \
   examples \
   benchmarks \
   packages \

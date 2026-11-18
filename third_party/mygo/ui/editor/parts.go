@@ -47,14 +47,6 @@ func (f *FindBar) CanReplace() bool     { return !f.ed.o.readOnly }
 // Matches returns how many matches there are, and the index of the one
 // selected, -1 without matches.
 func (f *FindBar) Matches() (count, current int) {
-	if ds, ok := f.ed.o.decor.(*diffSide); ok {
-		if m, shared := ds.d.splitFindMatches(f.ed); shared {
-			if m.count == 0 {
-				return 0, -1
-			}
-			return m.count, m.current()
-		}
-	}
 	fd := &f.ed.find
 	fd.search(f.ed)
 	if len(fd.matches) == 0 {
@@ -66,15 +58,7 @@ func (f *FindBar) Matches() (count, current int) {
 // Status says what was found, as "3 of 12", "No results", or "Invalid"
 // for a regular expression that is not one (Err); nothing without a
 // query.
-func (f *FindBar) Status() string {
-	tx := l10n.In(f.c.Locale())
-	if ds, ok := f.ed.o.decor.(*diffSide); ok {
-		if m, shared := ds.d.splitFindMatches(f.ed); shared {
-			return findStatus(tx, f.ed.find.query, f.ed.find.err, m.count, m.current())
-		}
-	}
-	return f.ed.find.status(tx)
-}
+func (f *FindBar) Status() string { return f.ed.find.status(l10n.In(f.c.Locale())) }
 
 // Err is the error of a query that is not a valid regular expression.
 func (f *FindBar) Err() error { return f.ed.find.err }
@@ -82,8 +66,8 @@ func (f *FindBar) Err() error { return f.ed.find.err }
 // Next and Previous select the next and previous match after the caret,
 // round the ends; SelectAll selects every match, with a caret each, and
 // closes the bar.
-func (f *FindBar) Next()      { f.ed.stepFind(1) }
-func (f *FindBar) Previous()  { f.ed.stepFind(-1) }
+func (f *FindBar) Next()      { f.ed.find.step(f.ed, 1) }
+func (f *FindBar) Previous()  { f.ed.find.step(f.ed, -1) }
 func (f *FindBar) SelectAll() { f.ed.find.selectAll(f.ed) }
 
 // Replace replaces the match selected and selects the next; ReplaceAll
@@ -253,7 +237,6 @@ func DefaultFindBar(c *ui.Context, bar ui.Element, f *FindBar) {
 func (ed *editor) buildFindBar(c *ui.Context) {
 	f := &ed.find
 	f.update(ed)
-	ed.finishDiffFind()
 	t := c.Theme()
 	bar := ui.Box(c).Key("code find").Absolute().Top(t.Space(1)).Right(0).Margin(0, t.Space(4), 0, t.Space(1)).
 		Role(ui.RoleToolbar).Label(l10n.In(c.Locale()).Find()).Cursor(ui.CursorDefault).HandleInput(shield)
@@ -265,20 +248,19 @@ func (ed *editor) buildFindBar(c *ui.Context) {
 	render(c, bar, &FindBar{c: c, ed: ed})
 	// What the bar typed or toggled shows at once.
 	f.update(ed)
-	ed.finishDiffFind()
 	if isMac() {
 		switch {
 		case c.Shortcut(ui.Cmd, ui.KeyG):
-			ed.stepFind(1)
+			f.step(ed, 1)
 		case c.Shortcut(ui.Shift|ui.Cmd, ui.KeyG):
-			ed.stepFind(-1)
+			f.step(ed, -1)
 		}
 	} else {
 		switch {
 		case c.Shortcut(0, ui.KeyF3):
-			ed.stepFind(1)
+			f.step(ed, 1)
 		case c.Shortcut(ui.Shift, ui.KeyF3):
-			ed.stepFind(-1)
+			f.step(ed, -1)
 		}
 	}
 }
@@ -342,10 +324,10 @@ func (g *GoToLineBar) Close() { g.ed.goTo.close(g.ed) }
 func DefaultGoToLine(c *ui.Context, bar ui.Element, g *GoToLineBar) {
 	t := c.Theme()
 	tx := l10n.In(c.Locale())
-	bar.Row().Gap(t.Space(2)).AlignItems(ui.Center).Padding(t.Space(1.5), t.Space(2)).Background(t.Surface).MaxWidth(g.ed.fitWidth()).
+	bar.Row().Gap(t.Space(2)).AlignItems(ui.Center).Padding(t.Space(1.5), t.Space(2)).Background(t.Surface).
 		Border(1, t.Border).Radius(t.Radius).Shadow(0, 2, 8, 0, ui.RGBA(0, 0, 0, 0.18))
 	bar.Children(func() {
-		g.Input(ui.TextInputBase(c, g.Text()).Width(t.Space(60)).Grow(1).MinWidth(t.Space(10)).Padding(t.Space(1), t.Space(2)).Background(t.Background).
+		g.Input(ui.TextInputBase(c, g.Text()).Width(t.Space(60)).Padding(t.Space(1), t.Space(2)).Background(t.Background).
 			Border(1, t.Border).Radius(t.Radius - 2).Label(tx.GoToLine()).Placeholder(tx.LineRange(g.LineCount())))
 		cur := g.Cursor()
 		ui.Text(c, tx.CurrentLine(cur.Line+1, g.LineCount(), cur.Col+1)).
@@ -549,15 +531,9 @@ func (ed *editor) buildCompletions(c *ui.Context, anchor ui.Element) {
 // RenderHover builds it: the diagnostics there, and what the app gave
 // ShowHover.
 type HoverCard struct {
-	c      *ui.Context
-	ed     *editor
-	anchor ui.Element
+	c  *ui.Context
+	ed *editor
 }
-
-// Anchor is the current frame's element for the hovered source range. A
-// custom renderer can reattach a large card so it remains inside the window.
-// Like other build elements, it must not be retained after rendering.
-func (h *HoverCard) Anchor() ui.Element { return h.anchor }
 
 // Diagnostics are the diagnostics of the text hovered.
 func (h *HoverCard) Diagnostics() []Diagnostic { return h.ed.hover.diags }
@@ -624,7 +600,7 @@ func (ed *editor) buildHover(c *ui.Context, anchor ui.Element) {
 		if render == nil {
 			render = DefaultHover
 		}
-		render(c, panel, &HoverCard{c: c, ed: ed, anchor: anchor})
+		render(c, panel, &HoverCard{c: c, ed: ed})
 	})
 }
 

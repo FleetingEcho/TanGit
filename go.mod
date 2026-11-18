@@ -5,7 +5,7 @@ go 1.27.3
 tool github.com/egoist/mygo/cmd/mygo
 
 require (
-	github.com/egoist/mygo v0.9.2
+	github.com/egoist/mygo v0.10.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-errors/errors v1.5.1
 	github.com/jesseduffield/lazygit v0.66.4-0.20261115072517-54cc6af1d77b
