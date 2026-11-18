@@ -136,16 +136,11 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 	a.commitFilesHash = commit.Hash
 	a.commitFilesLoading = true
 	a.commitFilesError = ""
-	a.commitFiles = nil
-	a.selectedCommitFileRow = -1
-	a.selectedCommitFile = -1
-	a.commitDiffHash = ""
-	a.commitDiffPath = ""
-	a.commitDiffPatch = ""
+	// The current details remain on screen until the next ones are ready.
+	// In particular, do not flash a blank file list and diff between two
+	// commits whose contents are both already painted.
 	a.commitDiffLoading = false
 	a.commitDiffError = ""
-	a.commitDiffState = nil
-	a.commitDiffMedia = nil
 
 	go func() {
 		defer a.recoverBackground()
@@ -232,9 +227,8 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 	a.commitDiffOptions = a.diffOptions
 	a.commitDiffLoading = true
 	a.commitDiffError = ""
-	a.commitDiffPatch = ""
-	a.commitDiffState = nil
-	a.commitDiffMedia = nil
+	// Retain the previous diff until this request can replace it: progress
+	// belongs beside content, not in place of the whole viewer.
 
 	layout, wrap := a.diffLayout(), a.diffWrap
 	options := a.diffOptions
@@ -766,7 +760,7 @@ func (a *app) commitDetailBody(c *ui.Context, commit *repository.Commit, emptyLa
 		ui.Textf(c, tr("Tags: %s"), strings.Join(commit.Tags, ", ")).TextColor(theme.TextMuted)
 	}
 	state.requestDetails(*commit)
-	if *state.filesLoading {
+	if *state.filesLoading && *state.files == nil {
 		loadingPane(c, "Loading commit details", "Loading commit details…")
 		return
 	}
@@ -798,6 +792,9 @@ func (a *app) commitDetailBody(c *ui.Context, commit *repository.Commit, emptyLa
 				ui.Text(c, tr("Commit files")).Bold().Grow(1)
 				ui.Badge(c, fmt.Sprintf("%d", len(files)))
 				a.fileTreeModeButton(c)
+				if *state.filesLoading {
+					ui.Spinner(c).Label(tr("Loading commit details"))
+				}
 				paneCollapseButton(c, state.filesCollapsed, "Collapse changed files").MarginEnd(8)
 			})
 			guides := treeGuideGroups(*state.fileRows)
@@ -835,11 +832,17 @@ func (a *app) commitDetailBody(c *ui.Context, commit *repository.Commit, emptyLa
 		})
 	}, func() {
 		ui.Column(c).Fill().Children(func() {
-			if *state.selectedFile >= 0 && *state.selectedFile < len(files) {
+			if *state.selectedFile >= 0 && *state.selectedFile < len(files) && !*state.filesLoading && *state.filesError == "" {
 				state.requestDiff(*commit, files[*state.selectedFile])
 			}
+			if *state.diffLoading && (*state.diffState != nil || *state.diffMedia != nil) {
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					ui.Spinner(c).Label(tr("Loading diff"))
+					ui.Text(c, tr("Loading diff…")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+				})
+			}
 			switch {
-			case *state.diffLoading:
+			case *state.diffLoading && *state.diffState == nil && *state.diffMedia == nil:
 				loadingPane(c, "Loading diff", "Loading diff…")
 			case *state.diffError != "":
 				ui.Text(c, *state.diffError).TextColor(theme.Danger)

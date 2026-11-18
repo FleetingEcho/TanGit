@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -55,10 +56,13 @@ const (
 )
 
 type codeDocument struct {
-	path                 string
-	diskPath             string
-	readOnly             bool
-	state                *editor.State
+	path     string
+	diskPath string
+	readOnly bool
+	state    *editor.State
+	// loaded says the file's contents, rather than just its persistent
+	// editor State, are ready for language services and pending navigation.
+	loaded               bool
 	generation           uint64
 	loading              bool
 	binary               bool
@@ -431,6 +435,7 @@ func (a *app) refreshCodeAfterCheckout(old, current repository.Snapshot) bool {
 		document.generation++
 		document.loading = false
 		document.state = nil
+		document.loaded = false
 		document.binary = false
 		document.imagePreview = nil
 		document.loadError = ""
@@ -749,16 +754,21 @@ func (a *app) openCodeDocumentLocation(path, diskPath string, readOnly bool, lin
 	}
 	document := a.code.documents[path]
 	if document == nil {
-		document = &codeDocument{path: path, diskPath: diskPath, readOnly: readOnly, blameEnabled: !readOnly}
+		document = &codeDocument{path: path, diskPath: diskPath, readOnly: readOnly, blameEnabled: !readOnly, state: newCodeEditorState(path, nil)}
 		a.code.documents[path] = document
-		if a.code.preview != "" {
+	}
+	if pinned && a.code.preview == path {
+		a.code.preview = ""
+	}
+	if slices.Index(a.code.tabs, path) < 0 {
+		// Only the preview's tab is replaced. Its document and any read
+		// already in flight survive, so clicking back cannot reload it.
+		if !pinned && a.code.preview != "" {
 			previewPath := a.code.preview
 			if previewDocument := a.code.documents[previewPath]; previewDocument != nil {
 				a.closeCodeBlameDetailsFor(previewDocument)
 				invalidateCodeBlame(previewDocument)
-				previewDocument.generation++
 			}
-			delete(a.code.documents, previewPath)
 			replaced := false
 			for index, tab := range a.code.tabs {
 				if tab == previewPath {
@@ -770,16 +780,13 @@ func (a *app) openCodeDocumentLocation(path, diskPath string, readOnly bool, lin
 			if !replaced {
 				a.code.tabs = append(a.code.tabs, path)
 			}
+			a.code.preview = path
 		} else {
 			a.code.tabs = append(a.code.tabs, path)
+			if !pinned {
+				a.code.preview = path
+			}
 		}
-		if pinned {
-			a.code.preview = ""
-		} else {
-			a.code.preview = path
-		}
-	} else if pinned && a.code.preview == path {
-		a.code.preview = ""
 	}
 	// A newer ordinary navigation supersedes any queued search selection.
 	document.pendingSelection = false
@@ -796,7 +803,7 @@ func (a *app) openCodeDocumentLocation(path, diskPath string, readOnly bool, lin
 		document.pendingColumn = max(0, column)
 		document.pendingUTF16 = false
 	}
-	if document.state != nil {
+	if document.loaded {
 		a.revealCodeLine(document)
 		return
 	}
@@ -805,9 +812,21 @@ func (a *app) openCodeDocumentLocation(path, diskPath string, readOnly bool, lin
 	}
 }
 
+// newCodeEditorState creates the editor before a file's asynchronous read.
+// Only its buffer changes when the contents arrive, keeping the editor and
+// everything connected to it in the pane throughout the read.
+func newCodeEditorState(name string, content []byte) *editor.State {
+	buffer := editor.NewBuffer(string(content))
+	buffer.SetLanguage(editor.LanguageFor(name))
+	return &editor.State{Buffer: buffer, SoftWrap: true, LineNumbers: editor.LineNumbersOn, Label: name}
+}
+
 func (a *app) requestCodeDocument(document *codeDocument) {
 	if document == nil || document.loading || a.snapshot.Root == "" {
 		return
+	}
+	if document.state == nil {
+		document.state = newCodeEditorState(document.path, nil)
 	}
 	if a.location.IsRemote() {
 		a.requestRemoteCodeDocument(document)
@@ -833,23 +852,12 @@ func (a *app) requestCodeDocument(document *codeDocument) {
 		content, err := readWorkingFile(onDisk)
 		binary := err == nil && bytes.IndexByte(content, 0) >= 0
 		var preview *mediaPreview
-		var state *editor.State
 		if err == nil {
 			if binary || isMediaPath(path) {
 				decoded := decodeMediaData(content)
 				if decoded.bitmap != nil {
 					preview = &decoded
 					binary = true
-				}
-			}
-			if !binary {
-				buffer := editor.NewBuffer(string(content))
-				buffer.SetLanguage(editor.LanguageFor(path))
-				state = &editor.State{
-					Buffer:      buffer,
-					SoftWrap:    true,
-					LineNumbers: editor.LineNumbersOn,
-					Label:       path,
 				}
 			}
 		}
@@ -868,9 +876,15 @@ func (a *app) requestCodeDocument(document *codeDocument) {
 			if binary {
 				document.binary = true
 				document.imagePreview = preview
+				document.loaded = true
 				return a.workspaceTab == sectionCode && a.activeCodeDocument() == document
 			}
-			document.state = state
+			position, scrollY := document.state.CursorPos(), document.state.ScrollY()
+			document.state.Buffer.Reset(string(content))
+			document.state.Buffer.SetLanguage(editor.LanguageFor(path))
+			document.state.GoTo(position)
+			document.state.SetScrollY(scrollY)
+			document.loaded = true
 			a.restoreCodeRecoveryEntry(document)
 			a.configureGoLanguageDocument(document)
 			a.configureCodeBlame(document)
@@ -882,7 +896,7 @@ func (a *app) requestCodeDocument(document *codeDocument) {
 }
 
 func (a *app) revealCodeLine(document *codeDocument) {
-	if document == nil || document.state == nil || document.pendingLine <= 0 {
+	if document == nil || !document.loaded || document.state == nil || document.pendingLine <= 0 {
 		return
 	}
 	line := document.pendingLine - 1
@@ -995,6 +1009,7 @@ func (a *app) reloadCodeDocument(document *codeDocument) {
 	document.generation++
 	document.loading = false
 	document.state = nil
+	document.loaded = false
 	document.binary = false
 	document.imagePreview = nil
 	document.loadError = ""
