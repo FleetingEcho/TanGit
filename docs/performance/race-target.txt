@@ -1,0 +1,2 @@
+ok  	lazygitapp/internal/app	1.100s
+ok  	lazygitapp/internal/repository	1.066s
