@@ -25,14 +25,25 @@ type workspacePermissionEntry struct {
 	Mode uint32 `json:"mode"`
 }
 
-// attachWorkspacePermissions keeps POSIX permissions in the immutable
-// snapshot commit message. Git trees retain executable/symlink modes, not the
-// other permission bits. The snapshot ref reaches both trees and this metadata;
-// there is no sidecar that garbage collection could leave behind or expire.
-func (s *gitSession) attachWorkspacePermissions(hash, message, untracked string) (string, error) {
+// attachWorkspacePermissions retains the legacy message representation while
+// the metadata tree holds the authoritative manifest for new snapshots.
+func (s *gitSession) attachWorkspacePermissions(hash, message, untracked string, metadataParents ...string) (string, error) {
+	manifest, err := s.captureWorkspacePermissions(untracked)
+	if err != nil {
+		return "", err
+	}
+	payload, err := json.Marshal(manifest)
+	if err != nil {
+		return "", fmt.Errorf("capture workspace permissions: %w", err)
+	}
+	return s.commitWorkspaceMetadata(hash, message+"\n\n"+workspacePermissionMarker+string(payload)+"\n\n"+workspaceMetadataMarker, metadataParents...)
+}
+
+func (s *gitSession) captureWorkspacePermissions(untracked string) (workspacePermissionManifest, error) {
+	manifest := workspacePermissionManifest{Version: workspacePermissionVersion}
 	tracked, err := s.cmd.New([]string{"git", "ls-files", "-z", "--"}).RunWithOutput()
 	if err != nil {
-		return "", fmt.Errorf("capture workspace permissions: list tracked files: %w", err)
+		return manifest, fmt.Errorf("capture workspace permissions: list tracked files: %w", err)
 	}
 	paths := make(map[string]struct{})
 	for _, name := range strings.Split(strings.TrimSuffix(tracked+untracked, "\x00"), "\x00") {
@@ -40,23 +51,22 @@ func (s *gitSession) attachWorkspacePermissions(hash, message, untracked string)
 			continue
 		}
 		if err := validateFileRecoveryPath(name); err != nil {
-			return "", fmt.Errorf("capture workspace permissions for %q: %w", name, err)
+			return manifest, fmt.Errorf("capture workspace permissions for %q: %w", name, err)
 		}
 		paths[name] = struct{}{}
 	}
-	manifest := workspacePermissionManifest{Version: workspacePermissionVersion}
 	files := s.fileService()
 	for name := range paths {
 		filename, err := s.worktreeFilePath(s.git.RepoPaths.WorktreePath(), name)
 		if err != nil {
-			return "", fmt.Errorf("capture workspace permissions for %q: %w", name, err)
+			return manifest, fmt.Errorf("capture workspace permissions for %q: %w", name, err)
 		}
 		info, err := files.Lstat(filename)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
 			}
-			return "", fmt.Errorf("capture workspace permissions for %q: %w", name, err)
+			return manifest, fmt.Errorf("capture workspace permissions for %q: %w", name, err)
 		}
 		if !info.Mode().IsRegular() {
 			continue
@@ -64,16 +74,12 @@ func (s *gitSession) attachWorkspacePermissions(hash, message, untracked string)
 		manifest.Files = append(manifest.Files, workspacePermissionEntry{Path: name, Mode: uint32(info.Mode().Perm())})
 	}
 	sort.Slice(manifest.Files, func(i, j int) bool { return manifest.Files[i].Path < manifest.Files[j].Path })
-	payload, err := json.Marshal(manifest)
-	if err != nil {
-		return "", fmt.Errorf("capture workspace permissions: %w", err)
-	}
-	return s.commitWorkspaceMetadata(hash, message+"\n\n"+workspacePermissionMarker+string(payload))
+	return manifest, nil
 }
 
-// commitWorkspaceMetadata preserves the exact tree and parent sequence of the
-// stash-shaped work snapshot, changing only its message and resulting ID.
-func (s *gitSession) commitWorkspaceMetadata(hash, message string) (string, error) {
+// commitWorkspaceMetadata preserves the tree and original work snapshot
+// parents. An additional parent pins raw workspace/index/operation metadata.
+func (s *gitSession) commitWorkspaceMetadata(hash, message string, metadataParents ...string) (string, error) {
 	object, err := s.gitText("cat-file", "commit", hash)
 	if err != nil {
 		return "", fmt.Errorf("read workspace snapshot: %w", err)
@@ -97,7 +103,10 @@ func (s *gitSession) commitWorkspaceMetadata(hash, message string) (string, erro
 		return "", fmt.Errorf("read workspace snapshot: commit has no tree")
 	}
 	args := []string{"git", "commit-tree", tree}
-	for _, parent := range parents {
+	for _, parent := range append(parents, metadataParents...) {
+		if !fileRecoveryOID(parent) {
+			return "", fmt.Errorf("read workspace snapshot: invalid parent")
+		}
 		args = append(args, "-p", parent)
 	}
 	id, err := s.cmd.New(args).SetStdin(message).RunWithOutput()
@@ -107,10 +116,28 @@ func (s *gitSession) commitWorkspaceMetadata(hash, message string) (string, erro
 	return strings.TrimSpace(id), nil
 }
 
-// readWorkspacePermissions also serves as a fail-closed integrity check before
-// journal Undo. Legacy snapshots without the new marker retain their original
-// executable/symlink restoration behavior.
+// readWorkspacePermissions prefers the authoritative new metadata tree.
+// Legacy snapshots retain their original executable/symlink restoration.
 func (s *gitSession) readWorkspacePermissions(hash string) ([]workspacePermissionEntry, error) {
+	metadata, present, err := workspaceMetadataLocation(s, hash)
+	if err != nil {
+		return nil, err
+	}
+	if present {
+		output, err := s.cmd.New([]string{"git", "ls-tree", "-z", metadata, "--", "permissions.json"}).RunWithOutput()
+		if err != nil {
+			return nil, err
+		}
+		objects, err := decodeWorkspaceTree(output)
+		if err != nil || len(objects) != 1 || objects[0].Path != "permissions.json" || objects[0].Kind != "blob" || objects[0].Mode != "100644" {
+			return nil, fmt.Errorf("saved workspace permissions are missing or invalid")
+		}
+		payload, err := s.readFileRecoveryBlob(objects[0].OID)
+		if err != nil {
+			return nil, err
+		}
+		return s.decodeWorkspacePermissions(payload)
+	}
 	object, err := s.gitText("cat-file", "commit", hash)
 	if err != nil {
 		return nil, fmt.Errorf("read workspace permissions: %w", err)
@@ -128,7 +155,15 @@ func (s *gitSession) readWorkspacePermissions(hash string) ([]workspacePermissio
 		return nil, nil
 	}
 	payload := message[start+len(marker):]
-	decoder := json.NewDecoder(bytes.NewBufferString(payload))
+	metadataMarker := "\n\n" + strings.TrimSuffix(workspaceMetadataMarker, "\n")
+	if end := strings.Index(payload, metadataMarker); end >= 0 {
+		payload = payload[:end]
+	}
+	return s.decodeWorkspacePermissions([]byte(payload))
+}
+
+func (s *gitSession) decodeWorkspacePermissions(payload []byte) ([]workspacePermissionEntry, error) {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
 	var manifest workspacePermissionManifest
 	if err := decoder.Decode(&manifest); err != nil {

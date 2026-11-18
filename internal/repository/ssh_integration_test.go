@@ -208,7 +208,11 @@ func TestOpenSSHWorkspaceRecoveryRealOpenSSH(t *testing.T) {
 	if err != nil || len(snapshots) == 0 {
 		t.Fatalf("WorkSnapshots() = %#v, %v", snapshots, err)
 	}
-	if err := session.RestoreWorkSnapshot(ctx, snapshots[0]); err != nil {
+	record := onlyOperation(t, session)
+	if record.Snapshot == nil {
+		t.Fatal("SSH recovery is missing its before snapshot")
+	}
+	if err := session.RestoreWorkSnapshot(ctx, *record.Snapshot); err != nil {
 		t.Fatal(err)
 	}
 	restored, err := client.ReadFile(filepath.Join(dir, "untracked.bin"))
