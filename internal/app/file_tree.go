@@ -423,7 +423,7 @@ func (groups treeGuideLayout) segments(item fileTreeRow, row int) []treeGuideSeg
 		if !ok || group.depth != level || row <= group.parent || row > group.end {
 			continue
 		}
-		x := float32(12 + treeIndentStep*level)
+		x := float32(11 + treeIndentStep*level)
 		y2 := float32(1)
 		if group.end == row {
 			y2 = 0.5
@@ -439,7 +439,7 @@ func (groups treeGuideLayout) segments(item fileTreeRow, row int) []treeGuideSeg
 	}
 	if item.isDirectory() {
 		if group, ok := groups[item.path]; ok && group.parent == row && group.depth == depth {
-			x := float32(12 + treeIndentStep*depth)
+			x := float32(11 + treeIndentStep*depth)
 			segments = append(segments, treeGuideSegment{X1: x, Y1: 0.5, X2: x, Y2: 1})
 		}
 	}
