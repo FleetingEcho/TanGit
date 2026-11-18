@@ -347,14 +347,16 @@ func (a *app) filesView(c *ui.Context) {
 		a.commitBox(c)
 		a.changesFilter(c)
 		a.reviewFilterRow(c)
+		if a.snapshot.OperationState != nil {
+			a.operationContextView(c)
+		} else if hasConflictedFiles(a.snapshot.Files) {
+			a.conflictBanner(c)
+		}
 		if len(a.snapshot.Files) == 0 {
 			ui.Column(c).Grow(1).Center().Children(func() {
 				ui.Text(c, tr("Working tree clean")).TextColor(theme.TextMuted)
 			})
 			return
-		}
-		if hasConflictedFiles(a.snapshot.Files) {
-			a.conflictBanner(c)
 		}
 		a.changeSectionsBody(c, sections)
 	})
