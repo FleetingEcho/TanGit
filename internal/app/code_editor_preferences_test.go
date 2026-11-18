@@ -29,15 +29,15 @@ func TestBuiltInEditorPreferencesUseDedicatedSettingsPage(t *testing.T) {
 		}
 	}
 
-	if h.app.settings.EditorMinimap {
-		t.Fatal("test requires the default minimap preference to be disabled")
+	if !h.app.settings.EditorMinimap {
+		t.Fatal("Minimap must be enabled by default")
 	}
 	if err := h.tester.Click("Minimap"); err != nil {
 		t.Fatalf("toggle minimap: %v", err)
 	}
 	h.tester.Frame()
-	if !h.app.settings.EditorMinimap || !h.app.settings.EditorPreferencesConfigured {
-		t.Fatalf("minimap preference was not applied and configured: %+v", h.app.settings)
+	if h.app.settings.EditorMinimap || !h.app.settings.EditorPreferencesConfigured {
+		t.Fatalf("explicit minimap opt-out was not preserved and configured: %+v", h.app.settings)
 	}
 }
 
@@ -67,6 +67,30 @@ func TestStickySymbolHeaderTracksVisibleScopeAndPreference(t *testing.T) {
 	h.tester.Frame()
 	if h.tester.HasText("second") {
 		t.Fatal("sticky symbol remained visible after the preference was disabled")
+	}
+}
+
+func TestBuiltInEditorFeaturesAreEnabledByDefault(t *testing.T) {
+	settings := defaultSettings()
+	if settings.EditorLineNumbers != "on" || settings.EditorWhitespace != "selection" {
+		t.Fatalf("unexpected default editor choices: lineNumbers=%q whitespace=%q", settings.EditorLineNumbers, settings.EditorWhitespace)
+	}
+	features := map[string]bool{
+		"wrap long lines":       settings.EditorWordWrap,
+		"auto-close":            settings.EditorAutoClose,
+		"inlay hints":           settings.EditorInlayHints,
+		"semantic highlighting": settings.EditorSemanticHighlighting,
+		"minimap":               settings.EditorMinimap,
+		"sticky symbol header":  settings.EditorStickyScroll,
+	}
+	for name, enabled := range features {
+		if !enabled {
+			t.Errorf("%s is not enabled by default", name)
+		}
+	}
+	settings.EditorMinimap = false
+	if got := normalizeSettings(settings); got.EditorMinimap {
+		t.Fatal("normalization overrode an explicit Minimap opt-out")
 	}
 }
 
