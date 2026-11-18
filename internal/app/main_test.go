@@ -1152,9 +1152,12 @@ func (u *updates) update(fn func()) {
 // the next frame.
 func (u *updates) waitForUpdate(t *testing.T) {
 	t.Helper()
+	// Real Git/index writes and race-instrumented UI work can briefly exceed
+	// two seconds on a busy CI runner. Keep a hard bound without turning
+	// scheduling delays into false assertion failures.
 	select {
 	case <-u.done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("timed out waiting for an update")
 	}
 	u.runPending()
