@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"math"
 	"slices"
 	"strconv"
 	"time"
@@ -49,7 +50,10 @@ func Minimap(c *ui.Context, st *State) ui.Element {
 			lineStart := buffer.Offset(Pos{Line: line})
 			runs := minimapRuns(text, tokens, st.ed.view.semantic, lineStart)
 			button := ui.ButtonBase(c).FillWidth().Justify(ui.Start).Height(5).Padding(0).
-				Label(l10n.In(c.Locale()).GoToLine() + " " + strconv.Itoa(line+1))
+				Label(l10n.In(c.Locale()).GoToLine() + " " + strconv.Itoa(line+1)).
+				HandleInput(func(ev ui.InputEvent) bool {
+					return st.minimapInput(ev, line, rows)
+				})
 			button.Children(func() {
 				for _, run := range runs {
 					ui.Text(c, run.text).Font("monospace").FontSize(2).SingleLine().
@@ -59,7 +63,7 @@ func Minimap(c *ui.Context, st *State) ui.Element {
 			if line >= first && line <= last {
 				button.Background(theme.Selection.Alpha(0.35))
 			}
-			if button.Clicked() {
+			if button.Clicked() && !st.minimapDrag.moved {
 				st.ScrollTo(line)
 			}
 		}
@@ -121,4 +125,49 @@ func minimapRuns(text string, tokens []Token, semantic []SemanticToken, lineStar
 		runs = append(runs, minimapRun{text: text[start:end], kind: kind})
 	}
 	return runs
+}
+
+const minimapRowStep = 6
+
+type minimapDragState struct {
+	active, moved bool
+	downY         float32
+	downLine      int
+}
+
+func (st *State) minimapInput(ev ui.InputEvent, line, rows int) bool {
+	if st == nil || st.Buffer == nil {
+		return false
+	}
+	switch ev.Kind {
+	case ui.InputPointerDown:
+		if ev.Button != 0 {
+			return false
+		}
+		st.minimapDrag = minimapDragState{active: true, downY: ev.Y, downLine: line}
+		return true
+	case ui.InputPointerMove:
+		drag := &st.minimapDrag
+		if !drag.active {
+			return false
+		}
+		delta := ev.Y - drag.downY
+		if !drag.moved && math.Abs(float64(delta)) < 2 {
+			return true
+		}
+		drag.moved = true
+		lineCount := st.Buffer.LineCount()
+		offset := int(math.Round(float64(delta) * float64(lineCount) / float64(rows*minimapRowStep)))
+		target := max(0, min(lineCount-1, drag.downLine+offset))
+		st.ScrollTo(target)
+		return true
+	case ui.InputPointerUp:
+		active := st.minimapDrag.active
+		st.minimapDrag.active = false
+		return active
+	case ui.InputScroll:
+		st.SetScrollY(st.ScrollY() + float64(ev.DY))
+		return true
+	}
+	return false
 }
