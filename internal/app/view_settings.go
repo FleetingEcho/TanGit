@@ -117,18 +117,18 @@ func (a *app) settingsModal(c *ui.Context) {
 			// Help belongs to the workspace underneath Settings. Opening it here
 			// closes Settings first so two modal overlays never compete for input.
 			if !a.settings.DisableShortcuts && !c.FocusTakesText() {
-				if back.OverlayShortcut(ui.Shift, ui.KeySlash) {
+				if a.onOverlayShortcut(back, ui.Shift, ui.KeySlash, shortcut("settings/modal-current-shortcuts", "?", tr("Show shortcuts for the current page")), nil) {
 					a.closeSettings()
 					a.openCurrentKeybindings()
 				}
-				if back.OverlayShortcut(0, ui.KeyF1) {
+				if a.onOverlayShortcut(back, 0, ui.KeyF1, shortcut("settings/modal-all-shortcuts", "F1", tr("Open the complete shortcut list")), nil) {
 					a.closeSettings()
 					a.openKeybindings()
 				}
 			}
 			// Testing an SSH profile can put host verification above Settings.
 			// A click in that overlay must not dismiss this dialog and cancel it.
-			if a.sshHostKeyPrompt == nil && (panel.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape)) {
+			if a.sshHostKeyPrompt == nil && (panel.PressedOutside() || a.onOverlayShortcut(back, 0, ui.KeyEscape, shortcut("settings/modal-close", "Escape", tr("Close settings")), nil)) {
 				a.closeSettings()
 			}
 		})

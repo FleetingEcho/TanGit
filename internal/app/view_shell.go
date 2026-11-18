@@ -91,6 +91,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.keyboardPanes = a.keyboardPanes[:0]
 	a.applyPendingRecent()
 	a.services = c.Services()
+	a.installShortcutObserver(c)
 	a.registerShortcuts(c)
 	overlayTopInset := float32(0)
 	if systemWindowControls {

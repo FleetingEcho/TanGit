@@ -111,9 +111,9 @@ func (a *app) keyboardList(c *ui.Context, s *ui.ListState, n int) ui.Element {
 		e.PopoverMenu(func(m *ui.Menu) { a.keyboardListMenu(c, s, m) })
 	}
 	if !a.settings.DisableShortcuts {
-		e.OnShortcut(0, ui.KeyJ, func() { a.moveKeyboardList(s, n, 1) })
-		e.OnShortcut(0, ui.KeyK, func() { a.moveKeyboardList(s, n, -1) })
-		e.OnSubmit(func() {
+		a.onElementShortcut(e, 0, ui.KeyJ, shortcut("list/"+id+"/next-j", "j", tr("Move through a list")), func() { a.moveKeyboardList(s, n, 1) })
+		a.onElementShortcut(e, 0, ui.KeyK, shortcut("list/"+id+"/previous-k", "k", tr("Move through a list")), func() { a.moveKeyboardList(s, n, -1) })
+		a.onElementSubmit(e, shortcut("list/"+id+"/activate", "Enter", tr("Open the chosen item")), func() {
 			if s.Selected != nil && *s.Selected < 0 && n > 0 {
 				*s.Selected = 0
 				if a.keyboardMoved == nil {
@@ -452,15 +452,15 @@ func (a *app) keyboardDiffViewerWithID(c *ui.Context, state *editor.DiffState, o
 	}
 	if !a.settings.DisableShortcuts {
 		if state == a.commitDiffState && a.customPatchActive() {
-			e.OnShortcut(0, ui.KeyA, a.addCustomPatchCurrentHunk)
-			e.OnShortcut(ui.Shift, ui.KeyB, a.openCustomPatchBuilder)
+			a.onElementShortcut(e, 0, ui.KeyA, shortcut("diff/add-custom-patch-hunk", "A", tr("Add hunk")), a.addCustomPatchCurrentHunk)
+			a.onElementShortcut(e, ui.Shift, ui.KeyB, shortcut("diff/review-custom-patch", "Shift+B", tr("Review Custom Patch")), a.openCustomPatchBuilder)
 		}
 		for _, command := range diffKeyboardCommands() {
 			if command.selection && !selectable || command.changesHunk && !changesHunks {
 				continue
 			}
 			command := command
-			e.OnShortcut(command.mods, command.key, func() { command.run(a, state) })
+			a.onElementShortcut(e, command.mods, command.key, shortcut("diff/"+command.label, command.keys, tr(command.label)), func() { command.run(a, state) })
 		}
 	}
 

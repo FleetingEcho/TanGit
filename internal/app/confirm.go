@@ -85,8 +85,8 @@ func (a *app) confirmModal(c *ui.Context) {
 		// including Cancel, can consume it as that button's click.
 		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 			Justify(ui.Center).AlignItems(ui.Center).
-			Background(ui.RGBA(0, 0, 0, 0.35)).Modal().
-			OnShortcut(0, ui.KeyEnter, a.acceptConfirm)
+			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
+		a.onElementShortcut(back, 0, ui.KeyEnter, shortcut("confirmation/accept", "Enter", request.confirmLabel), a.acceptConfirm)
 		a.registerTerminalModalShortcuts(back)
 		back.Children(func() {
 			panel := ui.Column(c).Width(470).MaxWidthPercent(92).
@@ -122,7 +122,7 @@ func (a *app) confirmModal(c *ui.Context) {
 						}
 					})
 				})
-			if panel.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
+			if panel.PressedOutside() || a.onOverlayShortcut(back, 0, ui.KeyEscape, shortcut("confirmation/cancel-overlay", "Escape", tr("Cancel")), nil) {
 				a.cancelConfirm()
 			}
 		})

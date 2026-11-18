@@ -527,7 +527,9 @@ func (a *app) commitForm(c *ui.Context) {
 	theme := c.Theme()
 	islandCard(c, ui.Column(c).Grow(1).Gap(14).Padding(20)).Children(func() {
 		ui.Text(c, tr("Create commit")).FontSize(20).Bold()
-		ui.TextInput(c, &a.commitSummary).Label(tr("Summary")).Placeholder(tr("Describe the change")).AutoFocus().OnSubmit(a.beginCommit)
+		summary := ui.TextInput(c, &a.commitSummary).Label(tr("Summary")).Placeholder(tr("Describe the change")).AutoFocus()
+		summary.DescribeShortcut(ui.ShortcutDescriptor{ID: "changes/commit-staged", Label: tr("Commit the staged changes")}, 0, ui.KeyEnter)
+		summary.OnSubmit(a.beginCommit)
 		ui.TextArea(c, &a.commitBody).Label(tr("Description")).Placeholder(tr("Optional details")).Height(150)
 		ui.Checkbox(c, &a.commitAmend, tr("Amend the latest commit"))
 		ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
