@@ -369,21 +369,17 @@ func (f *finder) replacement(text string, i int) string {
 
 // status is what the bar says of the matches, in the language of tx.
 func (f *finder) status(tx l10n.Messages) string {
-	return findStatus(tx, f.query, f.err, len(f.matches), f.current)
-}
-
-func findStatus(tx l10n.Messages, query string, err error, count, current int) string {
 	switch {
-	case err != nil:
+	case f.err != nil:
 		return tx.Invalid()
-	case query == "":
+	case f.query == "":
 		return ""
-	case count == 0:
+	case len(f.matches) == 0:
 		return tx.NoResults()
-	case count >= maxMatches:
-		return tx.MatchesMore(current+1, count)
+	case len(f.matches) >= maxMatches:
+		return tx.MatchesMore(f.current+1, len(f.matches))
 	}
-	return tx.Matches(current+1, count)
+	return tx.Matches(f.current+1, len(f.matches))
 }
 
 // selectAll selects every match, as alt-enter in Zed's search bar.
