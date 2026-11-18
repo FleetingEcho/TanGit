@@ -237,6 +237,7 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 	if a.snapshot.Branch != snapshot.Branch || a.snapshot.Root != snapshot.Root {
 		a.commitSelection = nil
 	}
+	a.fileRecoveryRefreshSeq++
 	a.snapshot = snapshot
 	a.snapshotSeq++
 	checkout := a.refreshCodeAfterCheckout(old, snapshot)

@@ -252,6 +252,7 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 	a.commitSelection = nil
 	a.keyboardCopied = nil
 	a.keyboardSectionKnown = false
+	a.fileRecoveryRefreshSeq++
 	a.snapshot = snapshot
 	a.snapshotSeq++
 	a.repositoryDetailsLoading = false
@@ -695,6 +696,7 @@ func (a *app) beginRepositoryActionMessage(
 					a.commitSelection = nil
 				}
 				oldSnapshot := a.snapshot
+				a.fileRecoveryRefreshSeq++
 				a.snapshot = snapshot
 				a.snapshotSeq++
 				a.refreshCodeAfterCheckout(oldSnapshot, snapshot)

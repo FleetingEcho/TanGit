@@ -1010,6 +1010,14 @@ func (a *app) changeFileRow(row ui.ListRow, change changeRow, index int) {
 			fileDiffStatCounts(row.Context, file.Path, file.LinesAdded, file.LinesDeleted)
 			if reveal {
 				if change.staged {
+					// Whole-file resolution keeps its original unresolved record in
+					// the staged context, next to the operation's recovery actions.
+					if recovery, ok := a.latestFileRecovery(file.Path, true); ok {
+						rowIconButton(row.Context, trf("Restore unresolved %s", file.Path),
+							"Restore the original conflict markers and index stages 1/2/3…", softResetIcon, func() {
+								a.confirmRestoreFileRecovery(recovery)
+							})
+					}
 					// A staged row offers only unstage: discarding there would
 					// throw away the index and working tree at once, so the
 					// action stays in the row's context menu.
@@ -1081,7 +1089,9 @@ func (a *app) resolveConflictFile(file repository.File, current bool) {
 	}
 	a.confirmAttention("Resolve conflict", file.Path+"\n"+side, "This replaces the entire conflicted file with the chosen side and stages it. Manual resolutions in the file may be lost.", func() {
 		a.beginRepositoryAction(file.Path, func(ctx context.Context, session repository.Session) error {
-			return session.ResolveConflict(ctx, file, current)
+			return runFileRecoveryMutation(ctx, session, file.Path, func() error {
+				return session.ResolveConflict(ctx, file, current)
+			})
 		}, nil)
 	})
 }
@@ -1093,6 +1103,11 @@ func (a *app) beginStageFile(file repository.File, stage bool) {
 	}
 	a.beginRepositoryAction(file.Path, func(ctx context.Context, session repository.Session) error {
 		if stage {
+			if file.HasMergeConflicts {
+				return runFileRecoveryMutation(ctx, session, file.Path, func() error {
+					return session.Stage(ctx, file)
+				})
+			}
 			return session.Stage(ctx, file)
 		}
 		return session.Unstage(ctx, file)

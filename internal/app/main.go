@@ -492,6 +492,7 @@ type app struct {
 	savedWorkPanel             int
 	workSnapshotList           ui.ListState
 	selectedWorkSnapshotRow    int
+	fileRecoveryRows           ui.ListState
 	stashFilter                string
 	selectedStashRow           int
 	selectedStash              int
@@ -670,6 +671,8 @@ type app struct {
 	stashMessage            string
 	stashIncludeUntracked   bool
 	showRecoveryModal       bool
+	fileRecoveryFocus       string
+	fileRecoveryRefreshSeq  uint64
 	checkpointName          string
 	showStashRenameForm     bool
 	stashRename             string
