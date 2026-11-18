@@ -380,6 +380,7 @@ func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 	}
 	a.resetBranchCommits()
 	a.resetCommitDetails()
+	a.stackSync.reset()
 	a.resetComparison()
 	a.resetCustomPatch()
 	a.resetChangeCourier()
