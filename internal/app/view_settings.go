@@ -472,6 +472,8 @@ func (a *app) behaviorSettings(c *ui.Context) {
 			ui.Divider(c)
 			a.hotkeysSwitch(c)
 		})
+		ui.Divider(c)
+		a.continuePreflightSettings(c)
 	})
 }
 

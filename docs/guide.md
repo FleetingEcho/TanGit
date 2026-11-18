@@ -138,6 +138,46 @@ The action is bound to the reviewed operation fingerprint, which includes its
 metadata and unmerged index stages. A fingerprint change or an unsupported
 transition is refused rather than approximated against different state.
 
+### Continue preflight and trusted checks
+
+Continue uses the commands under **Settings → Behavior → Continue preflight**.
+The **Required check command** starts empty, which disables the final Continue
+action until a command is configured. The **Optional check command** may stay
+empty and is then shown as **skipped**. The two failure policies are different:
+
+- required failure, cancellation, stale state, capture errors, and checkpoint
+  failure cannot reach Continue or be overridden;
+- an optional failure leaves its output visible and offers **Override optional
+  failure and continue** only as an explicit user action;
+- optional cancellation is not a failure override and must instead be retried.
+
+These commands have the same execution trust boundary as Custom Commands.
+`runTrustedShellCommand` runs them through `sh -c` or `cmd /C` in the repository
+root, with the desktop user's full permissions, environment, filesystem access,
+and cancellation support. **They are not sandboxed**, may access the network,
+and may create or modify files. For that reason Continue checks are explicitly
+disabled for SSH workspaces rather than running a local command against a
+remote checkout. Output, including a string such as `__IT_IS_SAFE__`, never
+changes an exit status or grants approval by itself.
+
+Preflight captures immutable `OperationState` and operation fingerprint data,
+plus canonical SHA-256 hashes of index records and actual working-tree file
+content. Same-size or same-line-count edits therefore still invalidate its
+comparison. After the commands it recaptures those inputs and displays changed
+paths, command output, cancellation, and errors. Retry captures a fresh source;
+a stale retry uses the operation that was just shown rather than repeatedly
+expecting the old fingerprint.
+
+Changed content requires a successful checkpoint before Continue becomes
+available. If nothing changed, the checkpoint is consistently marked
+**skipped**. TanGit's capture and recheck steps do not stage, restore, or
+create an operation commit, and do not directly change HEAD, the index, or
+working-tree contents. A configured shell command may perform any action its
+user permissions allow, including invoking Git; those effects are what the
+source recheck exposes. Finally, TanGit compares the reviewed source once more and calls
+the ordinary operation driver's expected-fingerprint CAS. It does not invoke a
+second unchecked Git Continue path.
+
 The conflict pane groups controls by purpose:
 
 - **Hunk**: navigate conflict regions and see the current region or whole-file
