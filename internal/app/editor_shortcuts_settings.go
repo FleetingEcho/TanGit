@@ -8,6 +8,10 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 )
 
+// editorShortcutColumnWidth leaves room for the icon, spacing and the full
+// recording prompt at the default theme size without wrapping it.
+const editorShortcutColumnWidth = 168
+
 func editorShortcutRecordLabel(action editorShortcutAction, slot int) string {
 	if slot == 0 {
 		return trf("Record primary shortcut for %s", tr(action.label))
@@ -140,7 +144,11 @@ func (a *app) editorShortcutCaptureEvent(c *ui.Context, action editorShortcutAct
 func (a *app) editorShortcutSettings(c *ui.Context) {
 	theme := c.Theme()
 	resolution := resolveEditorShortcutOverrides(a.settings.EditorKeyBindings)
-	ui.Text(c, tr("Keyboard shortcuts")).Bold().FontSize(theme.FontSize + 1)
+	title := ui.Text(c, tr("Keyboard shortcuts")).Bold().FontSize(theme.FontSize + 1)
+	if a.settingsRevealShortcuts {
+		title.ScrollIntoView(ui.ScrollIntoViewOptions{Block: ui.ScrollStart})
+		a.settingsRevealShortcuts = false
+	}
 	ui.Text(c, tr("Customize shortcuts for the focused code editor. Click a key, then press a new combination.")).
 		TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 	ui.Column(c).FillWidth().Gap(10).Padding(12).Background(theme.Surface.Alpha(0.55)).
@@ -194,8 +202,8 @@ func (a *app) editorShortcutHeader(c *ui.Context) {
 	theme := c.Theme()
 	ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(0, 2, 3).Children(func() {
 		ui.Text(c, tr("Action")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2).Grow(1)
-		ui.Text(c, tr("Primary")).Width(138).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2)
-		ui.Text(c, tr("Secondary")).Width(138).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2)
+		ui.Text(c, tr("Primary")).Width(editorShortcutColumnWidth).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2)
+		ui.Text(c, tr("Secondary")).Width(editorShortcutColumnWidth).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2)
 		ui.Box(c).Width(24)
 	})
 }
@@ -211,14 +219,14 @@ func (a *app) editorShortcutSettingRow(c *ui.Context, action editorShortcutActio
 				bindingText = editorShortcutDisplay(bindings[slot])
 			}
 			if slot == 1 && slot >= len(bindings) && len(bindings) == 0 {
-				ui.Box(c).Width(138).Height(30)
+				ui.Box(c).Width(editorShortcutColumnWidth).MinWidth(editorShortcutColumnWidth).Height(30)
 				continue
 			}
 			c.Key(fmt.Sprintf("editor-shortcut:%d", slot))
 			if a.code.shortcutRecording == action.id && a.code.shortcutSlot == slot {
 				a.editorShortcutRecorder(c, action, slot)
 			} else {
-				button := ui.ButtonBase(c).Width(138).Height(30).Gap(5).Padding(3, 7).Radius(theme.Radius).
+				button := ui.ButtonBase(c).Width(editorShortcutColumnWidth).MinWidth(editorShortcutColumnWidth).Height(30).Gap(5).Padding(3, 7).Radius(theme.Radius).
 					Background(theme.Background).Border(1, theme.Border).
 					Label(editorShortcutRecordLabel(action, slot)).Tooltip(tr("Click, then press a shortcut"))
 				if button.Hovered() {
@@ -246,13 +254,13 @@ func (a *app) editorShortcutSettingRow(c *ui.Context, action editorShortcutActio
 
 func (a *app) editorShortcutRecorder(c *ui.Context, action editorShortcutAction, slot int) {
 	theme := c.Theme()
-	input := ui.ButtonBase(c).Width(138).Height(30).Gap(5).Padding(2, 7).
+	input := ui.ButtonBase(c).Width(editorShortcutColumnWidth).MinWidth(editorShortcutColumnWidth).Height(30).Gap(5).Padding(2, 7).
 		AutoFocus().Border(1, theme.Accent).Radius(theme.Radius).
 		Background(theme.Accent.Alpha(0.09)).
 		Label(editorShortcutRecordLabel(action, slot)).Tooltip(tr("Escape cancels; Backspace clears this shortcut"))
 	input.Children(func() {
 		ui.Icon(c, keyboardIcon).FontSize(12).TextColor(theme.Accent)
-		ui.Text(c, tr("Press a shortcut…")).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).Grow(1).TextAlign(ui.End)
+		ui.Text(c, tr("Press a shortcut…")).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).Grow(1).SingleLine().Ellipsis("…").TextAlign(ui.End)
 	})
 	input.HandleInput(func(event ui.InputEvent) bool {
 		return a.editorShortcutCaptureEvent(c, action, slot, event)

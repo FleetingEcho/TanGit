@@ -1,6 +1,7 @@
 package app
 
 var japanese = map[string]string{
+	"LSP": "LSP",
 	// Keyboard navigation and commands.
 	"Check out the chosen remote branch":          "選択したリモートブランチをチェックアウト",
 	"Checkout this commit":                        "このコミットをチェックアウト",

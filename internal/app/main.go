@@ -177,6 +177,9 @@ type app struct {
 	settingsLoaded bool
 	settingsOpen   bool
 	settingsPage   int
+	// settingsRevealShortcuts reveals the shortcuts after opening the
+	// legacy Code editor entry, whose section is last on the Editor page.
+	settingsRevealShortcuts bool
 	// conflictActionStyleChoice backs the segmented Settings control. Persist
 	// the canonical string in settings, not this transient numeric selection.
 	conflictActionStyleChoice int

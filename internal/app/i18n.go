@@ -83,6 +83,7 @@ var translations = map[string]map[string]string{
 }
 
 var zhHans = map[string]string{
+	"LSP": "LSP",
 	// Keyboard navigation and commands.
 	"Check out the chosen remote branch":          "检出所选远程分支",
 	"Checkout this commit":                        "检出此提交",

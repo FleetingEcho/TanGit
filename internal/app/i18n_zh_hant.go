@@ -1,6 +1,7 @@
 package app
 
 var zhHant = map[string]string{
+	"LSP": "LSP",
 	// Keyboard navigation and commands.
 	"Check out the chosen remote branch":          "簽出所選遠端分支",
 	"Checkout this commit":                        "簽出此提交",

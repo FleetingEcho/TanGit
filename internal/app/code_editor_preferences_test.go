@@ -5,36 +5,28 @@ import (
 	"testing"
 )
 
-func TestBuiltInEditorPreferencesUseDedicatedSettingsPage(t *testing.T) {
+func TestBuiltInEditorPreferencesUseUnifiedEditorSettings(t *testing.T) {
 	h := menuTestApp(t)
 	h.app.openSettingsSection(settingsPageEditor)
 	h.tester.Frame()
-	if h.tester.HasText("Built-in editor preferences") {
-		t.Fatal("built-in preferences should not displace the existing Editor settings")
-	}
-
-	if err := h.tester.Click("Code editor settings"); err != nil {
-		t.Fatalf("open Code editor settings: %v", err)
-	}
-	h.tester.Frame()
-	if h.app.settingsPage != settingsPageCodeEditor || !h.tester.HasText("Built-in editor preferences") {
-		t.Fatalf("Code editor page is not visible: page=%d texts=%q", h.app.settingsPage, h.texts())
+	if h.app.settingsPage != settingsPageEditor || !h.tester.HasText("Built-in editor preferences") {
+		t.Fatalf("Editor page does not include built-in preferences: page=%d texts=%q", h.app.settingsPage, h.texts())
 	}
 	for _, label := range []string{
 		"Line numbers", "Whitespace", "Wrap long lines", "Inlay hints",
 		"Semantic highlighting", "Minimap", "Sticky symbol header",
 	} {
 		if !h.tester.HasText(label) {
-			t.Errorf("Code editor settings are missing %q", label)
+			t.Errorf("Editor settings are missing %q", label)
 		}
 	}
 
 	if !h.app.settings.EditorMinimap {
 		t.Fatal("Minimap must be enabled by default")
 	}
-	// The shortcut settings section makes this detail page longer. Verify
-	// that normal scrolling reaches the lower preferences before clicking.
-	h.tester.Scroll(650, 530, 0, 600)
+	// All Editor preferences share one scrolling page, with Keyboard shortcuts
+	// last. Reach Minimap through the same scroll path before toggling it.
+	h.tester.Scroll(700, 480, 0, 600)
 	h.tester.Frame()
 	minimapBounds, found := h.tester.Find("Minimap")
 	if !found || minimapBounds.Y < 0 || minimapBounds.Y+minimapBounds.H > 800 {

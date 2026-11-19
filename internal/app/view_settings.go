@@ -26,6 +26,7 @@ const (
 	settingsPageUpdates
 	settingsPageSSHProfiles
 	settingsPageCodeEditor
+	settingsPageLSP
 )
 
 func (a *app) openSettings() {
@@ -51,6 +52,7 @@ func (a *app) openSettingsSection(page int) {
 		a.stopEditorShortcutRecording()
 	}
 	a.settingsPage = page
+	a.settingsRevealShortcuts = page == settingsPageCodeEditor
 	a.settingsOpen = true
 }
 
@@ -90,6 +92,7 @@ func (a *app) themeMenuItems(m *ui.Menu, c *ui.Context) {
 func (a *app) closeSettings() {
 	a.stopEditorShortcutRecording()
 	a.settingsOpen = false
+	a.settingsRevealShortcuts = false
 	a.closeCustomEditorForm()
 	a.closeSSHProfileForm()
 	a.saveSettings()
@@ -108,7 +111,7 @@ func (a *app) settingsModal(c *ui.Context) {
 			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
 		a.registerTerminalModalShortcuts(back)
 		back.Children(func() {
-			panel := ui.Column(c).Width(860).Height(660).MaxWidthPercent(94).MaxHeightPercent(92).
+			panel := ui.Column(c).Width(960).Height(660).MaxWidthPercent(94).MaxHeightPercent(92).
 				Padding(22).Gap(18).Background(theme.Background).
 				Border(1, theme.Border).Radius(theme.Radius+10).
 				Shadow(0, 24, 64, 0, ui.RGBA(0, 0, 0, 0.3)).Clip().
@@ -207,7 +210,7 @@ func (a *app) settingsBody(c *ui.Context) {
 				a.settingsPageButton(c, settingsPageTypography, fontIcon, "Typography")
 				a.settingsPageButton(c, settingsPageBehavior, commitIcon, "Behavior")
 				a.settingsPageButton(c, settingsPageEditor, fileCodeIcon, "Editor")
-				a.settingsPageButton(c, settingsPageCodeEditor, fileCodeIcon, "Code editor")
+				a.settingsPageButton(c, settingsPageLSP, terminalIcon, "LSP")
 				a.settingsPageButton(c, settingsPageWorkspace, worktreesIcon, "Workspace")
 				a.settingsPageButton(c, settingsPageCommands, commandIcon, "Commands")
 				a.settingsPageButton(c, settingsPageSSHProfiles, remotesIcon, "SSH profiles")
@@ -221,10 +224,10 @@ func (a *app) settingsBody(c *ui.Context) {
 					a.typographySettings(c)
 				case settingsPageBehavior:
 					a.behaviorSettings(c)
-				case settingsPageEditor:
-					a.editorSettings(c)
-				case settingsPageCodeEditor:
+				case settingsPageEditor, settingsPageCodeEditor:
 					a.codeEditorSettings(c)
+				case settingsPageLSP:
+					settingsSection(c, func() { a.languageServerCatalog(c) })
 				case settingsPageWorkspace:
 					a.workspaceSettings(c)
 				case settingsPageCommands:
@@ -243,7 +246,7 @@ func (a *app) settingsBody(c *ui.Context) {
 
 func (a *app) settingsPageButton(c *ui.Context, page int, icon *ui.SVG, label string) {
 	theme := c.Theme()
-	selected := a.settingsPage == page
+	selected := a.settingsPage == page || page == settingsPageEditor && a.settingsPage == settingsPageCodeEditor
 	button := ui.ButtonBase(c).FillWidth().Height(40).Padding(9, 10).Gap(10).
 		Radius(theme.Radius + 2).Label(trf("%s settings", tr(label)))
 	button.Children(func() {
@@ -260,6 +263,10 @@ func (a *app) settingsPageButton(c *ui.Context, page int, icon *ui.SVG, label st
 		button.Background(theme.SurfaceHover)
 	}
 	if button.Clicked() {
+		if a.settingsPage != page {
+			a.stopEditorShortcutRecording()
+		}
+		a.settingsRevealShortcuts = false
 		a.settingsPage = page
 	}
 }
@@ -662,17 +669,17 @@ func (a *app) editorSettings(c *ui.Context) {
 		ui.Text(c, tr(explanation)).TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).MaxWidth(480)
 		ui.Divider(c)
 		a.searchExclusionSettings(c)
-		ui.Divider(c)
-		a.languageServerCatalog(c)
 	})
 }
 
 func (a *app) codeEditorSettings(c *ui.Context) {
 	a.ensureBuiltInEditorPreferences()
 	settingsSection(c, func() {
-		a.editorShortcutSettings(c)
+		a.editorSettings(c)
 		ui.Divider(c)
 		a.builtInEditorPreferenceSettings(c)
+		ui.Divider(c)
+		a.editorShortcutSettings(c)
 	})
 }
 
