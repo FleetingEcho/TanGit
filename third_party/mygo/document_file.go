@@ -159,17 +159,36 @@ func (b *docBase) reload(path string) error {
 // other hard links, or in a directory the user can't create files in, is
 // written in place, as GIO does.
 func writeFileSafely(path string, write func(io.Writer) error) (fileStamp, error) {
+	return writeFileSafelyChecked(path, nil, write)
+}
+
+func writeFileSafelyChecked(path string, check func() error, write func(io.Writer) error) (fileStamp, error) {
 	if real, err := filepath.EvalSymlinks(path); err == nil {
 		path = real
+	}
+	if check != nil {
+		if err := check(); err != nil {
+			return fileStamp{}, err
+		}
 	}
 	info, err := os.Stat(path)
 	exists := err == nil
 	if exists && fileLinks(info) > 1 {
+		if check != nil {
+			if err := check(); err != nil {
+				return fileStamp{}, err
+			}
+		}
 		return writeFileInPlace(path, write)
 	}
 	tmp, err := createSibling(path)
 	if err != nil {
 		if exists && errors.Is(err, fs.ErrPermission) {
+			if check != nil {
+				if err := check(); err != nil {
+					return fileStamp{}, err
+				}
+			}
 			return writeFileInPlace(path, write)
 		}
 		return fileStamp{}, err
@@ -180,6 +199,10 @@ func writeFileSafely(path string, write func(io.Writer) error) (fileStamp, error
 		err = cerr
 	}
 	replacing := err == nil
+	if replacing && check != nil {
+		err = check()
+	}
+	replacing = err == nil
 	if replacing {
 		err = backend().ReplaceFile(path, name)
 	}
@@ -196,6 +219,32 @@ func writeFileSafely(path string, write func(io.Writer) error) (fileStamp, error
 	}
 	s, _, err := statStamp(path)
 	return s, err
+}
+
+// WriteFileSafely writes a file through a synchronized sibling and replaces
+// the target with it, preserving the target's platform metadata. A symlink's
+// target is replaced, and files with other hard links are written in place so
+// every link keeps seeing the same contents.
+//
+// The replacement is atomic where the platform permits it. The writer must
+// return every error it encounters. An incomplete sibling is removed; the
+// target stays unchanged unless preserving hard links or directory permissions
+// requires the documented in-place fallback.
+func WriteFileSafely(path string, write func(io.Writer) error) error {
+	_, err := writeFileSafely(path, write)
+	return err
+}
+
+// WriteFileSafelyChecked is WriteFileSafely with an expected-state check. The
+// check runs before any work and again immediately before replacement, or
+// immediately before an in-place fallback. A failed check leaves the target
+// unchanged and removes the synchronized sibling. This catches changes made
+// while the sibling was written; portable filesystems do not provide an
+// atomic compare-and-rename operation, so collaborating writers must still
+// coordinate externally when simultaneous replacement is possible.
+func WriteFileSafelyChecked(path string, check func() error, write func(io.Writer) error) error {
+	_, err := writeFileSafelyChecked(path, check, write)
+	return err
 }
 
 // createSibling creates a hidden file next to path, with the permissions
