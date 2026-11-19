@@ -301,7 +301,7 @@ func TestDroppedStashJournalUndoRestoresSavedObject(t *testing.T) {
 	if err := session.DropStash(ctx, 0); err != nil {
 		t.Fatal(err)
 	}
-	record := onlyOperation(t, session)
+	record := operationWithSummary(t, session, "Drop stash ")
 	if err := session.UndoOperation(ctx, record.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -666,7 +666,7 @@ func TestDroppedStashJournalUndoRejectsNewerStashState(t *testing.T) {
 	if err := session.DropStash(ctx, 0); err != nil {
 		t.Fatal(err)
 	}
-	record := onlyOperation(t, session)
+	record := operationWithSummary(t, session, "Drop stash ")
 	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("newer stash\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

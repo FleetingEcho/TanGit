@@ -141,6 +141,17 @@ func TestRepositorySuccessWithoutNewJournalRecordHasNoUndo(t *testing.T) {
 	}
 }
 
+func TestOperationStatusDistinguishesInterruptedUndo(t *testing.T) {
+	record := repository.OperationRecord{Status: repository.OperationUndoing, UndoStartedAt: 1}
+	if got := operationStatusLabel(record); got != "Undoing" {
+		t.Fatalf("operation-in-progress label = %q", got)
+	}
+	record.Status = repository.OperationFailed
+	if got := operationStatusLabel(record); got != "Undo interrupted" {
+		t.Fatalf("interrupted Undo label = %q", got)
+	}
+}
+
 func TestSafetyJournalRendersRecordsAndLimitsUndoToRecoverableRows(t *testing.T) {
 	h := menuTestApp(t)
 	records := []repository.OperationRecord{

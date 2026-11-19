@@ -275,6 +275,7 @@ type workspaceArchive struct {
 	Untracked      *workspaceTreeNode
 	HasUnmerged    bool
 	Scope          workspaceArchiveScope
+	Permissions    workspacePermissionManifest
 }
 
 func hasUnmergedWorkspaceEntries(entries []workspaceIndexEntry) bool {
@@ -336,7 +337,7 @@ func (s *gitSession) captureWorkspaceArchive(listing string, scope workspaceArch
 	if err != nil {
 		return nil, err
 	}
-	return &workspaceArchive{MetadataCommit: metadataCommit, Index: entries, Worktree: working, Untracked: untracked, HasUnmerged: hasUnmergedWorkspaceEntries(entries), Scope: finalScope}, nil
+	return &workspaceArchive{MetadataCommit: metadataCommit, Index: entries, Worktree: working, Untracked: untracked, HasUnmerged: hasUnmergedWorkspaceEntries(entries), Scope: finalScope, Permissions: permissions}, nil
 }
 
 func workspaceMetadataBlob(s *gitSession, data []byte) (string, error) {
@@ -491,7 +492,8 @@ func repositoryStateDirectory(name string) bool {
 
 func repositoryStateFile(name string) bool {
 	switch name {
-	case "MERGE_HEAD", "MERGE_MSG", "MERGE_MODE", "AUTO_MERGE", "CHERRY_PICK_HEAD", "REVERT_HEAD", "logs/refs/stash":
+	case "MERGE_HEAD", "MERGE_MSG", "MERGE_MODE", "AUTO_MERGE", "CHERRY_PICK_HEAD", "REVERT_HEAD", "logs/refs/stash",
+		"config/common", "config/worktree/config", "config/worktree/config.worktree":
 		return true
 	}
 	return strings.HasPrefix(name, "BISECT_") && !strings.Contains(name, "/")
@@ -523,14 +525,17 @@ func (s *gitSession) collectRepositoryOperationState() (workspaceStateManifest, 
 			names = append(names, entry.Name())
 		}
 	}
-	names = append(names, "refs/bisect", "refs/rewritten", "logs/refs/stash")
+	names = append(names, "refs/bisect", "refs/rewritten", "logs/refs/stash", "config/common", "config/worktree/config", "config/worktree/config.worktree")
 	sort.Strings(names)
 	var walk func(string) error
 	walk = func(name string) error {
 		if !repositoryStatePath(name) || path.Clean(name) != name {
 			return fmt.Errorf("unsupported Git operation metadata path %q", name)
 		}
-		filename := s.joinPath(root, name)
+		filename, err := s.repositoryStateFilePath(name)
+		if err != nil {
+			return err
+		}
 		info, err := s.fileService().Lstat(filename)
 		if os.IsNotExist(err) {
 			return nil

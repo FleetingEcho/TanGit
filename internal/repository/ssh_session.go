@@ -171,6 +171,7 @@ type sessionFiles interface {
 	Lstat(string) (os.FileInfo, error)
 	Chmod(string, os.FileMode) error
 	Readlink(string) (string, error)
+	Symlink(string, string) error
 	Open(string) (io.ReadCloser, error)
 	WriteFileAtomic(string, []byte, os.FileMode) error
 	MkdirAll(string, os.FileMode) error
@@ -202,6 +203,7 @@ func (localSessionFiles) ReadDir(name string) ([]os.FileInfo, error) {
 func (localSessionFiles) Stat(name string) (os.FileInfo, error)   { return os.Stat(name) }
 func (localSessionFiles) Lstat(name string) (os.FileInfo, error)  { return os.Lstat(name) }
 func (localSessionFiles) Readlink(name string) (string, error)    { return os.Readlink(name) }
+func (localSessionFiles) Symlink(target, name string) error       { return os.Symlink(target, name) }
 func (localSessionFiles) Open(name string) (io.ReadCloser, error) { return os.Open(name) }
 func (localSessionFiles) WriteFileAtomic(name string, data []byte, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(name), 0o700); err != nil {
@@ -282,6 +284,10 @@ func (f *sshSessionFiles) Readlink(name string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSuffix(string(result.Output), "\n"), nil
+}
+func (f *sshSessionFiles) Symlink(target, name string) error {
+	_, err := f.client.Run(context.Background(), "", "ln", "-s", "--", target, name)
+	return err
 }
 func (f *sshSessionFiles) Open(name string) (io.ReadCloser, error) { return f.client.OpenReader(name) }
 func (f *sshSessionFiles) WriteFileAtomic(name string, data []byte, mode os.FileMode) error {
