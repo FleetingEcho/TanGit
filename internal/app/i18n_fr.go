@@ -1,6 +1,7 @@
 package app
 
 var french = map[string]string{
+	"LSP": "LSP",
 	// Keyboard navigation and commands.
 	"Check out the chosen remote branch":          "Extraire la branche distante choisie",
 	"Checkout this commit":                        "Extraire ce commit",

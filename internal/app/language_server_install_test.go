@@ -275,7 +275,7 @@ func TestLanguageServerInstallNotificationsUseStableTranslationFormats(t *testin
 
 func TestLanguageServerCatalogUsesCompactActionsSearchAndScroll(t *testing.T) {
 	h := menuTestApp(t)
-	h.app.settingsPage = settingsPageEditor
+	h.app.settingsPage = settingsPageLSP
 	h.app.openSettings()
 	h.tester.Frame()
 	h.tester.Scroll(700, 480, 0, 1800)
@@ -365,7 +365,7 @@ func TestLanguageServerEnableRequiresAnExecutable(t *testing.T) {
 		return "", exec.ErrNotFound
 	}
 	h := menuTestApp(t)
-	h.app.settingsPage = settingsPageEditor
+	h.app.settingsPage = settingsPageLSP
 	h.app.openSettings()
 	h.tester.Frame()
 	h.tester.Scroll(700, 480, 0, 1800)
@@ -391,7 +391,7 @@ func TestLanguageServerEnableRequiresAnExecutable(t *testing.T) {
 func TestLanguageServerCatalogAddsAndTogglesCustomTy(t *testing.T) {
 	h := menuTestApp(t)
 	h.app.pathUserData = t.TempDir()
-	h.app.settingsPage = settingsPageEditor
+	h.app.settingsPage = settingsPageLSP
 	h.app.openSettings()
 	h.tester.Frame()
 	h.tester.Scroll(700, 480, 0, 1800)
@@ -506,7 +506,7 @@ func TestLanguageServerCardSwitchPrecedesDownload(t *testing.T) {
 	t.Cleanup(func() { languageServerLookPath = originalLookPath })
 	languageServerLookPath = func(program string) (string, error) { return "/tools/" + program, nil }
 	h := menuTestApp(t)
-	h.app.settingsPage = settingsPageEditor
+	h.app.settingsPage = settingsPageLSP
 	h.app.openSettings()
 	h.tester.Frame()
 	h.tester.Scroll(700, 480, 0, 1800)
