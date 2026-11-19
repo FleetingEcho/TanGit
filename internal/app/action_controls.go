@@ -327,7 +327,7 @@ func (a *app) inlineConflictApplyActions(state *conflictState, region conflictRe
 		undoReason := a.conflictMutationReason()
 		actions = append(actions, actionControl{
 			label: "Undo resolution", shortcut: "Ctrl/Cmd+Z or Alt+Z", description: "Undo the last conflict resolution without changing the index", icon: revertIcon,
-			disabled: undoReason != "", disabledReason: undoReason, run: a.undoConflictResolution,
+			disabled: undoReason != "", disabledReason: undoReason, run: a.confirmUndoConflictResolution,
 		})
 	}
 	return actions

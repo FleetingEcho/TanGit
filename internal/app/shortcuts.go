@@ -209,12 +209,12 @@ func (a *app) registerShortcuts(c *ui.Context) {
 			// to the hunk resolutions too. A dirty editor keeps its native text
 			// undo until that buffer is saved, so the two histories do not race.
 			if a.conflictView == nil || a.conflictView.Buffer == nil || !a.conflictView.Buffer.Modified() {
-				a.onShortcut(c, ui.Cmd, ui.KeyZ, shortcut("conflicts/undo-command", cmdShortcutChord()+"+Z", tr("Undo the last conflict resolution")), a.undoConflictResolution)
+				a.onShortcut(c, ui.Cmd, ui.KeyZ, shortcut("conflicts/undo-command", cmdShortcutChord()+"+Z", tr("Undo the last conflict resolution")), a.confirmUndoConflictResolution)
 				if ui.Cmd != ui.Ctrl {
-					a.onShortcut(c, ui.Ctrl, ui.KeyZ, shortcut("conflicts/undo-control", "Ctrl+Z", tr("Undo the last conflict resolution")), a.undoConflictResolution)
+					a.onShortcut(c, ui.Ctrl, ui.KeyZ, shortcut("conflicts/undo-control", "Ctrl+Z", tr("Undo the last conflict resolution")), a.confirmUndoConflictResolution)
 				}
 			}
-			a.onShortcut(c, ui.Alt, ui.KeyZ, shortcut("conflicts/undo-resolution", "Alt+Z", tr("Undo the last conflict resolution")), a.undoConflictResolution)
+			a.onShortcut(c, ui.Alt, ui.KeyZ, shortcut("conflicts/undo-resolution", "Alt+Z", tr("Undo the last conflict resolution")), a.confirmUndoConflictResolution)
 		}
 		if !a.editorOnlyWorkspace() {
 			a.onShortcut(c, 0, ui.KeyF5, shortcut("repository/refresh-editing", "F5", tr("Refresh the repository")), a.beginRefresh)

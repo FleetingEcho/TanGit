@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -311,6 +312,10 @@ func TestConflictPaneResolvesTheFile(t *testing.T) {
 	if err := h.tester.Click("Undo resolution"); err != nil {
 		t.Fatalf("undo the pick: %v", err)
 	}
+	if h.app.confirm == nil {
+		t.Fatal("Undo resolution did not open its confirmation")
+	}
+	h.app.acceptConfirm()
 	h.tester.Frame()
 	if string(written) != content {
 		t.Fatalf("undo wrote %q, want the original", written)
@@ -452,6 +457,68 @@ func TestConflictToolbarSeparatorsKeepContentHeight(t *testing.T) {
 	}
 }
 
+func TestConflictUndoAlwaysRequiresConfirmation(t *testing.T) {
+	const original = "first\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> topic\nlast\n"
+	originalRead, originalWrite := readWorkingFile, writeWorkingFile
+	t.Cleanup(func() { readWorkingFile, writeWorkingFile = originalRead, originalWrite })
+	readWorkingFile = func(string) ([]byte, error) { return []byte(original), nil }
+	var writes atomic.Int32
+	writeWorkingFile = func(string, []byte) error {
+		writes.Add(1)
+		return nil
+	}
+	h, _ := changesTestApp(t, []repository.File{{Path: "conflict.txt", Status: "UU", Unstaged: true, HasMergeConflicts: true}})
+	h.waitFor(t, "the conflict read", func() bool { return h.app.conflictState != nil })
+	h.app.conflictStageTab = 3
+	h.app.resolveConflictSide(conflictIncoming)
+	resolved := h.app.conflictState.text()
+	initialWrites := writes.Load()
+	h.tester.Frame()
+
+	triggers := []struct {
+		name  string
+		start func()
+	}{
+		{name: "toolbar", start: func() {
+			if err := h.tester.Click("Undo resolution"); err != nil {
+				t.Fatalf("click Undo resolution: %v", err)
+			}
+		}},
+		{name: "Alt+Z", start: func() { h.tester.Key(ui.Alt, ui.KeyZ) }},
+		{name: "Command+Z", start: func() { h.tester.Key(ui.Cmd, ui.KeyZ) }},
+	}
+	for _, trigger := range triggers {
+		t.Run(trigger.name, func(t *testing.T) {
+			trigger.start()
+			h.tester.Frame()
+			if h.app.confirm == nil || h.app.confirm.title != "Undo Conflict Resolution" {
+				t.Fatalf("undo did not open its confirmation: %#v", h.app.confirm)
+			}
+			if h.app.conflictState.text() != resolved || writes.Load() != initialWrites {
+				t.Fatal("opening confirmation already changed the conflict")
+			}
+			h.app.cancelConfirm()
+			h.tester.Frame()
+			if h.app.conflictState.text() != resolved || writes.Load() != initialWrites {
+				t.Fatal("canceling confirmation changed the conflict")
+			}
+		})
+	}
+
+	h.tester.Key(ui.Alt, ui.KeyZ)
+	h.tester.Frame()
+	if h.app.confirm == nil {
+		t.Fatal("accepted undo did not show its confirmation")
+	}
+	h.app.acceptConfirm()
+	if got := h.app.conflictState.text(); got != original {
+		t.Fatalf("accepted undo restored %q, want the original conflict", got)
+	}
+	if writes.Load() != initialWrites+1 {
+		t.Fatalf("accepted undo wrote the file %d times, want exactly once", writes.Load()-initialWrites)
+	}
+}
+
 // A refresh that began before Undo may finish afterward with the previously
 // resolved bytes. That obsolete answer must not overwrite the restored file.
 func TestConflictUndoRejectsInflightResolvedRead(t *testing.T) {
@@ -568,6 +635,10 @@ func TestConflictPaneRestoresInitialConflict(t *testing.T) {
 	if err := h.tester.Click("Undo resolution"); err != nil {
 		t.Fatalf("undo the restore: %v", err)
 	}
+	if h.app.confirm == nil {
+		t.Fatal("Undo resolution did not open its confirmation")
+	}
+	h.app.acceptConfirm()
 	h.tester.Frame()
 	if got := string(written); got != resolved {
 		t.Fatalf("undoing restore wrote %q, want the state before restore %q", got, resolved)
@@ -613,9 +684,10 @@ func TestConflictRestoreFailureKeepsCurrentResult(t *testing.T) {
 	}
 }
 
-// Ctrl+Z (Cmd+Z on macOS) is the conventional edit undo and should invoke
-// the same hunk-resolution undo as the toolbar, not an empty replacement
-// buffer's text history. Alt+Z remains available for compatibility.
+// Ctrl+Z (Cmd+Z on macOS) opens the same resolution-undo confirmation as
+// the toolbar, not an empty replacement buffer's text history. Alt+Z remains
+// available for compatibility.
+
 func TestConflictShortcutUndoResolution(t *testing.T) {
 	for _, modifiers := range []struct {
 		name string
@@ -638,6 +710,10 @@ func TestConflictShortcutUndoResolution(t *testing.T) {
 			}
 			h.tester.Frame()
 			h.tester.Key(modifiers.mod, ui.KeyZ)
+			if h.app.confirm == nil {
+				t.Fatal("undo shortcut did not open its confirmation")
+			}
+			h.app.acceptConfirm()
 			h.tester.Frame()
 			if got := h.app.conflictState.text(); got != content {
 				t.Fatalf("undo shortcut wrote %q, want the original conflict", got)
@@ -738,6 +814,10 @@ func TestConflictKeyboardResolvesHunks(t *testing.T) {
 	}
 
 	h.tester.Key(ui.Alt, ui.KeyZ)
+	if h.app.confirm == nil {
+		t.Fatal("Alt+Z did not open its confirmation")
+	}
+	h.app.acceptConfirm()
 	h.tester.Frame()
 	if got, want := written, "a\n1\n2\nb\n<<<<<<< HEAD\n3\n=======\n4\n>>>>>>> t\n"; got != want {
 		t.Fatalf("Alt+Z wrote %q, want the incoming pick undone %q", got, want)
