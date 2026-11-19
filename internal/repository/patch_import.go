@@ -573,6 +573,10 @@ func decodeGitPatchPath(path string) string {
 }
 
 func (s *gitSession) patchRepositoryState() (string, error) {
+	return s.patchRepositoryStateWithIgnored(true)
+}
+
+func (s *gitSession) patchRepositoryStateWithIgnored(includeIgnored bool) (string, error) {
 	status, stderr, err := s.cmd.New([]string{
 		"git", "--no-optional-locks", "status", "--porcelain=v2", "--branch", "-z",
 		"--untracked-files=all", "--",
@@ -615,6 +619,24 @@ func (s *gitSession) patchRepositoryState() (string, error) {
 	paths := strings.Split(strings.TrimSuffix(listing, "\x00"), "\x00")
 	if listing == "" {
 		paths = nil
+	}
+	ignored, err := s.ignoredWorkspacePaths()
+	if err != nil {
+		return "", err
+	}
+	if !includeIgnored {
+		ignored = nil
+	}
+	all := make(map[string]struct{}, len(ignored))
+	for _, name := range ignored {
+		all[name] = struct{}{}
+	}
+	for _, name := range paths {
+		all[name] = struct{}{}
+	}
+	paths = paths[:0]
+	for name := range all {
+		paths = append(paths, name)
 	}
 	sort.Strings(paths)
 	if err := s.hashWorktreeFiles(hash, paths); err != nil {
@@ -661,7 +683,9 @@ func (s *gitSession) hashWorktreeFiles(hash io.Writer, paths []string) error {
 }
 
 func (s *gitSession) resetRepositoryState(before, after string) (string, error) {
-	state, err := s.patchRepositoryState()
+	// Hash only the ignored files that this reset can touch. An unrelated
+	// ignored cache may change while the selected collision is restored.
+	state, err := s.patchRepositoryStateWithIgnored(false)
 	if err != nil {
 		return "", err
 	}

@@ -169,6 +169,7 @@ type sessionFiles interface {
 	ReadDir(string) ([]os.FileInfo, error)
 	Stat(string) (os.FileInfo, error)
 	Lstat(string) (os.FileInfo, error)
+	Chmod(string, os.FileMode) error
 	Readlink(string) (string, error)
 	Open(string) (io.ReadCloser, error)
 	WriteFileAtomic(string, []byte, os.FileMode) error
@@ -235,6 +236,9 @@ func (localSessionFiles) MkdirAll(name string, mode os.FileMode) error {
 func (localSessionFiles) Remove(name string) error             { return os.Remove(name) }
 func (localSessionFiles) RemoveAll(name string) error          { return os.RemoveAll(name) }
 func (localSessionFiles) Rename(oldName, newName string) error { return os.Rename(oldName, newName) }
+func (localSessionFiles) Chmod(name string, mode os.FileMode) error {
+	return os.Chmod(name, mode)
+}
 func (localSessionFiles) WriteTemp(pattern string, data []byte, mode os.FileMode) (string, error) {
 	file, err := os.CreateTemp("", pattern)
 	if err != nil {
@@ -300,6 +304,10 @@ func (f *sshSessionFiles) Remove(name string) error    { return f.client.Remove(
 func (f *sshSessionFiles) RemoveAll(name string) error { return f.client.RemoveAll(name) }
 func (f *sshSessionFiles) Rename(oldName, newName string) error {
 	return f.client.Rename(oldName, newName)
+}
+func (f *sshSessionFiles) Chmod(name string, mode os.FileMode) error {
+	_, err := f.client.Run(context.Background(), "", "chmod", fmt.Sprintf("%04o", mode.Perm()), "--", name)
+	return err
 }
 func (f *sshSessionFiles) WriteTemp(pattern string, data []byte, mode os.FileMode) (string, error) {
 	if f.scratchRoot == "" {
