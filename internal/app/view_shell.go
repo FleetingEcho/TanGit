@@ -1415,8 +1415,14 @@ func (a *app) statusBar(c *ui.Context) {
 		}
 		a.keyboardPane(c, "status", ui.Row(c).Grow(1).Justify(ui.End).Gap(8).Focusable()).Children(func() {
 			if a.actionBusy || a.customCommandRunning {
-				ui.Spinner(c).Label(tr("Working"))
-				ui.Text(c, tr("Working…")).TextColor(theme.TextMuted)
+				// The island's ordinary text is muted by design. Ongoing work must
+				// not disappear into it: use a quiet but clearly tinted patch for
+				// both the shape and the high-contrast text/spinner.
+				ui.Row(c).AlignItems(ui.Center).Gap(6).Padding(2, 6).Radius(theme.Radius).
+					Background(theme.Warning.Alpha(0.14)).Children(func() {
+					ui.Spinner(c).TextColor(theme.Warning).Label(tr("Working"))
+					ui.Text(c, tr("Working…")).Bold().TextColor(theme.Warning)
+				})
 			}
 			if !a.editorOnlyWorkspace() && a.statusActionVisible("commands") {
 				a.commandsMenuButton(c)

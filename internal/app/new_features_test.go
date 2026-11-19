@@ -519,6 +519,7 @@ func TestOpeningCLILogIsSeparateFromUserCommands(t *testing.T) {
 	logger.BeginOrigin("custom external command", repository.CommandOriginUser)("custom", false)
 	logger.BeginOrigin("git fetch", repository.CommandOriginGit)("fetch", false)
 	a.openCommandLog()
+	a.commandLogUser = true
 	userEntries := a.commandLogVisibleEntries()
 	a.openGitCommandLog()
 	gitEntries := a.commandLogVisibleEntries()

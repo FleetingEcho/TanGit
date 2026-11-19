@@ -304,7 +304,7 @@ func TestCommandLogModalShowsAndClearsCommands(t *testing.T) {
 	if err := h.tester.Click("Command log"); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.tester.Click("Background Git commands"); err != nil {
+	if err := h.tester.Click(commandLogTabTitle(h.tester, "Background Git commands")); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
@@ -328,7 +328,7 @@ func TestCommandLogModalShowsAndClearsCommands(t *testing.T) {
 	if !a.commandLogOpen {
 		t.Fatal("Ctrl+L did not open the command log")
 	}
-	if err := h.tester.Click("Background Git commands"); err != nil {
+	if err := h.tester.Click(commandLogTabTitle(h.tester, "Background Git commands")); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
@@ -402,7 +402,7 @@ func TestCommandLogTextCanBeCopied(t *testing.T) {
 	if err := h.tester.Click("Command log"); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.tester.Click("Background Git commands"); err != nil {
+	if err := h.tester.Click(commandLogTabTitle(h.tester, "Background Git commands")); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()

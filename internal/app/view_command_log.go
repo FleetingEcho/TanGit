@@ -9,6 +9,10 @@ import (
 	"lazygitapp/internal/repository"
 )
 
+// commandLogTimestampLayout includes the day as well as the clock time in
+// both the visible log and the text copied to another tool.
+const commandLogTimestampLayout = "2006-01-02 15:04:05"
+
 // commandLogModal is the command log, as Lazygit's log panel: every Git
 // command the session ran, newest first, with the output of the ones that
 // print any and the error of the ones that failed. It is where a failed
@@ -112,18 +116,24 @@ func (a *app) commandLogBody(c *ui.Context, entries []repository.CommandEntry) {
 func (a *app) commandLogEntry(c *ui.Context, entry repository.CommandEntry) {
 	theme := c.Theme()
 	color := theme.TextMuted
+	container := ui.Column(c).FillWidth().Gap(4).Padding(6, 4).
+		Role(ui.RoleRegion).Label(commandLogEntryText(entry))
 	if entry.Failed {
 		color = theme.Danger
+		// A failure occupies the whole row, not just a short label that can be
+		// missed while scanning output. Normal commands stay quiet by contrast.
+		container = container.Background(theme.Danger.Alpha(0.14)).
+			Border(1, theme.Danger.Alpha(0.55)).Radius(theme.Radius - 1)
 	}
-	ui.Column(c).FillWidth().Gap(4).Padding(6, 4).Children(func() {
+	container.Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 			if entry.Shortcut != nil {
 				ui.Text(c, entry.Shortcut.Chord).TextColor(theme.Accent).Bold().
 					FontSize(theme.FontSize - 1).Tooltip(entry.Shortcut.ID)
 			}
 			if !entry.At.IsZero() {
-				ui.Text(c, entry.At.Format("15:04:05")).TextColor(theme.TextMuted).
-					FontSize(theme.FontSize - 1).Width(60)
+				ui.Text(c, entry.At.Format(commandLogTimestampLayout)).TextColor(theme.TextMuted).
+					FontSize(theme.FontSize - 1).Width(142)
 			}
 			if entry.Running {
 				ui.Text(c, tr("running")).TextColor(theme.Warning).Bold().
@@ -184,7 +194,7 @@ func formatCommandLog(entries []repository.CommandEntry) string {
 	var text strings.Builder
 	for _, entry := range entries {
 		if !entry.At.IsZero() {
-			fmt.Fprintf(&text, "[%s] ", entry.At.Format("15:04:05"))
+			fmt.Fprintf(&text, "[%s] ", entry.At.Format(commandLogTimestampLayout))
 		}
 		fmt.Fprintf(&text, "%s\n", commandLogEntryText(entry))
 		if output := strings.TrimRight(entry.Output, "\n"); output != "" {

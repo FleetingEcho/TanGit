@@ -82,8 +82,7 @@ func TestCustomCommandWritesRealSessionLog(t *testing.T) {
 	if !found {
 		t.Fatalf("custom command or output is missing: %+v", entries)
 	}
-	a.openCommandLog()
-	tester.Frame()
+	openUserCommandLogForTest(t, a, tester)
 	if !tester.HasText("$ git status --short") {
 		t.Fatalf("command log does not show custom command: %q", tester.Texts())
 	}
@@ -101,8 +100,7 @@ func TestRunningCommandAppearsInOpenLogBeforeCompletion(t *testing.T) {
 	started := filepath.Join(root, "started")
 	release := filepath.Join(root, "release")
 	command := "touch " + shellQuote(started) + "; while [ ! -f " + shellQuote(release) + " ]; do sleep 0.02; done; printf complete"
-	a.openCommandLog()
-	tester.Frame()
+	openUserCommandLogForTest(t, a, tester)
 
 	a.runCustomCommand(command, "background check")
 	deadline := time.Now().Add(2 * time.Second)
