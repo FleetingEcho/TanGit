@@ -98,6 +98,9 @@ func TestCustomShortcutRecordsItsCommandAndAcknowledgement(t *testing.T) {
 	h.app.settings.CustomCommands = []customCommandSetting{{
 		Name: "custom refresh key", Command: "touch custom-f5", Key: "f5", Contexts: []string{"everywhere"},
 	}}
+	// Shortcut notifications are off by default; this test checks the toast.
+	h.app.settings.DisableShortcutToasts = false
+	h.app.settings.ShortcutToastsConfigured = true
 	h.press(t, ui.KeyF5)
 	marker := filepath.Join(h.app.snapshot.Root, "custom-f5")
 	h.waitFor(t, "F5's custom command", func() bool {
@@ -157,19 +160,22 @@ func TestShortcutNotificationPreferenceDoesNotSilenceAuditOrResults(t *testing.T
 	if !ok {
 		t.Fatal("Settings has no shortcut-notification preference")
 	}
-	if !control.Checked {
-		t.Fatal("shortcut notifications should be enabled for older/default settings")
+	if control.Checked {
+		t.Fatal("shortcut notifications should be disabled by default, including for older settings files")
 	}
 	if err := h.tester.Click("Shortcut notifications"); err != nil {
-		t.Fatalf("disable shortcut notifications: %v", err)
+		t.Fatalf("enable shortcut notifications: %v", err)
 	}
 	h.tester.Frame()
-	if !h.app.settings.DisableShortcutToasts {
+	if h.app.settings.DisableShortcutToasts {
 		t.Fatal("the notification preference did not persist into app settings")
 	}
+	if !h.app.settings.ShortcutToastsConfigured {
+		t.Fatal("the toggle did not mark the preference configured")
+	}
 	control, ok = h.tester.Access("Shortcut notifications")
-	if !ok || control.Checked {
-		t.Fatalf("the notification switch did not turn off: %+v", control)
+	if !ok || !control.Checked {
+		t.Fatalf("the notification switch did not turn on: %+v", control)
 	}
 	h.app.closeSettings()
 
@@ -182,8 +188,8 @@ func TestShortcutNotificationPreferenceDoesNotSilenceAuditOrResults(t *testing.T
 		_, err := os.Stat(filepath.Join(h.app.snapshot.Root, "quiet-f5"))
 		return err == nil
 	})
-	if h.tester.HasText("F5") {
-		t.Fatal("a shortcut acknowledgement remained visible after the opt-out")
+	if !h.tester.HasText("F5") {
+		t.Fatal("an opted-in shortcut acknowledgement did not show")
 	}
 
 	h.app.openCommandLog()
@@ -195,5 +201,33 @@ func TestShortcutNotificationPreferenceDoesNotSilenceAuditOrResults(t *testing.T
 	h.tester.Frame()
 	if !h.tester.HasText("Operation result remains visible") {
 		t.Fatal("the shortcut preference suppressed an operation-level notification")
+	}
+}
+
+// A fresh app launch has shortcut notifications off, command-level audit
+// intact, and an acknowledgement that never appears.
+func TestShortcutNotificationDefaultOffDoesNotAcknowledge(t *testing.T) {
+	h, _ := menuTestAppWithCalls(t)
+	h.app.attachRepositoryCommandLog(repository.NewCommandLog())
+	if !h.app.settings.DisableShortcutToasts || !h.app.settings.ShortcutToastsConfigured {
+		t.Fatal("shortcut notifications must be disabled by default")
+	}
+	root := t.TempDir()
+	h.app.snapshot.Root = root
+	h.app.settings.CustomCommands = []customCommandSetting{{
+		Name: "custom refresh key", Command: "touch default-off-f5", Key: "f5", Contexts: []string{"everywhere"},
+	}}
+	h.press(t, ui.KeyF5)
+	h.waitFor(t, "the quiet custom command", func() bool {
+		_, err := os.Stat(filepath.Join(root, "default-off-f5"))
+		return err == nil
+	})
+	if h.tester.HasText("F5") {
+		t.Fatal("the default launch acknowledges shortcuts")
+	}
+	h.app.openCommandLog()
+	h.tester.Frame()
+	if !h.tester.HasText("F5") || !h.tester.HasText("custom refresh key") {
+		t.Fatalf("the audit log lost the shortcut: %q", h.texts())
 	}
 }

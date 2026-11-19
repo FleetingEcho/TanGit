@@ -314,6 +314,8 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 		IgnoreUntracked:             true,
 		ConflictActionStyle:         conflictActionStyleIconsLabels,
 		DisableShortcuts:            true,
+		DisableShortcutToasts:       true,
+		ShortcutToastsConfigured:    true,
 		AutoFetchConfigured:         true,
 		Language:                    "zh-Hans",
 		EditorCommand:               "zed {{filename}}",
@@ -920,5 +922,29 @@ func TestSettingsAccentRowPicksAColor(t *testing.T) {
 	h.tester.Frame()
 	if h.app.settings.Accent != "" {
 		t.Fatalf("the palette's dot left the accent %q", h.app.settings.Accent)
+	}
+}
+
+// normalizeSettings keeps an explicit notification preference verbatim, and
+// upgrades older files that predate the default-off behavior.
+func TestShortcutNotificationDefaultAndConfigured(t *testing.T) {
+	fresh := normalizeSettings(appSettings{})
+	if !fresh.DisableShortcutToasts {
+		t.Fatal("a fresh settings file must have shortcut notifications off")
+	}
+	if !fresh.ShortcutToastsConfigured {
+		t.Fatal("defaultSettings must mark shortcut notifications configured")
+	}
+	legacy := normalizeSettings(appSettings{DisableShortcutToasts: false})
+	if !legacy.DisableShortcutToasts {
+		t.Fatal("an older settings file that predates the default stays off")
+	}
+	userOff := normalizeSettings(appSettings{DisableShortcutToasts: true, ShortcutToastsConfigured: true})
+	if !userOff.DisableShortcutToasts {
+		t.Fatal("an explicit opt-out must be preserved")
+	}
+	userOn := normalizeSettings(appSettings{DisableShortcutToasts: false, ShortcutToastsConfigured: true})
+	if userOn.DisableShortcutToasts {
+		t.Fatal("an explicit opt-in must be preserved")
 	}
 }
