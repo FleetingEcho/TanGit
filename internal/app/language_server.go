@@ -160,6 +160,14 @@ func (a *app) syncGoLanguageServer() {
 		return
 	}
 	if a.goLanguageServer == nil {
+		// A successful download or PATH change can make an executable usable
+		// after we recorded it missing. Reconcile before deciding not to start.
+		if a.goLanguageServerMissing {
+			profile, _ := languageServerProfileByID(goLanguageServerID)
+			if a.languageServerExecutableAvailable(profile) {
+				a.goLanguageServerMissing = false
+			}
+		}
 		if !a.goLanguageServerMissing && (a.goLanguageServerError == "" || a.goLanguageServerRestartPending) {
 			a.startGoLanguageServer()
 		}
