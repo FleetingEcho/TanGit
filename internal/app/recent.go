@@ -555,6 +555,7 @@ func (a *app) loadHistory() {
 // rememberOpened keeps a repository the app just opened in the history and
 // stores it. Failures are silent: the picker simply starts empty next time.
 func (a *app) rememberOpened(path string) {
+	before := append([]recentRepository(nil), a.recentRepositories...)
 	a.recentRepositories = rememberRecent(a.recentRepositories, path, timeNow())
 	want := cleanRepoPath(path)
 	worktreeName := ""
@@ -579,19 +580,23 @@ func (a *app) rememberOpened(path string) {
 	}
 	a.historyRevision++
 	_ = saveRecentRepositories(a.dataDir(), a.recentRepositories)
+	a.cleanupEvictedRecents(before)
 }
 
 // rememberOpenedFolder records a plain Editor workspace without inventing Git
 // metadata or adding it to Recent repositories.
 func (a *app) rememberOpenedFolder(path string) {
+	before := append([]recentRepository(nil), a.recentRepositories...)
 	a.recentRepositories = rememberRecentMode(a.recentRepositories, path, timeNow(), true)
 	a.historyRevision++
 	_ = saveRecentRepositories(a.dataDir(), a.recentRepositories)
+	a.cleanupEvictedRecents(before)
 }
 
 // forgetRecent removes one card from the history, leaving the same path on the
 // other Home tab alone.
 func (a *app) forgetRecent(path string, editorOnly bool) {
+	before := append([]recentRepository(nil), a.recentRepositories...)
 	kept := make([]recentRepository, 0, len(a.recentRepositories))
 	for _, r := range a.recentRepositories {
 		if r.Path != path || r.EditorOnly != editorOnly {
@@ -601,6 +606,7 @@ func (a *app) forgetRecent(path string, editorOnly bool) {
 	a.recentRepositories = kept
 	a.historyRevision++
 	_ = saveRecentRepositories(a.dataDir(), a.recentRepositories)
+	a.cleanupEvictedRecents(before)
 }
 
 // recentWorktree reports the identity already remembered for this card. It

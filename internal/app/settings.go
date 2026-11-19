@@ -105,6 +105,10 @@ type appSettings struct {
 	// content search. Nil in an older settings file selects the
 	// defaults; a saved empty slice deliberately disables every exclusion.
 	SearchExcludedDirectories []string `json:"searchExcludedDirectories"`
+	// ZoektDisabledRepositories remembers which local roots use the complete
+	// ripgrep/native search fallback instead of a full-text Zoekt index. An
+	// absent or empty list keeps Zoekt enabled, including for older settings.
+	ZoektDisabledRepositories []string `json:"zoektDisabledRepositories,omitempty"`
 	// LanguageServers keeps per-language executable choices. An absent entry
 	// means the built-in default: enabled and discovered on PATH.
 	LanguageServers map[string]languageServerSettings `json:"languageServers,omitempty"`
@@ -276,6 +280,7 @@ func normalizeSettings(s appSettings) appSettings {
 	} else {
 		s.SearchExcludedDirectories = normalizeWorkspaceSearchExcludedDirectories(s.SearchExcludedDirectories)
 	}
+	s.ZoektDisabledRepositories = normalizeZoektDisabledRepositories(s.ZoektDisabledRepositories)
 	s.LanguageServers = normalizeLanguageServerSettings(s.LanguageServers)
 	if !s.AutoFetchConfigured {
 		if s.AutoFetchInterval == 0 {

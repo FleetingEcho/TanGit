@@ -243,6 +243,25 @@ func (s *shell) start(path string) {
 	if path != "" {
 		t.app.beginOpenWithPolicy(openAllowPlainEditor)
 	}
+	s.startCacheGC()
+}
+
+// startCacheGC bounds repository cache storage once per launch. The history
+// read itself is asynchronous, so the GC loads the stored cards on its own
+// goroutine instead of treating the not-yet-loaded in-memory list as empty.
+func (s *shell) startCacheGC() {
+	a := s.activeApp()
+	if a == nil || (s.pathCache == "" && s.pathUserData == "") {
+		return
+	}
+	ownership := repositoryCacheOwnership{cacheDir: s.pathCache, dataDir: s.pathUserData}
+	if a.cacheOpenRoots != nil {
+		ownership.roots = a.cacheOpenRoots()
+	}
+	cacheCleanupAsync(func() {
+		defer a.recoverBackground()
+		gcRepositoryCaches(ownership, time.Now())
+	})
 }
 
 // newTab makes a page of its own around the shared preferences. The hooks let
@@ -289,6 +308,36 @@ func (s *shell) newTab(path string) *tab {
 	}
 	a.closeTab = func() { s.closeTabFor(a) }
 	a.onRecentRenamed = func(path, name string) { s.spreadRecentName(a, path, name) }
+	a.cacheOpenRoots = func() []string {
+		roots := make([]string, 0, len(s.tabs))
+		for _, t := range s.tabs {
+			if t != nil && t.app != nil && t.app.snapshot.Root != "" {
+				roots = append(roots, t.app.snapshot.Root)
+			}
+		}
+		return roots
+	}
+	a.onCachesCleared = func() {
+		for _, t := range s.tabs {
+			if t != nil && t.app != nil {
+				// Reset without resuming here: an explicit clear must not
+				// immediately rebuild the active repository's index. Search
+				// and tab activation revalidate on demand.
+				t.app.resetCodeSearchIndex()
+			}
+		}
+	}
+	a.onZoektPreferenceChanged = func(root string) {
+		for _, t := range s.tabs {
+			if t == nil || t.app == nil || t.app.currentZoektRepositoryRoot() != root {
+				continue
+			}
+			// propagate the preference here as well as through the next
+			// pushSettings: a non-visible tab must also stop its builders now.
+			t.app.settings.ZoektDisabledRepositories = append([]string(nil), a.settings.ZoektDisabledRepositories...)
+			t.app.resetCodeSearchIndex()
+		}
+	}
 	a.externalRefresh = func() {
 		if s.windowVisible && s.windowFocused && s.activeApp() == a {
 			a.requestQuietRefresh()

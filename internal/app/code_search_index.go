@@ -23,9 +23,15 @@ const (
 	codeSearchIndexBackgroundRefreshInterval = 5 * time.Minute
 	codeSearchIndexRebuildDelay              = 1500 * time.Millisecond
 	codeSearchIndexStagingMaxAge             = 24 * time.Hour
+	// codeSearchIndexSourceBytesLimit bounds the source content one repository
+	// may feed into Zoekt. Trigram postings can occupy several times the source
+	// size on disk; past this budget the complete native search backends are a
+	// better trade than silently producing multi-gigabyte cache files.
+	codeSearchIndexSourceBytesLimit = 256 << 20 // 256 MiB
 )
 
 var errCodeSearchIndexUnavailable = errors.New("indexed search is unavailable on this platform")
+var errCodeSearchIndexSourceBudget = fmt.Errorf("repository contents exceed the Zoekt source budget of %s", formatRemoteTransferBytes(codeSearchIndexSourceBytesLimit))
 
 // scheduleCodeSearchIndexRefresh keeps periodic freshness checks off the UI
 // thread. Tests can invoke the callback directly instead of waiting 30 seconds.
@@ -47,6 +53,11 @@ const (
 	codeSearchIndexChecking
 	codeSearchIndexStale
 	codeSearchIndexReady
+	// codeSearchIndexUnavailable marks a repository too large to index within
+	// the storage budget. Search stays on the complete native backends instead
+	// of using a partial index; a slower background revalidation can re-enable
+	// indexing after the workspace or exclusions shrink enough.
+	codeSearchIndexUnavailable
 )
 
 type codeSearchIndexState struct {
@@ -133,7 +144,7 @@ func resolvedCodeSearchIndexRoot(root string) (string, error) {
 }
 
 func (a *app) codeSearchIndexDirectory() string {
-	if a.location.IsRemote() || a.code.searchIndex.status != codeSearchIndexReady || a.code.searchIndex.busy {
+	if a.location.IsRemote() || a.code.searchIndex.status != codeSearchIndexReady || a.code.searchIndex.busy || !a.zoektCodeSearchEnabled() {
 		return ""
 	}
 	return a.code.searchIndex.directory
@@ -158,7 +169,7 @@ func (a *app) codeSearchIndexActiveNow() bool {
 }
 
 func (a *app) codeSearchIndexRefreshDelay() time.Duration {
-	if !a.codeSearchIndexActiveNow() {
+	if !a.codeSearchIndexActiveNow() || a.code.searchIndex.status == codeSearchIndexUnavailable {
 		return codeSearchIndexBackgroundRefreshInterval
 	}
 	return codeSearchIndexRefreshInterval
@@ -188,7 +199,34 @@ func (a *app) resumeCodeSearchIndex() {
 // leave search free to use its ordinary fallback backends.
 func (a *app) ensureCodeSearchIndex() {
 	state := &a.code.searchIndex
-	if a.location.IsRemote() || a.snapshot.Root == "" || !a.code.filesLoaded {
+	if a.location.IsRemote() || a.snapshot.Root == "" || !a.code.filesLoaded || !a.zoektCodeSearchEnabled() {
+		return
+	}
+	if state.status == codeSearchIndexUnavailable {
+		// Oversized workspaces never enter the immediate build path again.
+		// Occasionally move back to Missing for a stat-only budget recheck;
+		// file invalidations still make the workspace retry immediately.
+		if state.refreshScheduled {
+			return
+		}
+		state.refreshScheduled = true
+		token := state.token
+		state.refreshCancel = scheduleCodeSearchIndexRefresh(codeSearchIndexBackgroundRefreshInterval, func() {
+			a.updateChanged(func() bool {
+				current := &a.code.searchIndex
+				if token != current.token || current.status != codeSearchIndexUnavailable {
+					return false
+				}
+				current.refreshScheduled = false
+				current.refreshCancel = nil
+				if a.codeSearchIndexActiveNow() {
+					current.status = codeSearchIndexMissing
+					current.requested = false
+				}
+				a.ensureCodeSearchIndex()
+				return false
+			})
+		})
 		return
 	}
 	if state.directory == "" {
@@ -248,6 +286,13 @@ func (a *app) ensureCodeSearchIndex() {
 		unlock := lockCodeSearchIndex(directory)
 		info, err := inspectCodeSearchIndex(ctx, root, paths, excluded, directory)
 		unlock()
+		if info.status == codeSearchIndexUnavailable && errors.Is(err, errCodeSearchIndexSourceBudget) {
+			// Indexes published by older releases may exceed the new budget.
+			// Reclaim them under the build lock instead of leaving several GiB
+			// on disk merely because the repository is still in recents.
+			removeCodeSearchIndexDirectory(directory)
+			info.bytes = 0
+		}
 		rebuilt := false
 		if ctx.Err() == nil && (info.status == codeSearchIndexMissing || info.status == codeSearchIndexStale) {
 			info, err = buildCodeSearchIndex(ctx, root, paths, excluded, directory)
@@ -351,6 +396,19 @@ func buildCodeSearchIndex(ctx context.Context, root string, paths, excluded []st
 	resolvedRoot, err := resolvedCodeSearchIndexRoot(root)
 	if err != nil {
 		return missing, err
+	}
+	overBudget, err := exceedsCodeSearchIndexSourceBudget(ctx, resolvedRoot, paths, excluded)
+	if err != nil {
+		return missing, err
+	}
+	if overBudget {
+		// Deleting an older generation is safe here: the per-index lock keeps
+		// builders serialized and searchers use this same lock before mapping.
+		// Never replace a complete index with a deliberately partial one.
+		if err = os.RemoveAll(directory); err != nil {
+			return missing, err
+		}
+		return codeSearchIndexInfo{status: codeSearchIndexUnavailable, updated: time.Now().UTC()}, errCodeSearchIndexSourceBudget
 	}
 	parent := filepath.Dir(directory)
 	if err = os.MkdirAll(parent, 0o700); err != nil {
@@ -486,6 +544,40 @@ func normalizeCodeSearchIndexExclusions(excluded []string) []string {
 	return normalizeWorkspaceSearchExcludedDirectories(excluded)
 }
 
+// exceedsCodeSearchIndexSourceBudget estimates storage before any source file
+// is read or shard is written. Stat-only preflight is cheap compared with a
+// multi-GiB build. Counting regular file sizes is deliberately conservative:
+// binary files rejected later do not weaken the build-time storage bound.
+func exceedsCodeSearchIndexSourceBudget(ctx context.Context, resolvedRoot string, paths, excluded []string) (bool, error) {
+	filter := workspaceSearchOptions{ExcludedDirectories: excluded}
+	var sourceBytes int64
+	for _, candidate := range paths {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		if !filter.pathIncluded(candidate) {
+			continue
+		}
+		cleaned, ok := cleanWorkspaceSearchPath(candidate)
+		if !ok {
+			continue
+		}
+		filename, ok := resolveWorkspaceSearchPath(resolvedRoot, cleaned)
+		if !ok {
+			continue
+		}
+		info, err := os.Stat(filename)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		if info.Size() > codeSearchIndexSourceBytesLimit-sourceBytes {
+			return true, nil
+		}
+		sourceBytes += info.Size()
+	}
+	return false, nil
+}
+
 func codeSearchIndexDiskBytes(directory string) int64 {
 	var total int64
 	_ = filepath.WalkDir(directory, func(_ string, entry fs.DirEntry, err error) error {
@@ -531,6 +623,20 @@ func inspectCodeSearchIndex(ctx context.Context, root string, paths, excluded []
 	resolvedRoot, err := resolvedCodeSearchIndexRoot(root)
 	if err != nil || resolvedRoot != manifest.Root ||
 		!slices.Equal(normalizeCodeSearchIndexExclusions(excluded), manifest.ExcludedDirectories) {
+		return stale, nil
+	}
+	if manifest.SourceBytes > codeSearchIndexSourceBytesLimit {
+		overBudget, checkErr := exceedsCodeSearchIndexSourceBudget(ctx, resolvedRoot, paths, excluded)
+		if checkErr != nil {
+			return stale, checkErr
+		}
+		if overBudget {
+			return codeSearchIndexInfo{
+				status: codeSearchIndexUnavailable, documents: manifest.Documents, updated: manifest.Updated,
+			}, errCodeSearchIndexSourceBudget
+		}
+		// Files or exclusions have since brought the repository back under
+		// budget. Replace the old oversized generation with a bounded one.
 		return stale, nil
 	}
 	if fresh, checkErr := codeSearchIndexFresh(ctx, resolvedRoot, paths, excluded, manifest); checkErr != nil {
