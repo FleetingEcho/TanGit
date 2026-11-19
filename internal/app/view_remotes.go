@@ -95,7 +95,7 @@ func (a *app) beginFetchRemote(remote repository.Remote) {
 	}
 	a.beginRepositoryActionMessage(trf("Fetched remote %s", remote.Name), "",
 		func(ctx context.Context, session repository.Session) error {
-			return session.FetchRemote(ctx, remote.Name)
+			return requireBranchRemoteSession(session).FetchRemote(ctx, remote.Name)
 		}, nil)
 }
 
@@ -150,7 +150,7 @@ func (a *app) beginUpdateRemote() {
 	a.confirmAttention("Edit remote", oldName+" → "+newName+"\n"+url, "This changes the remote destination used by future fetches, pulls, and pushes.", func() {
 		a.beginRepositoryActionMessage(trf("Updated remote %s", newName), "",
 			func(ctx context.Context, session repository.Session) error {
-				return session.UpdateRemote(ctx, oldName, newName, url)
+				return requireBranchRemoteSession(session).UpdateRemote(ctx, oldName, newName, url)
 			}, func() {
 				a.moveRemoteWebURLOverride(oldName, newName)
 				a.selectedRemote = selectedRemoteIndex(a.snapshot.Remotes, newName)
@@ -169,7 +169,7 @@ func (a *app) beginAddRemote() {
 	url := strings.TrimSpace(a.remoteURL)
 	a.beginRepositoryActionMessage(trf("Added remote %s", name), "",
 		func(ctx context.Context, session repository.Session) error {
-			return session.AddRemote(ctx, name, url)
+			return requireBranchRemoteSession(session).AddRemote(ctx, name, url)
 		}, func() {
 			a.selectedRemote = selectedRemoteIndex(a.snapshot.Remotes, name)
 			a.syncRemoteRow()
@@ -209,7 +209,7 @@ func (a *app) beginCheckoutRemoteBranch() {
 	a.confirmAttention("Checkout", remote.Name+"/"+branch.Name+" → "+localName, "This changes the checked-out branch and working-tree files. Uncommitted changes may be carried across or prevent checkout.", func() {
 		a.beginRepositoryActionMessage(trf("Checked out %s/%s", remote.Name, branch.Name), "",
 			func(ctx context.Context, session repository.Session) error {
-				return session.CheckoutRemoteBranch(ctx, remote.Name, branch.Name, localName)
+				return requireBranchRemoteSession(session).CheckoutRemoteBranch(ctx, remote.Name, branch.Name, localName)
 			}, func() {
 				a.remoteLocalBranch = ""
 				a.showRemoteCheckoutForm = false
@@ -241,7 +241,7 @@ func (a *app) beginSetUpstream(remote repository.Remote, branch repository.Remot
 	a.confirmAttention("Set upstream", localBranch+" → "+remote.Name+"/"+branch.Name, "This changes branch tracking configuration and affects future pulls and pushes.", func() {
 		a.beginRepositoryActionMessage(trf("%s now tracks %s/%s", localBranch, remote.Name, branch.Name), "",
 			func(ctx context.Context, session repository.Session) error {
-				return session.SetUpstream(ctx, remote.Name, branch.Name, localBranch)
+				return requireBranchRemoteSession(session).SetUpstream(ctx, remote.Name, branch.Name, localBranch)
 			}, nil)
 	})
 }
@@ -303,7 +303,7 @@ func (a *app) confirmDeleteRemoteBranch(remote repository.Remote, branch reposit
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Deleted remote branch %s", qualifiedName), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.DeleteRemoteBranch(ctx, remote.Name, branch.Name)
+					return requireBranchRemoteSession(session).DeleteRemoteBranch(ctx, remote.Name, branch.Name)
 				}, nil)
 		},
 	})
@@ -381,7 +381,7 @@ func (a *app) confirmRemoveRemote(remote repository.Remote) {
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Removed remote %s", remote.Name), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.RemoveRemote(ctx, remote.Name)
+					return requireBranchRemoteSession(session).RemoveRemote(ctx, remote.Name)
 				}, func() { a.moveRemoteWebURLOverride(remote.Name, "") })
 		},
 	})

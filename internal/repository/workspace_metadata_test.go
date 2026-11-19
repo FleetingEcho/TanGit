@@ -48,7 +48,7 @@ func TestWorkspaceSnapshotPreservesRawFilteredPayloads(t *testing.T) {
 	if _, err := os.Stat(payload); !os.IsNotExist(err) {
 		t.Fatalf("fixture did not delete the raw filtered payload: %v", err)
 	}
-	reopened, err := (Opener{}).Open(ctx, dir)
+	reopened, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestWorkspaceSnapshotPreservesConflictIndexAndOperationMetadata(t *testing.
 			t.Fatalf("restored AUTO_MERGE = %q, want %q (%v)", got, autoMerge, err)
 		}
 	}
-	reopened, err := (Opener{}).Open(ctx, dir)
+	reopened, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 	if err != nil {
 		t.Fatal(err)
 	}

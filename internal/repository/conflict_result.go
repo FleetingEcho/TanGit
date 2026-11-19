@@ -25,7 +25,6 @@ var ErrConflictResultBinary = errors.New("binary conflict results are unsupporte
 // Assistant. It deliberately has no staging, operation-driving, hook, or commit
 // parameter: the only repository mutation is the reviewed worktree Result.
 type ConflictResultSession interface {
-	Session
 	WriteConflictResult(context.Context, ConflictResultRequest) (FileRecoveryRecord, error)
 }
 

@@ -167,11 +167,11 @@ func TestSSHConnectionNoticesTranslateWithoutTranslatingPayloads(t *testing.T) {
 	a.update = updates.update
 	a.sshTestConnection = nil
 	a.testSSHProfile()
-	if got := a.sshProfileFormNotice; got != "translated unavailable notice" {
+	if got := a.ssh.profileFormNotice; got != "translated unavailable notice" {
 		t.Fatalf("test notice = %q", got)
 	}
 	a.sshSecretBackend = &fakeSSHKeychain{}
-	a.sshProfileDraft = sshProfileDraft{
+	a.ssh.profileDraft = sshProfileDraft{
 		Host: "example.com", Username: "git", Port: "22", AuthMode: sshAuthPassword, Password: "secret",
 	}
 	a.sshTestConnection = func(context.Context, sshworkspace.Profile, sshProfileSecrets) error {
@@ -179,7 +179,7 @@ func TestSSHConnectionNoticesTranslateWithoutTranslatingPayloads(t *testing.T) {
 	}
 	a.testSSHProfile()
 	updates.waitForUpdate(t)
-	if got, want := a.sshProfileFormError, "translated failure: "+payload; got != want {
+	if got, want := a.ssh.profileFormError, "translated failure: "+payload; got != want {
 		t.Fatalf("connection error = %q, want %q", got, want)
 	}
 }
@@ -191,7 +191,7 @@ func TestSSHProfilePersistenceContainsNoSecrets(t *testing.T) {
 	a := newApp(fakeOpener{})
 	a.pathUserData = dir
 	a.sshSecretBackend = &fakeSSHKeychain{}
-	a.sshProfileDraft = sshProfileDraft{
+	a.ssh.profileDraft = sshProfileDraft{
 		Name: "Production", Host: "prod.example.com", Username: "git", Port: "2222",
 		AuthMode: sshAuthPassword, DefaultRoot: "/srv/git/project",
 		Password: password, Passphrase: passphrase,
@@ -200,7 +200,7 @@ func TestSSHProfilePersistenceContainsNoSecrets(t *testing.T) {
 	if len(a.settings.SSHProfiles) != 1 {
 		t.Fatalf("saved profiles = %+v", a.settings.SSHProfiles)
 	}
-	if a.sshProfileDraft.Password != "" || a.sshProfileDraft.Passphrase != "" {
+	if a.ssh.profileDraft.Password != "" || a.ssh.profileDraft.Passphrase != "" {
 		t.Fatal("sensitive form drafts survived Save")
 	}
 	data, err := os.ReadFile(settingsStorePath(dir))
@@ -307,8 +307,8 @@ func TestHomeHasVisibleSSHWorkspaceEntryAndInlineProfileForm(t *testing.T) {
 		t.Fatalf("open SSH workspace picker: %v", err)
 	}
 	tester.Frame()
-	if !a.sshWorkspaceOpen || !a.sshProfileFormOpen {
-		t.Fatalf("empty Home picker did not open its inline profile form: open=%v form=%v", a.sshWorkspaceOpen, a.sshProfileFormOpen)
+	if !a.ssh.workspaceOpen || !a.ssh.profileFormOpen {
+		t.Fatalf("empty Home picker did not open its inline profile form: open=%v form=%v", a.ssh.workspaceOpen, a.ssh.profileFormOpen)
 	}
 	for _, label := range []string{"Add SSH profile", "SSH host", "SSH username", "SSH port", "SSH password"} {
 		if !tester.HasText(label) {
@@ -334,7 +334,7 @@ func TestSettingsRailOpensSSHProfileForm(t *testing.T) {
 		t.Fatalf("open Add SSH profile form: %v", err)
 	}
 	tester.Frame()
-	if !a.sshProfileFormOpen {
+	if !a.ssh.profileFormOpen {
 		t.Fatal("Add did not open the SSH profile form")
 	}
 	for _, label := range []string{"Host", "Username", "Port", "Authentication", "Default remote folder"} {
@@ -353,9 +353,9 @@ func TestOpenSelectedSSHWorkspaceUsesCanonicalLocation(t *testing.T) {
 		ID: "Build_7", Name: "Build", Host: "build.example.com", Username: "git",
 		Port: 22, AuthMode: sshworkspace.AuthAgent, DefaultRoot: "/srv/git/project",
 	}}
-	a.sshWorkspaceOpen = true
-	a.sshWorkspaceProfileID = "Build_7"
-	a.sshWorkspaceRoot = "/srv/git/./project/../project"
+	a.ssh.workspaceOpen = true
+	a.ssh.workspaceProfileID = "Build_7"
+	a.ssh.workspaceRoot = "/srv/git/./project/../project"
 	var claimed string
 	a.claimOpen = func(path string) bool {
 		claimed = path
@@ -367,7 +367,7 @@ func TestOpenSelectedSSHWorkspaceUsesCanonicalLocation(t *testing.T) {
 	if a.path != want || claimed != want {
 		t.Fatalf("open path = %q, claimed = %q; want %q", a.path, claimed, want)
 	}
-	if a.sshWorkspaceOpen {
+	if a.ssh.workspaceOpen {
 		t.Fatal("SSH picker remained open after beginning an open")
 	}
 }

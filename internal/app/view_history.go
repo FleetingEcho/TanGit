@@ -47,9 +47,9 @@ func (a *app) confirmCommitActionFor(commit repository.Commit, revert bool) {
 			a.beginRepositoryActionMessage(message, "",
 				func(ctx context.Context, session repository.Session) error {
 					if revert {
-						return session.RevertCommit(ctx, commit)
+						return requireHistorySession(session).RevertCommit(ctx, commit)
 					}
-					return session.CherryPickCommit(ctx, commit)
+					return requireHistorySession(session).CherryPickCommit(ctx, commit)
 				}, nil)
 		},
 	})
@@ -113,7 +113,7 @@ func (a *app) requestCommitMessage(state *commitMessageDetailState, commit repos
 	repositoryGeneration := a.generation
 	state.reset()
 	requestGeneration := state.generation
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	state.cancel = cancel
 	state.hash = commit.Hash
 	state.loading = true
@@ -121,7 +121,7 @@ func (a *app) requestCommitMessage(state *commitMessageDetailState, commit repos
 	go func() {
 		defer a.recoverBackground()
 		defer cancel()
-		message, err := session.CommitMessage(ctx, commit)
+		message, err := requireHistorySession(session).CommitMessage(ctx, commit)
 		a.updateChanged(func() bool {
 			if requestGeneration != state.generation || state.hash != commit.Hash {
 				return false
@@ -206,7 +206,7 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 	a.commitFilesGeneration++
 	a.commitDiffGeneration++
 	requestGeneration := a.commitFilesGeneration
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	a.cancelCommitFiles = cancel
 	a.commitFilesHash = commit.Hash
 	a.commitFilesLoading = true
@@ -220,7 +220,7 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 	go func() {
 		defer a.recoverBackground()
 		defer cancel()
-		files, err := session.CommitFiles(ctx, commit)
+		files, err := requireHistorySession(session).CommitFiles(ctx, commit)
 		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation {
 				// An action rewrote the repository: drop the request so
@@ -294,7 +294,7 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 	}
 	a.commitDiffGeneration++
 	requestGeneration := a.commitDiffGeneration
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	a.cancelCommitDiff = cancel
 	a.stopLineSelection()
 	a.commitDiffHash = commit.Hash
@@ -311,7 +311,7 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 	go func() {
 		defer a.recoverBackground()
 		defer cancel()
-		diff, err := session.CommitFileDiff(ctx, commit, file, options)
+		diff, err := requireHistorySession(session).CommitFileDiff(ctx, commit, file, options)
 		if err == nil && ctx.Err() != nil {
 			err = ctx.Err()
 		}
@@ -383,9 +383,10 @@ func (a *app) requestMoreCommits() {
 	a.commitsLoading = true
 	a.commitsError = ""
 	skip := len(a.snapshot.Commits)
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		commits, err := session.RecentCommits(context.Background(), repository.SnapshotCommitLimit, skip)
+		commits, err := requireHistorySession(session).RecentCommits(ctx, repository.SnapshotCommitLimit, skip)
 		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation || token != a.commitsToken {
 				return false

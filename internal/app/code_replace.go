@@ -158,7 +158,7 @@ func (a *app) startCodeSearchReplaceAllWithClient(client remoteWorkspaceClient) 
 	a.code.searchReplaceRunning = true
 	a.code.searchReplaceStatus = ""
 	a.code.searchReplaceError = ""
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	a.code.searchReplaceCancel = cancel
 	remote := a.location.IsRemote()
 	var remoteErr error

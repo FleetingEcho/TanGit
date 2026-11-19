@@ -155,9 +155,9 @@ func newDiffOptionsRepository(t *testing.T) string {
 	return dir
 }
 
-func openDiffOptionsRepository(t *testing.T, dir string) Session {
+func openDiffOptionsRepository(t *testing.T, dir string) FullSession {
 	t.Helper()
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,18 +176,18 @@ func TestIgnoreAndExcludeHideOnlyUntrackedFiles(t *testing.T) {
 		name       string
 		configPath string
 		exactFile  bool
-		apply      func(Session, context.Context, File) error
+		apply      func(ChangesSession, context.Context, File) error
 	}{
 		{
 			name:       "ignore",
 			configPath: ".gitignore",
 			exactFile:  true,
-			apply:      Session.IgnoreFile,
+			apply:      ChangesSession.IgnoreFile,
 		},
 		{
 			name:       "exclude",
 			configPath: filepath.Join(".git", "info", "exclude"),
-			apply:      Session.ExcludeFile,
+			apply:      ChangesSession.ExcludeFile,
 		},
 	}
 

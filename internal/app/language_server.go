@@ -10,11 +10,11 @@ import (
 
 func (a *app) reportGoLanguageServerError(message string) {
 	message = strings.TrimSpace(safeError(errors.New(message)))
-	if message == "" || message == a.goLanguageServerError {
+	if message == "" || message == a.lsp.goError {
 		return
 	}
-	first := a.goLanguageServerError == ""
-	a.goLanguageServerError = message
+	first := a.lsp.goError == ""
+	a.lsp.goError = message
 	if first {
 		a.notify("error", trf("%s cannot analyze this workspace", "gopls"), message)
 	}
@@ -31,7 +31,7 @@ func languageServerFileURI(path string) string {
 }
 
 func (a *app) startGoLanguageServer() {
-	if a.goLanguageServer != nil || a.goLanguageServerStarting || a.snapshot.Root == "" || a.settingsOpen {
+	if a.lsp.goServer != nil || a.lsp.goStarting || a.snapshot.Root == "" || a.settingsUI.open {
 		return
 	}
 	server := a.goLanguageServerSettings()
@@ -40,41 +40,41 @@ func (a *app) startGoLanguageServer() {
 	}
 	profile, _ := languageServerProfileByID(goLanguageServerID)
 	if !a.languageServerExecutableAvailable(profile) {
-		a.goLanguageServerMissing = true
-		a.goLanguageServerError = ""
+		a.lsp.goMissing = true
+		a.lsp.goError = ""
 		return
 	}
-	a.goLanguageServerMissing = false
+	a.lsp.goMissing = false
 	programs := languageServerExecutableCandidates(server.Path, "gopls")
-	a.goLanguageServerSeq++
-	sequence := a.goLanguageServerSeq
+	a.lsp.goSeq++
+	sequence := a.lsp.goSeq
 	launch := languageServerLaunch{
 		Program: programs[0], Arguments: append([]string(nil), server.Arguments...), Root: a.snapshot.Root,
 		Notify: func(method string, params json.RawMessage) {
 			a.handleGoLanguageServerNotification(sequence, method, params)
 		},
 	}
-	a.goLanguageServerStarting = true
-	a.goLanguageServerRestartPending = false
-	a.goLanguageServerError = ""
+	a.lsp.goStarting = true
+	a.lsp.goRestartPending = false
+	a.lsp.goError = ""
 	go func() {
 		defer a.recoverBackground()
 		connection, err := connectLanguageServerCandidates(launch, programs)
 		a.updateChanged(func() bool {
-			if sequence != a.goLanguageServerSeq || a.snapshot.Root != launch.Root {
+			if sequence != a.lsp.goSeq || a.snapshot.Root != launch.Root {
 				if connection != nil {
 					go connection.Close()
 				}
 				return false
 			}
 			before := a.codeLanguageServerStatuses()
-			a.goLanguageServerStarting = false
+			a.lsp.goStarting = false
 			if err != nil {
-				a.goLanguageServerError = safeError(err)
+				a.lsp.goError = safeError(err)
 				return a.codeLanguageServerPresentationChanged(before)
 			}
-			a.goLanguageServer = connection
-			a.goLanguageServerDocs = make(map[string]uint64)
+			a.lsp.goServer = connection
+			a.lsp.goDocs = make(map[string]uint64)
 			a.watchGoLanguageServer(connection, sequence)
 			return a.codeLanguageServerPresentationChanged(before)
 		})
@@ -88,20 +88,20 @@ func (a *app) watchGoLanguageServer(connection languageServerConnection, sequenc
 			err = nil
 		}
 		a.updateChanged(func() bool {
-			if sequence != a.goLanguageServerSeq || a.goLanguageServer != connection {
+			if sequence != a.lsp.goSeq || a.lsp.goServer != connection {
 				return false
 			}
 			before := a.codeLanguageServerStatuses()
-			a.goLanguageServer = nil
-			a.goLanguageServerDocs = nil
+			a.lsp.goServer = nil
+			a.lsp.goDocs = nil
 			if err != nil {
-				a.goLanguageServerError = safeError(err)
+				a.lsp.goError = safeError(err)
 			} else {
-				a.goLanguageServerError = "language server stopped unexpectedly"
+				a.lsp.goError = "language server stopped unexpectedly"
 			}
-			if !a.goLanguageServerRestartUsed {
-				a.goLanguageServerRestartUsed = true
-				a.goLanguageServerRestartPending = true
+			if !a.lsp.goRestartUsed {
+				a.lsp.goRestartUsed = true
+				a.lsp.goRestartPending = true
 			}
 			return a.codeLanguageServerPresentationChanged(before)
 		})
@@ -109,22 +109,7 @@ func (a *app) watchGoLanguageServer(connection languageServerConnection, sequenc
 }
 
 func (a *app) stopGoLanguageServer() {
-	if a.goLanguageServer == nil && !a.goLanguageServerStarting && !a.goLanguageServerMissing &&
-		a.goLanguageServerError == "" && len(a.goLanguageServerDocs) == 0 {
-		return
-	}
-	a.goLanguageServerSeq++
-	connection := a.goLanguageServer
-	a.goLanguageServer = nil
-	a.goLanguageServerStarting = false
-	a.goLanguageServerMissing = false
-	a.goLanguageServerError = ""
-	a.goLanguageServerRestartPending = false
-	a.goLanguageServerRestartUsed = false
-	a.goLanguageServerDocs = nil
-	if connection != nil {
-		go connection.Close()
-	}
+	a.lsp.stopGo()
 }
 
 func (a *app) syncGoLanguageServer() {
@@ -134,7 +119,7 @@ func (a *app) syncGoLanguageServer() {
 		return
 	}
 	a.syncAdditionalLanguageServers()
-	if a.settingsOpen {
+	if a.settingsUI.open {
 		return
 	}
 	server := a.goLanguageServerSettings()
@@ -151,24 +136,24 @@ func (a *app) syncGoLanguageServer() {
 		}
 	}
 	if len(documents) == 0 {
-		if a.goLanguageServer != nil {
-			for path := range a.goLanguageServerDocs {
-				a.goLanguageServer.DidClose(languageServerFileURI(a.workingFilePath(path)))
+		if a.lsp.goServer != nil {
+			for path := range a.lsp.goDocs {
+				a.lsp.goServer.DidClose(languageServerFileURI(a.workingFilePath(path)))
 			}
 		}
 		a.stopGoLanguageServer()
 		return
 	}
-	if a.goLanguageServer == nil {
+	if a.lsp.goServer == nil {
 		// A successful download or PATH change can make an executable usable
 		// after we recorded it missing. Reconcile before deciding not to start.
-		if a.goLanguageServerMissing {
+		if a.lsp.goMissing {
 			profile, _ := languageServerProfileByID(goLanguageServerID)
 			if a.languageServerExecutableAvailable(profile) {
-				a.goLanguageServerMissing = false
+				a.lsp.goMissing = false
 			}
 		}
-		if !a.goLanguageServerMissing && (a.goLanguageServerError == "" || a.goLanguageServerRestartPending) {
+		if !a.lsp.goMissing && (a.lsp.goError == "" || a.lsp.goRestartPending) {
 			a.startGoLanguageServer()
 		}
 		return
@@ -180,7 +165,7 @@ func (a *app) syncGoLanguageServer() {
 			break
 		}
 	}
-	if !ready && len(a.goLanguageServerDocs) > 0 {
+	if !ready && len(a.lsp.goDocs) > 0 {
 		return
 	}
 	// As with the additional servers, open the replacement before closing
@@ -188,26 +173,26 @@ func (a *app) syncGoLanguageServer() {
 	for path, document := range documents {
 		a.syncGoLanguageServerDocument(path, document)
 	}
-	for path := range a.goLanguageServerDocs {
+	for path := range a.lsp.goDocs {
 		if documents[path] == nil {
-			a.goLanguageServer.DidClose(languageServerFileURI(a.workingFilePath(path)))
-			delete(a.goLanguageServerDocs, path)
+			a.lsp.goServer.DidClose(languageServerFileURI(a.workingFilePath(path)))
+			delete(a.lsp.goDocs, path)
 		}
 	}
 }
 
 func (a *app) syncGoLanguageServerDocument(path string, document *codeDocument) {
-	if a.goLanguageServer == nil || document == nil || !document.loaded || document.state == nil || document.state.Buffer == nil {
+	if a.lsp.goServer == nil || document == nil || !document.loaded || document.state == nil || document.state.Buffer == nil {
 		return
 	}
 	version := document.state.Buffer.Version()
-	previous, opened := a.goLanguageServerDocs[path]
+	previous, opened := a.lsp.goDocs[path]
 	uri := languageServerFileURI(a.workingFilePath(path))
 	if !opened {
-		a.goLanguageServer.DidOpen(uri, "go", document.state.Buffer.String(), version)
-		a.goLanguageServerDocs[path] = version
+		a.lsp.goServer.DidOpen(uri, "go", document.state.Buffer.String(), version)
+		a.lsp.goDocs[path] = version
 	} else if previous != version {
-		a.goLanguageServer.DidChange(uri, document.state.Buffer.String(), version)
-		a.goLanguageServerDocs[path] = version
+		a.lsp.goServer.DidChange(uri, document.state.Buffer.String(), version)
+		a.lsp.goDocs[path] = version
 	}
 }

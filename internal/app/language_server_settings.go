@@ -152,21 +152,21 @@ type languageServerDraft struct {
 func (a *app) loadGoLanguageServerDraft() {
 	a.invalidateLanguageServerTest()
 	server := a.settings.LanguageServers[goLanguageServerID]
-	a.goLanguageServerEnabled = !server.Disabled
-	a.goLanguageServerPath = server.Path
-	a.goLanguageServerArgs = strings.Join(server.Arguments, "\n")
-	a.goFormatterCommand = server.Formatter
+	a.lsp.goEnabled = !server.Disabled
+	a.lsp.goPath = server.Path
+	a.lsp.goArgs = strings.Join(server.Arguments, "\n")
+	a.lsp.goFormatterCommand = server.Formatter
 	a.loadAdditionalLanguageServerDrafts()
 }
 
 func (a *app) loadAdditionalLanguageServerDrafts() {
-	a.languageServerDrafts = make(map[string]*languageServerDraft)
+	a.lsp.drafts = make(map[string]*languageServerDraft)
 	for _, profile := range languageServerProfilesWithSettings(a.settings.LanguageServers) {
 		if profile.ID == goLanguageServerID {
 			continue
 		}
 		server, configured := a.settings.LanguageServers[profile.ID]
-		a.languageServerDrafts[profile.ID] = &languageServerDraft{
+		a.lsp.drafts[profile.ID] = &languageServerDraft{
 			Enabled: configured && !server.Disabled, Path: server.Path, Arguments: strings.Join(server.Arguments, "\n"),
 			Formatter: server.Formatter,
 		}
@@ -175,13 +175,13 @@ func (a *app) loadAdditionalLanguageServerDrafts() {
 
 func (a *app) storeAdditionalLanguageServerDraft(c *ui.Context, id string) {
 	profile, ok := a.customLanguageServerProfileByID(id)
-	draft := a.languageServerDrafts[id]
-	if !ok || profile.ID == goLanguageServerID || draft == nil || a.languageServerInstalling[id] || a.languageServerUninstalling[id] {
+	draft := a.lsp.drafts[id]
+	if !ok || profile.ID == goLanguageServerID || draft == nil || a.lsp.installing[id] || a.lsp.uninstalling[id] {
 		return
 	}
-	if server := a.additionalLanguageServers[id]; server != nil {
+	if server := a.lsp.additional[id]; server != nil {
 		a.stopManagedLanguageServer(server)
-		delete(a.additionalLanguageServers, id)
+		delete(a.lsp.additional, id)
 	}
 	if a.settings.LanguageServers == nil {
 		a.settings.LanguageServers = make(map[string]languageServerSettings)
@@ -198,10 +198,7 @@ func (a *app) storeAdditionalLanguageServerDraft(c *ui.Context, id string) {
 }
 
 func (a *app) invalidateLanguageServerTest() {
-	a.languageServerTestSeq++
-	a.languageServerTestBusy = false
-	a.languageServerTestResult = ""
-	a.languageServerTestOK = false
+	a.lsp.invalidateTest()
 }
 
 func languageServerArguments(text string) []string {
@@ -228,16 +225,16 @@ func editLanguageServerLaunch(server languageServerSettings, path string, argume
 }
 
 func (a *app) storeGoLanguageServerDraft(c *ui.Context) {
-	if a.languageServerInstalling[goLanguageServerID] || a.languageServerUninstalling[goLanguageServerID] {
+	if a.lsp.installing[goLanguageServerID] || a.lsp.uninstalling[goLanguageServerID] {
 		return
 	}
 	a.invalidateLanguageServerTest()
 	a.stopGoLanguageServer()
-	path := strings.TrimSpace(a.goLanguageServerPath)
-	arguments := languageServerArguments(a.goLanguageServerArgs)
+	path := strings.TrimSpace(a.lsp.goPath)
+	arguments := languageServerArguments(a.lsp.goArgs)
 	server := editLanguageServerLaunch(a.settings.LanguageServers[goLanguageServerID], path, arguments)
-	server.Disabled = !a.goLanguageServerEnabled
-	server.Formatter = strings.TrimSpace(a.goFormatterCommand)
+	server.Disabled = !a.lsp.goEnabled
+	server.Formatter = strings.TrimSpace(a.lsp.goFormatterCommand)
 	if a.settings.LanguageServers == nil {
 		a.settings.LanguageServers = make(map[string]languageServerSettings)
 	}
@@ -261,7 +258,7 @@ func (a *app) testGoLanguageServer() {
 }
 
 func (a *app) testLanguageServerProfile(id string) {
-	if a.languageServerTestBusy {
+	if a.lsp.testBusy {
 		return
 	}
 	profile, ok := a.customLanguageServerProfileByID(id)
@@ -280,12 +277,12 @@ func (a *app) testLanguageServerProfile(id string) {
 			probeArguments = managedProbe
 		}
 	}
-	a.languageServerTestSeq++
-	sequence := a.languageServerTestSeq
-	a.languageServerTestID = id
-	a.languageServerTestBusy = true
-	a.languageServerTestResult = ""
-	a.languageServerTestOK = false
+	a.lsp.testSeq++
+	sequence := a.lsp.testSeq
+	a.lsp.testID = id
+	a.lsp.testBusy = true
+	a.lsp.testResult = ""
+	a.lsp.testOK = false
 	workspaceRoot, dataDir := a.snapshot.Root, a.dataDir()
 	go func() {
 		defer a.recoverBackground()
@@ -314,10 +311,10 @@ func (a *app) testLanguageServerProfile(id string) {
 			}
 		}
 		a.update(func() {
-			if sequence != a.languageServerTestSeq {
+			if sequence != a.lsp.testSeq {
 				return
 			}
-			a.languageServerTestBusy = false
+			a.lsp.testBusy = false
 			name := profile.Name
 			if id == goLanguageServerID {
 				name = "gopls"
@@ -331,14 +328,14 @@ func (a *app) testLanguageServerProfile(id string) {
 						message = prefix + tr("the language server did not respond within 5 seconds")
 					}
 				}
-				a.languageServerTestResult = trf("Could not start %s: %s", name, message)
+				a.lsp.testResult = trf("Could not start %s: %s", name, message)
 				return
 			}
-			a.languageServerTestOK = true
+			a.lsp.testOK = true
 			if output == "" {
 				output = trf("%s started successfully", name)
 			}
-			a.languageServerTestResult = output
+			a.lsp.testResult = output
 		})
 	}()
 }

@@ -38,7 +38,7 @@ func (s customPatchSession) PreviewPatchRequest(_ context.Context, request repos
 		return repository.PatchPreview{}, s.previewErr
 	}
 	if s.previewSession != nil {
-		return s.previewSession.PreviewPatchRequest(context.Background(), request)
+		return requireChangesSession(s.previewSession).PreviewPatchRequest(context.Background(), request)
 	}
 	return repository.PatchPreview{
 		Path: "Custom Patch", Text: request.Text, Target: request.Target, Reverse: request.Reverse, ThreeWay: request.ThreeWay, Clean: true,

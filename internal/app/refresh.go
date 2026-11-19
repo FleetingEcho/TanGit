@@ -43,14 +43,17 @@ func (a *app) requestQuietRefresh() {
 	generation := a.generation
 	sequence := a.snapshotSeq
 	remote := a.location.IsRemote()
+	ctx := a.repositoryWork.Context()
 	a.refreshBusy = true
 	go func() {
 		defer a.recoverQuietRefresh(refreshToken)
 		snapshot, err := func() (repository.Snapshot, error) {
-			if quiet, ok := session.(interface{ SnapshotQuiet(context.Context) (repository.Snapshot, error) }); ok {
-				return quiet.SnapshotQuiet(context.Background())
+			if quiet, ok := session.(interface {
+				SnapshotQuiet(context.Context) (repository.Snapshot, error)
+			}); ok {
+				return quiet.SnapshotQuiet(ctx)
 			}
-			return session.Snapshot(context.Background())
+			return session.Snapshot(ctx)
 		}()
 		a.updateChanged(func() bool {
 			if refreshToken != a.refreshToken {
@@ -105,9 +108,9 @@ func (a *app) requestAmbientRefresh() {
 // pruning when the user turned pruning on.
 func (a *app) fetchWithSetting(ctx context.Context, session repository.Session) error {
 	if a.settings.FetchPrune {
-		return session.FetchPrune(ctx)
+		return requireBranchRemoteSession(session).FetchPrune(ctx)
 	}
-	return session.Fetch(ctx)
+	return requireBranchRemoteSession(session).Fetch(ctx)
 }
 
 // fetchSuccessMessage names what the fetch did, so the toast matches the
@@ -142,14 +145,15 @@ func (a *app) maybeAutoFetch() {
 	a.lastAutoFetch = time.Now()
 	session := a.session
 	prune := a.settings.FetchPrune
+	parent := a.repositoryWork.Context()
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		ctx, cancel := context.WithTimeout(parent, 3*time.Minute)
 		defer cancel()
 		var err error
 		if prune {
-			err = session.FetchPrune(ctx)
+			err = requireBranchRemoteSession(session).FetchPrune(ctx)
 		} else {
-			err = session.Fetch(ctx)
+			err = requireBranchRemoteSession(session).Fetch(ctx)
 		}
 		if err != nil {
 			// The command log already holds the failure; do not nag.

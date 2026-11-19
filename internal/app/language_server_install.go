@@ -50,7 +50,7 @@ func (a *app) offerLanguageServerInstall(path string) {
 			continue
 		}
 		server, configured := a.settings.LanguageServers[profile.ID]
-		if server.Disabled || a.languageServerInstallPrompted[profile.ID] || a.languageServerExecutableAvailable(profile) {
+		if server.Disabled || a.lsp.installPrompted[profile.ID] || a.languageServerExecutableAvailable(profile) {
 			continue
 		}
 		// TypeScript and Rust keep their first-use offer. Other servers are
@@ -59,10 +59,10 @@ func (a *app) offerLanguageServerInstall(path string) {
 		if !configured && profile.ID != "typescript" && profile.ID != "rust" && !profile.EnabledByDefault {
 			continue
 		}
-		if a.languageServerInstallPrompted == nil {
-			a.languageServerInstallPrompted = make(map[string]bool)
+		if a.lsp.installPrompted == nil {
+			a.lsp.installPrompted = make(map[string]bool)
 		}
-		a.languageServerInstallPrompted[profile.ID] = true
+		a.lsp.installPrompted[profile.ID] = true
 		id, name := profile.ID, profile.Name
 		a.pendingToasts = append(a.pendingToasts, appToast{
 			kind: "info", title: trf("Install %s?", name),
@@ -74,7 +74,7 @@ func (a *app) offerLanguageServerInstall(path string) {
 
 func (a *app) installLanguageServer(id string) {
 	profile, ok := languageServerProfileByID(id)
-	if !ok || profile.Custom || a.languageServerInstalling[id] || a.languageServerUninstalling[id] {
+	if !ok || profile.Custom || a.lsp.installing[id] || a.lsp.uninstalling[id] {
 		return
 	}
 	dataDir := a.dataDir()
@@ -82,10 +82,10 @@ func (a *app) installLanguageServer(id string) {
 		a.notifyTranslated("error", trf("Could not install %s", profile.Name), "TanGit's user data directory is unavailable.")
 		return
 	}
-	if a.languageServerInstalling == nil {
-		a.languageServerInstalling = make(map[string]bool)
+	if a.lsp.installing == nil {
+		a.lsp.installing = make(map[string]bool)
 	}
-	a.languageServerInstalling[id] = true
+	a.lsp.installing[id] = true
 	connection := a.stopLanguageServerForLifecycle(id)
 	a.notifyTranslated("info", trf("Installing %s", profile.Name), "Downloading to TanGit's managed tools directory…")
 	go func() {
@@ -103,7 +103,7 @@ func (a *app) installLanguageServer(id string) {
 			}
 		}()
 		a.update(func() {
-			delete(a.languageServerInstalling, id)
+			delete(a.lsp.installing, id)
 			if err != nil {
 				// The previous executable settings were never changed. Resume them
 				// so a failed replacement does not disable working user software.

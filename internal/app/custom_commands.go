@@ -274,7 +274,7 @@ func (a *app) runCustomCommand(command, label string) {
 	generation := a.generation
 	a.customCommandSeq++
 	job := a.customCommandSeq
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	a.customCommandCancel = cancel
 	a.customCommandRunning = true
 	a.customCommandDone = make(chan struct{})

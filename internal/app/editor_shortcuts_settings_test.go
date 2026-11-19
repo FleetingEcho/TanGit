@@ -117,7 +117,7 @@ func TestEditorShortcutSettingsCancelAndFilter(t *testing.T) {
 	h.tester.Frame()
 	h.tester.Key(0, ui.KeyEscape)
 	h.tester.Frame()
-	if !h.app.settingsOpen || h.app.code.shortcutRecording != "" {
+	if !h.app.settingsUI.open || h.app.code.shortcutRecording != "" {
 		t.Fatal("Escape should cancel recording without closing Settings")
 	}
 

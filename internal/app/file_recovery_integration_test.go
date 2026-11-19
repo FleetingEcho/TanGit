@@ -308,7 +308,7 @@ func TestRealAppFileRecoveryAfterStateChangedPreservesNewWork(t *testing.T) {
 	})
 	file := recoveryConflictFile(t, session, "conflict.txt")
 	if err := runFileRecoveryMutation(context.Background(), session, file.Path, func() error {
-		return session.ResolveConflict(context.Background(), file, true)
+		return requireChangesSession(session).ResolveConflict(context.Background(), file, true)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +365,7 @@ func TestRealAppInterruptedIndexRecoveryRetriesFromPanel(t *testing.T) {
 	originalIndex := runGitIn(t, dir, "ls-files", "--stage", "-z", "--", path)
 	file := recoveryConflictFile(t, session, path)
 	if err := runFileRecoveryMutation(context.Background(), session, path, func() error {
-		return session.ResolveConflict(context.Background(), file, true)
+		return requireChangesSession(session).ResolveConflict(context.Background(), file, true)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +462,7 @@ func TestRealAppRecoverySupportsBinaryExecutableAndDeletion(t *testing.T) {
 			originalIndex := runGitIn(t, dir, "ls-files", "--stage", "-z", "--", path)
 			file := recoveryConflictFile(t, session, path)
 			if err := runFileRecoveryMutation(context.Background(), session, path, func() error {
-				return session.ResolveConflict(context.Background(), file, test.current)
+				return requireChangesSession(session).ResolveConflict(context.Background(), file, test.current)
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -547,7 +547,7 @@ func TestRealAppUnsupportedConflictDoesNotMutateWithoutRecovery(t *testing.T) {
 	called := false
 	err = runFileRecoveryMutation(context.Background(), session, name, func() error {
 		called = true
-		return session.ResolveConflict(context.Background(), file, true)
+		return requireChangesSession(session).ResolveConflict(context.Background(), file, true)
 	})
 	if !errors.Is(err, repository.ErrFileRecoveryUnsupported) || !strings.Contains(err.Error(), "symbolic") {
 		t.Fatalf("unsupported recovery error = %v", err)

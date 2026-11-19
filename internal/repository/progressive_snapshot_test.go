@@ -24,7 +24,7 @@ func TestCoreAndDetailsSnapshotsComposeTheFullSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestDetailsSurviveOptionalMetadataFailure(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".gitmodules"), []byte("[submodule \"broken\"]\n\tpath = nested\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestRecentReflogBoundsTheGitRead(t *testing.T) {
 		runGit(t, dir, "add", "file.txt")
 		runGit(t, dir, "commit", "-m", subject)
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -270,7 +270,7 @@ func (a *app) confirmSSHHostKey(ctx context.Context, info sshworkspace.HostKeyIn
 	prompt := &sshHostKeyPrompt{info: info, response: make(chan bool, 1)}
 	presented := make(chan struct{})
 	a.update(func() {
-		a.sshHostKeyPrompt = prompt
+		a.ssh.hostKeyPrompt = prompt
 		close(presented)
 	})
 	select {
@@ -283,8 +283,8 @@ func (a *app) confirmSSHHostKey(ctx context.Context, info sshworkspace.HostKeyIn
 		return accepted, nil
 	case <-ctx.Done():
 		a.update(func() {
-			if a.sshHostKeyPrompt == prompt {
-				a.sshHostKeyPrompt = nil
+			if a.ssh.hostKeyPrompt == prompt {
+				a.ssh.hostKeyPrompt = nil
 			}
 		})
 		return false, ctx.Err()
@@ -292,11 +292,11 @@ func (a *app) confirmSSHHostKey(ctx context.Context, info sshworkspace.HostKeyIn
 }
 
 func (a *app) respondSSHHostKey(accepted bool) {
-	prompt := a.sshHostKeyPrompt
+	prompt := a.ssh.hostKeyPrompt
 	if prompt == nil {
 		return
 	}
-	a.sshHostKeyPrompt = nil
+	a.ssh.hostKeyPrompt = nil
 	prompt.once.Do(func() { prompt.response <- accepted })
 }
 

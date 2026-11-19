@@ -272,7 +272,7 @@ func (a *app) confirmUndoLatestCommit(commit repository.Commit, mode repository.
 		confirmLabel: "Undo commit",
 		run: func() {
 			a.beginRepositoryActionMessage(success, "", func(ctx context.Context, session repository.Session) error {
-				return session.UndoLatestCommit(ctx, branch, commit, mode)
+				return requireHistorySession(session).UndoLatestCommit(ctx, branch, commit, mode)
 			}, nil)
 		},
 	})
@@ -313,7 +313,7 @@ func (a *app) confirmResetCommit(commit repository.Commit, mode repository.Reset
 		run: func() {
 			a.beginRepositoryActionMessage(actionMessage, "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.ResetToCommit(ctx, commit, mode)
+					return requireHistorySession(session).ResetToCommit(ctx, commit, mode)
 				}, nil)
 		},
 	})
@@ -333,7 +333,7 @@ func (a *app) confirmCheckoutCommit(commit repository.Commit) {
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Checked out %s", commit.ShortHash), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.CheckoutCommit(ctx, commit)
+					return requireHistorySession(session).CheckoutCommit(ctx, commit)
 				}, nil)
 		},
 	})
@@ -408,10 +408,10 @@ func (a *app) beginCommitBranch() {
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Checked out new branch %s", name), "",
 				func(ctx context.Context, session repository.Session) error {
-					if err := session.CreateBranch(ctx, name, commit.Hash); err != nil {
+					if err := requireBranchRemoteSession(session).CreateBranch(ctx, name, commit.Hash); err != nil {
 						return err
 					}
-					return session.CheckoutBranch(ctx, name)
+					return requireBranchRemoteSession(session).CheckoutBranch(ctx, name)
 				}, func() {
 					a.showCommitBranchForm = false
 					a.commitBranchName = ""

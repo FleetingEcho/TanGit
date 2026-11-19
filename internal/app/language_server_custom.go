@@ -134,7 +134,7 @@ func (a *app) openCustomLanguageServerForm(id string) {
 		form.DownloadURL = server.Custom.DownloadURL
 		form.Enabled = !server.Disabled
 	}
-	a.customLanguageServerForm = form
+	a.lsp.customForm = form
 }
 
 func customLanguageServerID(name string, existing map[string]languageServerSettings) string {
@@ -160,7 +160,7 @@ func customLanguageServerID(name string, existing map[string]languageServerSetti
 }
 
 func (a *app) saveCustomLanguageServer(c *ui.Context) {
-	form := &a.customLanguageServerForm
+	form := &a.lsp.customForm
 	if !form.Open {
 		return
 	}
@@ -182,9 +182,9 @@ func (a *app) saveCustomLanguageServer(c *ui.Context) {
 		if id == "" {
 			id = customLanguageServerID(name, a.settings.LanguageServers)
 		}
-		if server := a.additionalLanguageServers[id]; server != nil {
+		if server := a.lsp.additional[id]; server != nil {
 			a.stopManagedLanguageServer(server)
-			delete(a.additionalLanguageServers, id)
+			delete(a.lsp.additional, id)
 		}
 		if a.settings.LanguageServers == nil {
 			a.settings.LanguageServers = make(map[string]languageServerSettings)
@@ -198,7 +198,7 @@ func (a *app) saveCustomLanguageServer(c *ui.Context) {
 		}
 		form.Open = false
 		a.loadGoLanguageServerDraft()
-		a.languageServerCatalogSelected = id
+		a.lsp.catalogSelected = id
 		// A custom extension may not occur in any built-in profile. Install the
 		// editor callbacks on already-open documents as well as future loads.
 		for _, document := range a.code.documents {
@@ -215,14 +215,14 @@ func (a *app) removeCustomLanguageServer(c *ui.Context, id string) {
 	if a.settings.LanguageServers[id].Custom == nil {
 		return
 	}
-	if server := a.additionalLanguageServers[id]; server != nil {
+	if server := a.lsp.additional[id]; server != nil {
 		a.stopManagedLanguageServer(server)
-		delete(a.additionalLanguageServers, id)
+		delete(a.lsp.additional, id)
 	}
 	delete(a.settings.LanguageServers, id)
-	delete(a.languageServerDrafts, id)
-	if a.languageServerCatalogSelected == id {
-		a.languageServerCatalogSelected = ""
+	delete(a.lsp.drafts, id)
+	if a.lsp.catalogSelected == id {
+		a.lsp.catalogSelected = ""
 	}
 	a.settingsChanged(c)
 }

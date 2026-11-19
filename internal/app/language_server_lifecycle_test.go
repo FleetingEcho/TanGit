@@ -21,7 +21,7 @@ func TestFailedExternalLanguageServerOffersManagedInstall(t *testing.T) {
 	openRealCodeDocument(t, h, "src/main.py")
 	profile, _ := languageServerProfileByID("ruff")
 	h.app.settings.LanguageServers["ruff"] = languageServerSettings{Path: "/external/ruff", Arguments: []string{"server"}}
-	h.app.additionalLanguageServers["ruff"] = &managedLanguageServer{profile: profile, error: "initialize failed"}
+	h.app.lsp.additional["ruff"] = &managedLanguageServer{profile: profile, error: "initialize failed"}
 	h.tester.Frame()
 
 	button, found := h.tester.Find("Language servers")
@@ -69,7 +69,7 @@ func TestOwnedInstallReplacesExternalConfigurationOnlyAfterProbe(t *testing.T) {
 		t.Fatalf("external configuration changed before probe completed: %#v", got)
 	}
 	close(probeRelease)
-	h.waitFor(t, "managed installation", func() bool { return !h.app.languageServerInstalling["ruff"] })
+	h.waitFor(t, "managed installation", func() bool { return !h.app.lsp.installing["ruff"] })
 
 	root := managedLanguageServerRoot(h.app.pathUserData, "ruff")
 	got := h.app.settings.LanguageServers["ruff"]
@@ -112,7 +112,7 @@ func TestFailedOwnedProbePreservesExternalConfiguration(t *testing.T) {
 		return "", errors.New("bad executable")
 	}
 	h.app.installLanguageServer("ruff")
-	h.waitFor(t, "failed managed probe", func() bool { return !h.app.languageServerInstalling["ruff"] })
+	h.waitFor(t, "failed managed probe", func() bool { return !h.app.lsp.installing["ruff"] })
 	if got := h.app.settings.LanguageServers["ruff"]; !reflect.DeepEqual(got, external) {
 		t.Fatalf("failed probe replaced external configuration: %#v", got)
 	}
@@ -171,7 +171,7 @@ func TestOwnedIsolatedUninstallRequiresConfirmationAndPreservesSharedState(t *te
 		t.Fatalf("directory was removed before confirmation: %v", err)
 	}
 	h.app.acceptConfirm()
-	h.waitFor(t, "managed removal", func() bool { return !h.app.languageServerUninstalling["ruff"] })
+	h.waitFor(t, "managed removal", func() bool { return !h.app.lsp.uninstalling["ruff"] })
 	if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("owned root was not removed: %v", err)
 	}
@@ -277,7 +277,7 @@ func TestManagedUninstallRefusesMissingOrCorruptManifest(t *testing.T) {
 			t.Cleanup(func() { removeManagedLanguageServerDirectory = originalRemove })
 			removeManagedLanguageServerDirectory = func(string) error { removed = true; return nil }
 			h.app.beginManagedLanguageServerRemoval("ruff", root)
-			h.waitFor(t, "manifest refusal", func() bool { return !h.app.languageServerUninstalling["ruff"] })
+			h.waitFor(t, "manifest refusal", func() bool { return !h.app.lsp.uninstalling["ruff"] })
 			if removed {
 				t.Fatal("RemoveAll ran without a valid matching manifest")
 			}
@@ -340,7 +340,7 @@ func TestManagedLifecycleBusyAndUninstallingStates(t *testing.T) {
 	}
 	h := menuTestApp(t)
 	h.app.pathUserData = t.TempDir()
-	h.app.languageServerUninstalling = map[string]bool{"ruff": true}
+	h.app.lsp.uninstalling = map[string]bool{"ruff": true}
 	h.app.installLanguageServer("ruff")
 	if calls != 0 {
 		t.Fatal("duplicate install started during managed removal")
@@ -349,17 +349,17 @@ func TestManagedLifecycleBusyAndUninstallingStates(t *testing.T) {
 	h.app.settings.LanguageServers = map[string]languageServerSettings{"ruff": {
 		Path: filepath.Join(root, "bin", "ruff"), Managed: &managedLanguageServerSettings{Root: root},
 	}}
-	h.app.languageServerUninstalling = map[string]bool{"ruff": true}
-	h.app.settingsPage = settingsPageLSP
+	h.app.lsp.uninstalling = map[string]bool{"ruff": true}
+	h.app.settingsUI.page = settingsPageLSP
 	h.app.openSettings()
 	h.tester.Frame()
-	h.app.languageServerCatalogQuery = "Ruff"
+	h.app.lsp.catalogQuery = "Ruff"
 	h.tester.Frame()
 	if !h.tester.HasText("Removing…") || h.tester.HasText("Installing…") {
 		t.Fatalf("managed-removal state is inaccurate: %q", h.texts())
 	}
-	h.app.languageServerInstalling = map[string]bool{"ruff": true}
-	h.app.languageServerUninstalling = nil
+	h.app.lsp.installing = map[string]bool{"ruff": true}
+	h.app.lsp.uninstalling = nil
 	h.app.removeManagedLanguageServer("ruff")
 	if h.app.confirm != nil {
 		t.Fatal("duplicate removal opened confirmation while installation was busy")
@@ -403,7 +403,7 @@ func TestGoInstallStartsServerAndClearsMissingStatus(t *testing.T) {
 	h.app.code.documents = map[string]*codeDocument{"main.go": {
 		path: "main.go", state: &editor.State{Buffer: editor.NewBuffer("package main\n")},
 	}}
-	h.app.goLanguageServerMissing = true
+	h.app.lsp.goMissing = true
 	installed := false
 	probeLanguageServerInstallation = func(languageServerInstallation) (string, error) { return "gopls test", nil }
 	languageServerLookPath = func(program string) (string, error) {
@@ -420,10 +420,10 @@ func TestGoInstallStartsServerAndClearsMissingStatus(t *testing.T) {
 	}
 
 	h.app.installLanguageServer("go")
-	h.waitFor(t, "the installed Go language server to start", func() bool { return h.app.goLanguageServer != nil })
+	h.waitFor(t, "the installed Go language server to start", func() bool { return h.app.lsp.goServer != nil })
 	profile, _ := languageServerProfileByID("go")
-	if !h.app.languageServerExecutableAvailable(profile) || h.app.goLanguageServerMissing {
-		t.Fatalf("managed Go installation remains unavailable: missing=%v settings=%+v", h.app.goLanguageServerMissing, h.app.goLanguageServerSettings())
+	if !h.app.languageServerExecutableAvailable(profile) || h.app.lsp.goMissing {
+		t.Fatalf("managed Go installation remains unavailable: missing=%v settings=%+v", h.app.lsp.goMissing, h.app.goLanguageServerSettings())
 	}
 	statuses := h.app.codeLanguageServerStatuses()
 	if len(statuses) != 1 || !statuses[0].running || statuses[0].missing || statuses[0].installing || statuses[0].failed {
@@ -443,16 +443,16 @@ func TestAvailableGoServerRecoversFromMissingStatus(t *testing.T) {
 	h.app.code.documents = map[string]*codeDocument{"main.go": {
 		path: "main.go", state: &editor.State{Buffer: editor.NewBuffer("package main\n")},
 	}}
-	h.app.goLanguageServerMissing = true
+	h.app.lsp.goMissing = true
 	languageServerLookPath = func(program string) (string, error) { return program, nil }
 	connection := newFakeLanguageServerConnection()
 	connectLanguageServer = func(languageServerLaunch) (languageServerConnection, error) { return connection, nil }
 
 	h.app.syncGoLanguageServer()
-	h.waitFor(t, "available Go server to recover from a stale missing status", func() bool { return h.app.goLanguageServer != nil })
+	h.waitFor(t, "available Go server to recover from a stale missing status", func() bool { return h.app.lsp.goServer != nil })
 	statuses := h.app.codeLanguageServerStatuses()
-	if h.app.goLanguageServerMissing || len(statuses) != 1 || !statuses[0].running || statuses[0].missing {
-		t.Fatalf("stale download state remains: missing=%v statuses=%+v", h.app.goLanguageServerMissing, statuses)
+	if h.app.lsp.goMissing || len(statuses) != 1 || !statuses[0].running || statuses[0].missing {
+		t.Fatalf("stale download state remains: missing=%v statuses=%+v", h.app.lsp.goMissing, statuses)
 	}
 }
 
@@ -470,7 +470,7 @@ func TestAvailableManagedServerRecoversFromMissingStatus(t *testing.T) {
 		path: "main.py", state: &editor.State{Buffer: editor.NewBuffer("answer = 42\n")},
 	}}
 	server := &managedLanguageServer{profile: profile, missing: true}
-	h.app.additionalLanguageServers = map[string]*managedLanguageServer{"ruff": server}
+	h.app.lsp.additional = map[string]*managedLanguageServer{"ruff": server}
 	languageServerLookPath = func(program string) (string, error) { return program, nil }
 	connection := newFakeLanguageServerConnection()
 	connectLanguageServer = func(languageServerLaunch) (languageServerConnection, error) { return connection, nil }

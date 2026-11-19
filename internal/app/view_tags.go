@@ -302,7 +302,7 @@ func (a *app) beginPushAllTags() {
 		"This publishes every local tag to the remote. Tags are immutable references other users may already depend on.", func() {
 			a.beginRepositoryActionMessage(tr("Pushed all tags"), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.PushAllTags(ctx)
+					return requireBranchRemoteSession(session).PushAllTags(ctx)
 				}, nil)
 		})
 }

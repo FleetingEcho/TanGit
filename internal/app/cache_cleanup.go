@@ -400,7 +400,7 @@ func (a *app) measureCacheUsage(notifyOnCompletion bool) {
 			if notify {
 				a.notify("success", "Cache size refreshed", trf("Total cache: %s", formatRemoteTransferBytes(a.cacheUsage.totalBytes())))
 			}
-			return a.settingsOpen && a.settingsPage == settingsPageCache
+			return a.settingsUI.open && a.settingsUI.page == settingsPageCache
 		})
 	})
 }

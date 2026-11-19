@@ -94,7 +94,6 @@ type OperationDriveOptions struct {
 // implementations remain source-compatible; callers can use type assertion
 // and fall back to ContinueOperation and AbortOperation when necessary.
 type OperationSession interface {
-	Session
 	OperationState(context.Context) (OperationState, error)
 	DriveOperation(context.Context, OperationDriveOptions) error
 }

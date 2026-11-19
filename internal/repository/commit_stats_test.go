@@ -76,7 +76,7 @@ func TestCommitLineStatsReusesImmutableCommitTotals(t *testing.T) {
 	}
 	runGit(t, dir, "add", "one.txt")
 	runGit(t, dir, "commit", "-m", "initial")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestCommitStatsFailurePreservesCommitHistory(t *testing.T) {
 	}
 	runGit(t, dir, "add", "one.txt")
 	runGit(t, dir, "commit", "-m", "initial")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

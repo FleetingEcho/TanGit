@@ -11,7 +11,7 @@ func TestScreenshotChangesStatusFilters(t *testing.T) {
 		t.Skip("set MYGO_SHOTS to a directory to write the filter preview")
 	}
 	h := menuTestApp(t)
-	h.app.reviewedFiles = map[string]bool{"one.txt": true}
+	h.app.review.files = map[string]bool{"one.txt": true}
 	h.tester.SetDark(true)
 	openChangesFilterPopover(t, h)
 	h.tester.Frame()

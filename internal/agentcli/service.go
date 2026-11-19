@@ -45,6 +45,15 @@ type repositoryOpener interface {
 	Open(context.Context, string) (repository.Session, error)
 }
 
+// serviceSession is the explicit composition used by the CLI's task, review
+// and patch workflows. Individual UI actions still depend on narrower groups.
+type serviceSession interface {
+	repository.Session
+	repository.HistorySession
+	repository.ChangesSession
+	repository.WorktreeSession
+}
+
 // Service performs operations without consulting any desktop UI state.
 type Service struct {
 	dataDir string
@@ -96,11 +105,20 @@ func closeSession(session repository.Session) {
 	}
 }
 
-func (s *Service) open(ctx context.Context, path string) (repository.Session, error) {
+func (s *Service) open(ctx context.Context, path string) (serviceSession, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return s.opener.Open(ctx, path)
+	session, err := s.opener.Open(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	capabilities, ok := session.(serviceSession)
+	if !ok {
+		closeSession(session)
+		return nil, errors.New("repository session lacks agent CLI capabilities")
+	}
+	return capabilities, nil
 }
 
 // List returns tasks newest first; repository is an exact opaque ID filter.
@@ -439,7 +457,7 @@ func publicPatchResult(destination string, preview repository.PatchPreview) Patc
 	}
 }
 
-func (s *Service) previewPatch(ctx context.Context, params PatchParams) (repository.Session, repository.PatchPreview, PatchResult, error) {
+func (s *Service) previewPatch(ctx context.Context, params PatchParams) (serviceSession, repository.PatchPreview, PatchResult, error) {
 	destination, err := absolutePath(params.Destination, "destination worktree")
 	if err != nil {
 		return nil, repository.PatchPreview{}, PatchResult{}, err

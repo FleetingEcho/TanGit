@@ -11,7 +11,7 @@ func TestNewSSHProfileDefaultsAndContentHeight(t *testing.T) {
 	a := newApp(fakeOpener{})
 	a.settingsLoaded = true
 	a.openSSHWorkspacePicker()
-	draft := a.sshProfileDraft
+	draft := a.ssh.profileDraft
 	if draft.Username != "root" || draft.AuthMode != sshAuthPassword || draft.DefaultRoot != "/home" || draft.Port != "22" {
 		t.Fatalf("new profile defaults=%+v", draft)
 	}

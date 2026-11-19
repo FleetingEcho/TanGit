@@ -34,7 +34,7 @@ func TestManagedLanguageServerDeduplicatesWorkspaceErrors(t *testing.T) {
 	h := menuTestApp(t)
 	profile, _ := languageServerProfileByID("rust")
 	server := &managedLanguageServer{profile: profile, sequence: 1}
-	h.app.additionalLanguageServers = map[string]*managedLanguageServer{"rust": server}
+	h.app.lsp.additional = map[string]*managedLanguageServer{"rust": server}
 	raw, _ := json.Marshal(map[string]any{"type": 1, "message": "Failed to discover workspace. Failed to load workspaces."})
 	for range 2 {
 		h.app.handleManagedLanguageServerNotification(server, 1, "window/showMessage", raw)

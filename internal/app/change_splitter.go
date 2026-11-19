@@ -168,7 +168,7 @@ func (a *app) beginChangeSplitAdvice() {
 	if assist.cancel != nil {
 		assist.cancel()
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	assist.cancel = cancel
 	assist.running = true
 	assist.status = "Loading canonical source diff"
@@ -176,7 +176,7 @@ func (a *app) beginChangeSplitAdvice() {
 	injected, factory, command := a.assistance.advisor, a.assistance.advisorFactory, a.agents.assistCommand
 	go func() {
 		defer a.recoverBackground()
-		sourcePatch, runErr := session.WorkingTreeFilePatch(ctx, file)
+		sourcePatch, runErr := requireHistorySession(session).WorkingTreeFilePatch(ctx, file)
 		binary := false
 		localOnly := false
 		var request agentassist.AdviceRequest
@@ -232,7 +232,7 @@ func (a *app) beginChangeSplitAdvice() {
 				if groups[index].patch == "" {
 					continue
 				}
-				preview, previewErr := session.PreviewPatchRequest(ctx, repository.PatchRequest{
+				preview, previewErr := requireChangesSession(session).PreviewPatchRequest(ctx, repository.PatchRequest{
 					Text: groups[index].patch, Target: repository.PatchIndex,
 				})
 				if previewErr != nil {
@@ -291,7 +291,7 @@ func (a *app) applyChangeSplitGroup(index int) {
 	preview := *group.preview
 	a.beginRepositoryActionMessage(tr("Staged Change Splitter group"), assist.file.Path,
 		func(ctx context.Context, session repository.Session) error {
-			return session.ApplyPatch(ctx, preview)
+			return requireChangesSession(session).ApplyPatch(ctx, preview)
 		}, func() {
 			a.closeChangeSplitter()
 			a.notify("success", tr("Change group staged"), tr("Only this group's index entries changed. The working tree was not changed and no commit was created."))

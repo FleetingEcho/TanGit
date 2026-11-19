@@ -913,7 +913,7 @@ func (a *app) changeHeaderRow(c *ui.Context, title string, icon *ui.SVG, count i
 			flatIconButton(c, "Unstage all changes", "Unstage every file", unstageIcon, 14, 4,
 				a.actionBusy || !hasStagedFiles(a.snapshot.Files), func() {
 					a.beginRepositoryAction("", func(ctx context.Context, session repository.Session) error {
-						return session.UnstageAll(ctx)
+						return requireChangesSession(session).UnstageAll(ctx)
 					}, nil)
 				})
 			return
@@ -921,7 +921,7 @@ func (a *app) changeHeaderRow(c *ui.Context, title string, icon *ui.SVG, count i
 		flatIconButton(c, "Stage all changes", "Stage every change", stageIcon, 14, 4,
 			a.actionBusy || !hasUnstagedFiles(a.snapshot.Files), func() {
 				a.beginRepositoryAction("", func(ctx context.Context, session repository.Session) error {
-					return session.StageAll(ctx)
+					return requireChangesSession(session).StageAll(ctx)
 				}, nil)
 			})
 		flatIconButton(c, "Discard all changes", "Discard every change", revertIcon, 14, 4,
@@ -971,14 +971,14 @@ func (a *app) changeFileRow(row ui.ListRow, change changeRow, index int, guides 
 		if reveal {
 			reviewLabel := trf("Mark reviewed %s", file.Path)
 			reviewIcon := markReviewedIcon
-			if a.reviewedFiles[file.Path] {
+			if a.review.files[file.Path] {
 				reviewLabel = trf("Mark unreviewed %s", file.Path)
 				reviewIcon = markUnreviewedIcon
 			}
 			rowIconButton(row.Context, reviewLabel, reviewActionTooltip(), reviewIcon, func() {
-				a.setFileReviewed(file, !a.reviewedFiles[file.Path])
+				a.setFileReviewed(file, !a.review.files[file.Path])
 			})
-		} else if a.reviewedFiles[file.Path] {
+		} else if a.review.files[file.Path] {
 			// Badge builds its text before TextColor can be chained onto it. Build
 			// this small pill directly so its label gets the contrasting
 			// foreground instead of inheriting the row's success green.
@@ -1087,7 +1087,7 @@ func (a *app) resolveConflictFile(file repository.File, current bool) {
 	a.confirmAttention("Resolve conflict", file.Path+"\n"+side, "This replaces the entire conflicted file with the chosen side and stages it. Manual resolutions in the file may be lost.", func() {
 		a.beginRepositoryAction(file.Path, func(ctx context.Context, session repository.Session) error {
 			return runFileRecoveryMutation(ctx, session, file.Path, func() error {
-				return session.ResolveConflict(ctx, file, current)
+				return requireChangesSession(session).ResolveConflict(ctx, file, current)
 			})
 		}, nil)
 	})
@@ -1102,12 +1102,12 @@ func (a *app) beginStageFile(file repository.File, stage bool) {
 		if stage {
 			if file.HasMergeConflicts {
 				return runFileRecoveryMutation(ctx, session, file.Path, func() error {
-					return session.Stage(ctx, file)
+					return requireChangesSession(session).Stage(ctx, file)
 				})
 			}
-			return session.Stage(ctx, file)
+			return requireChangesSession(session).Stage(ctx, file)
 		}
-		return session.Unstage(ctx, file)
+		return requireChangesSession(session).Unstage(ctx, file)
 	}, nil)
 }
 

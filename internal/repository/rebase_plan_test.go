@@ -109,7 +109,7 @@ func rebasePlanSession(t *testing.T, session Session) RebasePlanSession {
 
 func TestActiveRebasePlanReadsLiveStepsAndRejectsExternalCAS(t *testing.T) {
 	dir, commits := newRebasePlanRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestPrepareAndStartMarkedBasePlanUsesFixedFullSHA(t *testing.T) {
 	runGit(t, dir, "commit", "--allow-empty", "-m", "target one")
 	runGit(t, dir, "checkout", "active-branch")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func TestPreparedPlanStartsActionEditWithoutDroppingTodoLines(t *testing.T) {
 	dir, commits := newRebasePlanRepository(t)
 	runGit(t, dir, "checkout", "-b", "target", commits[0].Hash)
 	runGit(t, dir, "checkout", "main")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +292,7 @@ func TestPreparedPlanShowsUpdateRefsFromGit(t *testing.T) {
 	runGit(t, dir, "config", "rebase.updateRefs", "true")
 	runGit(t, dir, "checkout", "-b", "target", commits[0].Hash)
 	runGit(t, dir, "checkout", "main")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

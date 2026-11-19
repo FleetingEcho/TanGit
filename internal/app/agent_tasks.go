@@ -211,7 +211,7 @@ func (a *app) beginCreateAgentTask() {
 		if err != nil {
 			return err
 		}
-		if err := session.CreateWorktree(ctx, repository.WorktreeCreateOptions{Path: path, Base: base, Branch: branch, SparsePaths: profile.SparsePaths}); err != nil {
+		if err := requireWorktreeSession(session).CreateWorktree(ctx, repository.WorktreeCreateOptions{Path: path, Base: base, Branch: branch, SparsePaths: profile.SparsePaths}); err != nil {
 			return err
 		}
 		created, err = store.Create(agentwork.Task{

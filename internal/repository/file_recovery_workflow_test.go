@@ -56,7 +56,7 @@ func TestFileRecoveryWorkflowDiscoversAndAdvancesOriginalRecord(t *testing.T) {
 		t.Fatalf("unrelated path unexpectedly acquired recovery %q", other)
 	}
 
-	reopened, err := (Opener{}).Open(ctx, dir)
+	reopened, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,6 +7,15 @@ import (
 	"testing"
 )
 
+func requireReviewSession(t *testing.T, session Session) ReviewSession {
+	t.Helper()
+	reviewer, ok := session.(ReviewSession)
+	if !ok {
+		t.Fatal("repository session does not provide reviewed-file state")
+	}
+	return reviewer
+}
+
 // Review state belongs to the content between HEAD and the working tree. Moving
 // that same content into or out of the index is not a new review, while an edit
 // is—even when another process makes the edit and the session is reopened.
@@ -28,16 +37,17 @@ func TestReviewedFilesFollowContentAndPersist(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	session, err := (Opener{}).Open(ctx, dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 	if err != nil {
 		t.Fatal(err)
 	}
+	reviewer := requireReviewSession(t, session)
 	snapshot, err := session.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, file := range snapshot.Files {
-		if err := session.SetFileReviewed(ctx, file, true); err != nil {
+		if err := reviewer.SetFileReviewed(ctx, file, true); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -47,7 +57,7 @@ func TestReviewedFilesFollowContentAndPersist(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		reviewed, err := session.ReviewedFiles(ctx, snapshot.Files)
+		reviewed, err := reviewer.ReviewedFiles(ctx, snapshot.Files)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -73,11 +83,11 @@ func TestReviewedFilesFollowContentAndPersist(t *testing.T) {
 
 	// Nothing is stored in the working tree and a new session sees the same
 	// content identities. The old files are now edited, so neither is current.
-	reopened, err := (Opener{}).Open(ctx, dir)
+	reopened, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	reviewed, err := reopened.ReviewedFiles(ctx, snapshot.Files)
+	reviewed, err := requireReviewSession(t, reopened).ReviewedFiles(ctx, snapshot.Files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,22 +106,23 @@ func TestReviewedFileCanBeUnmarked(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	session, err := (Opener{}).Open(ctx, dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 	if err != nil {
 		t.Fatal(err)
 	}
+	reviewer := requireReviewSession(t, session)
 	snapshot, err := session.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	file := snapshot.Files[0]
-	if err := session.SetFileReviewed(ctx, file, true); err != nil {
+	if err := reviewer.SetFileReviewed(ctx, file, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := session.SetFileReviewed(ctx, file, false); err != nil {
+	if err := reviewer.SetFileReviewed(ctx, file, false); err != nil {
 		t.Fatal(err)
 	}
-	reviewed, err := session.ReviewedFiles(ctx, []File{file})
+	reviewed, err := reviewer.ReviewedFiles(ctx, []File{file})
 	if err != nil {
 		t.Fatal(err)
 	}

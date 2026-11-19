@@ -12,7 +12,7 @@ import (
 
 type checkoutUndoFixture struct {
 	dir        string
-	session    Session
+	session    FullSession
 	mainSHA    string
 	featureSHA string
 	mainText   string

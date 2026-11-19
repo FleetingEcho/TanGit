@@ -27,7 +27,7 @@ func (a *app) beginCreateBranch() {
 	}
 	a.beginRepositoryActionMessage(trf("Created branch %s", name), "",
 		func(ctx context.Context, session repository.Session) error {
-			return session.CreateBranch(ctx, name, base)
+			return requireBranchRemoteSession(session).CreateBranch(ctx, name, base)
 		}, func() {
 			a.newBranchName = ""
 			a.newBranchBase = ""
@@ -142,7 +142,7 @@ func (a *app) beginRenameBranch() {
 	newName := strings.TrimSpace(a.renameBranch)
 	a.beginRepositoryActionMessage(trf("Renamed %s to %s", oldName, newName), "",
 		func(ctx context.Context, session repository.Session) error {
-			return session.RenameBranch(ctx, oldName, newName)
+			return requireBranchRemoteSession(session).RenameBranch(ctx, oldName, newName)
 		}, func() {
 			a.selectedBranch = selectedBranchIndex(a.snapshot.Branches, newName)
 			a.syncBranchRow()
@@ -171,7 +171,7 @@ func (a *app) confirmMergeBranch(branch repository.Branch) {
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Merged %s into %s", branchDisplay(branch), currentBranch), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.MergeBranch(ctx, branch.Name)
+					return requireBranchRemoteSession(session).MergeBranch(ctx, branch.Name)
 				}, nil)
 		},
 	})
@@ -197,7 +197,7 @@ func (a *app) confirmDeleteBranch(branch repository.Branch) {
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Deleted branch %s", branchDisplay(branch)), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.DeleteBranch(ctx, branch.Name, false)
+					return requireBranchRemoteSession(session).DeleteBranch(ctx, branch.Name, false)
 				}, nil)
 		},
 	})
@@ -207,7 +207,7 @@ func (a *app) checkoutBranch(name string) {
 	a.confirmAttention("Checkout", name, "This changes the checked-out branch and working-tree files. Uncommitted changes may be carried across or prevent checkout.", func() {
 		a.beginRepositoryActionMessage(trf("Checked out %s", name), "",
 			func(ctx context.Context, session repository.Session) error {
-				return session.CheckoutBranch(ctx, name)
+				return requireBranchRemoteSession(session).CheckoutBranch(ctx, name)
 			}, nil)
 	})
 }
@@ -223,7 +223,7 @@ func (a *app) beginPullBranch(branch repository.Branch) {
 	a.confirmAttention("Pull", branch.Name, "This integrates upstream changes and may change branch history or working-tree files. Conflicts may require resolution.", func() {
 		a.beginRepositoryActionMessage(message, "",
 			func(ctx context.Context, session repository.Session) error {
-				return session.PullBranch(ctx, branch.Name)
+				return requireBranchRemoteSession(session).PullBranch(ctx, branch.Name)
 			}, nil)
 	})
 }
@@ -234,7 +234,7 @@ func (a *app) beginFastForwardBranch(branch repository.Branch) {
 	a.confirmAttention("Fast-forward", branch.Name, "This integrates upstream changes and may change branch history or working-tree files. Conflicts may require resolution.", func() {
 		a.beginRepositoryActionMessage(trf("Fast-forwarded %s", branchDisplay(branch)), "",
 			func(ctx context.Context, session repository.Session) error {
-				return session.FastForwardBranch(ctx, branch.Name)
+				return requireBranchRemoteSession(session).FastForwardBranch(ctx, branch.Name)
 			}, nil)
 	})
 }
@@ -246,7 +246,7 @@ func (a *app) beginUnsetUpstream(branch repository.Branch) {
 	a.confirmAttention("Unset upstream", branch.Name, "This changes branch tracking configuration and affects future pulls and pushes.", func() {
 		a.beginRepositoryActionMessage(trf("%s no longer tracks %s/%s", branch.Name, branch.UpstreamRemote, branch.UpstreamBranch), "",
 			func(ctx context.Context, session repository.Session) error {
-				return session.UnsetUpstream(ctx, branch.Name)
+				return requireBranchRemoteSession(session).UnsetUpstream(ctx, branch.Name)
 			}, nil)
 	})
 }
@@ -298,7 +298,7 @@ func (a *app) confirmForceCheckoutBranch(branch repository.Branch) {
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Force checked out %s", branchDisplay(branch)), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.ForceCheckoutBranch(ctx, branch.Name)
+					return requireBranchRemoteSession(session).ForceCheckoutBranch(ctx, branch.Name)
 				}, nil)
 		},
 	})
@@ -691,6 +691,7 @@ func (a *app) requestBranchCommits(branch string) {
 	filtered := commitFilterNarrows(a.branchFilter)
 	session := a.session
 	repositoryGeneration := a.generation
+	ctx := a.repositoryWork.Context()
 	// A quiet refresh names the commit it keeps chosen; a user asking for
 	// another branch leaves both empty, and the list starts at its top.
 	keep := a.branchCommitsKeep
@@ -727,9 +728,9 @@ func (a *app) requestBranchCommits(branch string) {
 		var commits []repository.Commit
 		var err error
 		if filtered {
-			commits, err = session.SearchCommits(context.Background(), filter)
+			commits, err = requireCommitSearchSession(session).SearchCommits(ctx, filter)
 		} else {
-			commits, err = session.BranchCommits(context.Background(), branch, repository.SnapshotCommitLimit)
+			commits, err = requireBranchCommitsSession(session).BranchCommits(ctx, branch, repository.SnapshotCommitLimit)
 		}
 		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation || token != a.branchCommitsToken {
@@ -777,6 +778,7 @@ func (a *app) requestMoreBranchCommits(branch string) {
 	}
 	session := a.session
 	repositoryGeneration := a.generation
+	ctx := a.repositoryWork.Context()
 	token := a.branchCommitsToken
 	key := a.branchCommitsKey(branch)
 	firstVisible, _ := a.branchCommitList.Visible()
@@ -794,9 +796,9 @@ func (a *app) requestMoreBranchCommits(branch string) {
 		var commits []repository.Commit
 		var err error
 		if filtered {
-			commits, err = session.SearchCommits(context.Background(), filter)
+			commits, err = requireCommitSearchSession(session).SearchCommits(ctx, filter)
 		} else {
-			commits, err = session.BranchCommits(context.Background(), branch, limit)
+			commits, err = requireBranchCommitsSession(session).BranchCommits(ctx, branch, limit)
 		}
 		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation || token != a.branchCommitsToken || key != a.branchCommitsKey(branch) {
@@ -838,6 +840,7 @@ func (a *app) requestBranchCommitFiles(commit repository.Commit) {
 	}
 	session := a.session
 	repositoryGeneration := a.generation
+	ctx := a.repositoryWork.Context()
 	// A quiet refresh keeps the file the user was reading within the commit.
 	keepPath := a.branchCommitFilesKeepPath
 	a.branchCommitFilesKeepPath = ""
@@ -853,7 +856,7 @@ func (a *app) requestBranchCommitFiles(commit repository.Commit) {
 
 	go func() {
 		defer a.recoverBackground()
-		files, err := session.CommitFiles(context.Background(), commit)
+		files, err := requireHistorySession(session).CommitFiles(ctx, commit)
 		a.updateChanged(func() bool {
 			if token != a.branchCommitToken {
 				return false
@@ -898,6 +901,7 @@ func (a *app) requestBranchCommitFileDiff(commit repository.Commit, file reposit
 	}
 	session := a.session
 	repositoryGeneration := a.generation
+	ctx := a.repositoryWork.Context()
 	a.branchCommitToken++
 	token := a.branchCommitToken
 	a.branchCommitDiffHash = commit.Hash
@@ -909,13 +913,13 @@ func (a *app) requestBranchCommitFileDiff(commit repository.Commit, file reposit
 	options := a.diffOptions
 	go func() {
 		defer a.recoverBackground()
-		diff, err := session.CommitFileDiff(context.Background(), commit, file, options)
+		diff, err := requireHistorySession(session).CommitFileDiff(ctx, commit, file, options)
 		var state *editor.DiffState
 		var media *mediaReview
 		if err == nil {
 			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
 			if err == nil && state == nil && isMediaPath(file.Path) {
-				media, err = loadMediaReview(context.Background(), session, repository.MediaRequest{
+				media, err = loadMediaReview(ctx, session, repository.MediaRequest{
 					Source: repository.MediaCommit, Commit: commit, CommitFile: file,
 				})
 			}
@@ -1221,7 +1225,7 @@ func (a *app) beginMoveCommitsToNewBranch() {
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Moved unpushed commits to %s", name), "",
 				func(ctx context.Context, session repository.Session) error {
-					_, err := session.MoveUnpushedCommits(ctx, name)
+					_, err := requireHistorySession(session).MoveUnpushedCommits(ctx, name)
 					return err
 				}, func() {
 					a.moveCommitsName = ""
@@ -1268,7 +1272,7 @@ func (a *app) confirmDeleteStaleBranches() {
 			a.beginRepositoryActionMessage(trf("Deleted stale branches"), "", func(ctx context.Context, session repository.Session) error {
 				var failed []string
 				for _, name := range names {
-					if err := session.DeleteBranch(ctx, name, false); err != nil {
+					if err := requireBranchRemoteSession(session).DeleteBranch(ctx, name, false); err != nil {
 						failed = append(failed, name)
 					}
 				}

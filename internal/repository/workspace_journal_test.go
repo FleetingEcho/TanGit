@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func workspaceRecoveryFixture(t *testing.T) (string, Session) {
+func workspaceRecoveryFixture(t *testing.T) (string, FullSession) {
 	t.Helper()
 	dir, session := recoveryRepository(t)
 	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".env\nignored/\n.env.extra\n"), 0o600); err != nil {
@@ -33,7 +33,10 @@ func workspaceRecoveryFixture(t *testing.T) (string, Session) {
 	return dir, session
 }
 
-func discardWorkspaceRecoveryFiles(t *testing.T, dir string, session Session) OperationRecord {
+func discardWorkspaceRecoveryFiles(t *testing.T, dir string, session interface {
+	Session
+	ChangesSession
+}) OperationRecord {
 	t.Helper()
 	var sessionFiles []File
 	for _, state := range sessionSnapshotForTest(t, session).Files {
@@ -83,7 +86,7 @@ func TestOperationWorkspaceUndoRestoresIgnoredPayloadAndIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	record := discardWorkspaceRecoveryFiles(t, dir, session)
-	reopened, err := (Opener{}).Open(context.Background(), dir)
+	reopened, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -42,10 +42,10 @@ func keyboardCommands() []keyboardCommand {
 		}},
 		{"Changes", "a", "Stage or unstage all changes", 0, ui.KeyA, func(a *app) {
 			if hasStagedFiles(a.snapshot.Files) {
-				a.beginRepositoryActionMessage(tr("Unstaged all changes"), "", func(ctx context.Context, s repository.Session) error { return s.UnstageAll(ctx) }, nil)
+				a.beginRepositoryActionMessage(tr("Unstaged all changes"), "", func(ctx context.Context, s repository.Session) error { return requireChangesSession(s).UnstageAll(ctx) }, nil)
 				return
 			}
-			a.beginRepositoryActionMessage(tr("Staged all changes"), "", func(ctx context.Context, s repository.Session) error { return s.StageAll(ctx) }, nil)
+			a.beginRepositoryActionMessage(tr("Staged all changes"), "", func(ctx context.Context, s repository.Session) error { return requireChangesSession(s).StageAll(ctx) }, nil)
 		}},
 		{"Changes", "s", "Stash changes…", 0, ui.KeyS, (*app).openStashForm},
 		{"Changes", "f", "Fetch from the remotes", 0, ui.KeyF, func(a *app) {
@@ -319,6 +319,8 @@ func (a *app) pasteKeyboardCommits() {
 		lines[i] = commit.ShortHash + " " + commit.Subject
 	}
 	a.askConfirm(confirmRequest{title: "Cherry-pick Commit", message: trf("Cherry-pick %d commits onto %s?", len(commits), a.snapshot.Branch), detail: strings.Join(lines, "\n"), confirmLabel: "Cherry-pick", run: func() {
-		a.beginRepositoryActionMessage(tr("Applied batch commit action"), "", func(ctx context.Context, s repository.Session) error { return s.CherryPickCommits(ctx, commits) }, nil)
+		a.beginRepositoryActionMessage(tr("Applied batch commit action"), "", func(ctx context.Context, s repository.Session) error {
+			return requireHistorySession(s).CherryPickCommits(ctx, commits)
+		}, nil)
 	}})
 }

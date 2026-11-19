@@ -114,7 +114,7 @@ func TestSSHHostKeyPromptResponseAndCancellation(t *testing.T) {
 				t.Fatalf("accepted = %v, want %v", accepted, test.accepted)
 			}
 			a.update(func() {
-				if a.sshHostKeyPrompt != nil {
+				if a.ssh.hostKeyPrompt != nil {
 					t.Fatal("host-key prompt remained after its response")
 				}
 			})
@@ -135,7 +135,7 @@ func TestSSHHostKeyGateWaitHonorsCancellation(t *testing.T) {
 	if accepted || !errors.Is(err, context.Canceled) {
 		t.Fatalf("gated confirmation = %v, %v; want cancellation", accepted, err)
 	}
-	if a.sshHostKeyPrompt != nil {
+	if a.ssh.hostKeyPrompt != nil {
 		t.Fatal("a cancelled waiter presented a second host-key prompt")
 	}
 }

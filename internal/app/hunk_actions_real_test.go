@@ -41,7 +41,7 @@ func writeRealHunkFile(t *testing.T, dir, content string) {
 func realCurrentHunkPatch(t *testing.T, session repository.Session, file repository.File, staged bool, run int, discard bool) string {
 	t.Helper()
 	options := repository.DiffOptions{ContextLines: 3}
-	diff, err := session.Diff(context.Background(), file, options)
+	diff, err := requireWorkingTreeDiffSession(session).Diff(context.Background(), file, options)
 	if err != nil {
 		t.Fatal(err)
 	}

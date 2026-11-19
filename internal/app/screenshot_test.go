@@ -397,7 +397,7 @@ func (s screenshotSession) AddSubmodule(context.Context, string, string, string)
 func (s screenshotSession) UpdateSubmodule(context.Context, string) error { return nil }
 func (s screenshotSession) DeleteSubmodule(context.Context, string) error { return nil }
 func (s screenshotSession) BlameWorkingTreeFile(ctx context.Context, path string) ([]repository.BlameLine, error) {
-	return s.BlameFile(ctx, repository.File{Path: path, Tracked: true})
+	return requireHistorySession(s).BlameFile(ctx, repository.File{Path: path, Tracked: true})
 }
 
 func (s screenshotSession) BlameFile(context.Context, repository.File) ([]repository.BlameLine, error) {
@@ -711,14 +711,14 @@ func TestScreenshot(t *testing.T) {
 
 	t.Run("changes-light", func(t *testing.T) {
 		a, tt := newScreenshotApp(t, false)
-		a.reviewedFiles["ui/appevents.go"] = true
+		a.review.files["ui/appevents.go"] = true
 		tt.Frame()
 		saveScreenshot(t, dir, "02-changes-light", tt)
 	})
 
 	t.Run("changes-dark", func(t *testing.T) {
 		a, tt := newScreenshotApp(t, true)
-		a.reviewedFiles["ui/appevents.go"] = true
+		a.review.files["ui/appevents.go"] = true
 		tt.Frame()
 		saveScreenshot(t, dir, "03-changes-dark", tt)
 	})
@@ -922,8 +922,8 @@ func TestScreenshot(t *testing.T) {
 		saveScreenshot(t, dir, "68-code-search-dark", tt)
 
 		a.stopGoLanguageServer()
-		a.goLanguageServer = newFakeLanguageServerConnection()
-		a.goLanguageServerDocs = make(map[string]uint64)
+		a.lsp.goServer = newFakeLanguageServerConnection()
+		a.lsp.goDocs = make(map[string]uint64)
 		tt.Frame()
 		status, ok := tt.Find("Language servers")
 		if !ok {
@@ -963,9 +963,9 @@ func TestScreenshot(t *testing.T) {
 		a.openCodeFile("main.cpp", 0)
 		settleShot(t, tt, updated, func() bool {
 			document := a.code.documents["main.cpp"]
-			return document != nil && document.state != nil && a.additionalLanguageServers["clangd"] != nil
+			return document != nil && document.state != nil && a.lsp.additional["clangd"] != nil
 		})
-		server := a.additionalLanguageServers["clangd"]
+		server := a.lsp.additional["clangd"]
 		server.missing = false
 		server.error = "External server exited"
 		tt.Frame()
@@ -1567,7 +1567,7 @@ func TestScreenshot(t *testing.T) {
 		t.Run("changes-"+strings.ToLower(strings.ReplaceAll(themeName, " ", "-")), func(t *testing.T) {
 			a, tt := newScreenshotApp(t, false)
 			a.settings.Theme = themeName
-			a.reviewedFiles["ui/appevents.go"] = true
+			a.review.files["ui/appevents.go"] = true
 			tt.Frame()
 			saveScreenshot(t, dir, "theme-"+strings.ToLower(strings.ReplaceAll(themeName, " ", "-")), tt)
 		})
@@ -1599,21 +1599,21 @@ func TestScreenshot(t *testing.T) {
 
 	t.Run("settings-custom-editor-dark", func(t *testing.T) {
 		a, tt := newScreenshotApp(t, true)
-		a.settingsPage = settingsPageEditor
+		a.settingsUI.page = settingsPageEditor
 		a.openSettings()
 		tt.Frame()
 		if err := tt.Click("Add editor…"); err != nil {
 			t.Fatal(err)
 		}
-		a.customEditorFormName = "Fleet"
-		a.customEditorFormCommand = "fleet --project {{filename}}"
+		a.settingsUI.customEditorFormName = "Fleet"
+		a.settingsUI.customEditorFormCommand = "fleet --project {{filename}}"
 		tt.Frame()
 		saveScreenshot(t, dir, "78-settings-custom-editor-dark", tt)
 	})
 
 	t.Run("settings-language-server-catalog-dark", func(t *testing.T) {
 		a, tt := newScreenshotApp(t, true)
-		a.settingsPage = settingsPageEditor
+		a.settingsUI.page = settingsPageEditor
 		a.openSettings()
 		tt.Frame()
 		tt.Scroll(700, 480, 0, 1800)
@@ -1623,10 +1623,10 @@ func TestScreenshot(t *testing.T) {
 
 	t.Run("settings-go-language-server-catalog-dark", func(t *testing.T) {
 		a, tt := newScreenshotApp(t, true)
-		a.settingsPage = settingsPageEditor
+		a.settingsUI.page = settingsPageEditor
 		a.openSettings()
-		a.languageServerCatalogQuery = "gopls"
-		a.languageServerCatalogSelected = goLanguageServerID
+		a.lsp.catalogQuery = "gopls"
+		a.lsp.catalogSelected = goLanguageServerID
 		tt.Frame()
 		tt.Scroll(700, 480, 0, 1800)
 		tt.Frame()
@@ -1639,10 +1639,10 @@ func TestScreenshot(t *testing.T) {
 		a, tt := newScreenshotApp(t, false)
 		a.settings.Language = "fr"
 		a.settings.LanguageServers = map[string]languageServerSettings{"clangd": {}}
-		a.settingsPage = settingsPageEditor
+		a.settingsUI.page = settingsPageEditor
 		a.openSettings()
-		a.languageServerCatalogQuery = "clangd"
-		a.languageServerCatalogSelected = "clangd"
+		a.lsp.catalogQuery = "clangd"
+		a.lsp.catalogSelected = "clangd"
 		tt.Frame()
 		tt.Scroll(700, 480, 0, 1800)
 		tt.Frame()
@@ -1651,10 +1651,10 @@ func TestScreenshot(t *testing.T) {
 
 	t.Run("settings-custom-language-server-dark", func(t *testing.T) {
 		a, tt := newScreenshotApp(t, true)
-		a.settingsPage = settingsPageEditor
-		a.languageServerCatalogQuery = "ty"
+		a.settingsUI.page = settingsPageEditor
+		a.lsp.catalogQuery = "ty"
 		a.openSettings()
-		a.customLanguageServerForm = customLanguageServerForm{
+		a.lsp.customForm = customLanguageServerForm{
 			Open: true, Name: "ty", Description: "Astral Python language server",
 			Path: "ty, /opt/python/ty", Arguments: "server", Probe: "--version",
 			Extensions: ".py=python, .pyi=python", DownloadURL: "https://pypi.org/project/ty/", Enabled: true,
@@ -1666,7 +1666,7 @@ func TestScreenshot(t *testing.T) {
 		tt.Frame()
 		saveScreenshot(t, dir, "81-settings-custom-language-server-form-dark", tt)
 
-		a.customLanguageServerForm.Open = false
+		a.lsp.customForm.Open = false
 		a.settings.LanguageServers = map[string]languageServerSettings{
 			"custom-ty": {
 				Path: "ty, /opt/python/ty", Arguments: []string{"server"}, ProbeArguments: []string{"--version"},
@@ -1677,7 +1677,7 @@ func TestScreenshot(t *testing.T) {
 			},
 		}
 		a.loadGoLanguageServerDraft()
-		a.languageServerCatalogQuery = "ty"
+		a.lsp.catalogQuery = "ty"
 		tt.Frame()
 		tt.Scroll(700, 480, 0, 1800)
 		tt.Frame()
@@ -2336,8 +2336,8 @@ func newBackgroundPickerShot(t *testing.T) (*app, *ui.Tester) {
 		t.Fatal(err)
 	}
 	a.settings.HomeBackgroundPath = path
-	a.homeBackgroundPath = path
-	a.homeBackground = bitmap
+	a.settingsUI.homeBackgroundPath = path
+	a.settingsUI.homeBackground = bitmap
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.SetDark(true)
 	tt.Frame()

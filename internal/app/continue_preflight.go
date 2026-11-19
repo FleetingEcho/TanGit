@@ -196,7 +196,7 @@ func (a *app) openContinueReviewExpected(expectedFingerprint string) {
 	if runner == nil {
 		runner = trustedContinueTestRunner{}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	done := make(chan struct{})
 	a.continuePreflight.cancelRun = cancel
 	a.continuePreflight.jobs = append(a.continuePreflight.jobs, done)
@@ -447,7 +447,7 @@ func (a *app) finishContinueReview(overrideOptional bool) {
 	review := a.continuePreflight.review
 	approved := review.reviewed
 	historyPatch := approved.Operation.HistoryPatch != nil
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	a.continuePreflight.cancelFinal = cancel
 	a.beginRepositoryActionMessage(tr("Continued the operation"), "", func(_ context.Context, session repository.Session) error {
 		defer cancel()

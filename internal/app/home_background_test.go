@@ -115,9 +115,9 @@ func TestHomeBackgroundUploadPreviewsAndPersists(t *testing.T) {
 	}
 	updated.waitForUpdate(t)
 	tt.Frame()
-	if a.settings.HomeBackgroundPath != path || a.homeBackgroundPath != path || a.homeBackground == nil {
+	if a.settings.HomeBackgroundPath != path || a.settingsUI.homeBackgroundPath != path || a.settingsUI.homeBackground == nil {
 		t.Fatalf("the picked image was not installed: setting=%q cache=%q bitmap=%v",
-			a.settings.HomeBackgroundPath, a.homeBackgroundPath, a.homeBackground != nil)
+			a.settings.HomeBackgroundPath, a.settingsUI.homeBackgroundPath, a.settingsUI.homeBackground != nil)
 	}
 	if got := loadAppSettings(a.pathUserData).HomeBackgroundPath; got != path {
 		t.Fatalf("the stored background is %q, want %q", got, path)
@@ -158,8 +158,8 @@ func TestHomeBackgroundOpacityControlPersistsAndChangesRendering(t *testing.T) {
 	}
 	a.settings.HomeBackgroundPath = path
 	a.settings.HomeBackgroundOpacity = 0.1
-	a.homeBackgroundPath = path
-	a.homeBackground = bitmap
+	a.settingsUI.homeBackgroundPath = path
+	a.settingsUI.homeBackground = bitmap
 	a.closeSettings()
 	tt.Frame()
 	before := append([]byte(nil), tt.Image().Pix...)
@@ -200,8 +200,8 @@ func TestHomeBackgroundCanBeDisabledWithoutRemovingImage(t *testing.T) {
 	}
 	a.settings.HomeBackgroundPath = path
 	a.settings.HomeBackgroundOpacity = 0.37
-	a.homeBackgroundPath = path
-	a.homeBackground = bitmap
+	a.settingsUI.homeBackgroundPath = path
+	a.settingsUI.homeBackground = bitmap
 	tt.Frame()
 
 	if err := tt.Click("Enable Home background"); err != nil {
@@ -213,7 +213,7 @@ func TestHomeBackgroundCanBeDisabledWithoutRemovingImage(t *testing.T) {
 		t.Fatal("the background toggle did not disable the image")
 	}
 	if a.settings.HomeBackgroundPath != path || a.settings.HomeBackgroundOpacity != 0.37 ||
-		a.homeBackgroundPath != path || a.homeBackground != bitmap {
+		a.settingsUI.homeBackgroundPath != path || a.settingsUI.homeBackground != bitmap {
 		t.Fatal("disabling the image discarded its path, opacity, or decoded bitmap")
 	}
 	stored := loadAppSettings(a.pathUserData)
@@ -244,7 +244,7 @@ func TestHomeBackgroundCanBeDisabledWithoutRemovingImage(t *testing.T) {
 	if _, ok := tt.Find("Home background"); !ok {
 		t.Fatal("re-enabling did not restore the retained Home image")
 	}
-	if a.homeBackground != bitmap || a.settings.HomeBackgroundOpacity != 0.37 {
+	if a.settingsUI.homeBackground != bitmap || a.settings.HomeBackgroundOpacity != 0.37 {
 		t.Fatal("re-enabling did not restore the same bitmap and opacity")
 	}
 }
@@ -258,8 +258,8 @@ func TestHomeBackgroundRejectsDisguisedNonImageAndKeepsPrevious(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.settings.HomeBackgroundPath = oldPath
-	a.homeBackgroundPath = oldPath
-	a.homeBackground = oldBitmap
+	a.settingsUI.homeBackgroundPath = oldPath
+	a.settingsUI.homeBackground = oldBitmap
 	invalid := filepath.Join(t.TempDir(), "not-really.png")
 	if err := os.WriteFile(invalid, []byte("this is text with an image extension"), 0o644); err != nil {
 		t.Fatal(err)
@@ -276,7 +276,7 @@ func TestHomeBackgroundRejectsDisguisedNonImageAndKeepsPrevious(t *testing.T) {
 	}
 	updated.waitForUpdate(t)
 	tt.Frame()
-	if a.settings.HomeBackgroundPath != oldPath || a.homeBackgroundPath != oldPath || a.homeBackground != oldBitmap {
+	if a.settings.HomeBackgroundPath != oldPath || a.settingsUI.homeBackgroundPath != oldPath || a.settingsUI.homeBackground != oldBitmap {
 		t.Fatal("an invalid replacement discarded the previous valid background")
 	}
 	if !slices.Contains(tt.Texts(), "Could not set Home background") ||
@@ -373,14 +373,14 @@ func TestRemoveHomeBackgroundClearsPreviewRenderingAndStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.settings.HomeBackgroundPath = path
-	a.homeBackgroundPath = path
-	a.homeBackground = bitmap
+	a.settingsUI.homeBackgroundPath = path
+	a.settingsUI.homeBackground = bitmap
 	tt.Frame()
 	if err := tt.Click("Remove"); err != nil {
 		t.Fatalf("remove the background: %v", err)
 	}
 	tt.Frame()
-	if a.settings.HomeBackgroundPath != "" || a.homeBackground != nil || a.homeBackgroundPath != "" {
+	if a.settings.HomeBackgroundPath != "" || a.settingsUI.homeBackground != nil || a.settingsUI.homeBackgroundPath != "" {
 		t.Fatal("removal left background state behind")
 	}
 	if got := loadAppSettings(a.pathUserData).HomeBackgroundPath; got != "" {
@@ -405,14 +405,14 @@ func TestResetSettingsRemovesHomeBackground(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.settings.HomeBackgroundPath = path
-	a.homeBackgroundPath = path
-	a.homeBackground = bitmap
+	a.settingsUI.homeBackgroundPath = path
+	a.settingsUI.homeBackground = bitmap
 	tt.Frame()
 	if err := tt.Click("Reset to defaults"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if a.settings.HomeBackgroundPath != "" || a.homeBackground != nil {
+	if a.settings.HomeBackgroundPath != "" || a.settingsUI.homeBackground != nil {
 		t.Fatal("resetting Settings left the Home background behind")
 	}
 	if got := loadAppSettings(a.pathUserData).HomeBackgroundPath; got != "" {
@@ -455,7 +455,7 @@ func TestHomeBackgroundLoadsOnceAndRemovalRejectsStaleRead(t *testing.T) {
 	if got != 1 {
 		t.Fatalf("repeated frames decoded the same file %d times", got)
 	}
-	if a.homeBackground != nil || a.homeBackgroundPath != "" {
+	if a.settingsUI.homeBackground != nil || a.settingsUI.homeBackgroundPath != "" {
 		t.Fatal("a stale read restored the removed background")
 	}
 
@@ -465,7 +465,7 @@ func TestHomeBackgroundLoadsOnceAndRemovalRejectsStaleRead(t *testing.T) {
 	a.syncHomeBackground()
 	updated.waitForUpdate(t)
 	a.syncHomeBackground()
-	if a.homeBackground == nil || a.homeBackgroundPath != path {
+	if a.settingsUI.homeBackground == nil || a.settingsUI.homeBackgroundPath != path {
 		t.Fatal("the current background did not load after the stale result was ignored")
 	}
 }
@@ -500,7 +500,7 @@ func TestShutdownRejectsAndRetriesHomeBackgroundLoad(t *testing.T) {
 	a.shutdown()
 	close(release)
 	updated.waitForUpdate(t)
-	if a.homeBackground != nil || a.homeBackgroundPath != "" || len(a.pendingToasts) != 0 {
+	if a.settingsUI.homeBackground != nil || a.settingsUI.homeBackgroundPath != "" || len(a.pendingToasts) != 0 {
 		t.Fatal("a background load installed its result after shutdown")
 	}
 
@@ -508,7 +508,7 @@ func TestShutdownRejectsAndRetriesHomeBackgroundLoad(t *testing.T) {
 	// pending marker must allow that still-live page to load the image again.
 	a.syncHomeBackground()
 	updated.waitForUpdate(t)
-	if a.homeBackground == nil || a.homeBackgroundPath != path {
+	if a.settingsUI.homeBackground == nil || a.settingsUI.homeBackgroundPath != path {
 		t.Fatal("Home could not retry its background load after shutdown")
 	}
 }
@@ -545,7 +545,7 @@ func TestShutdownRejectsAHomeBackgroundSelection(t *testing.T) {
 	a.shutdown()
 	close(release)
 	updated.waitForUpdate(t)
-	if a.settings.HomeBackgroundPath != oldPath || a.homeBackgroundPath == newPath {
+	if a.settings.HomeBackgroundPath != oldPath || a.settingsUI.homeBackgroundPath == newPath {
 		t.Fatal("a completed file selection changed the background after shutdown")
 	}
 	if len(a.pendingToasts) != 0 {
@@ -583,7 +583,7 @@ func TestResetSettingsRejectsAnInflightHomeBackgroundSelection(t *testing.T) {
 	close(release)
 	updated.waitForUpdate(t)
 	tt.Frame()
-	if a.settings.HomeBackgroundPath != "" || a.homeBackground != nil || a.homeBackgroundPath != "" {
+	if a.settings.HomeBackgroundPath != "" || a.settingsUI.homeBackground != nil || a.settingsUI.homeBackgroundPath != "" {
 		t.Fatal("an in-flight selection restored a background after Settings was reset")
 	}
 	if got := loadAppSettings(a.pathUserData).HomeBackgroundPath; got != "" {

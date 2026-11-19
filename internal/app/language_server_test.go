@@ -114,7 +114,7 @@ func TestGoLanguageServerSynchronizesOpenChangeAndClose(t *testing.T) {
 	h.app.openCodeFile("main.go", 0)
 	document := waitForCodeDocument(t, h, "main.go")
 	h.waitFor(t, "the gopls connection and didOpen", func() bool {
-		return h.app.goLanguageServer == connection && len(connection.snapshot()) >= 1
+		return h.app.lsp.goServer == connection && len(connection.snapshot()) >= 1
 	})
 	launch := <-launches
 	if launch.Program != "gopls" || launch.Root != "/work/project" || len(launch.Arguments) != 0 {
@@ -237,7 +237,7 @@ func TestGoLanguageServerUsesConfiguredProgramAndRejectsStaleStartup(t *testing.
 	}
 	h.tester.Frame()
 	h.waitFor(t, "the stale connection shutdown", connection.isClosed)
-	if h.app.goLanguageServer != nil {
+	if h.app.lsp.goServer != nil {
 		t.Fatal("a connection from before reset became active")
 	}
 }
@@ -260,7 +260,7 @@ func TestGoLanguageServerFallsBackToNextConfiguredProgram(t *testing.T) {
 	openCodePageForTest(t, h, 1)
 	h.app.openCodeFile("main.go", 0)
 	waitForCodeDocument(t, h, "main.go")
-	h.waitFor(t, "the fallback gopls connection", func() bool { return h.app.goLanguageServer == connection })
+	h.waitFor(t, "the fallback gopls connection", func() bool { return h.app.lsp.goServer == connection })
 
 	if first, second := <-launches, <-launches; first != "/missing/gopls" || second != "/zed/gopls" {
 		t.Fatalf("launch order = %q then %q, want the configured fallback order", first, second)

@@ -59,7 +59,7 @@ func (a *app) beginExportPatches() {
 	a.beginRepositoryActionMessage(tr("Exported mailbox patches"), "",
 		func(ctx context.Context, session repository.Session) error {
 			var err error
-			paths, err = session.ExportPatches(ctx, commits, directory)
+			paths, err = requireHistorySession(session).ExportPatches(ctx, commits, directory)
 			return err
 		}, func() {
 			if len(paths) > 0 {
@@ -171,7 +171,7 @@ func (a *app) confirmMailboxPatchImport(name string, content []byte) {
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Applied %s", name), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.AmPatch(ctx, name, content)
+					return requireHistorySession(session).AmPatch(ctx, name, content)
 				}, nil)
 		},
 	})

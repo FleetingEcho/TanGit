@@ -148,10 +148,10 @@ func (a *app) runAgentCheckpoint(
 	generation := a.generation
 	worktree := task.WorktreePath
 	openPath := a.worktreeOpenPath(worktree)
+	ctx := a.repositoryWork.Context()
 
 	go func() {
 		defer a.recoverBackground()
-		ctx := context.Background()
 		persisted, err := store.Get(taskID)
 		if err == nil && persisted.WorktreePath != worktree {
 			err = errors.New("agent task worktree changed before the checkpoint operation")

@@ -22,6 +22,12 @@ const (
 // agentReviewState owns a read-only session for the task worktree. It never
 // substitutes the repository tab's session: commits, dirty files and the final
 // base-to-worktree result all come from the same explicit task target.
+type agentReviewCapabilities interface {
+	repository.Session
+	repository.HistorySession
+	repository.ChangesSession
+}
+
 type agentReviewState struct {
 	open         bool
 	taskID       string
@@ -31,7 +37,7 @@ type agentReviewState struct {
 	base         string
 	head         string
 	worktree     string
-	target       repository.Session
+	target       agentReviewCapabilities
 	cancel       context.CancelFunc
 	token        uint64
 	loading      bool
@@ -150,30 +156,31 @@ func (a *app) reloadAgentReview() {
 	taskID, worktree, base := review.taskID, review.worktree, review.base
 	options := review.options
 	openPath := a.worktreeOpenPath(worktree)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	review.cancel = cancel
 	go func() {
 		defer a.recoverBackground()
 		defer cancel()
-		var target repository.Session
+		var target agentReviewCapabilities
 		ownedByCompletion := false
 		defer func() {
 			if !ownedByCompletion {
 				closeRepositorySession(target)
 			}
 		}()
-		target, err := a.opener.Open(ctx, openPath)
+		opened, err := a.opener.Open(ctx, openPath)
 		var snapshot repository.Snapshot
 		var finalFiles []repository.CommitFile
 		var commits []repository.Commit
 		if err == nil {
+			target = opened.(agentReviewCapabilities)
 			snapshot, err = target.Snapshot(ctx)
 		}
 		if err == nil {
-			finalFiles, err = target.FinalFiles(ctx, base, options)
+			finalFiles, err = requireHistorySession(target).FinalFiles(ctx, base, options)
 		}
 		if err == nil {
-			commits, err = target.CommitRange(ctx, base, snapshot.HeadHash, 500, 0)
+			commits, err = requireHistorySession(target).CommitRange(ctx, base, snapshot.HeadHash, 500, 0)
 		}
 		ownedByCompletion = true
 		a.update(func() {
@@ -286,9 +293,10 @@ func (a *app) requestAgentReviewCommitFiles() {
 	review.diffKey = key
 	target := review.target
 	token, generation := review.token, a.generation
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		files, err := target.CommitFiles(context.Background(), commit)
+		files, err := requireHistorySession(target).CommitFiles(ctx, commit)
 		a.updateChanged(func() bool {
 			current := &a.agents.review
 			if generation != a.generation || token != current.token || current.diffKey != key {
@@ -379,17 +387,18 @@ func (a *app) requestAgentReviewDiff() {
 	mode := review.mode
 	token, generation := review.token, a.generation
 	layout, wrap := a.diffLayout(), a.diffWrap
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
 		var diff repository.Diff
 		var err error
 		switch mode {
 		case agentReviewFinal:
-			diff, err = target.FinalFileDiff(context.Background(), base, file, options)
+			diff, err = requireHistorySession(target).FinalFileDiff(ctx, base, file, options)
 		case agentReviewDirty:
-			diff, err = target.Diff(context.Background(), dirty, options)
+			diff, err = requireWorkingTreeDiffSession(target).Diff(ctx, dirty, options)
 		case agentReviewCommits:
-			diff, err = target.CommitFileDiff(context.Background(), commit, file, options)
+			diff, err = requireHistorySession(target).CommitFileDiff(ctx, commit, file, options)
 		}
 		var state *editor.DiffState
 		if err == nil && (diff.Patch != "" || diff.OldText != "" || diff.NewText != "") {

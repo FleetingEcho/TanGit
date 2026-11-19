@@ -17,13 +17,17 @@ func agentReviewRepository(t *testing.T) string {
 	return dir
 }
 
-func openAgentReviewSession(t *testing.T, dir string) Session {
+func openAgentReviewSession(t *testing.T, dir string) HistorySession {
 	t.Helper()
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return session
+	history, ok := session.(HistorySession)
+	if !ok {
+		t.Fatal("repository session does not provide history review")
+	}
+	return history
 }
 
 func writeAgentReviewFile(t *testing.T, dir, name string, content []byte) {

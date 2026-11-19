@@ -145,9 +145,9 @@ func (a *app) editorShortcutSettings(c *ui.Context) {
 	theme := c.Theme()
 	resolution := resolveEditorShortcutOverrides(a.settings.EditorKeyBindings)
 	title := ui.Text(c, tr("Keyboard shortcuts")).Bold().FontSize(theme.FontSize + 1)
-	if a.settingsRevealShortcuts {
+	if a.settingsUI.revealShortcuts {
 		title.ScrollIntoView(ui.ScrollIntoViewOptions{Block: ui.ScrollStart})
-		a.settingsRevealShortcuts = false
+		a.settingsUI.revealShortcuts = false
 	}
 	ui.Text(c, tr("Customize shortcuts for the focused code editor. Click a key, then press a new combination.")).
 		TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)

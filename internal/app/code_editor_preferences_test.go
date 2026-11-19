@@ -9,8 +9,8 @@ func TestBuiltInEditorPreferencesUseUnifiedEditorSettings(t *testing.T) {
 	h := menuTestApp(t)
 	h.app.openSettingsSection(settingsPageEditor)
 	h.tester.Frame()
-	if h.app.settingsPage != settingsPageEditor || !h.tester.HasText("Built-in editor preferences") {
-		t.Fatalf("Editor page does not include built-in preferences: page=%d texts=%q", h.app.settingsPage, h.texts())
+	if h.app.settingsUI.page != settingsPageEditor || !h.tester.HasText("Built-in editor preferences") {
+		t.Fatalf("Editor page does not include built-in preferences: page=%d texts=%q", h.app.settingsUI.page, h.texts())
 	}
 	for _, label := range []string{
 		"Line numbers", "Whitespace", "Wrap long lines", "Inlay hints",

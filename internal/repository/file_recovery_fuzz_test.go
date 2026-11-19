@@ -35,7 +35,7 @@ func fileRecoveryFuzzSession(f *testing.F) (*gitSession, string) {
 	}
 	runGitForRecoveryFuzz(f, dir, "add", "--", "f.txt")
 	runGitForRecoveryFuzz(f, dir, "commit", "-m", "base")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		f.Fatal(err)
 	}

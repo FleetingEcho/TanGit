@@ -250,7 +250,7 @@ func TestUndoRedoCommitsRepeatedlyAndAcrossSessions(t *testing.T) {
 
 	// A new Session proves that replay state lives in Git's reflog, not in the
 	// old session's memory. Reopening is equivalent to restarting the app here.
-	reopened, err := (Opener{}).Open(context.Background(), dir)
+	reopened, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

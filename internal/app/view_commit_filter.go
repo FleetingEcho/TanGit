@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -332,13 +331,14 @@ func (a *app) runCommitFilterMode(target int, selectedHash string, resetScroll b
 	}
 	session := a.session
 	repositoryGeneration := a.generation
+	ctx := a.repositoryWork.Context()
 	query.token++
 	token := query.token
 	query.loading = true
 	query.err = ""
 	go func() {
 		defer a.recoverBackground()
-		commits, err := session.SearchCommits(context.Background(), filter)
+		commits, err := requireCommitSearchSession(session).SearchCommits(ctx, filter)
 		a.update(func() {
 			if repositoryGeneration != a.generation || token != query.token {
 				return
@@ -385,13 +385,14 @@ func (a *app) loadCommitAuthors() {
 	}
 	session := a.session
 	repositoryGeneration := a.generation
+	ctx := a.repositoryWork.Context()
 	a.authorsToken++
 	token := a.authorsToken
 	a.authorsLoading = true
 	a.authorsError = ""
 	go func() {
 		defer a.recoverBackground()
-		authors, err := session.Authors(context.Background())
+		authors, err := requireHistorySession(session).Authors(ctx)
 		a.update(func() {
 			if repositoryGeneration != a.generation || token != a.authorsToken {
 				return

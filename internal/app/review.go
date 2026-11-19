@@ -2,11 +2,32 @@ package app
 
 import (
 	"context"
+	"errors"
 
 	"lazygitapp/internal/repository"
 )
 
 const reviewLocalStatusMessage = "Review marks are only a status in TanGit; they do not change Git information."
+
+type reviewUIState struct {
+	files        map[string]bool
+	requestedSeq uint64
+	requestToken uint64
+	loading      bool
+	filter       bool
+}
+
+func newReviewUIState() reviewUIState {
+	return reviewUIState{files: map[string]bool{}}
+}
+
+func (s *reviewUIState) reset() {
+	s.files = map[string]bool{}
+	s.requestedSeq = 0
+	s.requestToken++
+	s.loading = false
+	s.filter = false
+}
 
 func reviewActionTooltip() string {
 	return tr("Toggle whether this file's current content has been reviewed (R)") + " " + tr(reviewLocalStatusMessage)
@@ -17,33 +38,37 @@ func reviewActionTooltip() string {
 // TanGit, another application, or an ordinary Git operation without special
 // cases in each action.
 func (a *app) requestReviewedFiles() {
-	if a.session == nil || a.reviewLoading || a.reviewRequestedSeq == a.snapshotSeq {
+	reviewer, ok := a.session.(repository.ReviewSession)
+	if !ok || a.review.loading || a.review.requestedSeq == a.snapshotSeq {
 		return
 	}
-	session := a.session
 	files := append([]repository.File(nil), a.snapshot.Files...)
 	sequence := a.snapshotSeq
 	generation := a.generation
-	a.reviewRequestToken++
-	token := a.reviewRequestToken
-	a.reviewRequestedSeq = sequence
-	a.reviewLoading = true
+	a.review.requestToken++
+	token := a.review.requestToken
+	a.review.requestedSeq = sequence
+	a.review.loading = true
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		reviewed, err := session.ReviewedFiles(context.Background(), files)
+		reviewed, err := reviewer.ReviewedFiles(ctx, files)
 		a.update(func() {
-			if generation != a.generation || token != a.reviewRequestToken {
+			if generation != a.generation || token != a.review.requestToken {
 				return
 			}
-			a.reviewLoading = false
+			a.review.loading = false
 			if sequence != a.snapshotSeq {
+				return
+			}
+			if errors.Is(err, context.Canceled) {
 				return
 			}
 			if err != nil {
 				a.notifyError(err)
 				return
 			}
-			a.reviewedFiles = reviewed
+			a.review.files = reviewed
 		})
 	}()
 }
@@ -51,7 +76,7 @@ func (a *app) requestReviewedFiles() {
 func (a *app) reviewProgress() (reviewed, total int) {
 	for _, file := range a.snapshot.Files {
 		total++
-		if a.reviewedFiles[file.Path] {
+		if a.review.files[file.Path] {
 			reviewed++
 		}
 	}
@@ -62,12 +87,12 @@ func (a *app) reviewProgress() (reviewed, total int) {
 // sections/counts are built, keeping headers and keyboard selection aligned.
 func (a *app) visibleReviewFiles(files []repository.File) []repository.File {
 	files = changesFilesWithStatus(files, a.fileStatusFilter)
-	if !a.reviewFilter {
+	if !a.review.filter {
 		return files
 	}
 	visible := make([]repository.File, 0, len(files))
 	for _, file := range files {
-		if !a.reviewedFiles[file.Path] {
+		if !a.review.files[file.Path] {
 			visible = append(visible, file)
 		}
 	}
@@ -76,7 +101,7 @@ func (a *app) visibleReviewFiles(files []repository.File) []repository.File {
 
 func (a *app) hasUnreviewedFiles() bool {
 	for _, file := range changesFilesWithStatus(a.snapshot.Files, a.fileStatusFilter) {
-		if !a.reviewedFiles[file.Path] {
+		if !a.review.files[file.Path] {
 			return true
 		}
 	}
@@ -92,7 +117,7 @@ func (a *app) selectNextUnreviewed() {
 	for step := 1; step <= len(a.changeRows); step++ {
 		index := (a.selectedFile + step + len(a.changeRows)) % len(a.changeRows)
 		row := a.changeRows[index]
-		if row.isFile() && !a.reviewedFiles[row.file.Path] {
+		if row.isFile() && !a.review.files[row.file.Path] {
 			a.selectedFile = index
 			a.resetFileDiff()
 			return
@@ -105,22 +130,23 @@ func (a *app) toggleSelectedReviewed() {
 	if !ok {
 		return
 	}
-	a.setFileReviewed(change.file, !a.reviewedFiles[change.file.Path])
+	a.setFileReviewed(change.file, !a.review.files[change.file.Path])
 }
 
 // setFileReviewed persists a content mark without rewriting any Git state and
 // therefore without replacing the snapshot or losing the user's draft/scroll.
 func (a *app) setFileReviewed(file repository.File, reviewed bool) {
-	if a.actionBusy || a.session == nil {
+	reviewer, ok := a.session.(repository.ReviewSession)
+	if a.actionBusy || !ok {
 		return
 	}
-	session := a.session
 	generation := a.generation
+	ctx := a.repositoryWork.Context()
 	a.actionBusy = true
 	a.actionError = ""
 	go func() {
 		defer a.recoverBackground()
-		err := session.SetFileReviewed(context.Background(), file, reviewed)
+		err := reviewer.SetFileReviewed(ctx, file, reviewed)
 		a.update(func() {
 			if generation != a.generation {
 				return
@@ -131,15 +157,15 @@ func (a *app) setFileReviewed(file repository.File, reviewed bool) {
 				a.notifyError(err)
 				return
 			}
-			if a.reviewedFiles == nil {
-				a.reviewedFiles = map[string]bool{}
+			if a.review.files == nil {
+				a.review.files = map[string]bool{}
 			}
 			if reviewed {
-				a.reviewedFiles[file.Path] = true
+				a.review.files[file.Path] = true
 			} else {
-				delete(a.reviewedFiles, file.Path)
+				delete(a.review.files, file.Path)
 			}
-			if reviewed && a.reviewFilter {
+			if reviewed && a.review.filter {
 				// The selected row is about to disappear. Choose the next work
 				// item before the following frame rebuilds section indices.
 				rows := a.changeRowsFrom(a.snapshot.Files)

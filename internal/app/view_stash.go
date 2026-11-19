@@ -35,11 +35,11 @@ func (a *app) beginStashChanges() {
 			func(ctx context.Context, session repository.Session) error {
 				switch {
 				case patchText != "":
-					return session.StashPatch(ctx, message, patchText, removalPatch)
+					return requireStashSession(session).StashPatch(ctx, message, patchText, removalPatch)
 				case len(selection) > 0:
-					return session.StashSelectedFiles(ctx, message, selection, includeUntracked)
+					return requireStashSession(session).StashSelectedFiles(ctx, message, selection, includeUntracked)
 				default:
-					return session.StashChanges(ctx, message, includeUntracked)
+					return requireStashSession(session).StashChanges(ctx, message, includeUntracked)
 				}
 			}, func() {
 				a.stashMessage = ""
@@ -64,7 +64,7 @@ func (a *app) stashStagedChanges() {
 	a.confirmAttention("Stash", message, "This saves changes in a stash and removes them from the working tree or index.", func() {
 		a.beginRepositoryActionMessage(tr("Stashed staged changes"), "",
 			func(ctx context.Context, session repository.Session) error {
-				return session.StashStagedChanges(ctx, message)
+				return requireStashSession(session).StashStagedChanges(ctx, message)
 			}, nil)
 	})
 }
@@ -200,7 +200,7 @@ func (a *app) beginRenameStash() {
 	name := strings.TrimSpace(a.stashRename)
 	a.beginRepositoryActionMessage(trf("Renamed stash to %s", name), "",
 		func(ctx context.Context, session repository.Session) error {
-			return session.RenameStash(ctx, index, name)
+			return requireStashSession(session).RenameStash(ctx, index, name)
 		}, func() {
 			a.stashRename = ""
 			a.showStashRenameForm = false
@@ -259,6 +259,7 @@ func (a *app) requestStashDetails(stash repository.Stash) {
 	}
 	session := a.session
 	repositoryGeneration := a.generation
+	ctx := a.repositoryWork.Context()
 	a.stashFilesHash = key
 	a.stashFilesLoading = true
 	a.stashFilesError = ""
@@ -275,7 +276,7 @@ func (a *app) requestStashDetails(stash repository.Stash) {
 
 	go func() {
 		defer a.recoverBackground()
-		files, err := session.StashFiles(context.Background(), stash.Index)
+		files, err := requireStashSession(session).StashFiles(ctx, stash.Index)
 		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation {
 				// An action rewrote the repository: drop the request so the
@@ -317,6 +318,7 @@ func (a *app) requestStashFileDiff(stash repository.Stash, file repository.Commi
 	}
 	session := a.session
 	repositoryGeneration := a.generation
+	ctx := a.repositoryWork.Context()
 	a.stashDiffHash = key
 	a.stashDiffPath = file.Path
 	a.stashDiffOptions = a.diffOptions
@@ -330,13 +332,13 @@ func (a *app) requestStashFileDiff(stash repository.Stash, file repository.Commi
 	options := a.diffOptions
 	go func() {
 		defer a.recoverBackground()
-		diff, err := session.StashFileDiff(context.Background(), stash.Index, file, options)
+		diff, err := requireStashSession(session).StashFileDiff(ctx, stash.Index, file, options)
 		var state *editor.DiffState
 		var media *mediaReview
 		if err == nil {
 			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
 			if err == nil && state == nil && isMediaPath(file.Path) {
-				media, err = loadMediaReview(context.Background(), session, repository.MediaRequest{
+				media, err = loadMediaReview(ctx, session, repository.MediaRequest{
 					Source: repository.MediaStash, StashIndex: stash.Index, CommitFile: file,
 				})
 			}
@@ -406,9 +408,9 @@ func (a *app) confirmStashMutationFor(stash repository.Stash, pop bool) {
 			a.beginRepositoryActionMessage(message, "",
 				func(ctx context.Context, session repository.Session) error {
 					if pop {
-						return session.ApplyStash(ctx, stash.Index, true)
+						return requireStashSession(session).ApplyStash(ctx, stash.Index, true)
 					}
-					return session.DropStash(ctx, stash.Index)
+					return requireStashSession(session).DropStash(ctx, stash.Index)
 				}, nil)
 		},
 	})
@@ -418,7 +420,7 @@ func (a *app) applyStash(stash repository.Stash) {
 	a.confirmAttention("Apply", stash.Name, "This applies saved changes to the working tree and may cause conflicts. Applying one stash file can replace its current working-tree contents.", func() {
 		a.beginRepositoryActionMessage(trf("Applied %s", stash.Name), "",
 			func(ctx context.Context, session repository.Session) error {
-				return session.ApplyStash(ctx, stash.Index, false)
+				return requireStashSession(session).ApplyStash(ctx, stash.Index, false)
 			}, nil)
 	})
 }
@@ -429,7 +431,7 @@ func (a *app) applyStashFile(stash repository.Stash, file repository.CommitFile)
 	a.confirmAttention("Apply", file.Path+"\n"+stash.Name, "This applies saved changes to the working tree and may cause conflicts. Applying one stash file can replace its current working-tree contents.", func() {
 		a.beginRepositoryActionMessage(trf("Applied %s", file.Path), file.Path,
 			func(ctx context.Context, session repository.Session) error {
-				return session.ApplyStashFile(ctx, stash.Index, file)
+				return requireStashSession(session).ApplyStashFile(ctx, stash.Index, file)
 			}, nil)
 	})
 }
@@ -449,7 +451,7 @@ func (a *app) confirmDiscardStashFile(stash repository.Stash, file repository.Co
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Discarded %s from %s", file.Path, stash.Name), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.DiscardStashFile(ctx, stash.Index, file, stash.Name)
+					return requireStashSession(session).DiscardStashFile(ctx, stash.Index, file, stash.Name)
 				}, nil)
 		},
 	})

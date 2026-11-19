@@ -441,8 +441,8 @@ func TestCacheConfirmationCancelKeepsSettingsOpen(t *testing.T) {
 	}
 	h.updates.runPending()
 	h.tester.Frame()
-	if h.app.confirm == nil || !h.app.settingsOpen {
-		t.Fatalf("cache confirmation was not opened above Settings: confirm=%+v settings=%v", h.app.confirm, h.app.settingsOpen)
+	if h.app.confirm == nil || !h.app.settingsUI.open {
+		t.Fatalf("cache confirmation was not opened above Settings: confirm=%+v settings=%v", h.app.confirm, h.app.settingsUI.open)
 	}
 
 	if err := h.tester.Click("Cancel"); err != nil {
@@ -452,7 +452,7 @@ func TestCacheConfirmationCancelKeepsSettingsOpen(t *testing.T) {
 	if h.app.confirm != nil {
 		t.Fatalf("Cancel left the cache confirmation open: %+v", h.app.confirm)
 	}
-	if !h.app.settingsOpen {
+	if !h.app.settingsUI.open {
 		t.Fatal("cancelling cache cleanup also closed the Settings modal")
 	}
 
@@ -469,7 +469,7 @@ func TestCacheConfirmationCancelKeepsSettingsOpen(t *testing.T) {
 	if h.app.confirm != nil {
 		t.Fatalf("Escape left the cache confirmation open: %+v", h.app.confirm)
 	}
-	if !h.app.settingsOpen {
+	if !h.app.settingsUI.open {
 		t.Fatal("Escape in the cache confirmation also closed the Settings modal")
 	}
 }
@@ -478,8 +478,8 @@ func TestCacheMeasurementDoesNotRepaintOtherSettingsPages(t *testing.T) {
 	syncCacheCleanup(t)
 	a := newApp(nil)
 	a.pathCache = t.TempDir()
-	a.settingsOpen = true
-	a.settingsPage = settingsPageAppearance
+	a.settingsUI.open = true
+	a.settingsUI.page = settingsPageAppearance
 	paint := make(chan bool, 1)
 	a.updateChanged = func(fn func() bool) { paint <- fn() }
 
@@ -526,8 +526,8 @@ func TestSettingsCachePageShowsBreakdownAndRefreshesAfterClear(t *testing.T) {
 	h.tester.Frame()
 	h.updates.runPending()
 	h.tester.Frame()
-	if h.app.settingsPage != settingsPageCache {
-		t.Fatalf("Cache rail selected settings page %d", h.app.settingsPage)
+	if h.app.settingsUI.page != settingsPageCache {
+		t.Fatalf("Cache rail selected settings page %d", h.app.settingsUI.page)
 	}
 	for _, text := range []string{
 		"Total cache", "Zoekt search indexes", "Cached avatars", "4.0 MiB", "3.0 MiB", "1.0 MiB",

@@ -23,6 +23,7 @@ import (
 
 type codeTestSession struct {
 	repository.Session
+	repository.HistorySession
 	root string
 }
 
@@ -70,7 +71,9 @@ func useRealCodeWorkspace(t *testing.T, h *harness, files map[string]string) str
 		return os.WriteFile(name, data, 0o644)
 	}
 	h.app.snapshot.Root = root
-	h.app.session = codeTestSession{Session: h.app.session, root: root}
+	h.app.session = codeTestSession{
+		Session: h.app.session, HistorySession: h.app.session.(repository.HistorySession), root: root,
+	}
 	// File-operation tests exercise temporary workspaces, not external process
 	// integration. Keep a locally installed gopls from retaining TempDir on Windows.
 	h.app.settings.LanguageServers = map[string]languageServerSettings{"go": {Disabled: true}}

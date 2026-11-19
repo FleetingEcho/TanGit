@@ -56,8 +56,13 @@ func TestCommitDetailsKeepTheirContentWhileLoading(t *testing.T) {
 		started: make(chan string, 1),
 		release: make(chan []repository.CommitFile, 1),
 	}
-	t.Cleanup(func() { session.release <- []repository.CommitFile{{Path: "next.go"}} })
 	a := newApp(fakeOpener{})
+	updates := newUpdates()
+	a.update = updates.update
+	t.Cleanup(func() {
+		session.release <- []repository.CommitFile{{Path: "next.go"}}
+		updates.waitForUpdate(t)
+	})
 	a.session = session
 	a.workspaceTab = sectionHistory
 	a.commitFilesHash = "first"

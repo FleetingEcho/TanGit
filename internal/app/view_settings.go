@@ -32,29 +32,29 @@ const (
 
 func (a *app) openSettings() {
 	a.loadGoLanguageServerDraft()
-	a.conflictActionStyleChoice = conflictActionStyleChoice(a.settings.ConflictActionStyle)
-	a.autoFetchChoice = a.settings.AutoFetchInterval
-	if backgroundFetchCustomInterval(a.autoFetchChoice) {
-		a.autoFetchChoice = backgroundFetchCustomChoice
+	a.settingsUI.conflictActionStyleChoice = conflictActionStyleChoice(a.settings.ConflictActionStyle)
+	a.settingsUI.autoFetchChoice = a.settings.AutoFetchInterval
+	if backgroundFetchCustomInterval(a.settingsUI.autoFetchChoice) {
+		a.settingsUI.autoFetchChoice = backgroundFetchCustomChoice
 	}
-	a.settingsOpen = true
+	a.settingsUI.open = true
 }
 
 // openSettingsSection opens settings on a specific page, used by the
 // commands menu's way into the custom command editor.
 func (a *app) openSettingsSection(page int) {
 	a.loadGoLanguageServerDraft()
-	a.conflictActionStyleChoice = conflictActionStyleChoice(a.settings.ConflictActionStyle)
-	a.autoFetchChoice = a.settings.AutoFetchInterval
-	if backgroundFetchCustomInterval(a.autoFetchChoice) {
-		a.autoFetchChoice = backgroundFetchCustomChoice
+	a.settingsUI.conflictActionStyleChoice = conflictActionStyleChoice(a.settings.ConflictActionStyle)
+	a.settingsUI.autoFetchChoice = a.settings.AutoFetchInterval
+	if backgroundFetchCustomInterval(a.settingsUI.autoFetchChoice) {
+		a.settingsUI.autoFetchChoice = backgroundFetchCustomChoice
 	}
-	if page != a.settingsPage {
+	if page != a.settingsUI.page {
 		a.stopEditorShortcutRecording()
 	}
-	a.settingsPage = page
-	a.settingsRevealShortcuts = page == settingsPageCodeEditor
-	a.settingsOpen = true
+	a.settingsUI.page = page
+	a.settingsUI.revealShortcuts = page == settingsPageCodeEditor
+	a.settingsUI.open = true
 }
 
 // themeButton is the header's theme control. Its icon shows the appearance in
@@ -92,9 +92,7 @@ func (a *app) themeMenuItems(m *ui.Menu, c *ui.Context) {
 
 func (a *app) closeSettings() {
 	a.stopEditorShortcutRecording()
-	a.settingsOpen = false
-	a.settingsRevealShortcuts = false
-	a.closeCustomEditorForm()
+	a.settingsUI.close()
 	a.closeSSHProfileForm()
 	a.saveSettings()
 }
@@ -102,7 +100,7 @@ func (a *app) closeSettings() {
 // settingsModal is the preferences dialog: it sits over whatever page is
 // showing, applies every change to the next frame, and stores it at once.
 func (a *app) settingsModal(c *ui.Context) {
-	if !a.settingsOpen {
+	if !a.settingsUI.open {
 		return
 	}
 	theme := c.Theme()
@@ -138,7 +136,7 @@ func (a *app) settingsModal(c *ui.Context) {
 			// Confirmation and host-key prompts are child overlays. While either
 			// is present, Settings must not interpret its click or Escape as an
 			// outside dismissal of the parent dialog as well.
-			if a.confirm == nil && a.sshHostKeyPrompt == nil && (panel.PressedOutside() || a.onOverlayShortcut(back, 0, ui.KeyEscape, shortcut("settings/modal-close", "Escape", tr("Close settings")), nil)) {
+			if a.confirm == nil && a.ssh.hostKeyPrompt == nil && (panel.PressedOutside() || a.onOverlayShortcut(back, 0, ui.KeyEscape, shortcut("settings/modal-close", "Escape", tr("Close settings")), nil)) {
 				if a.code.shortcutRecording != "" {
 					a.stopEditorShortcutRecording()
 				} else {
@@ -245,7 +243,7 @@ func (a *app) settingsBody(c *ui.Context) {
 		ui.Box(c).Width(1).Background(theme.Border)
 		ui.Scroll(c).Grow(1).MinHeight(0).FillWidth().FillHeight().Children(func() {
 			ui.Column(c).FillWidth().Padding(3, 8, 12, 4).Children(func() {
-				switch a.settingsPage {
+				switch a.settingsUI.page {
 				case settingsPageTypography:
 					a.typographySettings(c)
 				case settingsPageBehavior:
@@ -274,7 +272,7 @@ func (a *app) settingsBody(c *ui.Context) {
 
 func (a *app) settingsPageButton(c *ui.Context, page int, icon *ui.SVG, label string) {
 	theme := c.Theme()
-	selected := a.settingsPage == page || page == settingsPageEditor && a.settingsPage == settingsPageCodeEditor
+	selected := a.settingsUI.page == page || page == settingsPageEditor && a.settingsUI.page == settingsPageCodeEditor
 	button := ui.ButtonBase(c).FillWidth().Height(40).Padding(9, 10).Gap(10).
 		Radius(theme.Radius + 2).Label(trf("%s settings", tr(label)))
 	button.Children(func() {
@@ -291,11 +289,11 @@ func (a *app) settingsPageButton(c *ui.Context, page int, icon *ui.SVG, label st
 		button.Background(theme.SurfaceHover)
 	}
 	if button.Clicked() {
-		if a.settingsPage != page {
+		if a.settingsUI.page != page {
 			a.stopEditorShortcutRecording()
 		}
-		a.settingsRevealShortcuts = false
-		a.settingsPage = page
+		a.settingsUI.revealShortcuts = false
+		a.settingsUI.page = page
 	}
 }
 
@@ -397,8 +395,8 @@ func (a *app) appearanceSettings(c *ui.Context) {
 // whole Appearance page visible; Wrap on the setting row handles narrow windows.
 func (a *app) homeBackgroundPreview(c *ui.Context) {
 	theme := c.Theme()
-	if a.homeBackground != nil && a.homeBackgroundPath == a.settings.HomeBackgroundPath {
-		ui.Image(c, a.homeBackground).Size(138, 62).Fit(ui.Cover).
+	if a.settingsUI.homeBackground != nil && a.settingsUI.homeBackgroundPath == a.settings.HomeBackgroundPath {
+		ui.Image(c, a.settingsUI.homeBackground).Size(138, 62).Fit(ui.Cover).
 			Radius(theme.Radius + 2).Role(ui.RoleImage).Label(tr("Home background preview")).
 			Tooltip(a.settings.HomeBackgroundPath)
 		return
@@ -505,11 +503,11 @@ func (a *app) behaviorSettings(c *ui.Context) {
 		ui.Column(c).Gap(12).Padding(15).Background(c.Theme().Surface.Alpha(0.55)).
 			Border(1, c.Theme().Border).Radius(c.Theme().Radius + 5).Children(func() {
 			settingRow(c, "Conflict and hunk buttons", "Choose icons, icons with labels, or guided conflict resolution", func() {
-				choice := ui.Segmented(c, &a.conflictActionStyleChoice, tr("Icons"), tr("Icons + labels"), tr("Guided")).
+				choice := ui.Segmented(c, &a.settingsUI.conflictActionStyleChoice, tr("Icons"), tr("Icons + labels"), tr("Guided")).
 					Label(tr("Conflict and hunk button style")).
 					Tooltip(tr("Show conflict and Changes hunk actions as icons, icons with labels, or labeled actions with step-by-step guidance"))
 				if choice.Changed() {
-					a.settings.ConflictActionStyle = conflictActionStyleForChoice(a.conflictActionStyleChoice)
+					a.settings.ConflictActionStyle = conflictActionStyleForChoice(a.settingsUI.conflictActionStyleChoice)
 					a.settingsChanged(c)
 				}
 			})
@@ -538,7 +536,7 @@ func (a *app) behaviorSettings(c *ui.Context) {
 			if settingsSwitch(c, "Fetch remotes in the background", "", &fetchOn) {
 				if fetchOn {
 					a.settings.AutoFetchInterval = 5
-					a.autoFetchChoice = 5
+					a.settingsUI.autoFetchChoice = 5
 				} else {
 					a.settings.AutoFetchInterval = 0
 				}
@@ -566,14 +564,14 @@ func (a *app) behaviorSettings(c *ui.Context) {
 // bounded numeric editor, so a user's existing non-preset value round-trips.
 func (a *app) backgroundFetchIntervalChoice(c *ui.Context) {
 	theme := c.Theme()
-	selects := ui.SelectBase(c, &a.autoFetchChoice)
+	selects := ui.SelectBase(c, &a.settingsUI.autoFetchChoice)
 	selects.Trigger.Width(170).Padding(6, 10).Gap(8).
 		Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius).
 		Label(tr("Background fetch interval")).
 		Tooltip(tr("Choose a preset or enter a custom interval in minutes")).
 		Children(func() {
 			label := tr("Custom…")
-			if a.autoFetchChoice != backgroundFetchCustomChoice {
+			if a.settingsUI.autoFetchChoice != backgroundFetchCustomChoice {
 				label = trf("%d min", a.settings.AutoFetchInterval)
 			}
 			ui.Text(c, label).Grow(1).SingleLine()
@@ -597,8 +595,8 @@ func (a *app) backgroundFetchIntervalChoice(c *ui.Context) {
 		custom.Children(func() { ui.Text(c, tr("Custom…")) })
 	})
 	if selects.Trigger.Changed() {
-		if a.autoFetchChoice != backgroundFetchCustomChoice {
-			a.settings.AutoFetchInterval = a.autoFetchChoice
+		if a.settingsUI.autoFetchChoice != backgroundFetchCustomChoice {
+			a.settings.AutoFetchInterval = a.settingsUI.autoFetchChoice
 		}
 		a.settings.AutoFetchConfigured = true
 		a.settingsChanged(c)
@@ -607,7 +605,7 @@ func (a *app) backgroundFetchIntervalChoice(c *ui.Context) {
 	ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
 		// The trigger and menu were built above so their change is applied
 		// before deciding whether the custom field belongs in this frame.
-		if a.autoFetchChoice == backgroundFetchCustomChoice {
+		if a.settingsUI.autoFetchChoice == backgroundFetchCustomChoice {
 			minutes := float64(a.settings.AutoFetchInterval)
 			input := ui.NumberInput(c, &minutes, 1, 24*60, 1).Width(140).
 				Label(tr("Custom fetch interval in minutes"))
@@ -622,36 +620,33 @@ func (a *app) backgroundFetchIntervalChoice(c *ui.Context) {
 }
 
 func (a *app) openCustomEditorForm() {
-	a.customEditorFormOpen = true
-	a.customEditorFormName = ""
-	a.customEditorFormCommand = ""
-	a.customEditorFormError = ""
+	a.settingsUI.customEditorFormOpen = true
+	a.settingsUI.customEditorFormName = ""
+	a.settingsUI.customEditorFormCommand = ""
+	a.settingsUI.customEditorFormError = ""
 }
 
 func (a *app) closeCustomEditorForm() {
-	a.customEditorFormOpen = false
-	a.customEditorFormName = ""
-	a.customEditorFormCommand = ""
-	a.customEditorFormError = ""
+	a.settingsUI.closeCustomEditorForm()
 }
 
 func (a *app) submitCustomEditorForm(c *ui.Context) {
 	editor := editorPreset{
-		Name:    strings.TrimSpace(a.customEditorFormName),
-		Command: strings.TrimSpace(a.customEditorFormCommand),
+		Name:    strings.TrimSpace(a.settingsUI.customEditorFormName),
+		Command: strings.TrimSpace(a.settingsUI.customEditorFormCommand),
 	}
 	if editor.Name == "" || editor.Command == "" {
-		a.customEditorFormError = tr("Enter an editor name and command line.")
+		a.settingsUI.customEditorFormError = tr("Enter an editor name and command line.")
 		return
 	}
 	for _, preset := range a.allEditorPresets() {
 		if strings.EqualFold(editor.Name, preset.Name) {
-			a.customEditorFormError = tr("Enter a unique editor name.")
+			a.settingsUI.customEditorFormError = tr("Enter a unique editor name.")
 			return
 		}
 	}
 	if !validExternalEditor(editor) {
-		a.customEditorFormError = tr("Enter a valid single-line command.")
+		a.settingsUI.customEditorFormError = tr("Enter a valid single-line command.")
 		return
 	}
 	a.settings.ExternalEditors = append(a.settings.ExternalEditors, editor)
@@ -660,7 +655,7 @@ func (a *app) submitCustomEditorForm(c *ui.Context) {
 }
 
 func (a *app) customEditorForm(c *ui.Context) {
-	if !a.customEditorFormOpen {
+	if !a.settingsUI.customEditorFormOpen {
 		return
 	}
 	theme := c.Theme()
@@ -668,18 +663,18 @@ func (a *app) customEditorForm(c *ui.Context) {
 		Border(1, theme.Border).Radius(theme.Radius + 5).Children(func() {
 		ui.Text(c, tr("New external editor")).Bold()
 		settingRow(c, "Editor name", "Shown in the external-editor menu", func() {
-			ui.TextInput(c, &a.customEditorFormName).Label(tr("Custom editor name")).
+			ui.TextInput(c, &a.settingsUI.customEditorFormName).Label(tr("Custom editor name")).
 				Placeholder(tr("Editor name")).Grow(1).AutoFocus()
 		})
 		settingRow(c, "Command line", "Command and arguments", func() {
-			input := ui.TextInput(c, &a.customEditorFormCommand).Label(tr("Custom editor command line")).
+			input := ui.TextInput(c, &a.settingsUI.customEditorFormCommand).Label(tr("Custom editor command line")).
 				Placeholder("my-editor --wait {{filename}}").Grow(1)
 			if input.Submitted() {
 				a.submitCustomEditorForm(c)
 			}
 		})
-		if a.customEditorFormError != "" {
-			ui.Text(c, a.customEditorFormError).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
+		if a.settingsUI.customEditorFormError != "" {
+			ui.Text(c, a.settingsUI.customEditorFormError).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
 		} else {
 			ui.Text(c, tr("Use {{filename}} for the repository path and {{line}} for a line number.")).
 				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
@@ -724,7 +719,7 @@ func (a *app) editorSettings(c *ui.Context) {
 				}
 			}
 			flatIconButton(c, "Add editor…", "Add a custom external editor", plusIcon, 14, 4,
-				a.customEditorFormOpen, a.openCustomEditorForm)
+				a.settingsUI.customEditorFormOpen, a.openCustomEditorForm)
 		})
 		a.customEditorForm(c)
 		explanation := "Repository cards and file actions use this command without changing your open repository."
@@ -808,23 +803,23 @@ func (a *app) searchExclusionSettings(c *ui.Context) {
 	ui.Text(c, tr("Folder names skipped by content search")).
 		TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).MaxWidth(480)
 	settingRow(c, "Excluded folder name", "Match this folder at any depth", func() {
-		input := ui.TextInput(c, &a.searchExcludedDirectoryDraft).
+		input := ui.TextInput(c, &a.settingsUI.searchExcludedDirectoryDraft).
 			Label(tr("New excluded folder")).Placeholder("node_modules").Grow(1)
 		submitted := input.Submitted()
 		added := false
 		iconTextButtonState(c, "Add", "Add this folder to the search exclusions", plusIcon, false,
-			len(normalizeWorkspaceSearchExcludedDirectories([]string{a.searchExcludedDirectoryDraft})) == 0,
+			len(normalizeWorkspaceSearchExcludedDirectories([]string{a.settingsUI.searchExcludedDirectoryDraft})) == 0,
 			func() { added = true })
 		if !submitted && !added {
 			return
 		}
-		name := normalizeWorkspaceSearchExcludedDirectories([]string{a.searchExcludedDirectoryDraft})
+		name := normalizeWorkspaceSearchExcludedDirectories([]string{a.settingsUI.searchExcludedDirectoryDraft})
 		if len(name) == 0 {
 			return
 		}
 		a.settings.SearchExcludedDirectories = normalizeWorkspaceSearchExcludedDirectories(
 			append(a.settings.SearchExcludedDirectories, name[0]))
-		a.searchExcludedDirectoryDraft = ""
+		a.settingsUI.searchExcludedDirectoryDraft = ""
 		a.settingsChanged(c)
 	})
 	settingsChoiceCard(c, "Excluded folders", "Applied before searching", func() {
@@ -1140,14 +1135,14 @@ func (a *app) accentPicker(c *ui.Context) {
 		if chosen, ok := accentColor(a.settings.Accent); ok {
 			color = chosen
 		}
-		if a.customAccent != color {
-			a.customAccent = color
+		if a.settingsUI.customAccent != color {
+			a.settingsUI.customAccent = color
 		}
-		well := ui.ColorWell(c, &a.customAccent).
+		well := ui.ColorWell(c, &a.settingsUI.customAccent).
 			Label(tr("Custom accent color")).Tooltip(tr("Choose a custom accent color"))
 		if well.Changed() {
-			a.customAccent = ui.RGB(a.customAccent.R, a.customAccent.G, a.customAccent.B)
-			a.settings.Accent = formatCustomAccent(a.customAccent)
+			a.settingsUI.customAccent = ui.RGB(a.settingsUI.customAccent.R, a.settingsUI.customAccent.G, a.settingsUI.customAccent.B)
+			a.settings.Accent = formatCustomAccent(a.settingsUI.customAccent)
 			a.settingsChanged(c)
 		}
 	})
@@ -1231,7 +1226,7 @@ func (a *app) resetSettingsToDefaults() {
 	a.clearSSHProfileSecrets()
 	a.closeSSHProfileForm()
 	a.settings = defaultSettings()
-	a.conflictActionStyleChoice = conflictActionStyleChoice(a.settings.ConflictActionStyle)
+	a.settingsUI.conflictActionStyleChoice = conflictActionStyleChoice(a.settings.ConflictActionStyle)
 	a.loadGoLanguageServerDraft()
 	a.applySettingsChange()
 }

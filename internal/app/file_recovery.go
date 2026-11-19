@@ -79,11 +79,12 @@ func (a *app) refreshFileRecoveries() {
 		return
 	}
 	generation := a.generation
+	ctx := a.repositoryWork.Context()
 	a.fileRecoveryRefreshSeq++
 	sequence := a.fileRecoveryRefreshSeq
 	go func() {
 		defer a.recoverBackground()
-		records, err := recovery.ListFileRecovery(context.Background())
+		records, err := recovery.ListFileRecovery(ctx)
 		if err != nil {
 			return
 		}

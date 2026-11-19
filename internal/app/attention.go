@@ -31,12 +31,13 @@ func (a *app) confirmPush() {
 	}
 	session := a.session
 	generation := a.generation
+	parent := a.repositoryWork.Context()
 	a.actionBusy = true
 	go func() {
 		defer a.recoverBackground()
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 		defer cancel()
-		stack, _ := session.StackedBranches(ctx)
+		stack, _ := requireBranchRemoteSession(session).StackedBranches(ctx)
 		a.update(func() {
 			if generation != a.generation {
 				return
@@ -54,17 +55,17 @@ func (a *app) confirmPushCandidates(stack []string) {
 			"\n\n" + tr("Each push publishes that branch's unpushed commits. Nothing is force-pushed.")
 		a.confirmAttention("Push", a.snapshot.Branch, detail, func() {
 			a.beginRepositoryActionMessage(trf("Pushed %s and %d stacked branch%s", a.snapshot.Branch, len(stack), pluralS(len(stack))), "", func(ctx context.Context, s repository.Session) error {
-				if err := s.PushStack(ctx, stack); err != nil {
+				if err := requireBranchRemoteSession(s).PushStack(ctx, stack); err != nil {
 					return err
 				}
-				return s.Push(ctx)
+				return requireBranchRemoteSession(s).Push(ctx)
 			}, nil)
 		})
 		return
 	}
 	a.confirmAttention("Push", a.snapshot.Branch,
 		"This publishes local commits to the remote branch. Review the destination and commits before continuing.", func() {
-			a.beginRepositoryActionMessage(tr("Pushed the branch"), "", func(ctx context.Context, s repository.Session) error { return s.Push(ctx) }, nil)
+			a.beginRepositoryActionMessage(tr("Pushed the branch"), "", func(ctx context.Context, s repository.Session) error { return requireBranchRemoteSession(s).Push(ctx) }, nil)
 		})
 }
 
@@ -73,7 +74,9 @@ func (a *app) confirmPushCandidates(stack []string) {
 func (a *app) confirmPushFollowTags() {
 	a.confirmAttention("Push with tags", a.snapshot.Branch,
 		"This publishes the branch like a normal push, and also pushes the tags that point at the commits being pushed.", func() {
-			a.beginRepositoryActionMessage(tr("Pushed the branch with its tags"), "", func(ctx context.Context, s repository.Session) error { return s.PushFollowTags(ctx) }, nil)
+			a.beginRepositoryActionMessage(tr("Pushed the branch with its tags"), "", func(ctx context.Context, s repository.Session) error {
+				return requireBranchRemoteSession(s).PushFollowTags(ctx)
+			}, nil)
 		})
 }
 
@@ -87,7 +90,7 @@ func pluralS(n int) string {
 func (a *app) confirmPull() {
 	a.confirmAttention("Pull", a.snapshot.Branch,
 		"This integrates upstream changes into the current branch and working tree. Git may merge or rebase, and conflicts may require resolution.", func() {
-			a.beginRepositoryActionMessage(tr("Pulled the latest changes"), "", func(ctx context.Context, s repository.Session) error { return s.Pull(ctx) }, nil)
+			a.beginRepositoryActionMessage(tr("Pulled the latest changes"), "", func(ctx context.Context, s repository.Session) error { return requireBranchRemoteSession(s).Pull(ctx) }, nil)
 		})
 }
 
@@ -100,7 +103,7 @@ func (a *app) confirmPullStrategy(strategy repository.PullStrategy) {
 	}
 	a.confirmAttention(title, a.snapshot.Branch, detail, func() {
 		a.beginRepositoryActionMessage(tr("Pulled the latest changes"), "", func(ctx context.Context, s repository.Session) error {
-			return s.PullWithStrategy(ctx, strategy)
+			return requireBranchRemoteSession(s).PullWithStrategy(ctx, strategy)
 		}, nil)
 	})
 }

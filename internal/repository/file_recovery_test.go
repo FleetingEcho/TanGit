@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-func fileRecoveryRepository(t *testing.T, name string, base []byte) (string, Session, FileRecoverySession) {
+func fileRecoveryRepository(t *testing.T, name string, base []byte) (string, FullSession, FileRecoverySession) {
 	t.Helper()
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
@@ -23,7 +23,7 @@ func fileRecoveryRepository(t *testing.T, name string, base []byte) (string, Ses
 	}
 	runGit(t, dir, "add", "--", name)
 	runGit(t, dir, "commit", "-m", "base")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestFileRecoveryRestoresUUTextAndBinaryWithPreciseStages(t *testing.T) {
 			}
 			t.Run(name, func(t *testing.T) {
 				dir := fileRecoveryUURepository(t, binary)
-				session, err := (Opener{}).Open(context.Background(), dir)
+				session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -347,7 +347,7 @@ func TestFileRecoveryExplicitRetryAfterReopen(t *testing.T) {
 	}
 	fileRecoveryRestoreHEAD(t, dir, "f.txt")
 
-	reopened, err := (Opener{}).Open(context.Background(), dir)
+	reopened, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -479,7 +479,7 @@ func TestFileRecoveryRetriesPartialFileAndIndexInterruptions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			reopened, err := (Opener{}).Open(context.Background(), dir)
+			reopened, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 			if err != nil {
 				t.Fatal(err)
 			}

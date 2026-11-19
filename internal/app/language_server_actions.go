@@ -121,14 +121,14 @@ func (a *app) languageServerActionRequest(document *codeDocument, sequence *uint
 		})
 	}
 	if strings.EqualFold(filepath.Ext(document.path), ".go") {
-		connection := a.goLanguageServer
+		connection := a.lsp.goServer
 		if connection == nil {
 			result(nil, errors.New("Go language server is not running"))
 			return
 		}
 		a.syncGoLanguageServerDocument(document.path, document)
 		connection.Request(method, params, func(raw json.RawMessage, err error) {
-			deliver(func() bool { return a.goLanguageServer == connection }, raw, err)
+			deliver(func() bool { return a.lsp.goServer == connection }, raw, err)
 		})
 		return
 	}

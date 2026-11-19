@@ -43,7 +43,7 @@ func (s *pagedCommitSession) RecentCommits(_ context.Context, limit, skip int) (
 }
 
 func (s *pagedCommitSession) SearchCommits(_ context.Context, filter repository.CommitFilter) ([]repository.Commit, error) {
-	return s.BranchCommits(context.Background(), filter.Branch, filter.Limit)
+	return requireBranchCommitsSession(s).BranchCommits(context.Background(), filter.Branch, filter.Limit)
 }
 
 func (s *pagedCommitSession) BranchCommits(_ context.Context, _ string, limit int) ([]repository.Commit, error) {
@@ -133,7 +133,7 @@ func TestHistoryEndReachedLoadsTheNextPage(t *testing.T) {
 	session := &pagedCommitSession{fakeSession: fakeSession{snapshot: repository.Snapshot{Branch: "main"}}, total: 2*page + 1}
 	a := newApp(fakeOpener{})
 	a.session = session
-	a.snapshot.Commits, _ = session.RecentCommits(context.Background(), page, 0)
+	a.snapshot.Commits, _ = requireHistorySession(session).RecentCommits(context.Background(), page, 0)
 	a.commitsMore = true
 	updated := newUpdates()
 	a.update = updated.update
@@ -266,7 +266,7 @@ func historyFilterScrollFixture(t *testing.T) (*app, *updates, *ui.Tester) {
 	session := &pagedCommitSession{fakeSession: fakeSession{snapshot: repository.Snapshot{Branch: "main"}}, total: 2*page + 1}
 	a := newApp(fakeOpener{})
 	a.session = session
-	a.snapshot.Commits, _ = session.RecentCommits(context.Background(), page, 0)
+	a.snapshot.Commits, _ = requireHistorySession(session).RecentCommits(context.Background(), page, 0)
 	a.workspaceTab = sectionHistory
 	a.historyFilter.applied = repository.CommitFilter{Branch: "main"}
 	a.historyFilter.limit = page

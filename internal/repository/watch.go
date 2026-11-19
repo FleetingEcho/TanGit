@@ -19,7 +19,6 @@ const repositoryEventDelay = 120 * time.Millisecond
 // Implementations close the returned channel when ctx is cancelled. Watching
 // is optional: sessions without it keep the app's timer-based refresh.
 type WatchingSession interface {
-	Session
 	Watch(context.Context) (<-chan struct{}, error)
 }
 

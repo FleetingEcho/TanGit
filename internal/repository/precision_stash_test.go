@@ -37,7 +37,7 @@ func TestStashPatchSavesAndRemovesOnlyOneHunk(t *testing.T) {
 		t.Fatalf("fixture did not create two hunks:\n%s", patch)
 	}
 	patch = patch[:first+3+second] + "\n"
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -186,7 +186,6 @@ type StackSyncResult struct {
 // StackSyncSession is optional so existing Session implementations do not
 // need new stubs. The concrete Git session always implements it.
 type StackSyncSession interface {
-	Session
 	ProvideStackSync(context.Context, StackSyncOptions) (StackSyncPlan, error)
 	PlanStackSync(context.Context, StackSyncOptions) (StackSyncPlan, error)
 	ApplyStackSync(context.Context, StackSyncPlan) (StackSyncResult, error)

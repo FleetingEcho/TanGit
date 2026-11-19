@@ -676,7 +676,7 @@ func (a *app) keyboardPanelTabs(id string, e ui.Element) ui.Element {
 	}
 	// Never let a background list claim a dialog's native Tab key.
 	if a.modalOpen() {
-		if a.confirm != nil || a.settingsOpen || a.keybindingsOpen || a.commandLogOpen || a.anyFormOpen() {
+		if a.confirm != nil || a.settingsUI.open || a.keybindingsOpen || a.commandLogOpen || a.anyFormOpen() {
 			return e
 		}
 		if a.diffFullscreen && !strings.HasPrefix(id, "fullscreen-") {

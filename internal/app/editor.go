@@ -479,7 +479,7 @@ func (a *app) repositoryExternalEditorMenu(m *ui.Menu) {
 	}
 	m.Separator()
 	if m.Item(tr("Customize editor…")).Chosen() {
-		a.settingsPage = settingsPageEditor
+		a.settingsUI.page = settingsPageEditor
 		a.openSettings()
 	}
 }

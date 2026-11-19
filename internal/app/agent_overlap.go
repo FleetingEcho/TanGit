@@ -51,7 +51,7 @@ func (a *app) beginAgentOverlapAnalysis() {
 	if state.cancel != nil {
 		state.cancel()
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	state.cancel = cancel
 	token, generation, repositoryID := state.token, a.generation, a.agentRepositoryID()
 	go func() {
@@ -95,14 +95,15 @@ func (a *app) loadAgentOverlapTask(ctx context.Context, task agentwork.Task, inp
 		return err
 	}
 	defer closeRepositorySession(target)
+	history := target.(repository.HistorySession)
 	options := repository.DiffOptions{ContextLines: 0}
-	files, err := target.FinalFiles(ctx, task.BaseCommit, options)
+	files, err := history.FinalFiles(ctx, task.BaseCommit, options)
 	if err != nil {
 		return err
 	}
 	input.Files = make([]agentwork.OverlapFileSnapshot, 0, len(files))
 	for _, file := range files {
-		diff, err := target.FinalFileDiff(ctx, task.BaseCommit, file, options)
+		diff, err := history.FinalFileDiff(ctx, task.BaseCommit, file, options)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", file.Path, err)
 		}

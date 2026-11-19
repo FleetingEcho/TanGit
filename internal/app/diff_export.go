@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 
@@ -84,9 +83,10 @@ func (a *app) exportCompareDiff() {
 			{Name: tr("Patch files"), Extensions: []string{"patch", "diff"}},
 		},
 	}
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		diff, err := session.CompareDiff(context.Background(), from, to, options)
+		diff, err := requireHistorySession(session).CompareDiff(ctx, from, to, options)
 		a.update(func() {
 			if generation == a.generation && token == a.compare.token {
 				a.compare.wholeDiffLoading = false

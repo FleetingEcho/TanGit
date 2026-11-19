@@ -361,7 +361,7 @@ func TestSettingsActionStyleIsImmediatePersistentAndModalSafe(t *testing.T) {
 				}
 				h.tester.Frame()
 				h.tester.Frame()
-				if h.app.settingsOpen {
+				if h.app.settingsUI.open {
 					t.Fatal("Settings stayed open")
 				}
 				if _, found := h.tester.AccessByRole(ui.RoleDialog, "Settings"); found {

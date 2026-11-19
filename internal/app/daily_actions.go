@@ -28,9 +28,9 @@ func (a *app) ignoreFile(file repository.File, local bool) {
 	a.beginRepositoryActionMessage(message, file.Path,
 		func(ctx context.Context, session repository.Session) error {
 			if local {
-				return session.ExcludeFile(ctx, file)
+				return requireChangesSession(session).ExcludeFile(ctx, file)
 			}
-			return session.IgnoreFile(ctx, file)
+			return requireChangesSession(session).IgnoreFile(ctx, file)
 		}, nil)
 }
 
@@ -49,7 +49,7 @@ func (a *app) confirmRestoreCommitFile(commit repository.Commit, file repository
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Restored %s from %s", file.Path, commit.ShortHash), file.Path,
 				func(ctx context.Context, session repository.Session) error {
-					return session.RestoreCommitFile(ctx, commit, file)
+					return requireHistorySession(session).RestoreCommitFile(ctx, commit, file)
 				}, nil)
 		},
 	})

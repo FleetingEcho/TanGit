@@ -163,9 +163,9 @@ func TestCodeExternalEditorMenuCustomizesEditorSettings(t *testing.T) {
 	h.tester.Frame()
 	h.chooseMenuItem(t, "Customize editor…")
 
-	if !h.app.settingsOpen || h.app.settingsPage != settingsPageEditor || !h.tester.HasText("Built-in Code or an external program") {
+	if !h.app.settingsUI.open || h.app.settingsUI.page != settingsPageEditor || !h.tester.HasText("Built-in Code or an external program") {
 		t.Fatalf("customization did not open Editor settings: open=%v page=%d texts=%q",
-			h.app.settingsOpen, h.app.settingsPage, h.texts())
+			h.app.settingsUI.open, h.app.settingsUI.page, h.texts())
 	}
 	if len(*opened) != 0 {
 		t.Fatalf("customization launched an editor: %+v", *opened)
@@ -176,7 +176,7 @@ func TestSettingsAddCustomEditorToExternalMenu(t *testing.T) {
 	h := menuTestApp(t)
 	stubCodeWorkspace(t, nil)
 	opened := stubEditor(t, nil)
-	h.app.settingsPage = settingsPageEditor
+	h.app.settingsUI.page = settingsPageEditor
 	h.app.openSettings()
 	h.tester.Frame()
 
@@ -202,9 +202,9 @@ func TestSettingsAddCustomEditorToExternalMenu(t *testing.T) {
 	editor := editorPreset{Name: "Fleet", Command: "fleet --project {{filename}}"}
 	if got := h.app.settings.ExternalEditors; !slices.Equal(got, []editorPreset{editor}) {
 		t.Fatalf("saved external editors = %+v, want %+v; draft=%q %q %q texts=%q", got, editor,
-			h.app.customEditorFormName, h.app.customEditorFormCommand, h.app.customEditorFormError, h.texts())
+			h.app.settingsUI.customEditorFormName, h.app.settingsUI.customEditorFormCommand, h.app.settingsUI.customEditorFormError, h.texts())
 	}
-	if h.app.customEditorFormOpen {
+	if h.app.settingsUI.customEditorFormOpen {
 		t.Fatal("adding an editor left its draft form open")
 	}
 
@@ -525,7 +525,7 @@ func TestEditorConfigurationLivesInSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if h.app.settingsPage != settingsPageEditor || !h.tester.HasText("Editor command") {
+	if h.app.settingsUI.page != settingsPageEditor || !h.tester.HasText("Editor command") {
 		t.Fatal("the Editor settings page does not show its command")
 	}
 }

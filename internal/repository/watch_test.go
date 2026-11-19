@@ -35,7 +35,7 @@ func TestWatchReportsWorkingTreeAndGitMetadataChanges(t *testing.T) {
 	runGit(t, dir, "add", "file.txt")
 	runGit(t, dir, "commit", "-m", "first")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestCoreSnapshotDoesNotNotifyItsOwnRepositoryWatcher(t *testing.T) {
 	runGit(t, dir, "add", "file.txt")
 	runGit(t, dir, "commit", "-m", "first")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestWatchReportsPermissionOnlyChanges(t *testing.T) {
 	runGit(t, dir, "add", "script.sh")
 	runGit(t, dir, "commit", "-m", "add script")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

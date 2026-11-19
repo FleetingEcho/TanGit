@@ -43,7 +43,7 @@ func TestPartialPatchesAddressWorktreeAndIndexIndependently(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	session, err := (Opener{}).Open(ctx, dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -39,7 +39,7 @@ func TestDiscardJournalUndoRestoresExactWorkAndPersists(t *testing.T) {
 	if record.Kind != OperationDiscard || !record.CanUndo() || record.Snapshot == nil {
 		t.Fatalf("unexpected discard record: %#v", record)
 	}
-	reopened, err := (Opener{}).Open(ctx, dir)
+	reopened, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +313,7 @@ func TestDroppedStashJournalUndoRestoresSavedObject(t *testing.T) {
 
 func TestIndependentSessionsSerializePatchValidationAndApply(t *testing.T) {
 	dir, first := patchImportRepository(t)
-	second, err := (Opener{}).Open(context.Background(), dir)
+	second, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +337,7 @@ func TestIndependentSessionsSerializePatchValidationAndApply(t *testing.T) {
 	errs := make(chan error, 2)
 	var wg sync.WaitGroup
 	for _, test := range []struct {
-		session Session
+		session FullSession
 		preview PatchPreview
 	}{{first, firstPreview}, {second, secondPreview}} {
 		wg.Add(1)
@@ -382,11 +382,11 @@ func TestIndependentSessionsSerializeConcurrentUndo(t *testing.T) {
 		t.Fatal(err)
 	}
 	record := onlyOperation(t, session)
-	first, err := (Opener{}).Open(ctx, dir)
+	first, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := (Opener{}).Open(ctx, dir)
+	second, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +394,7 @@ func TestIndependentSessionsSerializeConcurrentUndo(t *testing.T) {
 	start := make(chan struct{})
 	errs := make(chan error, 2)
 	var wg sync.WaitGroup
-	for _, session := range []Session{first, second} {
+	for _, session := range []FullSession{first, second} {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

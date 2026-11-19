@@ -26,7 +26,7 @@ func TestCompareRefsListsFilesAndReadsFileDiff(t *testing.T) {
 	runGit(t, dir, "commit", "-m", "after")
 	runGit(t, dir, "checkout", "main")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestCompareDiffReadsWholePatchAndHonorsWhitespace(t *testing.T) {
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "after")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestCompareFilesKeepsRenameWarningsOutOfNameStatus(t *testing.T) {
 	runGit(t, dir, "commit", "-m", "after")
 	runGit(t, dir, "checkout", "main")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestCompareFileDiffHonorsContextLines(t *testing.T) {
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "after")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestCompareDiffHonorsContextLines(t *testing.T) {
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "after")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestCompareRejectsInvalidRefsAndOptions(t *testing.T) {
 	runGit(t, dir, "config", "user.name", "Desktop Test")
 	runGit(t, dir, "config", "user.email", "desktop@example.com")
 	runGit(t, dir, "commit", "--allow-empty", "-m", "initial")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

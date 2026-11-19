@@ -420,7 +420,7 @@ func TestWorkspaceUtilityButtonsExecute(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if !h.app.settingsOpen {
+	if !h.app.settingsUI.open {
 		t.Fatal("the header settings button did not open settings")
 	}
 }

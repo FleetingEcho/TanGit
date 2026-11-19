@@ -19,7 +19,7 @@ func TestBackgroundFetchSelectorChoosesPreset(t *testing.T) {
 	}
 	h.tester.Frame()
 	if h.app.settings.AutoFetchInterval != 30 {
-		t.Fatalf("interval = %d, want 30; selector = %d", h.app.settings.AutoFetchInterval, h.app.autoFetchChoice)
+		t.Fatalf("interval = %d, want 30; selector = %d", h.app.settings.AutoFetchInterval, h.app.settingsUI.autoFetchChoice)
 	}
 }
 
@@ -51,7 +51,7 @@ func TestBackgroundFetchSelectorAcceptsAndPersistsCustomMinutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if h.app.autoFetchChoice != backgroundFetchCustomChoice {
+	if h.app.settingsUI.autoFetchChoice != backgroundFetchCustomChoice {
 		t.Fatal("Custom did not enable the numeric interval editor")
 	}
 	if _, found := h.tester.Find("Custom fetch interval in minutes"); !found {
@@ -86,7 +86,7 @@ func TestBackgroundFetchSelectorAcceptsAndPersistsCustomMinutes(t *testing.T) {
 	h.app.closeSettings()
 	h.app.openSettingsSection(settingsPageBehavior)
 	h.tester.Frame()
-	if h.app.autoFetchChoice != backgroundFetchCustomChoice || !h.tester.HasText("Custom…") {
+	if h.app.settingsUI.autoFetchChoice != backgroundFetchCustomChoice || !h.tester.HasText("Custom…") {
 		t.Fatal("an existing custom interval was not restored as Custom")
 	}
 	if err := h.tester.Click("Background fetch interval"); err != nil {
@@ -97,8 +97,8 @@ func TestBackgroundFetchSelectorAcceptsAndPersistsCustomMinutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if h.app.autoFetchChoice == backgroundFetchCustomChoice || h.app.settings.AutoFetchInterval != 30 {
-		t.Fatalf("preset selection left custom=%v interval=%d", h.app.autoFetchChoice == backgroundFetchCustomChoice, h.app.settings.AutoFetchInterval)
+	if h.app.settingsUI.autoFetchChoice == backgroundFetchCustomChoice || h.app.settings.AutoFetchInterval != 30 {
+		t.Fatalf("preset selection left custom=%v interval=%d", h.app.settingsUI.autoFetchChoice == backgroundFetchCustomChoice, h.app.settings.AutoFetchInterval)
 	}
 	if _, found := h.tester.Find("Custom fetch interval in minutes"); found {
 		t.Fatal("choosing a preset left the custom editor visible")

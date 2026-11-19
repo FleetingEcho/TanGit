@@ -16,7 +16,7 @@ func TestCommitFilePatchRootCommitHasCanonicalBinaryAndFullIndex(t *testing.T) {
 	writePatchImportFile(t, dir, "binary.dat", []byte{0, 1, 2, 3})
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "root")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

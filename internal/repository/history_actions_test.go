@@ -178,7 +178,7 @@ func TestHistoryEditsRejectInvalidBoundariesAndEmptyIndex(t *testing.T) {
 	}
 }
 
-func newThreeCommitHistory(t *testing.T) (string, Session) {
+func newThreeCommitHistory(t *testing.T) (string, FullSession) {
 	t.Helper()
 	dir, session := newHistoryEditingSession(t)
 	writeHistoryCommit(t, dir, "one.txt", "one\n", "initial")

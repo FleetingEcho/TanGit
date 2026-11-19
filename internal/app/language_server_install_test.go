@@ -34,7 +34,7 @@ func TestTypeScriptFileOffersManagedLanguageServerOnce(t *testing.T) {
 	}
 
 	h.app.settings.LanguageServers = map[string]languageServerSettings{"typescript": {Disabled: true}}
-	h.app.languageServerInstallPrompted = nil
+	h.app.lsp.installPrompted = nil
 	h.app.pendingToasts = nil
 	h.app.offerLanguageServerInstall("src/disabled.ts")
 	if len(h.app.pendingToasts) != 0 {
@@ -73,7 +73,7 @@ func TestMissingLanguageServerIsDownloadRequiredInsteadOfFailed(t *testing.T) {
 	profile, _ := languageServerProfileByID("tailwind")
 	server := &managedLanguageServer{profile: profile}
 	h.app.settings.LanguageServers = map[string]languageServerSettings{"tailwind": {}}
-	h.app.additionalLanguageServers = map[string]*managedLanguageServer{"tailwind": server}
+	h.app.lsp.additional = map[string]*managedLanguageServer{"tailwind": server}
 	h.app.startManagedLanguageServer(server)
 	statuses := h.app.codeLanguageServerStatuses()
 	if len(statuses) != 1 || !statuses[0].missing || statuses[0].failed || server.error != "" {
@@ -95,7 +95,7 @@ func TestManagedLegacyTypeScriptServerIsDownloadRequired(t *testing.T) {
 	}
 	profile, _ := languageServerProfileByID("typescript")
 	server := &managedLanguageServer{profile: profile}
-	h.app.additionalLanguageServers = map[string]*managedLanguageServer{"typescript": server}
+	h.app.lsp.additional = map[string]*managedLanguageServer{"typescript": server}
 
 	h.app.startManagedLanguageServer(server)
 	statuses := h.app.codeLanguageServerStatuses()
@@ -150,12 +150,12 @@ func TestManagedLanguageServerInstallAutomaticallyConfiguresIt(t *testing.T) {
 	h.app.pathUserData = t.TempDir()
 	h.app.installLanguageServer("typescript")
 	for range 8 {
-		if !h.app.languageServerInstalling["typescript"] {
+		if !h.app.lsp.installing["typescript"] {
 			break
 		}
 		h.updates.waitForUpdate(t)
 	}
-	if h.app.languageServerInstalling["typescript"] {
+	if h.app.lsp.installing["typescript"] {
 		t.Fatal("TypeScript installation remained busy after its update")
 	}
 	want := languageServerSettings{
@@ -168,7 +168,7 @@ func TestManagedLanguageServerInstallAutomaticallyConfiguresIt(t *testing.T) {
 	if got := loadAppSettings(h.app.pathUserData).LanguageServers["typescript"]; !reflect.DeepEqual(got, want) {
 		t.Fatalf("persisted TypeScript settings = %#v, want %#v", got, want)
 	}
-	if draft := h.app.languageServerDrafts["typescript"]; draft == nil || !draft.Enabled || draft.Path != want.Path {
+	if draft := h.app.lsp.drafts["typescript"]; draft == nil || !draft.Enabled || draft.Path != want.Path {
 		t.Fatalf("installed TypeScript draft = %#v", draft)
 	}
 	if !hasToastTitle(h.app.pendingToasts, "TypeScript Language Server installed") {
@@ -186,12 +186,12 @@ func TestManagedLanguageServerInstallFailureDoesNotConfigureIt(t *testing.T) {
 	h.app.pathUserData = t.TempDir()
 	h.app.installLanguageServer("ruff")
 	for range 8 {
-		if !h.app.languageServerInstalling["ruff"] {
+		if !h.app.lsp.installing["ruff"] {
 			break
 		}
 		h.updates.waitForUpdate(t)
 	}
-	if h.app.languageServerInstalling["ruff"] {
+	if h.app.lsp.installing["ruff"] {
 		t.Fatal("Ruff installation remained busy after its update")
 	}
 	if _, configured := h.app.settings.LanguageServers["ruff"]; configured {
@@ -275,12 +275,12 @@ func TestLanguageServerInstallNotificationsUseStableTranslationFormats(t *testin
 
 func TestLanguageServerCatalogUsesCompactActionsSearchAndScroll(t *testing.T) {
 	h := menuTestApp(t)
-	h.app.settingsPage = settingsPageLSP
+	h.app.settingsUI.page = settingsPageLSP
 	h.app.openSettings()
 	h.tester.Frame()
 	h.tester.Scroll(700, 480, 0, 1800)
 	h.tester.Frame()
-	h.app.languageServerCatalogQuery = "TypeScript"
+	h.app.lsp.catalogQuery = "TypeScript"
 	h.tester.Frame()
 
 	download, downloadOK := h.tester.Find("Download TypeScript Language Server")
@@ -301,7 +301,7 @@ func TestLanguageServerCatalogUsesCompactActionsSearchAndScroll(t *testing.T) {
 		t.Fatalf("catalog results have unbounded height %.0f", results.H)
 	}
 
-	h.app.languageServerCatalogQuery = ""
+	h.app.lsp.catalogQuery = ""
 	h.tester.Frame()
 	if err := h.tester.Click("Search language servers"); err != nil {
 		t.Fatal(err)
@@ -365,12 +365,12 @@ func TestLanguageServerEnableRequiresAnExecutable(t *testing.T) {
 		return "", exec.ErrNotFound
 	}
 	h := menuTestApp(t)
-	h.app.settingsPage = settingsPageLSP
+	h.app.settingsUI.page = settingsPageLSP
 	h.app.openSettings()
 	h.tester.Frame()
 	h.tester.Scroll(700, 480, 0, 1800)
 	h.tester.Frame()
-	h.app.languageServerCatalogQuery = "Oxlint"
+	h.app.lsp.catalogQuery = "Oxlint"
 	h.tester.Frame()
 
 	if err := h.tester.Click("Enable Oxc / Oxlint"); err != nil {
@@ -380,7 +380,7 @@ func TestLanguageServerEnableRequiresAnExecutable(t *testing.T) {
 	if _, configured := h.app.settings.LanguageServers["oxlint"]; configured {
 		t.Fatal("Oxlint was enabled without an installed executable")
 	}
-	if draft := h.app.languageServerDrafts["oxlint"]; draft == nil || draft.Enabled {
+	if draft := h.app.lsp.drafts["oxlint"]; draft == nil || draft.Enabled {
 		t.Fatalf("Oxlint switch did not remain disabled: %#v", draft)
 	}
 	if !h.tester.HasText("Download required") {
@@ -391,7 +391,7 @@ func TestLanguageServerEnableRequiresAnExecutable(t *testing.T) {
 func TestLanguageServerCatalogAddsAndTogglesCustomTy(t *testing.T) {
 	h := menuTestApp(t)
 	h.app.pathUserData = t.TempDir()
-	h.app.settingsPage = settingsPageLSP
+	h.app.settingsUI.page = settingsPageLSP
 	h.app.openSettings()
 	h.tester.Frame()
 	h.tester.Scroll(700, 480, 0, 1800)
@@ -446,7 +446,7 @@ func TestLanguageServerCatalogAddsAndTogglesCustomTy(t *testing.T) {
 		t.Fatalf("custom ty launch = %q %q", program, arguments)
 	}
 
-	h.app.languageServerCatalogSelected = ""
+	h.app.lsp.catalogSelected = ""
 	h.tester.Frame()
 	results, found := h.tester.Find("Language server results")
 	if !found {
@@ -492,7 +492,7 @@ func TestCustomLanguageServerAppearsInEditorStatus(t *testing.T) {
 			},
 		},
 	}
-	h.app.additionalLanguageServers = map[string]*managedLanguageServer{
+	h.app.lsp.additional = map[string]*managedLanguageServer{
 		"custom-ty": {connection: newFakeLanguageServerConnection()},
 	}
 	statuses := h.app.codeLanguageServerStatuses()
@@ -506,12 +506,12 @@ func TestLanguageServerCardSwitchPrecedesDownload(t *testing.T) {
 	t.Cleanup(func() { languageServerLookPath = originalLookPath })
 	languageServerLookPath = func(program string) (string, error) { return "/tools/" + program, nil }
 	h := menuTestApp(t)
-	h.app.settingsPage = settingsPageLSP
+	h.app.settingsUI.page = settingsPageLSP
 	h.app.openSettings()
 	h.tester.Frame()
 	h.tester.Scroll(700, 480, 0, 1800)
 	h.tester.Frame()
-	h.app.languageServerCatalogQuery = "TypeScript"
+	h.app.lsp.catalogQuery = "TypeScript"
 	h.tester.Frame()
 	toggle, toggleOK := h.tester.Find("Enable TypeScript Language Server")
 	download, downloadOK := h.tester.Find("Download TypeScript Language Server")

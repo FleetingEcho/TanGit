@@ -8,7 +8,7 @@ import (
 
 // ambiguousBranchFixture creates a tag at the older main commit, then advances
 // the real local branch. Any bare "main" revision is genuinely ambiguous.
-func ambiguousBranchFixture(t *testing.T) (string, Session, string, string) {
+func ambiguousBranchFixture(t *testing.T) (string, FullSession, string, string) {
 	t.Helper()
 	dir, session := newHistoryEditingSession(t)
 	writeHistoryCommit(t, dir, "base.txt", "base\n", "tagged base")

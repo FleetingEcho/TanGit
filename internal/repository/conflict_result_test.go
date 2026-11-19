@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func reviewedConflictResultRequest(t *testing.T, session Session, dir, path string) ConflictResultRequest {
+func reviewedConflictResultRequest(t *testing.T, session ChangesSession, dir, path string) ConflictResultRequest {
 	t.Helper()
 	content, err := os.ReadFile(filepath.Join(dir, path))
 	if err != nil {
@@ -33,7 +33,7 @@ func reviewedConflictResultRequest(t *testing.T, session Session, dir, path stri
 
 func TestWriteConflictResultOnlyChangesResultAndSavesV2Recovery(t *testing.T) {
 	dir := fileRecoveryUURepository(t, false)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestWriteConflictResultOnlyChangesResultAndSavesV2Recovery(t *testing.T) {
 func TestWriteConflictResultRejectsEveryChangedSourceWithoutWriting(t *testing.T) {
 	t.Run("raw hash mismatch", func(t *testing.T) {
 		dir := fileRecoveryUURepository(t, false)
-		session, _ := (Opener{}).Open(context.Background(), dir)
+		session, _ := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 		request := reviewedConflictResultRequest(t, session, dir, "f.txt")
 		before := fileRecoveryReadFile(t, dir, "f.txt")
 		request.WorktreeDigest = "sha256:" + strings.Repeat("0", 64)
@@ -99,7 +99,7 @@ func TestWriteConflictResultRejectsEveryChangedSourceWithoutWriting(t *testing.T
 
 	t.Run("actual index changed", func(t *testing.T) {
 		dir := fileRecoveryUURepository(t, false)
-		session, _ := (Opener{}).Open(context.Background(), dir)
+		session, _ := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 		request := reviewedConflictResultRequest(t, session, dir, "f.txt")
 		before := fileRecoveryReadFile(t, dir, "f.txt")
 		runGit(t, dir, "add", "--", "f.txt")
@@ -114,7 +114,7 @@ func TestWriteConflictResultRejectsEveryChangedSourceWithoutWriting(t *testing.T
 
 	t.Run("operation fingerprint changed", func(t *testing.T) {
 		dir := fileRecoveryUURepository(t, false)
-		session, _ := (Opener{}).Open(context.Background(), dir)
+		session, _ := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 		request := reviewedConflictResultRequest(t, session, dir, "f.txt")
 		before := fileRecoveryReadFile(t, dir, "f.txt")
 		message := filepath.Join(dir, ".git", "MERGE_MSG")
@@ -137,7 +137,7 @@ func TestWriteConflictResultRejectsEveryChangedSourceWithoutWriting(t *testing.T
 
 func TestWriteConflictResultRejectsBinarySourceAndResult(t *testing.T) {
 	dir := fileRecoveryUURepository(t, true)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestWriteConflictResultRejectsBinarySourceAndResult(t *testing.T) {
 	}
 
 	textDir := fileRecoveryUURepository(t, false)
-	textSession, _ := (Opener{}).Open(context.Background(), textDir)
+	textSession, _ := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), textDir))
 	textRequest := reviewedConflictResultRequest(t, textSession, textDir, "f.txt")
 	textRequest.Result = []byte{'x', 0, 'y'}
 	textBefore := fileRecoveryReadFile(t, textDir, "f.txt")

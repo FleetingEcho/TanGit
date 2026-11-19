@@ -20,9 +20,10 @@ func (a *app) withPullRequestSetup(onReady func()) {
 	a.prSetupBusy = true
 	session := a.session
 	generation := a.generation
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		err := session.CheckPullRequestReady(context.Background())
+		err := requireHostingSession(session).CheckPullRequestReady(ctx)
 		a.update(func() {
 			if generation != a.generation {
 				return
@@ -83,7 +84,7 @@ func (a *app) beginCreatePullRequest() {
 	a.showPRForm = false
 	a.beginRepositoryActionMessage(tr("Created the pull request"), "",
 		func(ctx context.Context, session repository.Session) error {
-			output, err := session.CreatePullRequest(ctx, title, body, branch, base, draft)
+			output, err := requireHostingSession(session).CreatePullRequest(ctx, title, body, branch, base, draft)
 			if output != "" {
 				session.CommandLog().Record("Pull request URL", output, false)
 			}
@@ -109,7 +110,7 @@ func (a *app) confirmOpenPullRequestReady() {
 			a.beginRepositoryActionMessage(tr("Opened the pull request"), "",
 				func(ctx context.Context, session repository.Session) error {
 					var err error
-					url, err = session.OpenPullRequest(ctx, branch)
+					url, err = requireHostingSession(session).OpenPullRequest(ctx, branch)
 					return err
 				}, func() {
 					if a.openExternalURL != nil && url != "" {
@@ -140,12 +141,13 @@ func (a *app) requestPullRequestChecks() {
 	generation := a.generation
 	branch := a.snapshot.Branch
 	session := a.session
+	ctx := a.repositoryWork.Context()
 	a.prChecksLoading = true
 	a.prChecksText = ""
 	a.prChecksError = ""
 	go func() {
 		defer a.recoverBackground()
-		output, err := session.PullRequestChecks(context.Background(), branch)
+		output, err := requireHostingSession(session).PullRequestChecks(ctx, branch)
 		a.update(func() {
 			if token != a.prChecksToken || generation != a.generation || !a.prChecksOpen {
 				return

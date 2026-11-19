@@ -21,7 +21,7 @@ func TestOpenRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestUntrackedLineStatisticsHandleTextEmptyAndBinaryFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestStageDiffAndUnstage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestTrackedLineStatisticsSurviveStageAndUnstageAll(t *testing.T) {
 	if err := os.WriteFile(path, []byte("one\nTWO\nthree\nfour\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +236,7 @@ func TestTrackedLineStatisticsSurviveStageAndUnstageAll(t *testing.T) {
 func TestUntrackedLineStatisticsSkipNonRegularFiles(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +290,7 @@ func (r errorReader) Read([]byte) (int, error) { return 0, r.err }
 func TestUntrackedLineStatisticsAreBestEffort(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +351,7 @@ func TestSnapshotIgnoresUnavailableOptionalFilters(t *testing.T) {
 	runGit(t, dir, "config", "filter.brokenCustom.clean", missing+" clean -- %f")
 	runGit(t, dir, "config", "filter.brokenCustom.smudge", missing+" smudge -- %f")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +387,7 @@ func TestTrackedLineStatisticsDoNotMaskAnUnreadableHead(t *testing.T) {
 		t.Fatal(err)
 	}
 	runGit(t, dir, "add", "tracked.txt")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +434,7 @@ func TestSnapshotDoesNotRequireGitLFSExecutable(t *testing.T) {
 	runGit(t, dir, "config", "filter.lfs.clean", missing+" clean -- %f")
 	runGit(t, dir, "config", "filter.lfs.smudge", missing+" smudge -- %f")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,7 +478,7 @@ func TestApplyCachedPatchStagesAndUnstagesSelectedLines(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,7 +519,7 @@ func TestCommitAndAmend(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -611,7 +611,7 @@ func TestBranchCommitsReadWithoutCheckout(t *testing.T) {
 	runGit(t, dir, "commit", "-m", "feature work")
 	runGit(t, dir, "checkout", "main")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -644,7 +644,7 @@ func TestSearchCommitsPrefersLocalBranchOverSameNamedTag(t *testing.T) {
 	runGit(t, dir, "commit", "--allow-empty", "-m", "new branch tip")
 	branchTip := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -695,7 +695,7 @@ func TestSearchCommitsFilters(t *testing.T) {
 	runGit(t, dir, "commit", "--allow-empty", "-m", "FIX the README")
 	runGit(t, dir, "commit", "--allow-empty", "-m", "deadbeef notes")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -806,7 +806,7 @@ func TestFileCommitsPages(t *testing.T) {
 	}
 	runGit(t, dir, "commit", "--allow-empty", "-m", "unrelated")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -859,7 +859,7 @@ func TestDiscardTrackedAndUntrackedChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -896,7 +896,7 @@ func TestLocalBranchLifecycle(t *testing.T) {
 	runGit(t, dir, "add", "file.txt")
 	runGit(t, dir, "commit", "-m", "initial")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -952,7 +952,7 @@ func TestSessionRecordsCommandsInTheLog(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1014,7 +1014,7 @@ func TestPullBranchFastForwardsAnUncheckedOutBranch(t *testing.T) {
 	runGit(t, seed, "push", "origin", "feature")
 	remoteFeature := strings.TrimSpace(gitOutput(t, seed, "rev-parse", "HEAD"))
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1078,7 +1078,7 @@ func TestRebaseOntoBranch(t *testing.T) {
 	runGit(t, dir, "add", "main.txt")
 	runGit(t, dir, "commit", "-m", "main work")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1115,7 +1115,7 @@ func TestForceCheckoutBranchDiscardsConflictingWork(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1145,7 +1145,7 @@ func TestFetchPullAndPush(t *testing.T) {
 	runGit(t, dir, "add", "shared.txt")
 	runGit(t, dir, "commit", "-m", "initial")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1204,7 +1204,7 @@ func TestFetchPullAndPush(t *testing.T) {
 	}
 }
 
-func newDivergedPullSession(t *testing.T) (string, Session, string, string) {
+func newDivergedPullSession(t *testing.T) (string, FullSession, string, string) {
 	t.Helper()
 	// A user's global pull policy must not hide the unset-configuration case.
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
@@ -1306,7 +1306,7 @@ func TestFetchRemoteLeavesOtherRemoteTrackingRefsUntouched(t *testing.T) {
 	dir = filepath.Join(dir, "clone")
 	runGit(t, dir, "remote", "add", "mirror", mirror)
 	runGit(t, dir, "fetch", "mirror")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1355,7 +1355,7 @@ func TestRemoteLifecycle(t *testing.T) {
 	parent := t.TempDir()
 	dir := filepath.Join(parent, "clone")
 	runGit(t, parent, "clone", "--branch", "main", remote, dir)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1488,7 +1488,7 @@ func TestStashStagedChangesKeepsTheWorkTree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1543,7 +1543,7 @@ func TestStashLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1636,7 +1636,7 @@ func TestStashLifecycle(t *testing.T) {
 // committed files and takes one untracked file along: one.txt and two.txt
 // hold "initial" in the committed tree and "saved one"/"saved two" in the
 // saved work, and the untracked new.txt holds "saved new" there.
-func stashFileFixture(t *testing.T) (Session, string) {
+func stashFileFixture(t *testing.T) (FullSession, string) {
 	t.Helper()
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
@@ -1656,7 +1656,7 @@ func stashFileFixture(t *testing.T) (Session, string) {
 		}
 	}
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1667,7 +1667,7 @@ func stashFileFixture(t *testing.T) (Session, string) {
 }
 
 // stashFilesByPath indexes one stash's saved files by their paths.
-func stashFilesByPath(t *testing.T, session Session, index int) map[string]CommitFile {
+func stashFilesByPath(t *testing.T, session StashSession, index int) map[string]CommitFile {
 	t.Helper()
 	files, err := session.StashFiles(context.Background(), index)
 	if err != nil {
@@ -1877,7 +1877,7 @@ func TestTagLifecycle(t *testing.T) {
 	runGit(t, dir, "add", "file.txt")
 	runGit(t, dir, "commit", "-m", "release")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1934,7 +1934,7 @@ func TestCherryPickAndRevert(t *testing.T) {
 	featureHash := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
 	runGit(t, dir, "checkout", "main")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2001,7 +2001,7 @@ func TestCherryPickOlderThanTheSnapshotPage(t *testing.T) {
 	}
 	runGit(t, dir, "update-ref", "refs/heads/feature", parent)
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2038,7 +2038,7 @@ func TestRecentCommitsPages(t *testing.T) {
 		runGit(t, dir, "commit", "-m", fmt.Sprintf("commit %d", i))
 	}
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2091,7 +2091,7 @@ func TestResolveContinueAndAbortMerge(t *testing.T) {
 	runGit(t, dir, "commit", "-am", "current")
 	runGitExpectFailure(t, dir, "merge", "feature")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2144,7 +2144,7 @@ func TestLinkedWorktreeSnapshotUsesItsOwnBranch(t *testing.T) {
 	linkedDir := filepath.Join(t.TempDir(), "feature-worktree")
 	runGit(t, mainDir, "worktree", "add", "-b", "feature", linkedDir, "main")
 
-	session, err := (Opener{}).Open(context.Background(), linkedDir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), linkedDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2181,7 +2181,7 @@ func TestWorktreeLifecycle(t *testing.T) {
 	runGit(t, dir, "add", "file.txt")
 	runGit(t, dir, "commit", "-m", "initial")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2260,7 +2260,7 @@ func TestForceRemoveLockedDirtyWorktree(t *testing.T) {
 	runGit(t, dir, "add", "file.txt")
 	runGit(t, dir, "commit", "-m", "initial")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2293,7 +2293,7 @@ func TestPruneMissingWorktreeRecord(t *testing.T) {
 	runGit(t, dir, "add", "file.txt")
 	runGit(t, dir, "commit", "-m", "initial")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2339,7 +2339,7 @@ func TestSubmoduleLifecycle(t *testing.T) {
 	runGit(t, dir, "add", "README.md")
 	runGit(t, dir, "commit", "-m", "root")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2384,7 +2384,7 @@ func hasRemoteBranch(branches []RemoteBranch, name string) bool {
 }
 
 func TestOpenRejectsNonRepository(t *testing.T) {
-	_, err := (Opener{}).Open(context.Background(), t.TempDir())
+	_, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), t.TempDir()))
 	if !errors.Is(err, ErrNotRepository) {
 		t.Fatalf("error %v, want ErrNotRepository", err)
 	}
@@ -2396,13 +2396,13 @@ func TestInitRepositoryAdoptsAFolder(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("notes\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (Opener{}).Open(context.Background(), dir); !errors.Is(err, ErrNotRepository) {
+	if _, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir)); !errors.Is(err, ErrNotRepository) {
 		t.Fatalf("a plain folder opened as %v, want ErrNotRepository", err)
 	}
 	if err := (Opener{}).Init(context.Background(), dir); err != nil {
 		t.Fatalf("init: %v", err)
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatalf("open after init: %v", err)
 	}
@@ -2462,7 +2462,7 @@ func fileNamed(t *testing.T, snapshot Snapshot) File {
 // with the markers, and continues once the user picks a side.
 func TestMergeConflictResolveAndContinue(t *testing.T) {
 	dir := conflictedRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2522,7 +2522,7 @@ func TestMergeConflictResolveAndContinue(t *testing.T) {
 // Aborting a conflicted merge restores the branch and the working tree.
 func TestMergeConflictAbortRestores(t *testing.T) {
 	dir := conflictedRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2561,7 +2561,7 @@ func TestResetToCommitModes(t *testing.T) {
 		runGit(t, dir, "add", "file.txt")
 		runGit(t, dir, "commit", "-m", fmt.Sprintf("change %d", i))
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2701,7 +2701,7 @@ func TestUndoLatestCommitRejectsChangedBranchAtSameCommit(t *testing.T) {
 
 func TestUndoLatestCommitRejectsOperationAfterConflictsAreResolved(t *testing.T) {
 	dir := conflictRepository(t, "UU")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2743,7 +2743,7 @@ func TestCheckoutCommitDetachesHead(t *testing.T) {
 		runGit(t, dir, "add", "file.txt")
 		runGit(t, dir, "commit", "-m", fmt.Sprintf("change %d", i))
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2827,7 +2827,7 @@ func conflictFile(t *testing.T, snapshot Snapshot) File {
 // conflict this is and not claim a merged text.
 func TestSnapshotReportsAConflictWithoutMarkers(t *testing.T) {
 	dir := conflictRepository(t, "DU")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2879,7 +2879,7 @@ func TestSnapshotReadsTheConflictMarkerSize(t *testing.T) {
 	if content, err := os.ReadFile(path); err != nil || !strings.Contains(string(content), strings.Repeat("<", 12)) {
 		t.Fatalf("Git did not write 12-character markers: %q, %v", content, err)
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2902,7 +2902,7 @@ func TestResolveDeleteModifyConflict(t *testing.T) {
 
 	t.Run("keep the incoming change", func(t *testing.T) {
 		dir := conflictRepository(t, "DU")
-		session, err := (Opener{}).Open(ctx, dir)
+		session, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2924,7 +2924,7 @@ func TestResolveDeleteModifyConflict(t *testing.T) {
 
 	t.Run("keep the deletion", func(t *testing.T) {
 		dir := conflictRepository(t, "DU")
-		session, err := (Opener{}).Open(ctx, dir)
+		session, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2948,7 +2948,7 @@ func TestResolveDeleteModifyConflict(t *testing.T) {
 
 	t.Run("keep the incoming deletion", func(t *testing.T) {
 		dir := conflictRepository(t, "UD")
-		session, err := (Opener{}).Open(ctx, dir)
+		session, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -3003,7 +3003,7 @@ func TestSnapshotQuietReusesUnchangedDetails(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("one\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3081,7 +3081,7 @@ func TestUntrackedLineStatisticsCacheTracksChanges(t *testing.T) {
 	if err := os.WriteFile(path, []byte("a\nb\nc\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3127,7 +3127,7 @@ func TestCoreSnapshotDegradesUnreadableJournalToAWarning(t *testing.T) {
 	}
 	runGit(t, dir, "add", "file.txt")
 	runGit(t, dir, "-c", "user.name=T", "-c", "user.email=t@t", "commit", "-m", "init")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

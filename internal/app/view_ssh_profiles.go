@@ -11,7 +11,7 @@ import (
 func (a *app) sshProfileSettings(c *ui.Context) {
 	settingsSection(c, func() {
 		settingsGroup(c, remotesIcon, "SSH profiles", "Remote Git workspaces, without credentials in settings")
-		if a.sshProfileFormOpen {
+		if a.ssh.profileFormOpen {
 			a.sshProfileForm(c)
 			return
 		}
@@ -75,61 +75,61 @@ func (a *app) sshProfileForm(c *ui.Context) {
 	ui.Column(c).FillWidth().Gap(10).Padding(14).Background(theme.Surface.Alpha(0.55)).
 		Border(1, theme.Border).Radius(theme.Radius + 5).Children(func() {
 		title := tr("Add SSH profile")
-		if a.sshProfileDraft.ID != "" {
+		if a.ssh.profileDraft.ID != "" {
 			title = tr("Edit SSH profile")
 		}
 		ui.Text(c, title).Bold().FontSize(16)
 		settingRow(c, "Profile name", "A label for this connection", func() {
-			ui.TextInput(c, &a.sshProfileDraft.Name).Label(tr("SSH profile name")).
+			ui.TextInput(c, &a.ssh.profileDraft.Name).Label(tr("SSH profile name")).
 				Placeholder("Production").Grow(1).AutoFocus()
 		})
 		settingRow(c, "Host", "DNS name or IP address, without a port", func() {
-			ui.TextInput(c, &a.sshProfileDraft.Host).Label(tr("SSH host")).
+			ui.TextInput(c, &a.ssh.profileDraft.Host).Label(tr("SSH host")).
 				Placeholder("server.example.com").Grow(1)
 		})
 		settingRow(c, "Username", "Remote login name", func() {
-			ui.TextInput(c, &a.sshProfileDraft.Username).Label(tr("SSH username")).
+			ui.TextInput(c, &a.ssh.profileDraft.Username).Label(tr("SSH username")).
 				Placeholder("git").Grow(1)
 		})
 		settingRow(c, "Port", "SSH defaults to 22", func() {
-			ui.TextInput(c, &a.sshProfileDraft.Port).Label(tr("SSH port")).
+			ui.TextInput(c, &a.ssh.profileDraft.Port).Label(tr("SSH port")).
 				Placeholder("22").Width(110)
 		})
 		settingRow(c, "Authentication", "Agent, private key, or password", func() {
 			a.sshAuthModeSelect(c)
 		})
-		switch a.sshProfileDraft.AuthMode {
+		switch a.ssh.profileDraft.AuthMode {
 		case sshAuthKey:
 			settingRow(c, "Private key", "A path on this machine", func() {
-				ui.TextInput(c, &a.sshProfileDraft.PrivateKeyPath).Label(tr("SSH private-key path")).
+				ui.TextInput(c, &a.ssh.profileDraft.PrivateKeyPath).Label(tr("SSH private-key path")).
 					Placeholder("~/.ssh/id_ed25519").Grow(1)
 			})
 			settingRow(c, "Key passphrase", "Leave blank to keep the saved passphrase", func() {
-				ui.TextInput(c, &a.sshProfileDraft.Passphrase).Label(tr("SSH private-key passphrase")).
+				ui.TextInput(c, &a.ssh.profileDraft.Passphrase).Label(tr("SSH private-key passphrase")).
 					Placeholder(tr("Not stored in settings")).Password().Grow(1)
 			})
 		case sshAuthPassword:
 			settingRow(c, "Password", "Leave blank to keep the saved password", func() {
-				ui.TextInput(c, &a.sshProfileDraft.Password).Label(tr("SSH password")).
+				ui.TextInput(c, &a.ssh.profileDraft.Password).Label(tr("SSH password")).
 					Placeholder(tr("Not stored in settings")).Password().Grow(1)
 			})
 		}
 		settingRow(c, "Default remote folder", "Absolute, ~, or ~/folder", func() {
-			ui.TextInput(c, &a.sshProfileDraft.DefaultRoot).Label(tr("SSH default remote folder")).
+			ui.TextInput(c, &a.ssh.profileDraft.DefaultRoot).Label(tr("SSH default remote folder")).
 				Placeholder("~/src/project").Grow(1)
 		})
-		if !validSSHRoot(a.sshProfileDraft.DefaultRoot) {
+		if !validSSHRoot(a.ssh.profileDraft.DefaultRoot) {
 			ui.Text(c, tr("Use an absolute POSIX path, ~, or a path beginning with ~/.")).
 				TextColor(theme.Warning).FontSize(theme.FontSize - 1)
 		}
-		if a.sshProfileFormError != "" {
-			ui.Text(c, a.sshProfileFormError).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
+		if a.ssh.profileFormError != "" {
+			ui.Text(c, a.ssh.profileFormError).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
 		}
-		if a.sshProfileFormNotice != "" {
-			ui.Text(c, a.sshProfileFormNotice).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+		if a.ssh.profileFormNotice != "" {
+			ui.Text(c, a.ssh.profileFormNotice).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		}
 		ui.Row(c).Justify(ui.End).Gap(8).Wrap().Children(func() {
-			if ui.Button(c, tr("Test connection")).Disabled(a.sshProfileTestBusy).Clicked() {
+			if ui.Button(c, tr("Test connection")).Disabled(a.ssh.profileTestBusy).Clicked() {
 				a.testSSHProfile()
 			}
 			if ui.Button(c, tr("Cancel")).Label(tr("Cancel SSH profile form")).Clicked() {
@@ -146,11 +146,11 @@ func (a *app) sshProfileForm(c *ui.Context) {
 // choice in the interface language, just like the language picker does.
 func (a *app) sshAuthModeSelect(c *ui.Context) {
 	theme := c.Theme()
-	selects := ui.SelectBase(c, &a.sshProfileDraft.AuthMode)
+	selects := ui.SelectBase(c, &a.ssh.profileDraft.AuthMode)
 	selects.Trigger.Label(tr("SSH authentication")).Grow(1).Padding(6, 10).Gap(8).
 		Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius).
 		Children(func() {
-			ui.Text(c, sshAuthModeName(a.sshProfileDraft.AuthMode)).Grow(1)
+			ui.Text(c, sshAuthModeName(a.ssh.profileDraft.AuthMode)).Grow(1)
 		})
 	selects.Popup(func(panel ui.Element) {
 		panel.Padding(4).Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius)
@@ -181,7 +181,7 @@ func sshAuthModeName(mode string) string {
 
 // sshWorkspaceModal is Home's remote launcher and folder browser.
 func (a *app) sshWorkspaceModal(c *ui.Context) {
-	if !a.sshWorkspaceOpen {
+	if !a.ssh.workspaceOpen {
 		return
 	}
 	theme := c.Theme()
@@ -210,7 +210,7 @@ func (a *app) sshWorkspaceModal(c *ui.Context) {
 				})
 				ui.Scroll(c).Shrink(1).MinHeight(0).FillWidth().Children(func() {
 					ui.Column(c).FillWidth().Gap(12).Padding(2).Children(func() {
-						if a.sshProfileFormOpen {
+						if a.ssh.profileFormOpen {
 							a.sshProfileForm(c)
 							return
 						}
@@ -220,7 +220,7 @@ func (a *app) sshWorkspaceModal(c *ui.Context) {
 			})
 			// The host-key dialog owns input while a handshake waits. Its
 			// separate overlay is outside this panel, even when it overlaps it.
-			if a.sshHostKeyPrompt == nil && a.confirm == nil && (panel.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape)) {
+			if a.ssh.hostKeyPrompt == nil && a.confirm == nil && (panel.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape)) {
 				a.closeSSHWorkspacePicker()
 			}
 		})
@@ -241,7 +241,7 @@ func (a *app) sshWorkspaceProfiles(c *ui.Context) {
 	}
 	for _, profile := range a.settings.SSHProfiles {
 		profile := profile
-		selected := profile.ID == a.sshWorkspaceProfileID
+		selected := profile.ID == a.ssh.workspaceProfileID
 		c.Key("ssh-workspace-profile:" + profile.ID)
 		button := ui.ButtonBase(c).FillWidth().Padding(11, 12).Gap(10).AlignItems(ui.Center).
 			Role(ui.RoleRadio).Checked(selected).Label(trf("Use SSH profile %s", profile.Name)).
@@ -270,22 +270,22 @@ func (a *app) sshWorkspaceProfiles(c *ui.Context) {
 	ui.Column(c).Gap(5).Children(func() {
 		ui.Text(c, tr("Remote folder")).Bold()
 		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-			input := ui.TextInput(c, &a.sshWorkspaceRoot).Label(tr("SSH workspace remote folder")).
+			input := ui.TextInput(c, &a.ssh.workspaceRoot).Label(tr("SSH workspace remote folder")).
 				Placeholder("/home/user/project").Grow(1)
 			if input.Changed() {
 				a.editSSHFolderPath()
 			}
 			if input.Submitted() {
-				a.loadSSHFolder(a.sshWorkspaceRoot, false, false)
+				a.loadSSHFolder(a.ssh.workspaceRoot, false, false)
 			}
-			flatIconButton(c, "Browse remote folder", "Browse remote folder", folderOpenIcon, 16, 6, a.sshWorkspaceResolving, func() { a.loadSSHFolder(a.sshWorkspaceRoot, false, false) })
+			flatIconButton(c, "Browse remote folder", "Browse remote folder", folderOpenIcon, 16, 6, a.ssh.workspaceResolving, func() { a.loadSSHFolder(a.ssh.workspaceRoot, false, false) })
 		})
 		ui.Text(c, tr("Use an absolute POSIX path, ~, or a path beginning with ~/.")).
 			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 	})
 	a.sshFolderBrowser(c)
-	if a.sshWorkspaceError != "" {
-		ui.Text(c, a.sshWorkspaceError).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
+	if a.ssh.workspaceError != "" {
+		ui.Text(c, a.ssh.workspaceError).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
 	}
 	if selected, ok := a.selectedSSHProfile(); ok {
 		ui.Text(c, fmt.Sprintf("%s · %s", selected.Name, sshAuthModeName(string(selected.AuthMode)))).
@@ -295,7 +295,7 @@ func (a *app) sshWorkspaceProfiles(c *ui.Context) {
 		if ui.Button(c, tr("Cancel")).Label(tr("Cancel SSH workspace")).Clicked() {
 			a.closeSSHWorkspacePicker()
 		}
-		if ui.PrimaryButton(c, tr("Open")).Disabled(a.sshWorkspaceResolving || a.sshWorkspaceProfileID == "").
+		if ui.PrimaryButton(c, tr("Open")).Disabled(a.ssh.workspaceResolving || a.ssh.workspaceProfileID == "").
 			Label(tr("Open selected SSH workspace")).Clicked() {
 			a.openSelectedSSHWorkspace()
 		}
@@ -303,16 +303,16 @@ func (a *app) sshWorkspaceProfiles(c *ui.Context) {
 }
 
 func (a *app) sshFolderBrowser(c *ui.Context) {
-	busy := a.sshWorkspaceResolving
+	busy := a.ssh.workspaceResolving
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Switch(c, &a.sshBrowser.AllowInit).Label(tr("Allow creating a Git repository")).Disabled(busy)
+		ui.Switch(c, &a.ssh.browser.AllowInit).Label(tr("Allow creating a Git repository")).Disabled(busy)
 		ui.Text(c, tr("Allow creating a Git repository"))
 	})
-	if a.sshBrowser.AllowInit {
+	if a.ssh.browser.AllowInit {
 		ui.Text(c, tr("Open creates a Git repository here if needed.")).TextColor(c.Theme().TextMuted)
 	}
-	listing := a.sshBrowser.Listing
-	ui.Text(c, a.sshWorkspaceRoot).SingleLine().Tooltip(a.sshWorkspaceRoot).Bold()
+	listing := a.ssh.browser.Listing
+	ui.Text(c, a.ssh.workspaceRoot).SingleLine().Tooltip(a.ssh.workspaceRoot).Bold()
 	virtual := !busy && listing.Root != "" && len(listing.Entries) > 0
 	parentRows := 0
 	if virtual && listing.Root != "/" {
@@ -322,19 +322,19 @@ func (a *app) sshFolderBrowser(c *ui.Context) {
 	if virtual {
 		// Only visible directory entries are built. Large remote folders must
 		// not turn hover and unrelated updates into thousands of new widgets.
-		a.sshBrowser.List.Key = func(row int) any {
+		a.ssh.browser.List.Key = func(row int) any {
 			if parentRows == 1 && row == 0 {
 				return "ssh-browser-parent"
 			}
 			return "ssh-browser:" + listing.Entries[row-parentRows].Name()
 		}
-		a.sshBrowser.List.Label = func(row int) string {
+		a.ssh.browser.List.Label = func(row int) string {
 			if parentRows == 1 && row == 0 {
 				return tr("Parent folder")
 			}
 			return listing.Entries[row-parentRows].Name()
 		}
-		browser = ui.List(c, &a.sshBrowser.List, len(listing.Entries)+parentRows).Padding(6)
+		browser = ui.List(c, &a.ssh.browser.List, len(listing.Entries)+parentRows).Padding(6)
 	}
 	browser.Label(tr("Remote folder contents")).Height(180).FillWidth().Border(1, c.Theme().Border).Radius(c.Theme().Radius).PopoverMenu(a.sshBrowserContextMenu)
 	if virtual {
@@ -396,7 +396,7 @@ func (a *app) sshBrowserFolderRow(c *ui.Context, name, label, target string, bus
 }
 
 func (a *app) sshBrowserContextMenu(m *ui.Menu) {
-	disabled := a.sshWorkspaceResolving || a.sshBrowser.Listing.Root == "" || a.sshWorkspaceRoot != a.sshBrowser.Listing.Root
+	disabled := a.ssh.workspaceResolving || a.ssh.browser.Listing.Root == "" || a.ssh.workspaceRoot != a.ssh.browser.Listing.Root
 	if m.Item(tr("New Folder…")).Disabled(disabled).Chosen() {
 		a.beginSSHBrowserCreate(true)
 	}
@@ -406,22 +406,22 @@ func (a *app) sshBrowserContextMenu(m *ui.Menu) {
 }
 
 func (a *app) sshBrowserCreateForm(c *ui.Context) {
-	if !a.sshBrowser.CreateOpen {
+	if !a.ssh.browser.CreateOpen {
 		return
 	}
 	ui.Column(c).Gap(6).Children(func() {
 		title := "New File…"
-		if a.sshBrowser.CreateDirectory {
+		if a.ssh.browser.CreateDirectory {
 			title = "New Folder…"
 		}
 		ui.Text(c, tr(title)).Bold()
-		ui.Text(c, a.sshBrowser.CreateRoot).SingleLine().Tooltip(a.sshBrowser.CreateRoot)
-		input := ui.TextInput(c, &a.sshBrowser.CreateName).Label(tr("Name")).AutoFocus()
+		ui.Text(c, a.ssh.browser.CreateRoot).SingleLine().Tooltip(a.ssh.browser.CreateRoot)
+		input := ui.TextInput(c, &a.ssh.browser.CreateName).Label(tr("Name")).AutoFocus()
 		if input.Submitted() {
 			a.submitSSHBrowserCreate()
 		}
 		ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-			ui.Button(c, tr("Cancel")).Label(tr("Cancel creating remote entry")).OnClick(func() { a.sshBrowser.CreateOpen = false })
+			ui.Button(c, tr("Cancel")).Label(tr("Cancel creating remote entry")).OnClick(func() { a.ssh.browser.CreateOpen = false })
 			ui.PrimaryButton(c, tr("Create")).Label(tr("Create remote entry")).OnClick(a.submitSSHBrowserCreate)
 		})
 	})

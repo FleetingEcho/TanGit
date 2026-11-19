@@ -26,8 +26,9 @@ func (a *app) openCommitRewordForm(commit repository.Commit) {
 	a.commitRewordToken++
 	token := a.commitRewordToken
 	session := a.session
+	ctx := a.repositoryWork.Context()
 	go func() {
-		message, err := session.CommitMessage(context.Background(), commit)
+		message, err := requireHistorySession(session).CommitMessage(ctx, commit)
 		a.update(func() {
 			if token != a.commitRewordToken || !a.showCommitRewordForm {
 				return
@@ -69,7 +70,7 @@ func (a *app) beginCommitReword() {
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Reworded %s", commit.ShortHash), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.RewordCommit(ctx, commit, summary, description)
+					return requireHistorySession(session).RewordCommit(ctx, commit, summary, description)
 				}, a.closeCommitRewordForm)
 		},
 	})

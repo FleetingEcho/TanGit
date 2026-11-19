@@ -39,10 +39,17 @@ jobs:
           fi
           test -x /usr/sbin/sshd
           command -v ssh-keygen
+      - name: Check Go formatting
+        run: test -z "$(gofmt -l cmd internal)"
       - name: Vet Go and MyGo UI lifetimes
         run: go tool mygo vet .
       - name: Test all packages with required OpenSSH coverage
         run: CGO_ENABLED=0 go test ./...
+      - name: Stress asynchronous UI publication
+        run: >-
+          go test ./internal/app
+          -run '^(TestRealGitContinueDetectsLengthInvariantChangesBeforeDriver|TestCodeCheckoutRefreshesFilesDocumentsAndSearchWithoutDiscardingEdits|TestAgentUpdateStaleGenerationCannotPublishResult|TestShowingTheWindowRefreshesEveryPage|TestClosingRepositoryCancelsReviewRead|TestReplacingRepositoryCancelsReviewRead|TestWaitForUpdateRunsPendingCallbackAfterWakeCoalesces)$'
+          -count=10 -timeout=5m
       - name: Race-test shared repository and agent state
         run: go test -race ./internal/repository ./internal/agentwork ./internal/agentcli ./internal/app
 

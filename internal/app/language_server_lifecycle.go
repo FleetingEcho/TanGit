@@ -197,7 +197,7 @@ func readManagedLanguageServerManifest(root, id string) (managedLanguageServerMa
 }
 
 func (a *app) languageServerLifecycleBusy() bool {
-	for _, busy := range []map[string]bool{a.languageServerInstalling, a.languageServerUninstalling} {
+	for _, busy := range []map[string]bool{a.lsp.installing, a.lsp.uninstalling} {
 		for _, active := range busy {
 			if active {
 				return true
@@ -218,7 +218,7 @@ func (a *app) ownedManagedLanguageServer(id string) bool {
 
 func (a *app) removeManagedLanguageServer(id string) {
 	profile, ok := languageServerProfileByID(id)
-	if !ok || !a.ownedManagedLanguageServer(id) || a.languageServerInstalling[id] || a.languageServerUninstalling[id] {
+	if !ok || !a.ownedManagedLanguageServer(id) || a.lsp.installing[id] || a.lsp.uninstalling[id] {
 		return
 	}
 	root := a.settings.LanguageServers[id].Managed.Root
@@ -230,14 +230,14 @@ func (a *app) removeManagedLanguageServer(id string) {
 func (a *app) beginManagedLanguageServerRemoval(id, root string) {
 	profile, ok := languageServerProfileByID(id)
 	server := a.settings.LanguageServers[id]
-	if !ok || a.languageServerInstalling[id] || a.languageServerUninstalling[id] || !a.ownedManagedLanguageServer(id) ||
+	if !ok || a.lsp.installing[id] || a.lsp.uninstalling[id] || !a.ownedManagedLanguageServer(id) ||
 		server.Managed.Root != root {
 		return
 	}
-	if a.languageServerUninstalling == nil {
-		a.languageServerUninstalling = make(map[string]bool)
+	if a.lsp.uninstalling == nil {
+		a.lsp.uninstalling = make(map[string]bool)
 	}
-	a.languageServerUninstalling[id] = true
+	a.lsp.uninstalling[id] = true
 	connection := a.stopLanguageServerForLifecycle(id)
 	a.notifyTranslated("info", trf("Removing %s", profile.Name), "Removing TanGit's managed language-server copy…")
 	dataDir := a.dataDir()
@@ -255,7 +255,7 @@ func (a *app) beginManagedLanguageServerRemoval(id, root string) {
 			return removeManagedLanguageServerDirectory(root)
 		}()
 		a.update(func() {
-			delete(a.languageServerUninstalling, id)
+			delete(a.lsp.uninstalling, id)
 			if err != nil {
 				a.syncGoLanguageServer()
 				a.notify("error", trf("Could not remove %s", profile.Name), safeError(err))
@@ -300,17 +300,17 @@ func validateManagedLanguageServerDeletion(profile languageServerProfile, dataDi
 
 func (a *app) stopLanguageServerForLifecycle(id string) languageServerConnection {
 	if id == goLanguageServerID {
-		connection := a.goLanguageServer
+		connection := a.lsp.goServer
 		a.stopGoLanguageServer()
 		return connection
 	}
-	server := a.additionalLanguageServers[id]
+	server := a.lsp.additional[id]
 	if server == nil {
 		return nil
 	}
 	connection := server.connection
 	a.stopManagedLanguageServer(server)
-	delete(a.additionalLanguageServers, id)
+	delete(a.lsp.additional, id)
 	return connection
 }
 

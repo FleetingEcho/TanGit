@@ -481,7 +481,7 @@ func TestExternalCommitAppearsWhileDiffMaximized(t *testing.T) {
 	}
 
 	// A dialog holds the refresh back even over the whole-window diff.
-	a.settingsOpen = true
+	a.settingsUI.open = true
 	opener.set(repository.Snapshot{
 		Root:    "/work/repo",
 		Branch:  "main",
@@ -494,7 +494,7 @@ func TestExternalCommitAppearsWhileDiffMaximized(t *testing.T) {
 	if len(a.snapshot.Commits) != 2 {
 		t.Fatalf("a dialog did not hold the refresh back: %+v", a.snapshot.Commits)
 	}
-	a.settingsOpen = false
+	a.settingsUI.open = false
 	a.requestQuietRefresh()
 	waitForUpdates(t, updated, "the refresh after the dialog closed", func() bool {
 		return len(a.snapshot.Commits) == 3

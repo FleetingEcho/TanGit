@@ -81,9 +81,9 @@ func TestQuestionMarkWorksAfterReenablingShortcutsInSettings(t *testing.T) {
 
 	h.tester.Key(ui.Shift, ui.KeySlash)
 	h.tester.Frame()
-	if h.app.settingsOpen || !h.app.keybindingsOpen || !h.app.keybindingsCurrentOnly {
+	if h.app.settingsUI.open || !h.app.keybindingsOpen || !h.app.keybindingsCurrentOnly {
 		t.Fatalf("? did not leave Settings and open current-page help; settings=%v help=%v current=%v",
-			h.app.settingsOpen, h.app.keybindingsOpen, h.app.keybindingsCurrentOnly)
+			h.app.settingsUI.open, h.app.keybindingsOpen, h.app.keybindingsCurrentOnly)
 	}
 }
 
@@ -741,7 +741,7 @@ func TestSettingsModalOpensAndCloses(t *testing.T) {
 	h := menuTestApp(t)
 	h.tester.Key(ui.Ctrl, ui.KeyComma)
 	h.tester.Frame()
-	if !h.app.settingsOpen {
+	if !h.app.settingsUI.open {
 		t.Fatal("Ctrl+, did not open the settings modal")
 	}
 	for _, want := range []string{"Settings", "Language", "Theme", "Accent color", "Home background", "Done"} {
@@ -766,7 +766,7 @@ func TestSettingsModalOpensAndCloses(t *testing.T) {
 	}
 	h.tester.Key(0, ui.KeyEscape)
 	h.tester.Frame()
-	if h.app.settingsOpen {
+	if h.app.settingsUI.open {
 		t.Fatal("Escape did not close the settings modal")
 	}
 }
@@ -791,8 +791,8 @@ func TestSettingsEditsSearchExcludedFolderList(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if !slices.Contains(h.app.settings.SearchExcludedDirectories, "cooked") || h.app.searchExcludedDirectoryDraft != "" {
-		t.Fatalf("adding cooked produced %q with draft %q", h.app.settings.SearchExcludedDirectories, h.app.searchExcludedDirectoryDraft)
+	if !slices.Contains(h.app.settings.SearchExcludedDirectories, "cooked") || h.app.settingsUI.searchExcludedDirectoryDraft != "" {
+		t.Fatalf("adding cooked produced %q with draft %q", h.app.settings.SearchExcludedDirectories, h.app.settingsUI.searchExcludedDirectoryDraft)
 	}
 
 	if err := h.tester.Click("Remove excluded folder node_modules"); err != nil {

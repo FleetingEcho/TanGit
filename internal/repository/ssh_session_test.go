@@ -23,7 +23,7 @@ func (o *countingCloseOwner) Close() error {
 func TestOpenSSHWorkspaceFailureClosesOwnerOnce(t *testing.T) {
 	owner := &countingCloseOwner{}
 	location := workspace.Location{Kind: workspace.SSH, ProfileID: "test", Root: "/remote/repository"}
-	session, err := OpenSSHWorkspace(context.Background(), nil, location, owner)
+	session, err := openFullRepositorySessionForTest(OpenSSHWorkspace(context.Background(), nil, location, owner))
 	if err == nil || session != nil {
 		t.Fatalf("OpenSSHWorkspace() = %#v, %v", session, err)
 	}
@@ -37,7 +37,7 @@ func TestOpenSSHWorkspaceHonoursCancelledContextAndClosesOwner(t *testing.T) {
 	cancel()
 	owner := &countingCloseOwner{}
 	location := workspace.Location{Kind: workspace.SSH, ProfileID: "test", Root: "/remote/repository"}
-	_, err := OpenSSHWorkspace(ctx, &sshworkspace.Client{}, location, owner)
+	_, err := openFullRepositorySessionForTest(OpenSSHWorkspace(ctx, &sshworkspace.Client{}, location, owner))
 	if !errors.Is(err, context.Canceled) || owner.calls != 1 {
 		t.Fatalf("OpenSSHWorkspace() error = %v, owner closes = %d", err, owner.calls)
 	}

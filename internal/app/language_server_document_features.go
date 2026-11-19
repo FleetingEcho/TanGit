@@ -135,7 +135,7 @@ func languageServerSemanticTokenLegend(raw json.RawMessage) []string {
 
 func (a *app) languageServerSemanticTokenLegendForDocument(document *codeDocument) []string {
 	if strings.EqualFold(filepath.Ext(document.path), ".go") {
-		if support, ok := a.goLanguageServer.(languageServerSemanticTokenLegendSupport); ok {
+		if support, ok := a.lsp.goServer.(languageServerSemanticTokenLegendSupport); ok {
 			if tokenTypes := support.SemanticTokenTypes(); len(tokenTypes) > 0 {
 				return tokenTypes
 			}
@@ -157,7 +157,7 @@ func (a *app) languageServerDocumentFeatureSupported(document *codeDocument, met
 		return false
 	}
 	if strings.EqualFold(filepath.Ext(document.path), ".go") {
-		support, ok := a.goLanguageServer.(languageServerDocumentFeatureSupport)
+		support, ok := a.lsp.goServer.(languageServerDocumentFeatureSupport)
 		return ok && support.SupportsLanguageFeature(method)
 	}
 	for _, server := range a.additionalLanguageServersForDocument(document) {
