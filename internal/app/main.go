@@ -479,6 +479,7 @@ type app struct {
 	// file it keeps chosen within that commit. They are empty otherwise.
 	branchCommitsKeep           string
 	branchCommitFilesKeepPath   string
+	branchCommitDetailMessage   commitMessageDetailState
 	branchCommitFiles           []repository.CommitFile
 	branchCommitFileRows        []fileTreeRow
 	branchCommitFileList        ui.ListState
@@ -789,6 +790,7 @@ type app struct {
 	codeBlameHover         codeBlameHoverState
 	codeBlameHistoryTarget *codeBlameHistoryTarget
 
+	commitDetailMessage   commitMessageDetailState
 	commitFiles           []repository.CommitFile
 	commitFileRows        []fileTreeRow
 	commitFileList        ui.ListState
