@@ -39,6 +39,9 @@ var french = map[string]string{
 	"Hotkeys":                   "Raccourcis",
 	"Enable hotkeys":            "Activer les raccourcis",
 	"Enable keyboard shortcuts": "Activer les raccourcis clavier",
+	"Run a one-off shell command": "Exécuter une commande shell ponctuelle",
+	"Shortcut notifications":    "Notifications de raccourcis",
+	"Show shortcut acknowledgements while keeping Command Log and operation notifications visible.": "Affiche les raccourcis acceptés tout en gardant visibles le journal et les notifications d’opérations.",
 
 	// Operations requiring attention.
 	"Edit remote":      "Modifier le dépôt distant",
