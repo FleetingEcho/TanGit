@@ -62,7 +62,7 @@ func (a *app) codeBlameDetailsCard(c *ui.Context) {
 	theme := c.Theme()
 	width, height := c.Size()
 	cardWidth := codeBlameCardWidth(c)
-	ui.Scroll(c).Key(fmt.Sprintf("blame-card-scroll-%d", hover.token)).Label(tr("Commit details")).Width(cardWidth).
+	ui.Scroll(c.Key(fmt.Sprintf("blame-card-scroll-%d", hover.token))).Label(tr("Commit details")).Width(cardWidth).
 		MaxHeight(max(float32(100), height-64)).Children(func() {
 		ui.Column(c).Width(cardWidth).MinWidth(0).Gap(12).Padding(4).Children(func() {
 			if uncommittedBlameHash(hover.blame.Hash) {
@@ -159,7 +159,7 @@ func (a *app) codeBlameDetailsCard(c *ui.Context) {
 				label := trf("Changes in this commit (%d)", len(hover.files))
 				codeBlameDisclosure(c, label, !hover.filesCollapsed, func() { hover.filesCollapsed = !hover.filesCollapsed })
 				if !hover.filesCollapsed {
-					ui.Scroll(c).Key("blame-files").Label(tr("Changed files")).FillWidth().Height(144).Shrink(0).Children(func() {
+					ui.Scroll(c.Key("blame-files")).Label(tr("Changed files")).FillWidth().Height(144).Shrink(0).Children(func() {
 						ui.Column(c).Width(cardWidth-8).Padding(0, scrollbarGutter(theme), 0, 0).Gap(4).Children(func() {
 							currentIndex := codeBlameCurrentFileIndex(hover)
 							renderFile := func(file repository.CommitFile, current bool) {
