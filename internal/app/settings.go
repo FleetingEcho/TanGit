@@ -94,6 +94,9 @@ type appSettings struct {
 	EditorSemanticHighlighting  bool   `json:"editorSemanticHighlighting"`
 	EditorMinimap               bool   `json:"editorMinimap"`
 	EditorStickyScroll          bool   `json:"editorStickyScroll"`
+	// EditorKeyBindings replaces a command's default keyboard shortcuts
+	// when its ID is present. An empty slice explicitly unassigns it.
+	EditorKeyBindings map[string][]string `json:"editorKeyBindings,omitempty"`
 	// SearchExcludedDirectories contains folder names skipped by workspace
 	// content search. Nil in an older settings file selects the
 	// defaults; a saved empty slice deliberately disables every exclusion.

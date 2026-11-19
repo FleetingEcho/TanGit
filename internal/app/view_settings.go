@@ -47,6 +47,9 @@ func (a *app) openSettingsSection(page int) {
 	if backgroundFetchCustomInterval(a.autoFetchChoice) {
 		a.autoFetchChoice = backgroundFetchCustomChoice
 	}
+	if page != a.settingsPage {
+		a.stopEditorShortcutRecording()
+	}
 	a.settingsPage = page
 	a.settingsOpen = true
 }
@@ -85,6 +88,7 @@ func (a *app) themeMenuItems(m *ui.Menu, c *ui.Context) {
 }
 
 func (a *app) closeSettings() {
+	a.stopEditorShortcutRecording()
 	a.settingsOpen = false
 	a.closeCustomEditorForm()
 	a.closeSSHProfileForm()
@@ -117,7 +121,7 @@ func (a *app) settingsModal(c *ui.Context) {
 				})
 			// Help belongs to the workspace underneath Settings. Opening it here
 			// closes Settings first so two modal overlays never compete for input.
-			if !a.settings.DisableShortcuts && !c.FocusTakesText() {
+			if !a.settings.DisableShortcuts && !c.FocusTakesText() && a.code.shortcutRecording == "" {
 				if a.onOverlayShortcut(back, ui.Shift, ui.KeySlash, shortcut("settings/modal-current-shortcuts", "?", tr("Show shortcuts for the current page")), nil) {
 					a.closeSettings()
 					a.openCurrentKeybindings()
@@ -130,7 +134,11 @@ func (a *app) settingsModal(c *ui.Context) {
 			// Testing an SSH profile can put host verification above Settings.
 			// A click in that overlay must not dismiss this dialog and cancel it.
 			if a.sshHostKeyPrompt == nil && (panel.PressedOutside() || a.onOverlayShortcut(back, 0, ui.KeyEscape, shortcut("settings/modal-close", "Escape", tr("Close settings")), nil)) {
-				a.closeSettings()
+				if a.code.shortcutRecording != "" {
+					a.stopEditorShortcutRecording()
+				} else {
+					a.closeSettings()
+				}
 			}
 		})
 	})
@@ -662,6 +670,8 @@ func (a *app) editorSettings(c *ui.Context) {
 func (a *app) codeEditorSettings(c *ui.Context) {
 	a.ensureBuiltInEditorPreferences()
 	settingsSection(c, func() {
+		a.editorShortcutSettings(c)
+		ui.Divider(c)
 		a.builtInEditorPreferenceSettings(c)
 	})
 }

@@ -29,6 +29,7 @@ func (a *app) applyCodeEditorPreferences(state *editor.State) {
 	default:
 		state.Whitespace = editor.WhitespaceSelection
 	}
+	a.applyCodeEditorShortcuts(state)
 }
 
 func effectiveBuiltInEditorPreferences(settings appSettings) appSettings {
