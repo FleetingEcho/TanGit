@@ -11,7 +11,7 @@ import (
 
 func languageActionTestDocument(h *harness, text string) (*fakeLanguageServerConnection, *codeDocument) {
 	connection := newFakeLanguageServerConnection()
-	document := &codeDocument{path: "main.go", state: &editor.State{Buffer: editor.NewBuffer(text)}}
+	document := &codeDocument{path: "main.go", state: &editor.State{Buffer: editor.NewBuffer(text)}, loaded: true}
 	h.app.code.documents = map[string]*codeDocument{document.path: document}
 	h.app.goLanguageServer = connection
 	h.app.goLanguageServerDocs = make(map[string]uint64)

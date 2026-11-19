@@ -12,8 +12,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/egoist/mygo/ui/editor"
-
 	"lazygitapp/internal/repository"
 	"lazygitapp/internal/sshworkspace"
 )
@@ -329,13 +327,4 @@ func createRemoteCodeFile(ctx context.Context, client remoteWorkspaceClient, roo
 		return err
 	}
 	return nil
-}
-
-// remoteEditorState is shared by the remote document and in-pane editors. It
-// performs only the UI-independent buffer decoding, leaving each caller's local
-// loading path completely unchanged.
-func remoteEditorState(name string, content []byte) *editor.State {
-	buffer := editor.NewBuffer(string(content))
-	buffer.SetLanguage(editor.LanguageFor(name))
-	return &editor.State{Buffer: buffer, SoftWrap: true, LineNumbers: editor.LineNumbersOn, Label: name}
 }

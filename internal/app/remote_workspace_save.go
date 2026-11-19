@@ -33,6 +33,9 @@ func (a *app) requestRemoteCodeDocument(document *codeDocument) {
 	if document == nil || document.loading || a.snapshot.Root == "" {
 		return
 	}
+	if document.state == nil {
+		document.state = newCodeEditorState(document.path, nil)
+	}
 	client, err := a.remoteWorkspaceClient()
 	if err != nil {
 		document.loadError = safeError(err)
@@ -55,7 +58,6 @@ func (a *app) requestRemoteCodeDocument(document *codeDocument) {
 		content, stamp, readErr := readRemoteWorkingFile(client, root, name)
 		binary := readErr == nil && bytes.IndexByte(content, 0) >= 0
 		var preview *mediaPreview
-		var state *editor.State
 		if readErr == nil {
 			if binary || isMediaPath(name) {
 				decoded := decodeMediaData(content)
@@ -63,9 +65,6 @@ func (a *app) requestRemoteCodeDocument(document *codeDocument) {
 					preview = &decoded
 					binary = true
 				}
-			}
-			if !binary {
-				state = remoteEditorState(name, content)
 			}
 		}
 		a.updateChanged(func() bool {
@@ -82,9 +81,15 @@ func (a *app) requestRemoteCodeDocument(document *codeDocument) {
 			if binary {
 				document.binary = true
 				document.imagePreview = preview
+				document.loaded = true
 				return a.workspaceTab == sectionCode && a.activeCodeDocument() == document
 			}
-			document.state = state
+			position, scrollY := document.state.CursorPos(), document.state.ScrollY()
+			document.state.Buffer.Reset(string(content))
+			document.state.Buffer.SetLanguage(editor.LanguageFor(name))
+			document.state.GoTo(position)
+			document.state.SetScrollY(scrollY)
+			document.loaded = true
 			// LSP processes, file:// URIs, and local hover/definition handlers are
 			// intentionally not configured for an SSH workspace.
 			document.state.OnHover = nil
@@ -278,7 +283,7 @@ func (a *app) requestRemoteFileEdit(name string) {
 				}
 			}
 			if !binary {
-				state = remoteEditorState(name, content)
+				state = newCodeEditorState(name, content)
 			}
 		}
 		a.update(func() {

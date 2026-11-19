@@ -498,14 +498,15 @@ func (a *app) rekeyCodeDocument(source, destination string) {
 	if document.state != nil {
 		document.state.Label = destination
 		document.state.Buffer.SetLanguage(editor.LanguageFor(destination))
-	} else {
+	}
+	if !document.loaded {
 		document.loading = false
 		document.loadError = ""
 		document.binary = false
 		document.imagePreview = nil
 	}
 	a.code.documents[destination] = document
-	if document.state == nil {
+	if !document.loaded {
 		a.requestCodeDocument(document)
 	} else {
 		a.requestCodeBlame(document)
