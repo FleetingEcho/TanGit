@@ -834,8 +834,8 @@ func (a *app) codeDocumentView(c *ui.Context, document *codeDocument) {
 			a.keyboardPane(c, "code-editor", editorView).Label(tr("Code editor")).MinWidth(0)
 			return
 		}
-		ui.Row(c).Grow(1).Fill().MinWidth(0).Children(func() {
-			editorView := editor.View(c, document.state).Grow(1).FillWidth().ReadOnly(document.readOnly)
+		ui.Row(c).Grow(1).FillWidth().MinWidth(0).Children(func() {
+			editorView := editor.View(c, document.state).Grow(1).FillWidth().FillHeight().ReadOnly(document.readOnly)
 			a.keyboardPane(c, "code-editor", editorView).Label(tr("Code editor")).MinWidth(0)
 			a.codeMinimap(c, document)
 		})
@@ -892,7 +892,7 @@ func (a *app) codeMinimap(c *ui.Context, document *codeDocument) {
 	}
 	rows := min(76, lineCount)
 	first, last := document.state.VisibleLines()
-	ui.Column(c).Width(86).Padding(4, 5).Gap(1).Background(theme.Surface.Alpha(0.55)).Children(func() {
+	ui.Column(c).Width(86).Padding(4, 5).Gap(1).Background(theme.Surface.Alpha(0.55)).Label(tr("Minimap")).Children(func() {
 		for row := range rows {
 			line := row * lineCount / rows
 			text := strings.TrimSpace(buffer.Line(line))

@@ -69,3 +69,24 @@ func TestStickySymbolHeaderTracksVisibleScopeAndPreference(t *testing.T) {
 		t.Fatal("sticky symbol remained visible after the preference was disabled")
 	}
 }
+
+func TestMinimapKeepsCodeEditorVisible(t *testing.T) {
+	stubCodeWorkspace(t, map[string]string{"main.go": "package main\n\nfunc main() {}\n"})
+	h := menuTestApp(t)
+	h.app.settings.EditorPreferencesConfigured = true
+	h.app.settings.EditorMinimap = true
+	h.app.settings.EditorStickyScroll = false
+	openCodePageForTest(t, h, 1)
+	h.app.openCodeFile("main.go", 0)
+	waitForCodeDocument(t, h, "main.go")
+	h.tester.Frame()
+
+	bounds, found := h.tester.Find("Code editor")
+	minimap, minimapFound := h.tester.Find("Minimap")
+	if !found || bounds.W <= 0 || bounds.H <= 0 {
+		t.Fatalf("Minimap left the code editor without visible geometry: found=%v bounds=%+v minimapFound=%v minimap=%+v", found, bounds, minimapFound, minimap)
+	}
+	if !h.tester.HasText("Go to line 1") || !h.tester.HasText("Go to line 3") {
+		t.Fatalf("Minimap hid the document's editor lines: %q", h.texts())
+	}
+}
