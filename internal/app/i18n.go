@@ -118,11 +118,14 @@ var zhHans = map[string]string{
 	"Press ? to show keyboard shortcuts.": "按 ? 显示键盘快捷键。",
 
 	// Hotkeys switch.
-	"Hotkeys":                   "快捷键",
-	"Enable hotkeys":            "启用快捷键",
-	"Enable keyboard shortcuts": "启用键盘快捷键",
-	"Run a one-off shell command": "运行一次性 Shell 命令",
-	"Shortcut notifications":    "快捷键通知",
+	"Hotkeys":                      "快捷键",
+	"Enable hotkeys":               "启用快捷键",
+	"Unstaged all changes":         "已取消暂存全部更改",
+	"Keyboard shortcut":            "快捷键",
+	"Enable keyboard shortcuts":    "启用键盘快捷键",
+	"Stage or unstage all changes": "暂存或取消暂存全部更改",
+	"Run a one-off shell command":  "运行一次性 Shell 命令",
+	"Shortcut notifications":       "快捷键通知",
 	"Show shortcut acknowledgements while keeping Command Log and operation notifications visible.": "显示快捷键触发提示，同时保留命令日志和其他操作通知。",
 
 	// Operations requiring attention.

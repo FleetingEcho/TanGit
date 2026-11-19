@@ -36,11 +36,14 @@ var zhHant = map[string]string{
 	"Press ? to show keyboard shortcuts.": "按 ? 顯示鍵盤快捷鍵。",
 
 	// Hotkeys switch.
-	"Hotkeys":                   "快捷鍵",
-	"Enable hotkeys":            "啟用快捷鍵",
-	"Enable keyboard shortcuts": "啟用鍵盤快捷鍵",
-	"Run a one-off shell command": "執行一次性 Shell 命令",
-	"Shortcut notifications":    "快捷鍵通知",
+	"Hotkeys":                      "快捷鍵",
+	"Enable hotkeys":               "啟用快捷鍵",
+	"Unstaged all changes":         "已取消暫存全部變更",
+	"Keyboard shortcut":            "快捷鍵",
+	"Enable keyboard shortcuts":    "啟用鍵盤快捷鍵",
+	"Stage or unstage all changes": "暫存或取消暫存全部變更",
+	"Run a one-off shell command":  "執行一次性 Shell 命令",
+	"Shortcut notifications":       "快捷鍵通知",
 	"Show shortcut acknowledgements while keeping Command Log and operation notifications visible.": "顯示快捷鍵觸發提示，同時保留命令日誌和其他操作通知。",
 
 	// Operations requiring attention.

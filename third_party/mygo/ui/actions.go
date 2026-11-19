@@ -118,6 +118,12 @@ func (rt *engine) runNoticeActions() {
 		}
 		if a.ready {
 			rt.consumed = true
+			var id uint64
+			var receiver string
+			if n := rt.actionNode(a); n != nil {
+				id, receiver = n.id, n.label
+			}
+			rt.emitShortcut(id, 0, KeyEnter, receiver)
 			a.fn()
 		}
 	}

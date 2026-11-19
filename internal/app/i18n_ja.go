@@ -36,11 +36,14 @@ var japanese = map[string]string{
 	"Press ? to show keyboard shortcuts.": "? を押すとキーボードショートカットを表示します。",
 
 	// Hotkeys switch.
-	"Hotkeys":                   "ホットキー",
-	"Enable hotkeys":            "ホットキーを有効化",
-	"Enable keyboard shortcuts": "キーボードショートカットを有効化",
-	"Run a one-off shell command": "単発のシェルコマンドを実行",
-	"Shortcut notifications":    "ショートカット通知",
+	"Hotkeys":                      "ホットキー",
+	"Enable hotkeys":               "ホットキーを有効化",
+	"Unstaged all changes":         "すべての変更のステージを解除しました",
+	"Keyboard shortcut":            "キーボードショートカット",
+	"Enable keyboard shortcuts":    "キーボードショートカットを有効化",
+	"Stage or unstage all changes": "すべての変更をステージ／ステージ解除",
+	"Run a one-off shell command":  "単発のシェルコマンドを実行",
+	"Shortcut notifications":       "ショートカット通知",
 	"Show shortcut acknowledgements while keeping Command Log and operation notifications visible.": "ショートカットの受付通知を表示し、コマンドログと操作通知も引き続き表示します。",
 
 	// Operations requiring attention.

@@ -36,11 +36,14 @@ var spanish = map[string]string{
 	"Press ? to show keyboard shortcuts.": "Pulsa ? para mostrar los atajos de teclado.",
 
 	// Hotkeys switch.
-	"Hotkeys":                   "Atajos",
-	"Enable hotkeys":            "Activar atajos",
-	"Enable keyboard shortcuts": "Activar atajos de teclado",
-	"Run a one-off shell command": "Ejecutar un comando shell puntual",
-	"Shortcut notifications":    "Notificaciones de atajos",
+	"Hotkeys":                      "Atajos",
+	"Enable hotkeys":               "Activar atajos",
+	"Unstaged all changes":         "Se quitaron todos los cambios de la preparación",
+	"Keyboard shortcut":            "Atajo de teclado",
+	"Enable keyboard shortcuts":    "Activar atajos de teclado",
+	"Stage or unstage all changes": "Preparar o quitar todos los cambios de la preparación",
+	"Run a one-off shell command":  "Ejecutar un comando shell puntual",
+	"Shortcut notifications":       "Notificaciones de atajos",
 	"Show shortcut acknowledgements while keeping Command Log and operation notifications visible.": "Muestra avisos de atajos y mantiene visibles el registro de comandos y las notificaciones de operaciones.",
 
 	// Operations requiring attention.

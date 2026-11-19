@@ -132,12 +132,17 @@ type engine struct {
 	actions         []action
 	textInputClosed bool
 	view            func(*context)
-	host            host
-	c               context
-	text            *text.System
-	scene           scene.Scene
-	painter         Painter
-	glyphRun        glyphRun
+	// shortcutObserver is opt-in. Descriptions are collected only while an
+	// observer is installed for this runtime, keep registered provenance
+	// current to this frame and are cleared with it and on close.
+	shortcutObserver    func(ShortcutEvent)
+	shortcutAnnotations map[shortcutAnnotationKey]ShortcutDescriptor
+	host                host
+	c                   context
+	text                *text.System
+	scene               scene.Scene
+	painter             Painter
+	glyphRun            glyphRun
 
 	// fit sizes a window that takes its content's size (fit.go), nil
 	// for others.
@@ -821,6 +826,7 @@ func (rt *engine) runFrame() {
 			rt.painted = [3]float32{w, h, scale}
 		}
 		rt.nextRegs = rt.nextRegs[:0]
+		rt.shortcutAnnotations = nil
 		clear(rt.kept)
 		rt.stack.router = nil // the pass's Router tells
 		rt.c.reset(now, appW, rt.insp.contentHeight(w, h))
@@ -1535,6 +1541,8 @@ func (rt *engine) close() {
 	rt.inputs = nil
 	rt.arena.rt = nil
 	rt.public.rt = nil
+	rt.shortcutObserver = nil
+	rt.shortcutAnnotations = nil
 	clear(rt.actions)
 	rt.actions = nil
 	rt.textInputClosed = true
