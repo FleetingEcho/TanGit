@@ -12,6 +12,7 @@ import (
 )
 
 func (a *app) codeView(c *ui.Context) {
+	a.syncCodeRecovery()
 	a.applyPendingCodeActions()
 	a.ensureCodeFiles()
 	a.ensureCodeSearchIndex()
@@ -699,7 +700,20 @@ func (a *app) codeEditorPane(c *ui.Context) {
 			if forward.Clicked() {
 				a.navigateCodeHistory(false)
 			}
-			ui.Text(c, document.path).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1).SingleLine().Tooltip(document.path)
+			breadcrumb := ""
+			if document.state != nil && document.state.Buffer != nil {
+				if offset, ok := codeLanguageOffset(document); ok {
+					breadcrumb = languageServerSymbolBreadcrumb(document.symbols, document.state.Buffer.String(), offset)
+				}
+			}
+			location := document.path
+			if breadcrumb != "" {
+				location += "  ›  " + breadcrumb
+			}
+			ui.Text(c, location).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1).SingleLine().Tooltip(location)
+			if ui.Button(c, tr("Outline")).Padding(3, 8).Clicked() {
+				a.openLanguageSymbols(document)
+			}
 			a.codeLanguageServersButton(c)
 			if isMarkdownDocument(document.path) {
 				tooltip := "Show Markdown preview"
@@ -810,17 +824,90 @@ func (a *app) codeDocumentView(c *ui.Context, document *codeDocument) {
 	if document.state == nil {
 		return
 	}
+	a.applyCodeEditorPreferences(document.state)
+	a.syncLanguageDocumentFeatures(document)
 	a.syncCodeBlame(document)
+	settings := effectiveBuiltInEditorPreferences(a.settings)
 	source := func() {
-		editorView := editor.View(c, document.state).Grow(1).FillWidth().ReadOnly(document.readOnly)
-		a.keyboardPane(c, "code-editor", editorView).Label(tr("Code editor")).MinWidth(0)
+		if !settings.EditorMinimap {
+			editorView := editor.View(c, document.state).Grow(1).FillWidth().ReadOnly(document.readOnly)
+			a.keyboardPane(c, "code-editor", editorView).Label(tr("Code editor")).MinWidth(0)
+			return
+		}
+		ui.Row(c).Grow(1).Fill().MinWidth(0).Children(func() {
+			editorView := editor.View(c, document.state).Grow(1).FillWidth().ReadOnly(document.readOnly)
+			a.keyboardPane(c, "code-editor", editorView).Label(tr("Code editor")).MinWidth(0)
+			a.codeMinimap(c, document)
+		})
+	}
+	content := source
+	if settings.EditorStickyScroll {
+		content = func() {
+			ui.Column(c).Grow(1).Fill().MinWidth(0).Children(func() {
+				a.codeStickySymbolHeader(c, document)
+				source()
+			})
+		}
 	}
 	if !document.markdownPreviewOpen {
-		source()
+		content()
 		return
 	}
-	paneSplitPercent(c, &a.code.markdownPreviewPercent, source, func() {
+	paneSplitPercent(c, &a.code.markdownPreviewPercent, content, func() {
 		a.codeMarkdownPreview(c, document)
+	})
+}
+
+func (a *app) codeStickySymbolHeader(c *ui.Context, document *codeDocument) {
+	if document == nil || document.state == nil || document.state.Buffer == nil {
+		return
+	}
+	first, _ := document.state.VisibleLines()
+	if first <= 0 {
+		return
+	}
+	buffer := document.state.Buffer
+	if buffer.LineCount() == 0 {
+		return
+	}
+	offset := buffer.Offset(editor.Pos{Line: min(first, buffer.LineCount()-1)})
+	crumb := languageServerSymbolBreadcrumb(document.symbols, buffer.String(), offset)
+	if crumb == "" {
+		return
+	}
+	ui.Row(c).FillWidth().Padding(4, 12).Background(c.Theme().Surface.Alpha(0.92)).Children(func() {
+		ui.Text(c, crumb).FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().TextMuted).SingleLine()
+	})
+	ui.Box(c).FillWidth().Height(1).Background(c.Theme().Border)
+}
+
+func (a *app) codeMinimap(c *ui.Context, document *codeDocument) {
+	if document == nil || document.state == nil || document.state.Buffer == nil {
+		return
+	}
+	theme, buffer := c.Theme(), document.state.Buffer
+	lineCount := buffer.LineCount()
+	if lineCount <= 0 {
+		return
+	}
+	rows := min(76, lineCount)
+	first, last := document.state.VisibleLines()
+	ui.Column(c).Width(86).Padding(4, 5).Gap(1).Background(theme.Surface.Alpha(0.55)).Children(func() {
+		for row := range rows {
+			line := row * lineCount / rows
+			text := strings.TrimSpace(buffer.Line(line))
+			width := float32(min(72, max(5, len(text))))
+			button := ui.ButtonBase(c).FillWidth().Height(4).Padding(0).Label(trf("Go to line %d", line+1))
+			button.Children(func() {
+				ui.Box(c).Width(width).Height(2).Radius(1).Background(theme.TextMuted.Alpha(0.42))
+			})
+			if line >= first && line <= last {
+				button.Background(theme.Accent.Alpha(0.22))
+			}
+			if button.Clicked() {
+				document.state.ScrollTo(line)
+			}
+		}
 	})
 }
 

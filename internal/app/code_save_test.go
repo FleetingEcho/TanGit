@@ -2,6 +2,8 @@ package app
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,6 +11,113 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 	"lazygitapp/internal/repository"
 )
+
+func TestCodeSaveRefusesExternalFileChanges(t *testing.T) {
+	files := map[string]string{"note.txt": "original\n"}
+	written := stubCodeWorkspace(t, files)
+	h := menuTestApp(t)
+	openCodePageForTest(t, h, 1)
+	h.app.openCodeFile("note.txt", 0)
+	document := waitForCodeDocument(t, h, "note.txt")
+	document.state.Insert("local\n")
+	files["note.txt"] = "external\n"
+
+	h.app.saveCodeDocument(document)
+
+	if document.saveError != errLocalFileModified.Error() {
+		t.Fatalf("save error = %q, want %q", document.saveError, errLocalFileModified)
+	}
+	if len(written) != 0 || files["note.txt"] != "external\n" {
+		t.Fatalf("conflicting save wrote %q over external contents %q", written["note.txt"], files["note.txt"])
+	}
+	if !document.state.Buffer.Modified() {
+		t.Fatal("conflicting save cleared the dirty buffer")
+	}
+}
+
+func TestCodeSaveTracksTheLastSuccessfulContents(t *testing.T) {
+	files := map[string]string{"note.txt": "original\n"}
+	stubCodeWorkspace(t, files)
+	h := menuTestApp(t)
+	openCodePageForTest(t, h, 1)
+	h.app.openCodeFile("note.txt", 0)
+	document := waitForCodeDocument(t, h, "note.txt")
+
+	document.state.Insert("first\n")
+	h.app.saveCodeDocument(document)
+	document.state.Insert("second\n")
+	h.app.saveCodeDocument(document)
+
+	if document.saveError != "" || document.state.Buffer.Modified() || !strings.Contains(files["note.txt"], "second") {
+		t.Fatalf("second save failed: error=%q modified=%v contents=%q", document.saveError, document.state.Buffer.Modified(), files["note.txt"])
+	}
+}
+
+func TestCodeSaveDetectsSameSizeExternalReplacement(t *testing.T) {
+	directory := t.TempDir()
+	filename := filepath.Join(directory, "note.txt")
+	if err := os.WriteFile(filename, []byte("before\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := menuTestApp(t)
+	h.app.snapshot.Root = directory
+	h.app.code.documents = map[string]*codeDocument{}
+	h.app.openCodeFile("note.txt", 0)
+	document := waitForCodeDocument(t, h, "note.txt")
+	document.state.Insert("local\n")
+	if err := os.WriteFile(filename, []byte("after!\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	h.app.saveCodeDocument(document)
+
+	contents, err := os.ReadFile(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents) != "after!\n" || document.saveError != errLocalFileModified.Error() {
+		t.Fatalf("contents=%q error=%q", contents, document.saveError)
+	}
+}
+
+func TestCodeSaveConflictCanReloadOrOverwrite(t *testing.T) {
+	for _, action := range []string{"Reload", "Overwrite"} {
+		t.Run(action, func(t *testing.T) {
+			files := map[string]string{"note.txt": "original\n"}
+			stubCodeWorkspace(t, files)
+			h := menuTestApp(t)
+			openCodePageForTest(t, h, 1)
+			h.app.openCodeFile("note.txt", 0)
+			document := waitForCodeDocument(t, h, "note.txt")
+			document.state.GoTo(editor.Pos{Line: 0, Col: 4})
+			document.state.Insert("local\n")
+			local := document.state.Buffer.String()
+			files["note.txt"] = "external\n"
+
+			h.app.saveCodeDocument(document)
+			h.tester.Frame()
+			if h.app.confirm == nil || h.app.confirm.confirmLabel != "Overwrite" ||
+				h.app.confirm.alternativeLabel != "Reload" || !h.app.confirm.destructive {
+				t.Fatalf("conflict confirmation = %+v", h.app.confirm)
+			}
+			if err := h.tester.Click(action); err != nil {
+				t.Fatal(err)
+			}
+			h.tester.Frame()
+
+			if action == "Reload" {
+				document = waitForCodeDocument(t, h, "note.txt")
+				if got := document.state.Buffer.String(); got != "external\n" || document.state.Buffer.Modified() {
+					t.Fatalf("reloaded buffer = %q modified=%v", got, document.state.Buffer.Modified())
+				}
+				return
+			}
+			if got := files["note.txt"]; got != local || document.state.Buffer.Modified() || document.saveError != "" {
+				t.Fatalf("overwritten file = %q modified=%v error=%q", got, document.state.Buffer.Modified(), document.saveError)
+			}
+		})
+	}
+}
 
 func TestCodeManualSaveAndUnsavedCloseChoices(t *testing.T) {
 	for _, choice := range []string{"Cancel", "Don't Save", "Save", "Save failure"} {

@@ -29,6 +29,7 @@ func View(c *ui.Context, st *State) ui.Element {
 // build builds the element of an editor for a frame.
 func (ed *editor) build(c *ui.Context, buf *Buffer, o options) ui.Element {
 	ed.view.sys = c.TextSystem()
+	ed.view.semantic = o.semantic
 	ed.texts = l10n.In(c.Locale())
 	ed.init(buf, o, c.Theme())
 	ed.services = c.Services()
