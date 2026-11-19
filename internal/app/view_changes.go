@@ -362,6 +362,10 @@ func (a *app) filesView(c *ui.Context) {
 		} else if hasConflictedFiles(a.snapshot.Files) {
 			a.conflictBanner(c)
 		}
+		if len(a.snapshot.Files) > 0 && firstChangeFile(a.changeRows) < 0 {
+			a.emptyChangesFilterResult(c)
+			return
+		}
 		if len(a.snapshot.Files) == 0 {
 			ui.Column(c).Grow(1).Center().Children(func() {
 				ui.Text(c, tr("Working tree clean")).TextColor(theme.TextMuted)
@@ -847,31 +851,6 @@ func (a *app) changesFilter(c *ui.Context) {
 	})
 }
 
-// changesFilterPopover keeps the quick filters close to their icon without
-// hiding the results behind a modal. Changes apply immediately while the
-// popover stays open, and its trigger retains the active-filter indication.
-func (a *app) changesFilterPopover(c *ui.Context) {
-	anchor := flatToggleIconButton(c, "File filters", "Show file filters", filterIcon, 14, 5,
-		a.ignoreUntracked, func() {
-			a.changesFiltersOpen = !a.changesFiltersOpen
-		})
-	anchor.HasPopup(ui.PopupDialog).Expanded(a.changesFiltersOpen)
-	ui.Popover(c, anchor, &a.changesFiltersOpen, func() {
-		ui.Column(c).Width(240).Gap(10).Padding(8).Children(func() {
-			ui.Text(c, tr("File filters")).Bold()
-			ui.Checkbox(c, &a.ignoreUntracked, tr("Ignore untracked files")).
-				Tooltip(tr("Leave untracked files out of the changes"))
-			ui.Row(c).Justify(ui.End).Children(func() {
-				clear := compactTextButton(ui.Button(c, tr("Clear filters"))).
-					Disabled(!a.ignoreUntracked)
-				if clear.Clicked() {
-					a.ignoreUntracked = false
-				}
-			})
-		})
-	})
-}
-
 // reviewFilterRow holds review progress and traversal outside the crowded
 // panel header. Its filter is content-current, not a second staging filter.
 func (a *app) reviewFilterRow(c *ui.Context) {
@@ -881,8 +860,6 @@ func (a *app) reviewFilterRow(c *ui.Context) {
 			FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().TextMuted).
 			Tooltip(tr(reviewLocalStatusMessage) + " " + tr("Changed content automatically becomes unreviewed"))
 		ui.Spacer(c).Grow(1)
-		ui.Checkbox(c, &a.reviewFilter, tr("Unreviewed")).
-			Tooltip(tr("Show only files whose current content still needs review"))
 		flatIconButton(c, "Next unreviewed", "Go to the next unreviewed file (Shift+R)", chevronDownIcon, 14, 4,
 			!a.hasUnreviewedFiles(), a.selectNextUnreviewed)
 	})

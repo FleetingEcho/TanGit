@@ -32,6 +32,14 @@ func TestBuiltInEditorPreferencesUseDedicatedSettingsPage(t *testing.T) {
 	if !h.app.settings.EditorMinimap {
 		t.Fatal("Minimap must be enabled by default")
 	}
+	// The shortcut settings section makes this detail page longer. Verify
+	// that normal scrolling reaches the lower preferences before clicking.
+	h.tester.Scroll(650, 530, 0, 600)
+	h.tester.Frame()
+	minimapBounds, found := h.tester.Find("Minimap")
+	if !found || minimapBounds.Y < 0 || minimapBounds.Y+minimapBounds.H > 800 {
+		t.Fatalf("Minimap was not reachable after scrolling: %+v", minimapBounds)
+	}
 	if err := h.tester.Click("Minimap"); err != nil {
 		t.Fatalf("toggle minimap: %v", err)
 	}

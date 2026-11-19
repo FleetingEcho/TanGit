@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 )
 
@@ -469,6 +470,13 @@ func TestGoLanguageServerDefinitionJumpsAndNavigatesBack(t *testing.T) {
 		result(json.RawMessage(`{"uri":"file:///work/project/target.go","range":{"start":{"line":1,"character":6},"end":{"line":1,"character":11}}}`), nil)
 	})
 
+	h.tester.Frame()
+	for _, label := range []string{"Navigate back", "Navigate forward"} {
+		if _, found := h.tester.AccessByRole(ui.RoleButton, label); found {
+			t.Fatalf("%s is visible before the document has navigation history", label)
+		}
+	}
+
 	offset := strings.Index(document.state.Buffer.String(), "Thing")
 	document.state.Select(offset, offset)
 	if !document.state.Run(editor.GoToDefinition) {
@@ -485,10 +493,29 @@ func TestGoLanguageServerDefinitionJumpsAndNavigatesBack(t *testing.T) {
 	if len(h.app.code.back) != 1 {
 		t.Fatalf("definition jump left history %#v", h.app.code.back)
 	}
+	h.tester.Frame()
+	back, backVisible := h.tester.AccessByRole(ui.RoleButton, "Navigate back")
+	forward, forwardVisible := h.tester.AccessByRole(ui.RoleButton, "Navigate forward")
+	outline, outlineVisible := h.tester.AccessByRole(ui.RoleButton, "Outline")
+	if !backVisible || !forwardVisible || !outlineVisible {
+		t.Fatal("definition jump did not reveal navigation beside Outline")
+	}
+	if back.Bounds.X+back.Bounds.W > forward.Bounds.X || forward.Bounds.X+forward.Bounds.W > outline.Bounds.X {
+		t.Fatalf("navigation is not ordered Back, Forward, Outline: back=%+v forward=%+v outline=%+v", back.Bounds, forward.Bounds, outline.Bounds)
+	}
 	h.app.navigateCodeHistory(true)
 	waitForCodeDocument(t, h, "main.go")
 	if h.app.code.active != "main.go" || len(h.app.code.forward) != 1 {
 		t.Fatalf("Back navigation active=%q forward=%#v", h.app.code.active, h.app.code.forward)
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Navigate forward"); err != nil {
+		t.Fatalf("click Forward beside Outline: %v", err)
+	}
+	h.tester.Frame()
+	waitForCodeDocument(t, h, "target.go")
+	if h.app.code.active != "target.go" {
+		t.Fatalf("Forward navigation active=%q, want target.go", h.app.code.active)
 	}
 }
 
