@@ -1,7 +1,0 @@
-{
-  "mobile": {
-    "id": "sensors",
-    "ios": {"sources": ["ios/*.swift"], "class": "SensorsPlugin", "frameworks": ["CoreMotion"]},
-    "android": {"sources": ["android/*.kt"], "class": "SensorsPlugin"}
-  }
-}

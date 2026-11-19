@@ -1,7 +1,0 @@
-{
-  "mobile": {
-    "id": "permissionflow",
-    "ios": {"sources": ["ios/*.swift"], "class": "PermissionFlowPlugin"},
-    "android": {"sources": ["android/*.kt"], "class": "PermissionFlowPlugin"}
-  }
-}
