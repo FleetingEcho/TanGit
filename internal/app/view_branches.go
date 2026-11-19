@@ -640,6 +640,7 @@ func (a *app) branchHeaderView(c *ui.Context, branch repository.Branch) {
 // reads the branch then selected again. An action changed the commits, and a
 // read still in flight must not land on the new state.
 func (a *app) resetBranchCommits() {
+	a.branchCommitDetailMessage.reset()
 	a.branchCommitsToken++
 	a.branchCommitToken++
 	a.branchCommits = nil
@@ -703,6 +704,7 @@ func (a *app) requestBranchCommits(branch string) {
 	a.branchCommitsLoadingMore = false
 	a.branchCommitsToken++
 	token := a.branchCommitsToken
+	a.branchCommitDetailMessage.reset()
 	a.branchCommits = nil
 	a.selectedBranchCommit = -1
 	a.branchCommitToken++
@@ -817,6 +819,12 @@ func (a *app) requestMoreBranchCommits(branch string) {
 			return a.workspaceTab == sectionBranches
 		})
 	}()
+}
+
+func (a *app) requestBranchCommitMessage(commit repository.Commit) {
+	a.requestCommitMessage(&a.branchCommitDetailMessage, commit, func() bool {
+		return a.workspaceTab == sectionBranches
+	})
 }
 
 // requestBranchCommitFiles lists the files the chosen commit changed, unless
@@ -1082,8 +1090,10 @@ func (a *app) selectBranchCommitFileRow(row int) {
 
 func (a *app) branchCommitDetailViewState() commitDetailViewState {
 	return commitDetailViewState{
-		scope:     fileTreeBranchScope,
-		filesHash: &a.branchCommitFilesHash, filesLoading: &a.branchCommitFilesLoading, filesError: &a.branchCommitFilesError,
+		scope:          fileTreeBranchScope,
+		message:        &a.branchCommitDetailMessage,
+		requestMessage: a.requestBranchCommitMessage,
+		filesHash:      &a.branchCommitFilesHash, filesLoading: &a.branchCommitFilesLoading, filesError: &a.branchCommitFilesError,
 		files: &a.branchCommitFiles, fileRows: &a.branchCommitFileRows, fileList: &a.branchCommitFileList,
 		selectedFileRow: &a.selectedBranchCommitFileRow, selectedFile: &a.selectedBranchCommitFile,
 		filesHeight: &a.branchCommitFilesHeight, filesWidth: &a.branchCommitFilesWidth, filesCollapsed: &a.branchCommitFilesCollapsed,
