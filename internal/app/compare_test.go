@@ -245,8 +245,8 @@ func TestCompareRefInputsSuggestBranchesAndKeepArbitraryRevisions(t *testing.T) 
 	}
 	h.tester.Key(0, ui.KeyEnter)
 	h.tester.Frame()
-	if got := h.app.compare.from; got != "origin/feature/menus" {
-		t.Fatalf("chosen source ref = %q", got)
+	if got := h.app.compare.from; got != "refs/remotes/origin/feature/menus" {
+		t.Fatalf("chosen source ref = %q, want an unambiguous remote branch ref", got)
 	}
 
 	if err := h.tester.Click("To ref"); err != nil {
@@ -258,6 +258,27 @@ func TestCompareRefInputsSuggestBranchesAndKeepArbitraryRevisions(t *testing.T) 
 	h.tester.Frame()
 	if got := h.app.compare.to; got != "HEAD~2" {
 		t.Fatalf("an arbitrary revision was not preserved: %q", got)
+	}
+}
+
+func TestCompareRefChoicesKeepSameNamedLocalBranchAndTagDistinct(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.snapshot.Branches = []repository.Branch{{Name: "main"}}
+	h.app.snapshot.Tags = []repository.Tag{{Name: "main"}}
+	h.app.snapshot.Remotes = nil
+
+	choices := h.app.compareRefChoices("", true)
+	present := make(map[string]bool, len(choices))
+	for _, choice := range choices {
+		present[choice] = true
+	}
+	for _, ref := range []string{"refs/heads/main", "refs/tags/main"} {
+		if !present[ref] {
+			t.Fatalf("explicit ref %q is missing from choices %q", ref, choices)
+		}
+	}
+	if present["main"] {
+		t.Fatalf("ambiguous short ref remains alongside duplicate branch/tag choices: %q", choices)
 	}
 }
 

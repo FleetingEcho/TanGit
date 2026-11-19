@@ -75,6 +75,9 @@ func (s *gitSession) resolveAgentTargetCommit(ctx context.Context, ref, role str
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
+	if err := s.rejectAmbiguousRef(ref); err != nil {
+		return "", err
+	}
 	stdout, stderr, err := s.cmd.New([]string{
 		"git", "rev-parse", "--verify", "--end-of-options", ref + "^{commit}",
 	}).RunWithOutputs()
