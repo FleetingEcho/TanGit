@@ -332,11 +332,37 @@ func paneSplitVertical(c *ui.Context, size *float32, first, second func()) ui.El
 	return paneSplitWithGrip(c, size, true, false, first, second)
 }
 
+// paneSplitVerticalReserve keeps a structural minimum height for the second
+// pane while the user drags, independently of either pane's content.
+func paneSplitVerticalReserve(c *ui.Context, size *float32, secondMin float32, first, second func()) ui.Element {
+	inset := commitDetailsPaneGap / 2
+	withSpace := func(before bool, content func()) func() {
+		return func() {
+			pane := ui.Box(c).Fill()
+			if before {
+				pane.Padding(0, 0, inset, 0)
+			} else {
+				pane.Padding(inset, 0, 0, 0)
+			}
+			pane.Children(content)
+		}
+	}
+	// The requested minimum belongs to the second pane's content, not to
+	// the breathing room above its divider.
+	return paneSplitWithGripReserve(c, size, true, false, secondMin+inset,
+		withSpace(true, first), withSpace(false, second))
+}
+
 func paneSplitVerticalPercent(c *ui.Context, percent *float32, first, second func()) ui.Element {
 	return paneSplitWithGrip(c, percent, true, true, first, second)
 }
 
 func paneSplitWithGrip(c *ui.Context, value *float32, vertical, percent bool,
+	first, second func()) ui.Element {
+	return paneSplitWithGripReserve(c, value, vertical, percent, 0, first, second)
+}
+
+func paneSplitWithGripReserve(c *ui.Context, value *float32, vertical, percent bool, secondMin float32,
 	first, second func()) ui.Element {
 	theme := c.Theme()
 	host := ui.Box(c).Grow(1)
@@ -346,23 +372,39 @@ func paneSplitWithGrip(c *ui.Context, value *float32, vertical, percent bool,
 		host.FillHeight()
 	}
 	host.Children(func() {
-		switch {
-		case vertical && percent:
-			ui.SplitVerticalPercent(c, value, first, second).Fill()
-		case vertical:
-			ui.SplitVertical(c, value, first, second).Fill()
-		case percent:
-			ui.SplitPercent(c, value, first, second).Fill()
-		default:
-			ui.Split(c, value, first, second).Fill()
-		}
-
 		bounds := host.Bounds()
 		total := bounds.W
 		if vertical {
 			total = bounds.H
 		}
-		shown := *value
+		capFirst := func(v float32) float32 {
+			if vertical && secondMin > 0 && total > 0 {
+				maximum := max(total-1-secondMin, theme.Space(10))
+				return min(v, maximum)
+			}
+			return v
+		}
+		controlled := capFirst(*value)
+		size := value
+		if vertical && secondMin > 0 {
+			size = &controlled
+		}
+		splitter := ui.Element{}
+		switch {
+		case vertical && percent:
+			splitter = ui.SplitVerticalPercent(c, value, first, second).Fill()
+		case vertical:
+			splitter = ui.SplitVertical(c, size, first, second).Fill()
+		case percent:
+			splitter = ui.SplitPercent(c, value, first, second).Fill()
+		default:
+			splitter = ui.Split(c, value, first, second).Fill()
+		}
+		if vertical && secondMin > 0 && splitter.Changed() {
+			*value = capFirst(controlled)
+		}
+
+		shown := capFirst(*value)
 		if percent && total > 1 {
 			shown = min(max(*value, 0), 100) * (total - 1) / 100
 		}
@@ -427,7 +469,7 @@ func paneSplitWithGrip(c *ui.Context, value *float32, vertical, percent bool,
 					*value = next * 100 / (total - 1)
 				}
 			} else {
-				*value = next
+				*value = capFirst(next)
 			}
 		}
 	})

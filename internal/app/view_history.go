@@ -797,6 +797,13 @@ const commitMessageDefaultHeight = float32(120)
 // commitMessageBody shows the message read-only. When a body is present,
 // commitDetailBody places this view above a draggable middle divider.
 func (a *app) commitMessageBody(c *ui.Context, commit repository.Commit, state commitDetailViewState) {
+	a.commitMessageBodyWithScrollState(c, commit, state, &state.message.scroll)
+}
+
+// commitMessageBodyWithScrollState accepts a distinct widget state when the
+// normal details and fullscreen details are mounted together. A nil state
+// keeps scrolling in the element's own identity instead of sharing a Handle.
+func (a *app) commitMessageBodyWithScrollState(c *ui.Context, commit repository.Commit, state commitDetailViewState, scrollState *ui.ScrollState) {
 	state.requestMessage(commit)
 	message := state.message
 	switch {
@@ -825,17 +832,20 @@ func (a *app) commitMessageBody(c *ui.Context, commit repository.Commit, state c
 					message.raw = !message.raw
 				})
 			})
-			ui.Scroll(c).Grow(1).FillWidth().Label(tr("Commit message")).TrackScroll(&message.scroll).
-				Children(func() {
-					if message.raw {
-						ui.Text(c, message.message.Description).Selectable().FillWidth()
-						return
-					}
-					if message.markdown == nil {
-						message.markdown = &markdown.Options{WrapCode: true}
-					}
-					markdown.View(c, message.message.Description, message.markdown)
-				})
+			body := ui.Scroll(c).Grow(1).FillWidth().Label(tr("Commit message"))
+			if scrollState != nil {
+				body.TrackScroll(scrollState)
+			}
+			body.Children(func() {
+				if message.raw {
+					ui.Text(c, message.message.Description).Selectable().FillWidth()
+					return
+				}
+				if message.markdown == nil {
+					message.markdown = &markdown.Options{WrapCode: true}
+				}
+				markdown.View(c, message.message.Description, message.markdown)
+			})
 		})
 	}
 }
@@ -844,6 +854,19 @@ func (a *app) commitMessageBody(c *ui.Context, commit repository.Commit, state c
 // and Branches. Data loading and commit actions remain specific to the caller.
 func (a *app) commitDetailBody(c *ui.Context, commit *repository.Commit, emptyLabel string,
 	actionIcons func(*ui.Context, repository.Commit), state commitDetailViewState) {
+	a.commitDetailBodyWithOptions(c, commit, emptyLabel, actionIcons, state, false, nil)
+}
+
+// commitDetailMetadataBody reuses the commit metadata and Markdown body
+// without duplicating the files/diff that the fullscreen diff already owns.
+func (a *app) commitDetailMetadataBody(c *ui.Context, commit *repository.Commit, state commitDetailViewState, scrollState *ui.ScrollState) {
+	a.commitDetailBodyWithOptions(c, commit, "Select a commit", nil, state, true, scrollState)
+}
+
+// commitDetailBodyWithOptions optionally restricts the shared renderer to
+// metadata and message content for the expandable full-window detail pane.
+func (a *app) commitDetailBodyWithOptions(c *ui.Context, commit *repository.Commit, emptyLabel string,
+	actionIcons func(*ui.Context, repository.Commit), state commitDetailViewState, metadataOnly bool, scrollState *ui.ScrollState) {
 	theme := c.Theme()
 	if commit == nil {
 		ui.Column(c).Grow(1).Center().Children(func() {
@@ -854,12 +877,17 @@ func (a *app) commitDetailBody(c *ui.Context, commit *repository.Commit, emptyLa
 	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 		ui.Text(c, commit.Subject).FontSize(18).Bold().SingleLine().Tooltip(commit.Subject).
 			Grow(1).MinWidth(0)
+		if !metadataOnly {
+			a.expandDiffButton(c)
+		}
 	})
 	if actionIcons != nil {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(4).Wrap().Children(func() { actionIcons(c, *commit) })
 	}
-	a.diffViewOptionsWith(c, a.commitDetailsLayoutControl, false)
-	a.customPatchBar(c)
+	if !metadataOnly {
+		a.diffViewOptionsWith(c, a.commitDetailsLayoutControl, false)
+		a.customPatchBar(c)
+	}
 	copyLabel := "Copy commit hash"
 	if a.workspaceTab == sectionReflog {
 		copyLabel = "Copy reflog commit hash"
@@ -886,6 +914,10 @@ func (a *app) commitDetailBody(c *ui.Context, commit *repository.Commit, emptyLa
 		ui.Textf(c, tr("Tags: %s"), strings.Join(commit.Tags, ", ")).TextColor(theme.TextMuted)
 	}
 	state.requestMessage(*commit)
+	if metadataOnly {
+		a.commitMessageBodyWithScrollState(c, *commit, state, scrollState)
+		return
+	}
 	state.requestDetails(*commit)
 	filesAndDiff := func() {
 		if *state.filesLoading && *state.files == nil {
@@ -983,7 +1015,7 @@ func (a *app) commitDetailBody(c *ui.Context, commit *repository.Commit, emptyLa
 		}).Grow(1)
 	}
 	if state.message.message.Description != "" && !state.message.loading && state.message.error == "" {
-		paneSplitVertical(c, &state.message.height,
+		paneSplitVerticalReserve(c, &state.message.height, diffRegionMinHeight,
 			func() { a.commitMessageBody(c, *commit, state) }, filesAndDiff).Grow(1)
 		return
 	}
