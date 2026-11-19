@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"lazygitapp/internal/app/i18n"
 	"os"
 	"reflect"
 	"strings"
@@ -135,7 +136,7 @@ func TestSSHProfileValidationUsesRealCatalogs(t *testing.T) {
 	for _, choice := range languageChoices[1:] {
 		t.Run(choice.Code, func(t *testing.T) {
 			currentLanguage = choice.Code
-			catalog := translations[choice.Code]
+			catalog := i18n.Translations[choice.Code]
 			for _, test := range messages {
 				message, want := test.key, catalog[test.key]
 				if want == "" {

@@ -1,6 +1,9 @@
 package app
 
-import "testing"
+import (
+	"lazygitapp/internal/app/i18n"
+	"testing"
+)
 
 // Dynamic confirmation titles are not statically discoverable by tr analysis,
 // so check the rendered source catalog rather than relying on a fallback pass.
@@ -18,7 +21,7 @@ func TestNewConfirmationTitlesAreLocalized(t *testing.T) {
 	}
 	for _, language := range []string{"zh-Hans", "zh-Hant", "ja", "es", "fr"} {
 		for _, key := range keys {
-			value, ok := translations[language][key]
+			value, ok := i18n.Translations[language][key]
 			if !ok || value == "" {
 				t.Errorf("%s has no translation for confirmation label %q", language, key)
 			}

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"lazygitapp/internal/app/i18n"
 	"os"
 	"testing"
 
@@ -84,7 +85,7 @@ func TestLocalizedSSHProfileSettings(t *testing.T) {
 func assertLocalizedTexts(t *testing.T, tester *ui.Tester, language string, keys ...string) {
 	t.Helper()
 	for _, key := range keys {
-		want := translations[language][key]
+		want := i18n.Translations[language][key]
 		if want == "" || want == key {
 			t.Errorf("%s has no translation for %q", language, key)
 			continue

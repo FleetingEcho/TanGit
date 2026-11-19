@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"lazygitapp/internal/app/i18n"
 	"slices"
 	"strings"
 	"testing"
@@ -42,15 +43,15 @@ func stubScopedTranslationCatalog(t *testing.T, entries map[string]string) {
 	t.Helper()
 	const language = "scoped-test"
 	previousLanguage := currentLanguage
-	previousCatalog, previouslyRegistered := translations[language]
-	translations[language] = entries
+	previousCatalog, previouslyRegistered := i18n.Translations[language]
+	i18n.Translations[language] = entries
 	currentLanguage = language
 	t.Cleanup(func() {
 		currentLanguage = previousLanguage
 		if previouslyRegistered {
-			translations[language] = previousCatalog
+			i18n.Translations[language] = previousCatalog
 		} else {
-			delete(translations, language)
+			delete(i18n.Translations, language)
 		}
 	})
 }
