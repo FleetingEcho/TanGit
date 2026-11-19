@@ -140,6 +140,19 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		a.onShortcut(c, 0, ui.KeyEscape, shortcut("diff/stop-line-selection", "Escape", tr("Close a dialog or cancel the current step")), a.stopLineSelection)
 		return
 	}
+	if a.terminalFocused(c) {
+		// The terminal owns the keyboard while it has focus, so a nested
+		// application in the shell (lazygit, vim, a pager) receives the
+		// letters and Escape. Only the window's terminal toggle (window scope,
+		// registered above), and the terminal's own search, stay registered.
+		a.onShortcut(c, ui.Ctrl, ui.KeyF, shortcut("terminal/search", "Ctrl+F", tr("Search the active terminal")), a.openTerminalSearch)
+		if active := a.activeTerminal(); active != nil && active.searchOpen {
+			a.onShortcut(c, 0, ui.KeyEscape, shortcut("terminal/search-close", "Escape", tr("Close a dialog or cancel the current step")), a.closeActiveTerminalSearch)
+			a.onShortcut(c, 0, ui.KeyF3, shortcut("terminal/search-next", "F3", tr("Move to the next / previous quick-search result")), func() { a.navigateTerminalSearch(1) })
+			a.onShortcut(c, ui.Shift, ui.KeyF3, shortcut("terminal/search-previous", "Shift+F3", tr("Move to the next / previous quick-search result")), func() { a.navigateTerminalSearch(-1) })
+		}
+		return
+	}
 	// Custom commands are registered before the Code save shortcuts too.
 	// The switch disables both the defaults and user-defined bindings.
 	if a.settings.DisableShortcuts {
@@ -175,18 +188,6 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		return
 	}
 	if a.anyFormOpen() {
-		return
-	}
-
-	if a.terminalVisible() {
-		a.onShortcut(c, ui.Ctrl, ui.KeyF, shortcut("terminal/search", "Ctrl+F", tr("Search the active terminal")), a.openTerminalSearch)
-		if active := a.activeTerminal(); active != nil && active.searchOpen {
-			a.onShortcut(c, 0, ui.KeyEscape, shortcut("terminal/search-close", "Escape", tr("Close a dialog or cancel the current step")), a.closeActiveTerminalSearch)
-			a.onShortcut(c, 0, ui.KeyF3, shortcut("terminal/search-next", "F3", tr("Move to the next / previous quick-search result")), func() { a.navigateTerminalSearch(1) })
-			a.onShortcut(c, ui.Shift, ui.KeyF3, shortcut("terminal/search-previous", "Shift+F3", tr("Move to the next / previous quick-search result")), func() { a.navigateTerminalSearch(-1) })
-		}
-		// The shell owns the other keys while its pane shows, so digits and
-		// letters reach it instead of switching sections or acting on rows.
 		return
 	}
 
