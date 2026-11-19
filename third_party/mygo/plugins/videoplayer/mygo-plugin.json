@@ -1,7 +1,0 @@
-{
-  "mobile": {
-    "id": "videoplayer",
-    "ios": {"sources": ["ios/*.swift"], "class": "VideoPlayerPlugin", "frameworks": ["AVFoundation"]},
-    "android": {"sources": ["android/*.kt"], "class": "VideoPlayerPlugin"}
-  }
-}
