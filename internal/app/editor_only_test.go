@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"lazygitapp/internal/app/i18n"
 	"os"
 	"path/filepath"
 	"slices"
@@ -414,7 +415,7 @@ func TestEditorOnlyHomeStringsAreLocalized(t *testing.T) {
 	}
 	for _, language := range languageChoices[1:] {
 		for _, key := range keys {
-			if translated := translations[language.Code][key]; translated == "" || translated == key {
+			if translated := i18n.Translations[language.Code][key]; translated == "" || translated == key {
 				t.Errorf("%s has no translation for %q", language.Code, key)
 			}
 		}

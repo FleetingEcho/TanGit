@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"lazygitapp/internal/app/launch"
 	"log"
 	"os"
 	"path/filepath"
@@ -1320,7 +1321,7 @@ func Main() {
 		return
 	}
 
-	launched, err := launchInBackground()
+	launched, err := launch.LaunchInBackground()
 	if err != nil {
 		log.Printf("Could not detach the TanGit launcher: %v", err)
 	}

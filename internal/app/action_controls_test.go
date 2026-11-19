@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"lazygitapp/internal/app/i18n"
 	"os"
 	"strings"
 	"testing"
@@ -298,12 +299,12 @@ func TestActionControlCatalogsCoverEveryLanguage(t *testing.T) {
 	before := currentLanguage
 	t.Cleanup(func() { currentLanguage = before })
 	languages := []string{"en", "zh-Hans", "zh-Hant", "ja", "es", "fr"}
-	for _, entry := range actionControlTranslations {
-		want := []string{entry.english, entry.zhHans, entry.zhHant, entry.japanese, entry.spanish, entry.french}
+	for _, entry := range i18n.ActionControlTranslations {
+		want := []string{entry.English, entry.ZhHans, entry.ZhHant, entry.Japanese, entry.Spanish, entry.French}
 		for index, language := range languages {
 			currentLanguage = language
-			if got := tr(entry.english); got != want[index] {
-				t.Errorf("%s catalog %q = %q, want %q", language, entry.english, got, want[index])
+			if got := tr(entry.English); got != want[index] {
+				t.Errorf("%s catalog %q = %q, want %q", language, entry.English, got, want[index])
 			}
 		}
 	}
