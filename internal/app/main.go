@@ -115,14 +115,16 @@ type app struct {
 	// The tab hooks connect the app to the window around it, and are nil
 	// when it runs on its own (tests), which hides the tab controls.
 	//
-	// openTab opens a repository in a page of its own, openHomeTab shows the
-	// picker in one, claimOpen reports that an open was taken over by an
-	// existing page or the window's cap, and closeTab gives this app's page
-	// up.
-	openTab     func(path string)
-	openHomeTab func()
-	claimOpen   func(path string) bool
-	closeTab    func()
+	// openTab opens a repository in a page of its own. openTerminalTab also
+	// reveals that page's integrated terminal once its repository is ready.
+	// openHomeTab shows the picker in one, claimOpen reports that an open was
+	// taken over by an existing page or the window's cap, and closeTab gives
+	// this app's page up.
+	openTab         func(path string)
+	openTerminalTab func(path string)
+	openHomeTab     func()
+	claimOpen       func(path string) bool
+	closeTab        func()
 	// onRecentRenamed carries a name given to one page's repository to the
 	// window's other pages, so a pill, a card, and the next opening agree.
 	onRecentRenamed func(path, name string)
@@ -141,6 +143,9 @@ type app struct {
 
 	// term owns the shared dock's shells, tabs, splits, edge and restored size.
 	term terminalState
+	// openTerminalOnReady belongs to this tab only. A new open or failed open
+	// cancels it so an earlier worktree request cannot target another root.
+	openTerminalOnReady bool
 	// agents links durable tasks to this repository family's worktrees.
 	agents           agentUIState
 	assistance       assistUIState

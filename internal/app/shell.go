@@ -294,6 +294,9 @@ func (s *shell) newTab(path string) *tab {
 	a.openTab = func(path string) {
 		s.request(func() { s.openTab(path) })
 	}
+	a.openTerminalTab = func(path string) {
+		s.request(func() { s.openTabWithPolicyAndTerminal(path, openGitOnly, true) })
+	}
 	a.openHomeTab = func() {
 		s.request(s.showHome)
 	}
@@ -819,12 +822,22 @@ func (s *shell) openTab(path string) {
 }
 
 func (s *shell) openTabWithPolicy(path string, policy openPolicy) {
+	s.openTabWithPolicyAndTerminal(path, policy, false)
+}
+
+// openTabWithPolicyAndTerminal applies a terminal request to the actual
+// destination tab. Starting it before a successful open would use an empty or
+// previous repository root, so the app defers it until installation succeeds.
+func (s *shell) openTabWithPolicyAndTerminal(path string, policy openPolicy, showTerminal bool) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return
 	}
 	if existing := s.tabForPath(path, nil); existing != nil {
 		s.activateTab(existing)
+		if showTerminal {
+			existing.app.openTerminalWhenReady()
+		}
 		return
 	}
 	if s.repositoryCount() >= maxRepositoryTabs {
@@ -835,6 +848,9 @@ func (s *shell) openTabWithPolicy(path string, policy openPolicy) {
 	s.tabs = append(s.tabs, t)
 	s.activate(s.indexOf(t))
 	t.app.beginOpenWithPolicy(policy)
+	if showTerminal {
+		t.app.openTerminalWhenReady()
+	}
 }
 
 // prepareTabsShutdown flushes pending editors without removing any page. Only

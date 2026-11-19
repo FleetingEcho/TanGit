@@ -299,6 +299,17 @@ func (a *app) setTerminalDock(dock string) {
 // page. Every shell and its scrollback stays alive while hidden.
 func (a *app) toggleTerminal() { a.toggleTerminalPanel() }
 
+// openTerminalWhenReady applies a request to an already ready page or keeps
+// it only while that page is loading. New opens clear the pending request.
+func (a *app) openTerminalWhenReady() {
+	switch a.state {
+	case stateReady:
+		a.openTerminal()
+	case stateLoading:
+		a.openTerminalOnReady = true
+	}
+}
+
 // openTerminal restores the dock and starts its first shell on demand.
 func (a *app) openTerminal() {
 	a.term.panelOpen = true

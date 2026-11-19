@@ -31,6 +31,7 @@ func (a *app) beginOpen() {
 }
 
 func (a *app) beginOpenWithPolicy(policy openPolicy) {
+	a.openTerminalOnReady = false
 	path := strings.TrimSpace(a.path)
 	if path == "" {
 		a.state = stateError
@@ -204,6 +205,7 @@ func (a *app) setOpenError(path string, generation uint64, err error) {
 	if generation != a.generation {
 		return
 	}
+	a.openTerminalOnReady = false
 	a.cancelOpen = nil
 	if errors.Is(err, os.ErrNotExist) && a.recentWorktree(path) {
 		a.showMissingRecentWorktree(path)
@@ -282,6 +284,7 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 		a.notify("error", "Repository opened with limited data", strings.Join(snapshot.Warnings, "; "))
 	}
 	a.refreshWindowTitle()
+	a.finishOpeningTerminalIfRequested()
 }
 
 // resetRepositoryState clears everything a frame would read from the
@@ -1136,6 +1139,7 @@ func (a *app) prepareShutdown(done func(bool)) {
 // shutdown releases everything the open repository held, leaving the app on
 // the picker, so another repository can be opened without restarting.
 func (a *app) shutdown() {
+	a.openTerminalOnReady = false
 	a.generation++
 	a.repositoryWork.Cancel()
 	a.shutdownContinuePreflight()
@@ -1192,6 +1196,16 @@ func (a *app) shutdown() {
 	a.errMessage = ""
 	a.offerInitPath = ""
 	a.refreshWindowTitle()
+}
+
+// finishOpeningTerminalIfRequested starts the shell only after the requested
+// worktree has supplied a real root. Failed, replaced and closed opens clear it.
+func (a *app) finishOpeningTerminalIfRequested() {
+	if !a.openTerminalOnReady {
+		return
+	}
+	a.openTerminalOnReady = false
+	a.openTerminal()
 }
 
 // refreshWindowTitle names the repository in the window's title when the app
