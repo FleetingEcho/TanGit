@@ -328,6 +328,11 @@ func (a *app) fileTreeDirectoryRow(c *ui.Context, scope string, item fileTreeRow
 	row := ui.ButtonBase(c).Grow(1).Gap(7).AlignItems(ui.Center).
 		Padding(6, 8, 6, float32(8+16*item.depth)).
 		Label(tr(action) + " " + item.path).Tooltip(item.path)
+	if item.depth > 0 {
+		row.Draw(func(p *ui.Painter, r ui.Rect) {
+			paintTreeDepthGuides(p, item, theme, selected, r)
+		})
+	}
 	row.Children(func() {
 		arrowColor := theme.TextMuted
 		folderColor := theme.Accent
@@ -349,4 +354,63 @@ func (a *app) fileTreeDirectoryRow(c *ui.Context, scope string, item fileTreeRow
 		a.toggleFileTreeDirectory(scope, item.path)
 	}
 	return row
+}
+
+// treeGuideSegment is one parent rail and the elbow connecting it toward the
+// current directory. Root folders have no parent and therefore no such chrome.
+type treeGuideSegment struct {
+	vertical, horizontal struct{ X1, Y1, X2, Y2 float32 }
+}
+
+const treeIndentStep = 16
+
+// treeIndentSegments computes a consistent grid of vertical guides. Child
+// rows keep their native padding and icons; repaint only the rail layout.
+func treeIndentSegments(depth int) []treeGuideSegment {
+	if depth <= 0 {
+		return nil
+	}
+	// Git paths originate in this repository, but cap malformed/degenerate
+	// groups as a precaution for display-only state supplied by an editor.
+	depth = min(depth, 128)
+	guides := make([]treeGuideSegment, 0, depth+1)
+	for level := 0; level < depth; level++ {
+		var segment treeGuideSegment
+		segment.vertical.X1 = 12 + treeIndentStep*float32(level)
+		segment.vertical.Y1 = 0
+		segment.vertical.X2 = segment.vertical.X1
+		segment.vertical.Y2 = 64
+		guides = append(guides, segment)
+	}
+	x := 12 + treeIndentStep*float32(depth-1)
+	var segment treeGuideSegment
+	segment.vertical.X1 = x
+	segment.vertical.Y1 = 0.5
+	segment.vertical.X2 = x + treeIndentStep/2
+	segment.horizontal.Y2 = 64
+	guides = append(guides, treeGuideSegment{horizontal: struct{ X1, Y1, X2, Y2 float32 }{
+		X1: x, Y1: 0.5, X2: x + treeIndentStep/2, Y2: 0.5,
+	}})
+	return guides
+}
+
+func paintTreeDepthGuides(p *ui.Painter, item fileTreeRow, theme *ui.Theme, selected bool, r ui.Rect) {
+	color := treeGuideColor(theme, selected)
+	for _, guide := range treeIndentSegments(item.depth) {
+		line := guide.vertical
+		var path ui.Path
+		path.MoveTo(r.X+line.X1, r.Y+line.Y1).
+			LineTo(r.X+line.X2, r.Y+line.Y2)
+		p.StrokePath(&path, 1, color)
+	}
+}
+
+func treeGuideColor(theme *ui.Theme, selected bool) ui.Color {
+	if theme == nil {
+		theme = ui.DarkTheme()
+	}
+	if selected {
+		return theme.AccentText.Alpha(0.62)
+	}
+	return theme.TextMuted.Alpha(0.34)
 }
