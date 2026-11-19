@@ -84,8 +84,15 @@ func TestDetachedLaunchHelper(t *testing.T) {
 		if err != nil {
 			os.Exit(2)
 		}
-		if err := os.WriteFile(os.Getenv("TANGIT_DETACHED_LAUNCH_RECORD"), record, 0o600); err != nil {
+		// Let the parent observe either an absent record or complete JSON.
+		// Writing directly to record.json allowed a valid but partial read.
+		tmp := os.Getenv("TANGIT_DETACHED_LAUNCH_RECORD") + ".tmp"
+		defer os.Remove(tmp)
+		if err := os.WriteFile(tmp, record, 0o600); err != nil {
 			os.Exit(3)
+		}
+		if err := os.Rename(tmp, os.Getenv("TANGIT_DETACHED_LAUNCH_RECORD")); err != nil {
+			os.Exit(4)
 		}
 		// Stand in for the GUI event loop. The outer test terminates the new
 		// session after confirming that the launcher returned and this is alive.
