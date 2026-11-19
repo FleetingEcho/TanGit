@@ -310,8 +310,15 @@ const recentRowHeight float32 = 118
 const recentCardMinWidth float32 = 400
 
 // recentCardMargin spaces the cards from each other and from the border
-// of their view, at least 6 DIPs.
-const recentCardMargin float32 = 6
+// of their view, at least 8 DIPs.
+const recentCardMargin float32 = 8
+
+// recentCardMaxWidth keeps two-column cards from becoming overly wide. The
+// grid cap does not constrain the narrower one-column responsive layout.
+const (
+	recentCardMaxWidth float32 = 480
+	recentGridMaxWidth         = 2*recentCardMaxWidth + recentCardMargin
+)
 
 // recentSectionBorderWidth is the stroke around the cards' scrolling view.
 const recentSectionBorderWidth float32 = 1
@@ -582,27 +589,36 @@ func (a *app) recentSectionView(c *ui.Context) {
 				})
 				return
 			}
-			// The cards scroll in a bordered view of their own, which
-			// shows at most recentMaxRows rows of them and no more: extra
-			// cards scroll inside it instead of growing the page. The
-			// margin around and between the cards is at least
-			// recentCardMargin.
-			ui.Box(c).FillWidth().Padding(recentCardMargin).
-				// Include the gaps, outer padding, and both sides of the border so
-				// the third row remains fully visible.
-				MaxHeight(recentMaxRows*recentRowHeight+(recentMaxRows-1)*recentCardMargin+2*recentCardMargin+2*recentSectionBorderWidth).
-				Background(theme.Surface.Alpha(0.35)).Border(recentSectionBorderWidth, theme.Border).
-				Radius(theme.Radius + 6).Clip().Children(func() {
+			// Up to six cards fit the three-row viewport without a frame or
+			// scrolling. Starting with the seventh, the outer border and
+			// bounded scroll view make the extra rows and their extent clear.
+			framed := len(a.visibleRecent) > 6
+			panel := ui.Box(c).FillWidth().Padding(recentCardMargin)
+			if framed {
+				// Include the gaps, outer padding, and both sides of the
+				// border so the third row remains fully visible.
+				panel.MaxHeight(recentMaxRows*recentRowHeight+(recentMaxRows-1)*recentCardMargin+
+					2*recentCardMargin+2*recentSectionBorderWidth).
+					Background(theme.Surface.Alpha(0.35)).Border(recentSectionBorderWidth, theme.Border).
+					Radius(theme.Radius + 6).Clip()
+			}
+			panel.Children(func() {
 				width, _ := c.Size()
-				ui.Scroll(c).Fill().Children(func() {
-					ui.Grid(c).FillWidth().Columns(recentColumnCount(width)).Gap(recentCardMargin).Children(func() {
+				cards := func() {
+					ui.Grid(c).FillWidth().MaxWidth(recentGridMaxWidth).AlignSelf(ui.Center).
+						Columns(recentColumnCount(width)).Gap(recentCardMargin).Children(func() {
 						for _, i := range a.visibleRecent {
 							ui.Box(c).Height(recentRowHeight).Children(func() {
 								a.recentCardView(c, i, services)
 							})
 						}
 					})
-				})
+				}
+				if framed {
+					ui.Scroll(c).Fill().Label(tr(title)).Children(cards)
+					return
+				}
+				cards()
 			})
 		})
 }

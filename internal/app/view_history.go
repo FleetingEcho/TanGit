@@ -8,6 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
+	"github.com/egoist/mygo/ui/markdown"
 
 	"lazygitapp/internal/repository"
 )
@@ -83,7 +84,10 @@ type commitMessageDetailState struct {
 	message    repository.CommitMessage
 	loading    bool
 	error      string
-	expanded   bool
+	height     float32
+	raw        bool
+	markdown   *markdown.Options
+	scroll     ui.ScrollState
 	cancel     context.CancelFunc
 	generation uint64
 }
@@ -98,7 +102,7 @@ func (s *commitMessageDetailState) reset() {
 	s.message = repository.CommitMessage{}
 	s.loading = false
 	s.error = ""
-	s.expanded = false
+	s.scroll = ui.ScrollState{}
 }
 
 func (a *app) requestCommitMessage(state *commitMessageDetailState, commit repository.Commit, visible func() bool) {
@@ -788,14 +792,10 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 	})
 }
 
-const (
-	commitMessageCompactHeight  = float32(120)
-	commitMessageExpandedHeight = float32(320)
-)
+const commitMessageDefaultHeight = float32(120)
 
-// commitMessageBody keeps a long read-only body from squeezing out the files
-// and diff below it. Text.Selectable supports selection and Copy without
-// turning this view into the history-editing Reword form.
+// commitMessageBody shows the message read-only. When a body is present,
+// commitDetailBody places this view above a draggable middle divider.
 func (a *app) commitMessageBody(c *ui.Context, commit repository.Commit, state commitDetailViewState) {
 	state.requestMessage(commit)
 	message := state.message
@@ -814,27 +814,28 @@ func (a *app) commitMessageBody(c *ui.Context, commit repository.Commit, state c
 			}
 		})
 	case message.message.Description != "":
-		ui.Column(c).FillWidth().Gap(4).Children(func() {
+		ui.Column(c).Fill().Gap(4).Children(func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				ui.Text(c, tr("Description")).Bold().TextColor(c.Theme().TextMuted).Grow(1)
-				label := "Expand commit message"
-				if message.expanded {
-					label = "Collapse commit message"
+				label, icon := "Show raw commit message", fileCodeIcon
+				if message.raw {
+					label, icon = "Show rendered commit message", fileDocIcon
 				}
-				button := ui.Button(c, tr(label)).Shrink(0)
-				if button.Clicked() {
-					message.expanded = !message.expanded
-				}
+				flatIconButton(c, label, label, icon, 14, 3, false, func() {
+					message.raw = !message.raw
+				})
 			})
-			body := ui.Scroll(c).FillWidth().Label(tr("Commit message"))
-			if message.expanded {
-				body.MaxHeight(commitMessageExpandedHeight)
-			} else {
-				body.MaxHeight(commitMessageCompactHeight)
-			}
-			body.Children(func() {
-				ui.Text(c, message.message.Description).Selectable().FillWidth()
-			})
+			ui.Scroll(c).Grow(1).FillWidth().Label(tr("Commit message")).TrackScroll(&message.scroll).
+				Children(func() {
+					if message.raw {
+						ui.Text(c, message.message.Description).Selectable().FillWidth()
+						return
+					}
+					if message.markdown == nil {
+						message.markdown = &markdown.Options{WrapCode: true}
+					}
+					markdown.View(c, message.message.Description, message.markdown)
+				})
 		})
 	}
 }
@@ -853,7 +854,6 @@ func (a *app) commitDetailBody(c *ui.Context, commit *repository.Commit, emptyLa
 	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 		ui.Text(c, commit.Subject).FontSize(18).Bold().SingleLine().Tooltip(commit.Subject).
 			Grow(1).MinWidth(0)
-		a.expandDiffButton(c)
 	})
 	if actionIcons != nil {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(4).Wrap().Children(func() { actionIcons(c, *commit) })
@@ -885,99 +885,108 @@ func (a *app) commitDetailBody(c *ui.Context, commit *repository.Commit, emptyLa
 	if len(commit.Tags) > 0 {
 		ui.Textf(c, tr("Tags: %s"), strings.Join(commit.Tags, ", ")).TextColor(theme.TextMuted)
 	}
-	a.commitMessageBody(c, *commit, state)
+	state.requestMessage(*commit)
 	state.requestDetails(*commit)
-	if *state.filesLoading && *state.files == nil {
-		loadingPane(c, "Loading commit details", "Loading commit details…")
-		return
-	}
-	if *state.filesError != "" {
-		ui.Text(c, *state.filesError).TextColor(theme.Danger)
-	}
-	if *state.files == nil {
-		ui.Column(c).Grow(1).Center().Children(func() {
-			if ui.Button(c, tr("Load changed files")).Clicked() {
-				// Drop the failed read's key so this click reads it again.
-				*state.filesHash = ""
-				state.requestDetails(*commit)
-			}
-		})
-		return
-	}
-	files := *state.files
-	paths := commitFilePaths(files)
-	previousSelectedRow := *state.selectedFileRow
-	*state.fileRows = a.syncFileTreeRows(state.scope, paths, *state.fileRows,
-		state.selectedFileRow, state.selectedFile)
-	revealSelectedRow := *state.selectedFileRow >= 0 && *state.selectedFileRow != previousSelectedRow
-	// The files and the diff share the rest of the pane, and the line
-	// between them is dragged to give one more room than the other.
-	a.commitDetailsSplitWith(c, state.filesWidth, state.filesHeight, state.filesCollapsed, func() {
-		ui.Column(c).Fill().Gap(6).Children(func() {
-			ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
-				ui.Icon(c, folderIcon).FontSize(13).TextColor(theme.Accent)
-				ui.Text(c, tr("Commit files")).Bold().Grow(1)
-				ui.Badge(c, fmt.Sprintf("%d", len(files)))
-				a.fileTreeModeButton(c)
-				if *state.filesLoading {
-					ui.Spinner(c).Label(tr("Loading commit details"))
+	filesAndDiff := func() {
+		if *state.filesLoading && *state.files == nil {
+			loadingPane(c, "Loading commit details", "Loading commit details…")
+			return
+		}
+		if *state.filesError != "" {
+			ui.Text(c, *state.filesError).TextColor(theme.Danger)
+		}
+		if *state.files == nil {
+			ui.Column(c).Grow(1).Center().Children(func() {
+				if ui.Button(c, tr("Load changed files")).Clicked() {
+					// Drop the failed read's key so this click reads it again.
+					*state.filesHash = ""
+					state.requestDetails(*commit)
 				}
-				paneCollapseButton(c, state.filesCollapsed, "Collapse changed files").MarginEnd(8)
 			})
-			guides := treeGuideGroups(*state.fileRows)
-			list := a.keyboardList(c, state.fileList, len(*state.fileRows)).Grow(1).Rows(func(row ui.ListRow) {
-				item := (*state.fileRows)[row.Index]
-				if item.isDirectory() {
-					directory := a.fileTreeDirectoryRow(row.Context, state.scope, item, row.Selected(), func() {
-						state.selectFileRow(row.Index)
+			return
+		}
+		files := *state.files
+		paths := commitFilePaths(files)
+		previousSelectedRow := *state.selectedFileRow
+		*state.fileRows = a.syncFileTreeRows(state.scope, paths, *state.fileRows,
+			state.selectedFileRow, state.selectedFile)
+		revealSelectedRow := *state.selectedFileRow >= 0 && *state.selectedFileRow != previousSelectedRow
+		// The files and the diff share the rest of the pane, and the line
+		// between them is dragged to give one more room than the other.
+		a.commitDetailsSplitWith(c, state.filesWidth, state.filesHeight, state.filesCollapsed, func() {
+			ui.Column(c).Fill().Gap(6).Children(func() {
+				ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
+					ui.Icon(c, folderIcon).FontSize(13).TextColor(theme.Accent)
+					ui.Text(c, tr("Commit files")).Bold().Grow(1)
+					ui.Badge(c, fmt.Sprintf("%d", len(files)))
+					a.fileTreeModeButton(c)
+					if *state.filesLoading {
+						ui.Spinner(c).Label(tr("Loading commit details"))
+					}
+					paneCollapseButton(c, state.filesCollapsed, "Collapse changed files").MarginEnd(8)
+				})
+				guides := treeGuideGroups(*state.fileRows)
+				list := a.keyboardList(c, state.fileList, len(*state.fileRows)).Grow(1).Rows(func(row ui.ListRow) {
+					item := (*state.fileRows)[row.Index]
+					if item.isDirectory() {
+						directory := a.fileTreeDirectoryRow(row.Context, state.scope, item, row.Selected(), func() {
+							state.selectFileRow(row.Index)
+						})
+						guides.decorate(directory, item, row)
+						return
+					}
+					file := files[item.source]
+					services := row.Context.Services()
+					fileRow := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(6, 8, 6, float32(8+16*item.depth))
+					guides.decorate(fileRow, item, row).Children(func() {
+						fileTypeMark(row.Context, file.Path, 13, row.Selected())
+						ui.Text(row.Context, item.name).Grow(1).SingleLine().Tooltip(file.Path)
+						fileDiffStatCounts(row.Context, file.Path, file.LinesAdded, file.LinesDeleted)
+						statusSlot(row.Context, statusLetter(file.Status),
+							rowStatusColor(theme, row, theme.Warning))
+					}).PopoverMenu(func(m *ui.Menu) {
+						a.commitFileMenu(m, commit, file, services)
 					})
-					guides.decorate(directory, item, row)
-					return
+				})
+				if a.keyboardListChanged(state.fileList, list) {
+					state.selectFileRow(*state.selectedFileRow)
 				}
-				file := files[item.source]
-				services := row.Context.Services()
-				fileRow := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(6, 8, 6, float32(8+16*item.depth))
-				guides.decorate(fileRow, item, row).Children(func() {
-					fileTypeMark(row.Context, file.Path, 13, row.Selected())
-					ui.Text(row.Context, item.name).Grow(1).SingleLine().Tooltip(file.Path)
-					fileDiffStatCounts(row.Context, file.Path, file.LinesAdded, file.LinesDeleted)
-					statusSlot(row.Context, statusLetter(file.Status),
-						rowStatusColor(theme, row, theme.Warning))
-				}).PopoverMenu(func(m *ui.Menu) {
-					a.commitFileMenu(m, commit, file, services)
-				})
+				if revealSelectedRow {
+					// A programmatic choice has no list input for MyGo to reveal.
+					// Scroll after its rows exist, not when the async read chooses it.
+					state.fileList.ScrollIntoView(*state.selectedFileRow)
+				}
+				normalizeFileTreeRow(*state.fileRows, state.selectedFileRow, state.selectedFile)
 			})
-			if a.keyboardListChanged(state.fileList, list) {
-				state.selectFileRow(*state.selectedFileRow)
-			}
-			if revealSelectedRow {
-				// A programmatic choice has no list input for MyGo to reveal.
-				// Scroll after its rows exist, not when the async read chooses it.
-				state.fileList.ScrollIntoView(*state.selectedFileRow)
-			}
-			normalizeFileTreeRow(*state.fileRows, state.selectedFileRow, state.selectedFile)
-		})
-	}, func() {
-		ui.Column(c).Fill().Children(func() {
-			if *state.selectedFile >= 0 && *state.selectedFile < len(files) && !*state.filesLoading && *state.filesError == "" {
-				state.requestDiff(*commit, files[*state.selectedFile])
-			}
-			if *state.diffLoading && (*state.diffState != nil || *state.diffMedia != nil) {
-				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					ui.Spinner(c).Label(tr("Loading diff"))
-					ui.Text(c, tr("Loading diff…")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-				})
-			}
-			switch {
-			case *state.diffLoading && *state.diffState == nil && *state.diffMedia == nil:
-				loadingPane(c, "Loading diff", "Loading diff…")
-			case *state.diffError != "":
-				ui.Text(c, *state.diffError).TextColor(theme.Danger)
-			case *state.diffState != nil:
-				a.keyboardDiffViewer(c, *state.diffState)
-			default:
-				noTextualDiffOrMedia(c, *state.diffMedia, *state.diffPath)
-			}
-		})
-	}).Grow(1)
+		}, func() {
+			ui.Column(c).Fill().Children(func() {
+				if *state.selectedFile >= 0 && *state.selectedFile < len(files) && !*state.filesLoading && *state.filesError == "" {
+					state.requestDiff(*commit, files[*state.selectedFile])
+				}
+				if *state.diffLoading && (*state.diffState != nil || *state.diffMedia != nil) {
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+						ui.Spinner(c).Label(tr("Loading diff"))
+						ui.Text(c, tr("Loading diff…")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+					})
+				}
+				switch {
+				case *state.diffLoading && *state.diffState == nil && *state.diffMedia == nil:
+					loadingPane(c, "Loading diff", "Loading diff…")
+				case *state.diffError != "":
+					ui.Text(c, *state.diffError).TextColor(theme.Danger)
+				case *state.diffState != nil:
+					a.keyboardDiffViewer(c, *state.diffState)
+				default:
+					noTextualDiffOrMedia(c, *state.diffMedia, *state.diffPath)
+				}
+			})
+		}).Grow(1)
+	}
+	if state.message.message.Description != "" && !state.message.loading && state.message.error == "" {
+		paneSplitVertical(c, &state.message.height,
+			func() { a.commitMessageBody(c, *commit, state) }, filesAndDiff).Grow(1)
+		return
+	}
+	a.commitMessageBody(c, *commit, state)
+	filesAndDiff()
 }
