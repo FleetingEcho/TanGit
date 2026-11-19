@@ -192,6 +192,7 @@ func defaultSettings() appSettings {
 		EditorAutoClose:             true,
 		EditorInlayHints:            true,
 		EditorSemanticHighlighting:  true,
+		EditorMinimap:               true,
 		EditorStickyScroll:          true,
 		AutoFetchInterval:           5,
 		AutoFetchConfigured:         true,
