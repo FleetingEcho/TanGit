@@ -19,6 +19,7 @@ import (
 	"unicode"
 
 	"github.com/egoist/mygo/internal/wait"
+	"github.com/egoist/mygo/plugins/terminal/internal/pty"
 	"github.com/egoist/mygo/plugins/terminal/internal/vt"
 	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
@@ -82,6 +83,33 @@ func save(t *testing.T, tt *ui.Tester, name string) {
 	}
 	defer f.Close()
 	png.Encode(f, tt.Image())
+}
+
+func TestHasForegroundProcessPendingAndRemote(t *testing.T) {
+	pending := &Terminal{launch: &pty.Options{Path: "/bin/sh"}}
+	if pending.HasForegroundProcess() {
+		t.Fatal("a local shell has a foreground process before its PTY starts")
+	}
+	conn := newPipe()
+	remote := &Terminal{opts: Options{Conn: conn}, src: conn}
+	if remote.HasForegroundProcess() {
+		t.Fatal("a Conn-backed remote terminal reported local foreground state")
+	}
+}
+
+func TestHasForegroundProcess(t *testing.T) {
+	loadLib(t)
+	term := shell(t, Options{})
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 480, 240)
+	waitFor(t, tt, "the prompt", func() bool { return strings.Contains(term.Text(), "$") })
+	if term.HasForegroundProcess() {
+		t.Fatal("the shell itself is not another foreground process")
+	}
+	tt.Type("sleep 30")
+	tt.Key(0, ui.KeyEnter)
+	waitFor(t, tt, "sleep in the foreground", term.HasForegroundProcess)
+	tt.Key(ui.Ctrl, ui.KeyC)
+	waitFor(t, tt, "the shell back in the foreground", func() bool { return !term.HasForegroundProcess() })
 }
 
 func TestTypeInShell(t *testing.T) {
