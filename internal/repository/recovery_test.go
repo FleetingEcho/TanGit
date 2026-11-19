@@ -70,13 +70,22 @@ func TestDiscardRecoveryRestoresStagedUnstagedAndUntrackedWork(t *testing.T) {
 		t.Fatalf("discard left changes: %#v, %v", core.Files, err)
 	}
 	snapshots, err := session.WorkSnapshots(ctx)
-	if err != nil || len(snapshots) != 1 {
+	if err != nil || len(snapshots) != 2 {
 		t.Fatalf("recovery entries = %#v, %v", snapshots, err)
 	}
-	if snapshots[0].Kind != RecoverySnapshotKind || nativeStashList(t, dir) != "" {
-		t.Fatalf("recovery leaked into native stash: %#v %q", snapshots, nativeStashList(t, dir))
+	for _, snapshot := range snapshots {
+		if snapshot.Kind != RecoverySnapshotKind {
+			t.Fatalf("unexpected automatic recovery kind: %#v", snapshot)
+		}
 	}
-	if err := session.RestoreWorkSnapshot(ctx, snapshots[0]); err != nil {
+	if nativeStashList(t, dir) != "" {
+		t.Fatalf("recovery leaked into native stash: %q", nativeStashList(t, dir))
+	}
+	record := onlyOperation(t, session)
+	if record.Snapshot == nil || record.AfterSnapshot == nil {
+		t.Fatal("operation did not retain its before and after recovery points")
+	}
+	if err := session.RestoreWorkSnapshot(ctx, *record.Snapshot); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(filepath.Join(dir, "a.txt"))
@@ -98,7 +107,7 @@ func TestDiscardRecoveryRestoresStagedUnstagedAndUntrackedWork(t *testing.T) {
 		t.Fatalf("restore moved HEAD: %v, %v", after.Commits, err)
 	}
 	kept, err := session.WorkSnapshots(ctx)
-	if err != nil || len(kept) != 1 {
+	if err != nil || len(kept) != 2 {
 		t.Fatalf("restore consumed recovery: %#v, %v", kept, err)
 	}
 	if nativeStashList(t, dir) != "" {

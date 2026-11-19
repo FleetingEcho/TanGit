@@ -121,6 +121,79 @@ func TestOperationWorkspaceUndoRestoresIgnoredPayloadAndIndex(t *testing.T) {
 	}
 }
 
+func TestOperationStoresPostOperationWorkspaceSnapshot(t *testing.T) {
+	_, session := workspaceRecoveryFixture(t)
+	discardWorkspaceRecoveryFiles(t, "", session)
+	snapshots, err := session.WorkSnapshots(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshots) != 2 {
+		record := onlyOperation(t, session)
+		t.Fatalf("operation has %d durable workspace snapshots, want before and post-operation restore points; status=%s error=%s before=%s after=%s", len(snapshots), record.Status, record.Error, record.WorkspaceGuardBefore, record.WorkspaceGuardAfter)
+	}
+}
+
+func TestOperationUndoRejectsRawContentHiddenByCleanFilters(t *testing.T) {
+	dir, session := recoveryRepository(t)
+	runGit(t, dir, "config", "filter.casefold.clean", "tr A-Z a-z")
+	runGit(t, dir, "config", "filter.casefold.smudge", "tr a-z A-Z")
+	if err := os.WriteFile(filepath.Join(dir, ".gitattributes"), []byte("payload.txt filter=casefold\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "payload.txt"), []byte("BASE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", ".gitattributes", "payload.txt")
+	runGit(t, dir, "commit", "-m", "configured filter payload")
+	if err := os.WriteFile(filepath.Join(dir, "payload.txt"), []byte("WIP\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var target File
+	for _, file := range sessionSnapshotForTest(t, session).Files {
+		if file.Path == "payload.txt" {
+			target = file
+		}
+	}
+	if target.Path == "" {
+		t.Fatal("payload fixture is not present as a changed file")
+	}
+	if err := session.DiscardFiles(context.Background(), []File{target}); err != nil {
+		t.Fatal(err)
+	}
+	record := onlyOperation(t, session)
+	// Different raw bytes have the same clean representation, and refreshing
+	// the index does not alter its semantic stage. These are still newer work.
+	if err := os.WriteFile(filepath.Join(dir, "payload.txt"), []byte("base\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "--renormalize", "payload.txt")
+	if err := session.UndoOperation(context.Background(), record.ID); err == nil || !strings.Contains(err.Error(), "worktree changed") {
+		t.Fatalf("undo hid a raw-content change behind Git's clean filter: %v", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "payload.txt")); string(got) != "base\n" {
+		t.Fatalf("rejected undo overwrote newer filtered content: %q", got)
+	}
+}
+
+func TestOperationUndoRejectsNewerOperationRefs(t *testing.T) {
+	dir, session := workspaceRecoveryFixture(t)
+	record := discardWorkspaceRecoveryFiles(t, dir, session)
+	if err := os.WriteFile(filepath.Join(dir, "newer.txt"), []byte("new stash, not part of the earlier discard\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "stash", "push", "--include-untracked", "-m", "newer independent stash")
+	if err := session.UndoOperation(context.Background(), record.ID); err == nil || !strings.Contains(err.Error(), "worktree changed") {
+		t.Fatalf("undo could overwrite a newer operation ref: %v", err)
+	}
+	if got := gitOutput(t, dir, "stash", "list", "--format=%s"); !strings.Contains(got, "newer independent stash") {
+		t.Fatalf("newer stash was overwritten: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "newer.txt")); !os.IsNotExist(err) {
+		t.Fatalf("fixture no longer matches the operation's post-state: %v", err)
+	}
+}
+
 func TestOperationUndoRejectsChangedIgnoredPermissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the regression checks POSIX permission-bit compare-and-swap")
