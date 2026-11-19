@@ -32,6 +32,16 @@ func (r changeRow) isHeader() bool    { return r.header != "" }
 func (r changeRow) isDirectory() bool { return r.directory != "" }
 func (r changeRow) isFile() bool      { return !r.isHeader() && !r.isDirectory() }
 
+func (r changeRow) fileTreeRow() fileTreeRow {
+	item := fileTreeRow{path: r.file.Path, name: r.file.Path, depth: r.depth}
+	if r.isDirectory() {
+		item.source = -1
+		item.path = r.directory
+		item.name = changeLabel([]changeRow{r}, 0)
+	}
+	return item
+}
+
 func (r changeRow) sideKey() string {
 	switch {
 	case r.merge:
@@ -665,8 +675,13 @@ func (a *app) changeSectionView(c *ui.Context, title string, icon *ui.SVG, count
 			}
 			list.Height(float32(visible) * changeRowHeight)
 		}
+		treeRows := make([]fileTreeRow, len(rows))
+		for index, change := range rows {
+			treeRows[index] = change.fileTreeRow()
+		}
+		guides := treeGuideGroups(treeRows)
 		list.Rows(func(row ui.ListRow) {
-			a.changeFileRow(row, rows[row.Index], base+row.Index)
+			a.changeFileRow(row, rows[row.Index], base+row.Index, guides)
 		})
 	})
 	return list
@@ -941,15 +956,15 @@ func (a *app) changeHeaderRow(c *ui.Context, title string, icon *ui.SVG, count i
 // or discard it, and its status at the row's end. A conflicted file offers a
 // side instead, and staging it marks it resolved. A click on the row opens its
 // diff.
-func (a *app) changeFileRow(row ui.ListRow, change changeRow, index int) {
+func (a *app) changeFileRow(row ui.ListRow, change changeRow, index int, guides treeGuideLayout) {
 	theme := row.Context.Theme()
+	item := change.fileTreeRow()
 	if change.isDirectory() {
-		a.fileTreeDirectoryRow(row.Context, fileTreeChangesScope, fileTreeRow{
-			source: -1, path: change.directory, name: changeLabel([]changeRow{change}, 0), depth: change.depth,
-		}, row.Selected(), func() {
+		directory := a.fileTreeDirectoryRow(row.Context, fileTreeChangesScope, item, row.Selected(), func() {
 			a.selectedFile = index
 			a.resetFileDiff()
 		})
+		guides.decorate(directory, item, row)
 		return
 	}
 	file := change.file
@@ -957,6 +972,7 @@ func (a *app) changeFileRow(row ui.ListRow, change changeRow, index int) {
 	// The room at the end keeps the list's scroll bar, which shows while the
 	// pointer is on the row, off the path and the status letter.
 	element := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(5, 8+scrollbarGutter(theme), 5, float32(8+16*change.depth))
+	guides.decorate(element, item, row)
 	// The row's actions show on the pointer's row, or the chosen one, so the
 	// path keeps its room at rest, as in VS Code's Source Control view.
 	reveal := element.Hovered() || row.Selected()
