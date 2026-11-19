@@ -2,6 +2,8 @@ package i18n
 
 var recoveryTranslations = map[string]map[string]string{
 	"zh-Hans": {
+		"Activity & recovery": "活动与恢复",
+		"Review repository operations and safely restore supported actions": "查看仓库操作，并安全恢复支持的操作",
 		"Recovery & checkpoints": "恢复与检查点", "Checkpoint name": "检查点名称", "Name a checkpoint": "命名一个检查点",
 		"Create checkpoint": "创建检查点", "Save all current work without changing it": "保存所有当前工作，但不更改其内容", "Created checkpoint %s": "已创建检查点 %s",
 		"Recovery copies appear here after a discard. Named checkpoints stay until deleted.": "丢弃后，恢复副本会显示在这里。命名检查点会保留到删除为止。",
@@ -13,6 +15,8 @@ var recoveryTranslations = map[string]map[string]string{
 		"Staged and unstaged changes are removed. One recovery copy is kept for 7 days in Saved work.": "已暂存和未暂存的更改将被移除。一个恢复副本会在“已保存工作”中保留 7 天。",
 	},
 	"zh-Hant": {
+		"Activity & recovery": "活動與復原",
+		"Review repository operations and safely restore supported actions": "檢視倉儲操作，並安全復原支援的動作",
 		"Recovery & checkpoints": "復原與檢查點", "Checkpoint name": "檢查點名稱", "Name a checkpoint": "命名檢查點",
 		"Create checkpoint": "建立檢查點", "Save all current work without changing it": "保存所有目前工作而不加以變更", "Created checkpoint %s": "已建立檢查點 %s",
 		"Recovery copies appear here after a discard. Named checkpoints stay until deleted.": "捨棄後，復原副本會顯示在這裡。命名檢查點會保留到刪除為止。",
@@ -24,6 +28,8 @@ var recoveryTranslations = map[string]map[string]string{
 		"Staged and unstaged changes are removed. One recovery copy is kept for 7 days in Saved work.": "已暫存及未暫存的變更將被移除。一個復原副本會在「已保存工作」中保留 7 天。",
 	},
 	"ja": {
+		"Activity & recovery": "アクティビティと復元",
+		"Review repository operations and safely restore supported actions": "リポジトリの操作を確認し、対応する操作を安全に復元します",
 		"Recovery & checkpoints": "復元とチェックポイント", "Checkpoint name": "チェックポイント名", "Name a checkpoint": "チェックポイント名を入力",
 		"Create checkpoint": "チェックポイントを作成", "Save all current work without changing it": "現在の作業を変更せずにすべて保存", "Created checkpoint %s": "チェックポイント %s を作成しました",
 		"Recovery copies appear here after a discard. Named checkpoints stay until deleted.": "破棄後の復元コピーはここに表示されます。名前付きチェックポイントは削除するまで保持されます。",
@@ -35,6 +41,8 @@ var recoveryTranslations = map[string]map[string]string{
 		"Staged and unstaged changes are removed. One recovery copy is kept for 7 days in Saved work.": "ステージ済みと未ステージの変更を削除します。復元コピーは「保存した作業」に 7 日間保持されます。",
 	},
 	"es": {
+		"Activity & recovery": "Actividad y recuperación",
+		"Review repository operations and safely restore supported actions": "Revisa las operaciones del repositorio y restaura de forma segura las acciones compatibles",
 		"Recovery & checkpoints": "Recuperación y puntos de control", "Checkpoint name": "Nombre del punto de control", "Name a checkpoint": "Nombrar un punto de control",
 		"Create checkpoint": "Crear punto de control", "Save all current work without changing it": "Guardar todo el trabajo actual sin modificarlo", "Created checkpoint %s": "Punto de control %s creado",
 		"Recovery copies appear here after a discard. Named checkpoints stay until deleted.": "Las copias de recuperación aparecen aquí tras descartar. Los puntos de control con nombre se conservan hasta eliminarlos.",
@@ -46,6 +54,8 @@ var recoveryTranslations = map[string]map[string]string{
 		"Staged and unstaged changes are removed. One recovery copy is kept for 7 days in Saved work.": "Se eliminan los cambios preparados y sin preparar. Una copia se conserva 7 días en Trabajo guardado.",
 	},
 	"fr": {
+		"Activity & recovery": "Activité et récupération",
+		"Review repository operations and safely restore supported actions": "Examinez les opérations du dépôt et restaurez prudemment les actions prises en charge",
 		"Recovery & checkpoints": "Récupération et points de contrôle", "Checkpoint name": "Nom du point de contrôle", "Name a checkpoint": "Nommer un point de contrôle",
 		"Create checkpoint": "Créer un point de contrôle", "Save all current work without changing it": "Enregistrer tout le travail actuel sans le modifier", "Created checkpoint %s": "Point de contrôle %s créé",
 		"Recovery copies appear here after a discard. Named checkpoints stay until deleted.": "Les copies de récupération apparaissent ici après un abandon. Les points de contrôle nommés restent jusqu’à leur suppression.",

@@ -219,6 +219,61 @@ func TestSafetyJournalRendersRecordsAndLimitsUndoToRecoverableRows(t *testing.T)
 	}
 }
 
+func TestActivityButtonOpensSafetyJournalAndConfirmsUndo(t *testing.T) {
+	record := recoverableJournalRecord("activity-recovery-operation", "Discard feature edits")
+	record.Worktree = "/work/feature"
+	record.Branch = "feature"
+	h, calls, _ := safetyJournalTestApp(t, record)
+
+	if err := h.tester.Click("Activity & recovery"); err != nil {
+		t.Fatalf("status island has no Activity & recovery entry: %v", err)
+	}
+	if !h.app.showRecoveryModal || h.app.savedWorkPanel != 1 {
+		t.Fatalf("activity entry did not select Safety Journal: open=%v panel=%d", h.app.showRecoveryModal, h.app.savedWorkPanel)
+	}
+	h.tester.Frame()
+	if _, found := h.tester.AccessByRole(ui.RoleDialog, "Recovery & checkpoints"); !found {
+		t.Fatal("activity entry did not open the existing recovery dialog")
+	}
+	for _, want := range []string{"Discard feature edits", "feature · /work/feature", "Recoverable"} {
+		if !h.tester.HasText(want) {
+			t.Fatalf("activity dialog is missing %q: %q", want, h.texts())
+		}
+	}
+	if err := h.tester.Click("Undo " + record.ID); err != nil {
+		t.Fatalf("recoverable activity has no Undo action: %v", err)
+	}
+	h.tester.Frame()
+	if h.app.confirm == nil || h.app.confirm.message != "Undo Discard feature edits?" {
+		t.Fatalf("activity Undo did not ask for confirmation: %#v", h.app.confirm)
+	}
+	if calls.has("undo-operation:" + record.ID) {
+		t.Fatal("activity Undo changed the repository before confirmation")
+	}
+	h.app.acceptConfirm()
+	h.waitFor(t, "the activity journal's exact operation ID", func() bool {
+		return calls.has("undo-operation:" + record.ID)
+	})
+}
+
+func TestActivityToolbarEntryCanBeHidden(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.settings.HiddenStatusActions = []string{"activity"}
+	h.tester.Frame()
+	if _, found := h.tester.Find("Activity & recovery"); found {
+		t.Fatal("hidden Activity & recovery action is still present")
+	}
+
+	h.app.settings.HiddenStatusActions = nil
+	h.tester.Frame()
+	if err := h.tester.Click("Activity & recovery"); err != nil {
+		t.Fatalf("Activity & recovery did not become available again: %v", err)
+	}
+	if !h.app.showRecoveryModal || h.app.savedWorkPanel != 1 {
+		t.Fatal("restored Activity & recovery entry does not open Safety Journal")
+	}
+}
+
 func TestSafetyJournalScrollsToOlderRecoverableRecords(t *testing.T) {
 	h := menuTestApp(t)
 	records := make([]repository.OperationRecord, 0, 7)
