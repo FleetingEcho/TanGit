@@ -1074,3 +1074,22 @@ func TestOpenedSnapshotWithWarningsNotifiesTheUser(t *testing.T) {
 		t.Fatalf("degraded open toast did not carry the reason: %q", toast.description)
 	}
 }
+
+// rememberOpened rebuilds the history entry for a reopened repository: the
+// remembered tab color must survive it.
+func TestRememberOpenedKeepsTabColor(t *testing.T) {
+	a := newApp(pathOpener{})
+	a.pathUserData = t.TempDir()
+	a.recentRepositories = []recentRepository{{Path: "/work/project", TabColor: "#c56f6f"}}
+	a.snapshot = repository.Snapshot{Root: "/work/project", Branch: "main"}
+	a.rememberOpened("/work/project")
+	for _, repo := range a.recentRepositories {
+		if cleanRepoPath(repo.Path) == "/work/project" {
+			if repo.TabColor != "#c56f6f" {
+				t.Fatalf("rememberOpened dropped the tab color: %q", repo.TabColor)
+			}
+			return
+		}
+	}
+	t.Fatal("the repository lost its recent entry")
+}
