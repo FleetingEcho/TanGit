@@ -2996,3 +2996,168 @@ func gitOutput(t *testing.T, dir string, args ...string) string {
 	}
 	return string(output)
 }
+
+func TestSnapshotQuietReusesUnchangedDetails(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("one\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	session, err := (Opener{}).Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := session.StageAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Commit(context.Background(), "initial", "body", false); err != nil {
+		t.Fatal(err)
+	}
+
+	quiet, ok := session.(interface {
+		SnapshotQuiet(context.Context) (Snapshot, error)
+	})
+	if !ok {
+		t.Fatal("session does not implement SnapshotQuiet")
+	}
+
+	first, err := quiet.SnapshotQuiet(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Commits) == 0 {
+		t.Fatal("no commits in the first quiet snapshot")
+	}
+
+	second, err := quiet.SnapshotQuiet(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Commits) != len(first.Commits) {
+		t.Fatalf("commit count changed: %d vs %d", len(second.Commits), len(first.Commits))
+	}
+	// An unchanged repository reuses the details verbatim: the Commits slice
+	// is the very slice the first snapshot published.
+	if &second.Commits[0] != &first.Commits[0] {
+		t.Fatal("quiet snapshot re-read the unchanged history instead of reusing it")
+	}
+
+	// A ref change makes the new state visible without a full Snapshot.
+	runGit(t, dir, "branch", "quiet-probe-branch")
+	third, err := quiet.SnapshotQuiet(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, branch := range third.Branches {
+		if branch.Name == "quiet-probe-branch" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the new branch is missing from the quiet snapshot: %#v", third.Branches)
+	}
+	if len(third.Commits) != len(first.Commits) {
+		t.Fatalf("commit list changed in content: %d vs %d", len(third.Commits), len(first.Commits))
+	}
+
+	// A working-tree-only change still re-reads the fresh files.
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("one\ntwo\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fourth, err := quiet.SnapshotQuiet(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fourth.Files) == 0 {
+		t.Fatal("a working-tree change is missing from the quiet snapshot")
+	}
+}
+
+func TestUntrackedLineStatisticsCacheTracksChanges(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	path := filepath.Join(dir, "count.txt")
+	if err := os.WriteFile(path, []byte("a\nb\nc\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	session, err := (Opener{}).Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linesAdded := func() int {
+		snapshot, err := session.Snapshot(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, file := range snapshot.Files {
+			if file.Path == "count.txt" {
+				return file.LinesAdded
+			}
+		}
+		return -1
+	}
+	if got := linesAdded(); got != 3 {
+		t.Fatalf("lines = %d, want 3", got)
+	}
+	// Same path, different size and content: the cached count must refresh.
+	if err := os.WriteFile(path, []byte("x\ny\nz\nw\nv\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := linesAdded(); got != 5 {
+		t.Fatalf("lines after rewrite = %d, want 5", got)
+	}
+	// Same path, same content: the count still matches after a re-read.
+	if err := os.WriteFile(path, []byte("x\ny\nz\nw\nv\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := linesAdded(); got != 5 {
+		t.Fatalf("lines after unchanged rewrite = %d, want 5", got)
+	}
+}
+
+func TestCoreSnapshotDegradesUnreadableJournalToAWarning(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read any directory")
+	}
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("content\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "file.txt")
+	runGit(t, dir, "-c", "user.name=T", "-c", "user.email=t@t", "commit", "-m", "init")
+	session, err := (Opener{}).Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal := filepath.Join(dir, ".git", "tangit", "journal")
+	if err := os.MkdirAll(journal, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(journal, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(journal, 0o755) })
+
+	progressive, ok := session.(ProgressiveSession)
+	if !ok {
+		t.Fatal("session is not progressive")
+	}
+	snapshot, err := progressive.CoreSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("an unreadable safety journal must not abort the snapshot: %v", err)
+	}
+	if len(snapshot.Warnings) == 0 {
+		t.Fatal("an unreadable safety journal produced no warning")
+	}
+	found := false
+	for _, warning := range snapshot.Warnings {
+		if strings.Contains(strings.ToLower(warning), "operation") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no operation warning was reported: %v", snapshot.Warnings)
+	}
+}

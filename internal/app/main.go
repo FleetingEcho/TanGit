@@ -438,8 +438,14 @@ type app struct {
 	// the list shows, the draft the modal edits, and the matches, which page
 	// in by asking for a larger limit as the list reaches its end. The Graph
 	// keeps its own, so narrowing one page leaves the other whole.
-	historyFilter commitQuery
-	graphFilter   commitQuery
+	historyFilter      commitQuery
+	graphFilter        commitQuery
+	graphLayoutCache   graphLayoutCacheState
+	branchVisibleCache filteredCache
+	reflogVisibleCache filteredCache
+	remoteVisibleCache filteredCache
+	filePathsMemo      map[filePathsMemoKey][]string
+	fileTreeRowsMemo   map[fileTreeRowsMemoKeyType][]fileTreeRow
 	// filterOpen is the commit filter modal, for History, the Graph, or a
 	// branch's commit list; filterTarget is the section it was opened from.
 	filterOpen   bool

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/egoist/mygo/ui"
 
@@ -929,6 +930,48 @@ func applyAccent(t *ui.Theme, color ui.Color) {
 		t.Selection = color.Alpha(0.22)
 	}
 	t.Focus = color.Alpha(0.6)
+}
+
+// themeCache memoizes the constructed themes: a frame asks for its theme on
+// every paint, and rebuilding the base palette allocates a struct and about
+// twenty colors each time. The key covers every field that can influence the
+// result, and callers treat the theme as read-only.
+var themeCacheMu sync.Mutex
+var themeCache = map[string]*ui.Theme{}
+
+// themeSignature keys the theme cache by the metrics and colors a frame may
+// differ on. The buffer font is deliberately absent: it does not reach the
+// window theme.
+func themeSignature(s appSettings) string {
+	return s.Theme + "|" +
+		strconv.FormatFloat(s.FontSize, 'f', -1, 64) + "|" +
+		s.Font + "|" +
+		strconv.FormatFloat(s.Spacing, 'f', -1, 64) + "|" +
+		strconv.FormatFloat(s.Radius, 'f', -1, 64) + "|" +
+		s.Accent
+}
+
+func themeForSettingsCached(s appSettings, systemDark bool) *ui.Theme {
+	key := themeSignature(s)
+	if systemDark {
+		key += "|dark"
+	} else {
+		key += "|light"
+	}
+	themeCacheMu.Lock()
+	cached, ok := themeCache[key]
+	themeCacheMu.Unlock()
+	if ok {
+		return cached
+	}
+	built := themeForSettings(s, systemDark)
+	themeCacheMu.Lock()
+	if len(themeCache) >= 16 {
+		themeCache = map[string]*ui.Theme{}
+	}
+	themeCache[key] = built
+	themeCacheMu.Unlock()
+	return built
 }
 
 // themeForSettings builds the theme of a frame: the chosen palette, or, for

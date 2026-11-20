@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"lazygitapp/internal/sshworkspace"
 	"lazygitapp/internal/workspace"
@@ -79,6 +80,11 @@ type ConflictStages struct {
 type Snapshot struct {
 	Root   string
 	Branch string
+	// Warnings carries non-fatal problems found while reading the
+	// repository: optional data that could not be produced, like line
+	// statistics or the operation model, while the repository itself is
+	// fully usable. A snapshot with warnings is still good to show.
+	Warnings []string
 	// Head remains nonempty only for detached HEAD. HeadHash is the resolved
 	// commit on both attached and detached HEAD, independent of all-ref order.
 	Head           string
@@ -695,6 +701,12 @@ func (Opener) Open(ctx context.Context, path string) (Session, error) {
 type gitSession struct {
 	git        *commands.GitCommand
 	commandLog *CommandLog
+	// detailsMu guards the quiet-refresh Details cache: the lists only change
+	// when refs, the bisect state, the safety journal or the worktree list do,
+	// so an unchanged fingerprint lets SnapshotQuiet reuse them verbatim.
+	detailsMu              sync.Mutex
+	lastDetailsFingerprint string
+	lastDetails            Snapshot
 	// cmd builds the commands the library has no plain wrapper for, such as
 	// a non-interactive rebase, which must not run this app as its editor.
 	cmd oscommands.ICmdObjBuilder
@@ -721,9 +733,115 @@ type gitSession struct {
 	closeErr  error
 	// Keep numstat's rename detection identical to the commit file loader's.
 	renameSimilarityThreshold int
+	// untrackedStatsCache memoizes per-file line counts for untracked files
+	// across snapshots; entries are keyed by path and validated by size and
+	// modification time, so saving a file re-reads it and nothing else.
+	untrackedMu         sync.Mutex
+	untrackedStatsCache map[string]untrackedStatsCacheEntry
+}
+
+// untrackedStatsCacheEntry is one memoized untracked file line count.
+type untrackedStatsCacheEntry struct {
+	size    int64
+	modTime time.Time
+	stats   commitLineStats
 }
 
 func (s *gitSession) CommandLog() *CommandLog { return s.commandLog }
+
+// SnapshotQuiet reads the branch and the working tree like CoreSnapshot and
+// rebuilds the deferred history lists only when their fingerprint changed
+// since the last read. Ambient refreshes call it instead of Snapshot so an
+// idle repository pays four small Git reads instead of the full details.
+// The worktrees' per-tree statuses are not part of the fingerprint; the next
+// refs, journal or worktree-list change re-reads them.
+func (s *gitSession) SnapshotQuiet(ctx context.Context) (Snapshot, error) {
+	core, err := s.CoreSnapshot(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	fingerprint, fpErr := s.detailsFingerprint(ctx)
+	if fpErr == nil {
+		s.detailsMu.Lock()
+		cached, last := s.lastDetailsFingerprint == fingerprint, s.lastDetails
+		s.detailsMu.Unlock()
+		if cached {
+			return core.WithDetails(last), nil
+		}
+	}
+	details, err := s.DetailsSnapshot(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if fpErr == nil {
+		s.detailsMu.Lock()
+		s.lastDetails = details
+		s.lastDetailsFingerprint = fingerprint
+		s.detailsMu.Unlock()
+	}
+	return core.WithDetails(details), nil
+}
+
+// detailsFingerprint names everything DetailsSnapshot derives from beyond the
+// working tree. It never reads journal or recovery record bodies — only their
+// names, sizes and modification times — and only this one line per ref.
+func (s *gitSession) detailsFingerprint(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	writeDirFingerprint := func(dir string) {
+		infos, err := s.fileService().ReadDir(dir)
+		if err != nil {
+			// A missing directory is a stable state; other failures degrade
+			// the fingerprint to what the refs prove and may recompute details
+			// unnecessarily, never hide a journal change.
+			fmt.Fprintf(&b, "dir:%s:%s\x00", dir, err)
+			return
+		}
+		for _, info := range infos {
+			fmt.Fprintf(&b, "%s:%d:%d\x00", info.Name(), info.Size(), info.ModTime().UnixNano())
+		}
+	}
+	refs, err := s.cmd.New([]string{"git", "for-each-ref", "--sort=refname",
+		"--format=%(refname) %(objectname)"}).RunWithOutput()
+	if err != nil {
+		return "", err
+	}
+	b.WriteString(refs)
+	// Detached HEAD moves no ref, so the resolved commit is fingerprinted on
+	// its own. An attached branch tip already moved with HEAD.
+	head, err := s.cmd.New([]string{"git", "rev-parse", "--verify", "HEAD"}).RunWithOutput()
+	if err != nil {
+		return "", err
+	}
+	b.WriteString(head)
+	// A bisect in progress rewrites the commit HEAD points at without moving
+	// any ref; the log's size growth fingerprints its advancement.
+	bisect, err := s.cmd.New([]string{"git", "bisect", "log"}).RunWithOutput()
+	if err == nil {
+		b.WriteString(bisect)
+	} else {
+		b.WriteString("bisect:idle\x00")
+	}
+	// Recovery refs are refs and are covered above; the durable journals are
+	// directories of JSON records.
+	writeDirFingerprint(s.journalDir())
+	writeDirFingerprint(s.joinPath(s.fileRecoveryRoot(), "manifest"))
+	// Submodule configuration only moves when .gitmodules does.
+	if info, err := s.fileService().Stat(s.joinPath(s.git.RepoPaths.WorktreePath(), ".gitmodules")); err == nil {
+		fmt.Fprintf(&b, "gitmodules:%d:%d\x00", info.Size(), info.ModTime().UnixNano())
+	}
+	// The worktree list carries each worktree's checked-out commit, which
+	// pins a detached worktree that the refs cannot see. Linked worktrees'
+	// own statuses are not fingerprinted.
+	worktrees, err := s.cmd.New([]string{"git", "worktree", "list", "--porcelain"}).RunWithOutput()
+	if err != nil {
+		return "", err
+	}
+	b.WriteString(worktrees)
+	return b.String(), nil
+}
 
 // Snapshot retains the complete read used by actions and refreshes. Opening
 // a real repository uses CoreSnapshot and DetailsSnapshot separately instead.
@@ -782,9 +900,14 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 	// A Custom Patch history edit also has a durable post-rebase index/stash
 	// stop. Always consult the model so that stop remains recoverable after a
 	// restart even though Git no longer reports an active rebase.
+	warnings := []string{}
 	state, stateErr := s.OperationState(ctx)
 	if stateErr != nil {
-		return Snapshot{}, fmt.Errorf("load operation state: %w", stateErr)
+		// The safety journal may be unreadable (for example when .git/tangit
+		// is not). The repository is still openable; only the inline
+		// operation indicator and journal-driven recovery are unavailable,
+		// and the caller is told to warn the user.
+		warnings = append(warnings, "Repository operations could not be read ("+stateErr.Error()+")")
 	}
 	if state.Type != OperationTypeNone {
 		operation = string(state.Type)
@@ -885,6 +1008,7 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 		Operation:      operation,
 		OperationState: operationState,
 		Bisect:         bisectState,
+		Warnings:       warnings,
 	}, nil
 }
 
@@ -1224,6 +1348,11 @@ func (s *gitSession) diffLineStats(cached bool, base string) (map[string]commitL
 // without a newline. Git's first-8000-bytes NUL check marks binary content, and
 // canonical LFS pointers have no textual statistics. Directories, symlinks to
 // directories, and other non-regular files have no line statistics of their own.
+// maxUntrackedLineStatsBytes caps how large an untracked file may be before
+// its line count is skipped entirely; counting build artifacts on every read
+// is not worth the display value.
+const maxUntrackedLineStatsBytes = 4 << 20
+
 func (s *gitSession) untrackedLineStats(path string) (commitLineStats, error) {
 	fullPath := s.joinPath(s.git.RepoPaths.WorktreePath(), path)
 	info, err := s.fileService().Stat(fullPath)
@@ -1233,6 +1362,16 @@ func (s *gitSession) untrackedLineStats(path string) (commitLineStats, error) {
 		return commitLineStats{}, nil
 	}
 	if !info.Mode().IsRegular() {
+		return commitLineStats{}, nil
+	}
+	size, modTime := info.Size(), info.ModTime()
+	s.untrackedMu.Lock()
+	cacheEntry, cached := s.untrackedStatsCache[fullPath]
+	s.untrackedMu.Unlock()
+	if cached && cacheEntry.size == size && cacheEntry.modTime.Equal(modTime) {
+		return cacheEntry.stats, nil
+	}
+	if size > maxUntrackedLineStatsBytes {
 		return commitLineStats{}, nil
 	}
 	file, err := s.fileService().Open(fullPath)
@@ -1246,6 +1385,12 @@ func (s *gitSession) untrackedLineStats(path string) (commitLineStats, error) {
 		// failure or short read. Skip that item; never veto repository opening.
 		return commitLineStats{}, nil
 	}
+	s.untrackedMu.Lock()
+	if s.untrackedStatsCache == nil || len(s.untrackedStatsCache) >= 512 {
+		s.untrackedStatsCache = make(map[string]untrackedStatsCacheEntry)
+	}
+	s.untrackedStatsCache[fullPath] = untrackedStatsCacheEntry{size: size, modTime: modTime, stats: stats}
+	s.untrackedMu.Unlock()
 	return stats, nil
 }
 

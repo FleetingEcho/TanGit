@@ -640,8 +640,8 @@ func (a *app) stashView(c *ui.Context) {
 						})
 						return
 					}
-					paths := commitFilePaths(a.stashFiles)
-					a.stashFileRows = a.syncFileTreeRows(fileTreeStashScope, paths, a.stashFileRows,
+					paths := a.pathsForFiles(a.stashFiles)
+					a.stashFileRows = a.syncFileTreeRows(fileTreeStashScope, a.stashFiles, a.stashFileRows,
 						&a.selectedStashFileRow, &a.selectedStashFile)
 					// The saved files and the chosen file's diff share the rest
 					// of the card. Their inset sash can be dragged like the commit

@@ -46,7 +46,12 @@ func (a *app) requestQuietRefresh() {
 	a.refreshBusy = true
 	go func() {
 		defer a.recoverQuietRefresh(refreshToken)
-		snapshot, err := session.Snapshot(context.Background())
+		snapshot, err := func() (repository.Snapshot, error) {
+			if quiet, ok := session.(interface{ SnapshotQuiet(context.Context) (repository.Snapshot, error) }); ok {
+				return quiet.SnapshotQuiet(context.Background())
+			}
+			return session.Snapshot(context.Background())
+		}()
 		a.updateChanged(func() bool {
 			if refreshToken != a.refreshToken {
 				return false
