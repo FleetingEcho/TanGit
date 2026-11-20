@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-const mergeUnsupportedIgnoredName = "FortiManager/server/faz_core/FLG_libs/faz_utils/.logcluster\\faz_message.d"
+const mergeUnsupportedIgnoredName = "server/data/log-utils/session/.logcluster\\events.d"
 
 func mergeIgnoredRecoveryFixture(t *testing.T, collide bool) (dir string, session FullSession, ignoredFile string) {
 	t.Helper()
