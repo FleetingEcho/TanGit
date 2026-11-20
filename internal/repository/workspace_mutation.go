@@ -40,7 +40,9 @@ func supportsOperationTransitionRecovery(type_ OperationType) bool {
 // before/after restore points. The action itself supplies any user-facing
 // confirmation and remains responsible for trusted Git behavior. Arbitrary
 // custom shell commands and remote effects do not belong to this seam.
-func (s *gitSession) withWorkspaceMutation(ctx context.Context, kind, summary string, movesHead bool, mutate func() error) error {
+type workspaceMutationCapture func(context.Context) (WorkSnapshot, error)
+
+func (s *gitSession) withWorkspaceMutation(ctx context.Context, kind, summary string, movesHead bool, mutate func() error, captures ...workspaceMutationCapture) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -49,17 +51,29 @@ func (s *gitSession) withWorkspaceMutation(ctx context.Context, kind, summary st
 	}
 	unlock := s.lockWorktreeMutation()
 	defer unlock()
-	return s.runWorkspaceMutation(ctx, kind, summary, movesHead, mutate)
+	return s.runWorkspaceMutation(ctx, kind, summary, movesHead, mutate, captures...)
 }
 
 // runWorkspaceMutation must be called with the checkout's mutation lock held.
 // It lets existing history actions reuse the same recovery contract without
 // recursively taking the lock that they already own.
-func (s *gitSession) runWorkspaceMutation(ctx context.Context, kind, summary string, movesHead bool, mutate func() error) error {
+func (s *gitSession) runWorkspaceMutation(ctx context.Context, kind, summary string, movesHead bool, mutate func() error, captures ...workspaceMutationCapture) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, summary)
+	if len(captures) > 1 {
+		return fmt.Errorf("%s: multiple recovery captures", kind)
+	}
+	capture := func(ctx context.Context) (WorkSnapshot, error) {
+		return s.captureWorkSnapshot(ctx, RecoverySnapshotKind, summary)
+	}
+	if len(captures) == 1 {
+		if captures[0] == nil {
+			return fmt.Errorf("%s: missing recovery capture", kind)
+		}
+		capture = captures[0]
+	}
+	snapshot, err := capture(ctx)
 	if err != nil {
 		return err
 	}

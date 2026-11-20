@@ -181,6 +181,34 @@ func (s *gitSession) recoveryUntrackedListing(ignored []string) (string, error) 
 	return listing, nil
 }
 
+// captureRefMutationSnapshot limits recovery to ignored collisions that the
+// requested tracked transition can actually affect. The policy is published
+// with the restore point, so post-capture and Undo never need to enumerate an
+// unrelated ignored tree. Unsupported paths are still rejected on collision.
+func (s *gitSession) captureRefMutationSnapshot(ctx context.Context, summary, target string) (WorkSnapshot, error) {
+	if strings.TrimSpace(target) == "" {
+		return WorkSnapshot{}, fmt.Errorf("merge target is required")
+	}
+	_, before, err := s.currentOperationIdentity()
+	if err != nil {
+		return WorkSnapshot{}, err
+	}
+	after, err := s.gitText("rev-parse", "--verify", target+"^{commit}")
+	if err != nil {
+		return WorkSnapshot{}, fmt.Errorf("prepare merge recovery target: %w", err)
+	}
+	ignored, err := s.resetIgnoredPaths(before, after)
+	if err != nil {
+		return WorkSnapshot{}, fmt.Errorf("prepare merge recovery collisions: %w", err)
+	}
+	if len(ignored) > 0 {
+		// A real overwrite candidate keeps the original full recovery
+		// contract, including failing closed on paths it cannot safely store.
+		return s.captureWorkSnapshot(ctx, RecoverySnapshotKind, summary)
+	}
+	return s.captureWorkSnapshotWithIgnored(ctx, RecoverySnapshotKind, summary, nil, workspaceArchiveScope{AllIgnored: false})
+}
+
 // resetIgnoredPaths finds ignored files that a hard reset between before and
 // after can replace. Only added target paths matter: a path tracked on both
 // sides cannot also be ignored, and unrelated ignored trees need no hashing.

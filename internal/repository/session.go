@@ -1321,6 +1321,13 @@ func (s *gitSession) Commit(ctx context.Context, summary string, description str
 			return fmt.Errorf("create commit: %w: %s", err, strings.TrimSpace(output))
 		}
 		return nil
+	}, func(ctx context.Context) (WorkSnapshot, error) {
+		// Index commits and amends affect tracked content, not unrelated
+		// ignored working-tree files. Preserve the scope on both recovery
+		// snapshots as well, without requiring a portable filename for data
+		// that this operation never reads or overwrites.
+		return s.captureWorkSnapshotWithIgnored(ctx, RecoverySnapshotKind, summaryLabel, nil,
+			workspaceArchiveScope{AllIgnored: false})
 	})
 }
 
@@ -1475,11 +1482,14 @@ func (s *gitSession) RenameBranch(ctx context.Context, oldName string, newName s
 }
 
 func (s *gitSession) MergeBranch(ctx context.Context, name string) error {
-	return s.withWorkspaceMutation(ctx, OperationMerge, "Merge "+name, true, func() error {
+	summary := "Merge " + name
+	return s.withWorkspaceMutation(ctx, OperationMerge, summary, true, func() error {
 		if err := s.git.Branch.Merge(name, git_commands.MERGE_VARIANT_REGULAR); err != nil {
 			return fmt.Errorf("merge branch: %w", err)
 		}
 		return nil
+	}, func(ctx context.Context) (WorkSnapshot, error) {
+		return s.captureRefMutationSnapshot(ctx, summary, name)
 	})
 }
 
