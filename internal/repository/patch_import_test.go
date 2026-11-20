@@ -500,7 +500,7 @@ func TestPatchImportRecoveryCaptureFailureDoesNotApply(t *testing.T) {
 		t.Fatal(err)
 	}
 	wrapperDir := t.TempDir()
-	wrapper := "#!/bin/sh\nif [ \"$1\" = stash ] && [ \"$2\" = create ]; then\n  echo 'injected recovery failure' >&2\n  exit 1\nfi\nexec \"$TANGIT_TEST_REAL_GIT\" \"$@\"\n"
+	wrapper := "#!/bin/sh\nif { [ \"$1\" = stash ] && [ \"$2\" = create ]; } || [ \"$1\" = commit-tree ]; then\n  echo 'injected recovery failure' >&2\n  exit 1\nfi\nexec \"$TANGIT_TEST_REAL_GIT\" \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(wrapperDir, "git"), []byte(wrapper), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -511,7 +511,7 @@ func TestPatchImportRecoveryCaptureFailureDoesNotApply(t *testing.T) {
 	if err == nil {
 		t.Fatal("patch applied even though recovery capture failed")
 	}
-	if !strings.Contains(err.Error(), "capture recovery") || !strings.Contains(err.Error(), "injected recovery failure") {
+	if !strings.Contains(err.Error(), "capture") || !strings.Contains(err.Error(), "injected recovery failure") {
 		t.Fatalf("failure happened outside the required recovery capture: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "imported.txt")); !os.IsNotExist(err) {

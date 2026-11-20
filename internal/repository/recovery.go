@@ -67,13 +67,13 @@ func (s *gitSession) captureWorkSnapshot(ctx context.Context, kind, name string)
 	if err != nil {
 		return WorkSnapshot{}, err
 	}
-	return s.captureWorkSnapshotWithIgnored(ctx, kind, name, ignored)
+	return s.captureWorkSnapshotWithIgnored(ctx, kind, name, ignored, workspaceArchiveScope{AllIgnored: true})
 }
 
 // captureWorkSnapshotWithIgnored also saves selected ignored paths. Ordinary
 // snapshots include ignored files as well; destructive reset passes only the
 // ignored paths its target can overwrite.
-func (s *gitSession) captureWorkSnapshotWithIgnored(ctx context.Context, kind, name string, ignored []string) (WorkSnapshot, error) {
+func (s *gitSession) captureWorkSnapshotWithIgnored(ctx context.Context, kind, name string, ignored []string, policies ...workspaceArchiveScope) (WorkSnapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return WorkSnapshot{}, err
 	}
@@ -85,22 +85,56 @@ func (s *gitSession) captureWorkSnapshotWithIgnored(ctx context.Context, kind, n
 	if name == "" {
 		name = "TanGit snapshot"
 	}
-	hash, err := s.gitText("stash", "create", name)
+	policy := workspaceArchiveScope{IgnoredPaths: append([]string(nil), ignored...)}
+	if len(policies) > 1 {
+		return WorkSnapshot{}, fmt.Errorf("workspace snapshot has multiple capture policies")
+	}
+	if len(policies) == 1 {
+		policy = policies[0]
+		policy.IgnoredPaths = append(policy.IgnoredPaths[:0], ignored...)
+	}
+	archive, err := s.captureWorkspaceArchive(listing, policy)
+	if err != nil {
+		return WorkSnapshot{}, fmt.Errorf("capture workspace archive: %w", err)
+	}
+	var hash string
+	trackedChanges := true
+	if !archive.HasUnmerged {
+		trackedChanges, err = s.hasTrackedWorkspaceChanges()
+		if err != nil {
+			return WorkSnapshot{}, fmt.Errorf("inspect recovery worktree: %w", err)
+		}
+	}
+	if archive.HasUnmerged || !trackedChanges {
+		hash, err = s.captureRawWorkSnapshot(ctx, name, archive)
+	} else {
+		hash, err = s.gitText("stash", "create", name)
+		if err != nil {
+			// Fail closed on an actual capture failure. A raw fallback is not
+			// a licence to continue after a failed or damaged Git capture.
+			return WorkSnapshot{}, fmt.Errorf("capture recovery: %w", err)
+		} else {
+			hash = strings.TrimSpace(hash)
+			if hash == "" && listing == "" {
+				hash, err = s.captureRawWorkSnapshot(ctx, name, archive)
+			} else {
+				if hash == "" {
+					hash, err = s.untrackedOnlySnapshotBase(name, listing)
+					if err != nil {
+						return WorkSnapshot{}, err
+					}
+				}
+				hash, err = s.addUntrackedSnapshotParent(hash, name, listing)
+			}
+		}
+	}
 	if err != nil {
 		return WorkSnapshot{}, fmt.Errorf("capture recovery: %w", err)
 	}
-	hash = strings.TrimSpace(hash)
-	if hash == "" {
-		hash, err = s.untrackedOnlySnapshotBase(name, listing)
-		if err != nil {
-			return WorkSnapshot{}, err
-		}
+	if err := ctx.Err(); err != nil {
+		return WorkSnapshot{}, err
 	}
-	hash, err = s.addUntrackedSnapshotParent(hash, name, listing)
-	if err != nil {
-		return WorkSnapshot{}, fmt.Errorf("capture untracked recovery: %w", err)
-	}
-	hash, err = s.attachWorkspacePermissions(hash, name, listing)
+	hash, err = s.attachWorkspacePermissions(hash, name, listing, archive.MetadataCommit)
 	if err != nil {
 		return WorkSnapshot{}, fmt.Errorf("capture workspace permissions: %w", err)
 	}
@@ -113,6 +147,24 @@ func (s *gitSession) captureWorkSnapshotWithIgnored(ctx context.Context, kind, n
 		return WorkSnapshot{}, fmt.Errorf("publish recovery: %w: %s", err, strings.TrimSpace(output))
 	}
 	return WorkSnapshot{ID: hash, Hash: hash, Kind: kind, Name: name, CreatedAt: time.Now().Unix()}, nil
+}
+
+// hasTrackedWorkspaceChanges distinguishes a genuinely clean tracked state
+// from a failed write. Untracked and ignored files are already in the raw
+// archive and do not require a stash write of their own. A symbolic unborn
+// HEAD is valid, but a broken or unreadable detached HEAD remains an error.
+func (s *gitSession) hasTrackedWorkspaceChanges() (bool, error) {
+	stdout, stderr, err := s.cmd.New([]string{"git", "diff", "--quiet", "--no-ext-diff", "--no-textconv", "HEAD", "--"}).RunWithOutputs()
+	if err == nil {
+		return false, nil
+	}
+	if code, ok := commandExitCode(err); ok && code == 1 {
+		return true, nil
+	}
+	if head, headErr := s.gitText("symbolic-ref", "--quiet", "HEAD"); headErr == nil && head != "" {
+		return false, nil
+	}
+	return false, fmt.Errorf("compare tracked workspace: %w: %s", err, strings.TrimSpace(stdout+stderr))
 }
 
 func (s *gitSession) recoveryUntrackedListing(ignored []string) (string, error) {
@@ -341,25 +393,63 @@ func (s *gitSession) CreateCheckpoint(ctx context.Context, name string) (WorkSna
 	return s.captureWorkSnapshot(ctx, CheckpointSnapshotKind, strings.TrimSpace(name))
 }
 
-// savedSnapshotPaths is the set a stash apply may touch, including renames and
-// the third-parent untracked tree. Any later work on one makes restore unsafe.
+// savedSnapshotPaths is the set a restore may touch, including deletions and
+// the actual untracked parent. A TanGit metadata parent is repository object
+// storage, not a list of worktree paths, so do not use `git stash show` here.
 func (s *gitSession) savedSnapshotPaths(hash string) ([]string, error) {
-	output, err := s.cmd.New([]string{"git", "stash", "show", "--name-status", "-z", "-u", hash}).RunWithOutput()
+	output, err := s.cmd.New([]string{"git", "diff", "--no-renames", "--name-only", "-z", hash + "^1", hash, "--"}).RunWithOutput()
 	if err != nil {
 		return nil, fmt.Errorf("read recovery paths: %w: %s", err, strings.TrimSpace(output))
 	}
-	files, err := parseNameStatus(output)
+	paths, err := workspacePathsFromNul(output)
 	if err != nil {
 		return nil, fmt.Errorf("read recovery paths: %w", err)
 	}
-	var paths []string
-	for _, file := range files {
-		paths = append(paths, file.Path)
-		if file.PreviousPath != "" {
-			paths = append(paths, file.PreviousPath)
+	untracked, err := s.snapshotUntrackedCommit(hash)
+	if err != nil || untracked == "" {
+		return paths, err
+	}
+	listing, err := s.cmd.New([]string{"git", "ls-tree", "-r", "--name-only", "-z", untracked + "^{tree}"}).RunWithOutput()
+	if err != nil {
+		return nil, fmt.Errorf("read recovery untracked paths: %w", err)
+	}
+	extra, err := workspacePathsFromNul(listing)
+	if err != nil {
+		return nil, err
+	}
+	return append(paths, extra...), nil
+}
+
+func (s *gitSession) snapshotUntrackedCommit(hash string) (string, error) {
+	metadata, present, err := workspaceMetadataLocation(s, hash)
+	if err != nil {
+		return "", err
+	}
+	object, err := s.gitText("cat-file", "commit", hash)
+	if err != nil {
+		return "", err
+	}
+	header, _, _ := strings.Cut(object, "\n\n")
+	var parents []string
+	for _, line := range strings.Split(header, "\n") {
+		if strings.HasPrefix(line, "parent ") {
+			oid := strings.TrimSpace(strings.TrimPrefix(line, "parent "))
+			if !fileRecoveryOID(oid) {
+				return "", fmt.Errorf("saved snapshot contains an invalid parent")
+			}
+			parents = append(parents, oid)
 		}
 	}
-	return paths, nil
+	if present {
+		if len(parents) < 3 || parents[len(parents)-1] != metadata {
+			return "", fmt.Errorf("saved snapshot metadata parent is inconsistent")
+		}
+		parents = parents[:len(parents)-1]
+	}
+	if len(parents) < 3 {
+		return "", nil
+	}
+	return parents[2], nil
 }
 
 func (s *gitSession) RestoreWorkSnapshot(ctx context.Context, snapshot WorkSnapshot) error {
@@ -433,7 +523,7 @@ func (s *gitSession) restoreSnapshotPaths(hash string, paths []string) error {
 	if err != nil {
 		return fmt.Errorf("restore selected snapshot paths: %w: %s", err, strings.TrimSpace(output))
 	}
-	return nil
+	return s.restoreRawWorkspacePaths(hash, paths)
 }
 
 func (s *gitSession) applyWorkSnapshot(snapshot WorkSnapshot) error {
@@ -522,8 +612,11 @@ func (s *gitSession) pruneRecovery(ctx context.Context) error {
 	}
 	protected := make(map[string]bool)
 	for _, record := range operations {
-		if record.CanUndo() && record.Snapshot != nil {
+		if record.Snapshot != nil && (record.CanUndo() || record.UndoStartedAt != 0) {
 			protected[record.Snapshot.ID] = true
+		}
+		if record.AfterSnapshot != nil && (record.CanUndo() || record.UndoStartedAt != 0) {
+			protected[record.AfterSnapshot.ID] = true
 		}
 	}
 	var automatic []WorkSnapshot
