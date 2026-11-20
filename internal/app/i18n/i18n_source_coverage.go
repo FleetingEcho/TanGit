@@ -2637,9 +2637,11 @@ var sourceCoverageTranslations = map[string]map[string]string{
 }
 
 func init() {
-	for language, additions := range sourceCoverageTranslations {
-		for english, translated := range additions {
-			Translations[language][english] = translated
+	for _, catalogs := range []map[string]map[string]string{sourceCoverageTranslations, cacheRepositoryTranslations} {
+		for language, additions := range catalogs {
+			for english, translated := range additions {
+				Translations[language][english] = translated
+			}
 		}
 	}
 }
