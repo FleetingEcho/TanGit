@@ -40,7 +40,7 @@ func TestAgentTargetStatusLinkedWorktreeDoesNotSwitchMain(t *testing.T) {
 	writeHistoryCommit(t, mainDir, "base.txt", "base", "base")
 	linkedDir := filepath.Join(t.TempDir(), "agent-worktree")
 	runGit(t, mainDir, "worktree", "add", "-b", "agent", linkedDir, "main")
-	target, err := (Opener{}).Open(context.Background(), linkedDir)
+	target, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), linkedDir))
 	if err != nil {
 		t.Fatal(err)
 	}

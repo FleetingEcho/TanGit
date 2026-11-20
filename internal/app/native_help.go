@@ -66,10 +66,10 @@ func (s *shell) openNativeCurrentKeybindings() {
 	if !nativeHelpAvailable(a) {
 		return
 	}
-	if a.modalOpen() && !a.settingsOpen && !a.keybindingsOpen {
+	if a.modalOpen() && !a.settingsUI.open && !a.keybindingsOpen {
 		return
 	}
-	if a.settingsOpen {
+	if a.settingsUI.open {
 		a.closeSettings()
 	}
 	a.openCurrentKeybindings()
@@ -78,7 +78,7 @@ func (s *shell) openNativeCurrentKeybindings() {
 // A native accelerator is resolved before text reaches the UI. Disable its
 // menu item during text input so typing ? is neither intercepted nor dropped.
 func nativeHelpAvailable(a *app) bool {
-	return a != nil && !a.settings.DisableShortcuts && !a.keyboardTextFocus && (!a.modalOpen() || a.settingsOpen || a.keybindingsOpen)
+	return a != nil && !a.settings.DisableShortcuts && !a.keyboardTextFocus && (!a.modalOpen() || a.settingsUI.open || a.keybindingsOpen)
 }
 
 func (s *shell) refreshNativeHelpEnabled() {

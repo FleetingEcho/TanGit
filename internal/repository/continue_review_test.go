@@ -18,7 +18,7 @@ func continueReviewSession(t *testing.T, session Session) ContinueReviewSession 
 
 func TestContinueSourceHashesCanonicalIndexAndWorkingTreeBytes(t *testing.T) {
 	dir := conflictedRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestContinueSourceHashesCanonicalIndexAndWorkingTreeBytes(t *testing.T) {
 
 func TestContinueSourceIncludesUntrackedContentAndOperationIdentity(t *testing.T) {
 	dir := conflictedRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestContinueSourceIncludesUntrackedContentAndOperationIdentity(t *testing.T
 
 func TestContinueSourceCaptureIsReadOnlyAndContextAware(t *testing.T) {
 	dir := conflictedRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

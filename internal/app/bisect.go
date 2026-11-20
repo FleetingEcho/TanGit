@@ -44,7 +44,7 @@ func (a *app) confirmBisectStart() {
 		run: func() {
 			a.beginRepositoryActionMessage(tr("Started bisect"), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.BisectStart(ctx, bad.Hash, good)
+					return requireHistorySession(session).BisectStart(ctx, bad.Hash, good)
 				}, func() {
 					a.showBisectForm = false
 					a.bisectGoodRef = ""
@@ -74,7 +74,7 @@ func (a *app) confirmBisectMark(term, ref string) {
 			a.beginRepositoryActionMessage(trf("Marked commit %s", term), "",
 				func(ctx context.Context, session repository.Session) error {
 					var err error
-					done, err = session.BisectMark(ctx, term, ref)
+					done, err = requireHistorySession(session).BisectMark(ctx, term, ref)
 					return err
 				}, func() {
 					if done != "" {
@@ -105,7 +105,7 @@ func (a *app) confirmBisectReset() {
 		run: func() {
 			a.beginRepositoryActionMessage(tr("Reset bisect"), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.BisectReset(ctx)
+					return requireHistorySession(session).BisectReset(ctx)
 				}, nil)
 		},
 	})

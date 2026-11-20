@@ -34,9 +34,9 @@ func TestLanguageServerContentModifiedDoesNotPoisonServerStatus(t *testing.T) {
 
 			serverError := func() string {
 				if language == "go" {
-					return h.app.goLanguageServerError
+					return h.app.lsp.goError
 				}
-				return h.app.additionalLanguageServers[language].error
+				return h.app.lsp.additional[language].error
 			}
 			request := func() {
 				t.Helper()

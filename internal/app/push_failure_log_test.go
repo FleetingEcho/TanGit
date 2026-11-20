@@ -35,7 +35,7 @@ func TestActionFailureLogFollowsPushNotLaterSnapshotReads(t *testing.T) {
 
 	a.beginRepositoryActionMessage("unexpectedly pushed", "",
 		func(ctx context.Context, session repository.Session) error {
-			return session.Push(ctx)
+			return requireBranchRemoteSession(session).Push(ctx)
 		}, nil)
 	for i := 0; i < 12; i++ {
 		if a.actionError != "" && !a.actionBusy {

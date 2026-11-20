@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"errors"
 	"io/fs"
 	"slices"
@@ -467,6 +466,7 @@ func (a *app) requestConflictFileReadMode(file repository.File, generation uint6
 	inline := hasInlineConflict(file)
 	session := a.session
 	root := a.snapshot.Root
+	ctx := a.repositoryWork.Context()
 	localPath := ""
 	if !remote {
 		localPath = a.workingFilePath(path)
@@ -488,7 +488,7 @@ func (a *app) requestConflictFileReadMode(file repository.File, generation uint6
 		stages := repository.ConflictStages{}
 		if session != nil {
 			var stageErr error
-			stages, stageErr = session.ConflictStages(context.Background(), file)
+			stages, stageErr = requireChangesSession(session).ConflictStages(ctx, file)
 			if err == nil && stageErr != nil {
 				err = stageErr
 			}
@@ -515,7 +515,7 @@ func (a *app) requestConflictFileReadMode(file repository.File, generation uint6
 		patch := ""
 		if session != nil {
 			canonical := repository.DiffOptions{ContextLines: 3}
-			if diff, derr := session.Diff(context.Background(), file, canonical); derr == nil {
+			if diff, derr := requireWorkingTreeDiffSession(session).Diff(ctx, file, canonical); derr == nil {
 				patch = diff.Patch
 			}
 		}
@@ -955,7 +955,7 @@ func (a *app) resolveConflictSide(side conflictSide) {
 		}
 		return
 	}
-	err := runFileRecoveryMutation(context.Background(), a.session, state.path, a.writeConflictFileToDisk)
+	err := runFileRecoveryMutation(a.repositoryWork.Context(), a.session, state.path, a.writeConflictFileToDisk)
 	if err != nil {
 		state.undoResolution()
 		a.notify("error", "Could not write the resolved file", safeError(err))
@@ -1011,7 +1011,7 @@ func (a *app) undoConflictResolution() {
 		}
 		return
 	}
-	err := runFileRecoveryMutation(context.Background(), a.session, state.path, a.writeConflictFileToDisk)
+	err := runFileRecoveryMutation(a.repositoryWork.Context(), a.session, state.path, a.writeConflictFileToDisk)
 	if err != nil {
 		writeFailed(err)
 		return
@@ -1061,7 +1061,7 @@ func (a *app) restoreInitialConflict() {
 		}
 		return
 	}
-	err := runFileRecoveryMutation(context.Background(), a.session, state.path, a.writeConflictFileToDisk)
+	err := runFileRecoveryMutation(a.repositoryWork.Context(), a.session, state.path, a.writeConflictFileToDisk)
 	if err != nil {
 		writeFailed(err)
 		return

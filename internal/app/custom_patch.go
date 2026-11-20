@@ -208,10 +208,11 @@ func (a *app) beginAddCustomPatchFile(commit repository.Commit, file repository.
 	session := a.session
 	generation := a.generation
 	addToken := a.customPatch.addToken
+	ctx := a.repositoryWork.Context()
 	a.customPatch.pending++
 	go func() {
 		defer a.recoverBackground()
-		text, err := session.CommitFilePatch(context.Background(), commit, file)
+		text, err := requireHistorySession(session).CommitFilePatch(ctx, commit, file)
 		a.update(func() {
 			if generation != a.generation || addToken != a.customPatch.addToken {
 				return
@@ -257,15 +258,16 @@ func (a *app) beginAddCustomPatchCommit(commit repository.Commit) {
 	session := a.session
 	generation := a.generation
 	addToken := a.customPatch.addToken
+	ctx := a.repositoryWork.Context()
 	a.customPatch.pending++
 	go func() {
 		defer a.recoverBackground()
-		files, err := session.CommitFiles(context.Background(), commit)
+		files, err := requireHistorySession(session).CommitFiles(ctx, commit)
 		entries := make([]customPatchEntry, 0, len(files))
 		if err == nil {
 			for _, file := range files {
 				var text string
-				text, err = session.CommitFilePatch(context.Background(), commit, file)
+				text, err = requireHistorySession(session).CommitFilePatch(ctx, commit, file)
 				if err != nil {
 					break
 				}
@@ -518,9 +520,10 @@ func (a *app) beginCustomPatchPreview() {
 	a.customPatch.previewLoad = true
 	a.customPatch.preview = nil
 	a.customPatch.previewError = ""
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		preview, err := session.PreviewPatchRequest(context.Background(), request)
+		preview, err := requireChangesSession(session).PreviewPatchRequest(ctx, request)
 		a.update(func() {
 			if generation != a.generation || token != a.customPatch.previewToken || !a.customPatch.previewOpen {
 				return
@@ -561,7 +564,7 @@ func (a *app) beginCustomPatchApply() {
 	preview := *a.customPatch.preview
 	a.beginRepositoryActionMessage(customPatchApplyMessage(preview), "",
 		func(ctx context.Context, session repository.Session) error {
-			return session.ApplyPatch(ctx, preview)
+			return requireChangesSession(session).ApplyPatch(ctx, preview)
 		}, a.clearCustomPatch)
 }
 

@@ -5,7 +5,7 @@ import "github.com/egoist/mygo/ui"
 // sshHostKeyModal is shown only for a previously unknown key. Changed keys are
 // rejected by the transport and never reach this acceptance flow.
 func (a *app) sshHostKeyModal(c *ui.Context) {
-	prompt := a.sshHostKeyPrompt
+	prompt := a.ssh.hostKeyPrompt
 	if prompt == nil {
 		return
 	}

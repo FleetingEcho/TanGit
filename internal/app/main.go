@@ -82,13 +82,14 @@ type app struct {
 	path string
 	// location is the stable local/SSH identity used by tabs and recents.
 	// snapshot.Root remains the native root used by repository operations.
-	location   workspace.Location
-	state      openState
-	snapshot   repository.Snapshot
-	session    repository.Session
-	errMessage string
-	generation uint64
-	cancelOpen context.CancelFunc
+	location       workspace.Location
+	state          openState
+	snapshot       repository.Snapshot
+	session        repository.Session
+	repositoryWork repositoryScope
+	errMessage     string
+	generation     uint64
+	cancelOpen     context.CancelFunc
 	// clone fields belong to Home's remote-clone form and progress view. The
 	// generation invalidates native-picker, progress and completion callbacks.
 	cloneOpen              bool
@@ -187,98 +188,18 @@ type app struct {
 	// settings is the persisted preferences the settings modal edits.
 	settings       appSettings
 	settingsLoaded bool
-	settingsOpen   bool
-	settingsPage   int
-	// settingsRevealShortcuts reveals the shortcuts after opening the
-	// legacy Code editor entry, whose section is last on the Editor page.
-	settingsRevealShortcuts bool
-	// conflictActionStyleChoice backs the segmented Settings control. Persist
-	// the canonical string in settings, not this transient numeric selection.
-	conflictActionStyleChoice int
-	// autoFetchChoice is the Settings selector's stable UI state. Its custom
-	// sentinel keeps the numeric editor visible between input and repaint.
-	autoFetchChoice int
-	// SSH profiles persist in settings, but their credentials never do. The
-	// form's sensitive drafts are cleared on save/close; session secrets shadow
-	// older keychain values when the system credential store is unavailable.
-	sshCreateEntry            func(context.Context, sshworkspace.Profile, string, string, bool) (sshFolderListing, error)
-	sshBrowser                sshBrowserState
-	sshBrowseFolder           func(context.Context, sshworkspace.Profile, string, bool) (sshFolderListing, error)
-	sshWorkspaceOpen          bool
-	sshWorkspaceProfileID     string
-	sshWorkspaceRoot          string
-	sshWorkspaceError         string
-	sshWorkspaceResolving     bool
-	sshWorkspaceResolveSeq    uint64
-	sshWorkspaceResolveCancel context.CancelFunc
-	sshProfileFormOpen        bool
-	sshProfileDraft           sshProfileDraft
-	sshProfileFormError       string
-	sshProfileFormNotice      string
-	sshSecretBackend          sshKeychain
-	sshSessionSecrets         map[string]string
-	sshSecretsMu              sync.RWMutex
-	sshTestConnection         func(context.Context, sshworkspace.Profile, sshProfileSecrets) error
-	sshProfileTestBusy        bool
-	sshProfileTestSeq         uint64
-	sshProfileTestCancel      context.CancelFunc
-	// A handshake owns this prompt only until it receives the user's trust
-	// decision or its open/test context is cancelled.
-	sshHostKeyPrompt *sshHostKeyPrompt
-	// customEditorForm drafts a persistent external-editor preset in Settings.
-	customEditorFormOpen    bool
-	customEditorFormName    string
-	customEditorFormCommand string
-	customEditorFormError   string
-	// customCommandForm drafts a user-defined shell command in Settings.
-	// Index -1 adds a new command; anything else edits that entry.
-	customCommandFormOpen     bool
-	customCommandFormEdit     int
-	customCommandFormName     string
-	customCommandFormCommand  string
-	customCommandFormKey      string
-	customCommandFormContexts []string
-	customCommandFormError    string
-	// The Go language-server draft backs stable Settings controls while the
-	// persisted profile keeps arguments as a safe array rather than a shell command.
-	goLanguageServerEnabled        bool
-	goLanguageServerPath           string
-	goLanguageServerArgs           string
-	goFormatterCommand             string
-	searchExcludedDirectoryDraft   string
-	languageServerDrafts           map[string]*languageServerDraft
-	languageServerTestID           string
-	languageServerTestSeq          uint64
-	languageServerTestBusy         bool
-	languageServerTestOK           bool
-	languageServerTestResult       string
-	languageServerInstallPrompted  map[string]bool
-	languageServerInstalling       map[string]bool
-	languageServerUninstalling     map[string]bool
-	languageServerCatalogQuery     string
-	languageServerCatalogSelected  string
-	customLanguageServerForm       customLanguageServerForm
-	goLanguageServer               languageServerConnection
-	goLanguageServerStarting       bool
-	goLanguageServerMissing        bool
-	goLanguageServerSeq            uint64
-	goLanguageServerError          string
-	goLanguageServerRestartPending bool
-	goLanguageServerRestartUsed    bool
-	goLanguageServerDocs           map[string]uint64
-	additionalLanguageServers      map[string]*managedLanguageServer
-	// customAccent backs ColorWell while Accent keeps its serializable hex.
-	customAccent ui.Color
-	// homeBackground is decoded once for the path in settings, then reused
-	// by Home and its Settings preview. The pending/failed paths prevent a
-	// rebuild from starting the same read again; the two generations reject
-	// results superseded by another selection or by removal.
-	homeBackground             *ui.Bitmap
-	homeBackgroundPath         string
-	homeBackgroundPending      string
-	homeBackgroundFailed       string
-	homeBackgroundGeneration   uint64
-	homeBackgroundSelectionSeq uint64
+	settingsUI     settingsUIState
+	ssh            sshUIState
+	lsp            languageServerUIState
+
+	// SSH profiles persist in settings, but their credentials never do. These
+	// dependencies and session secrets outlive any individual picker or form.
+	sshCreateEntry    func(context.Context, sshworkspace.Profile, string, string, bool) (sshFolderListing, error)
+	sshBrowseFolder   func(context.Context, sshworkspace.Profile, string, bool) (sshFolderListing, error)
+	sshSecretBackend  sshKeychain
+	sshSessionSecrets map[string]string
+	sshSecretsMu      sync.RWMutex
+	sshTestConnection func(context.Context, sshworkspace.Profile, sshProfileSecrets) error
 	// The shell supplies the process-wide updater to each tab. Tests and
 	// standalone app views keep harmless defaults.
 	checkForUpdates func()
@@ -383,14 +304,10 @@ type app struct {
 	ignoreUntracked    bool
 	changesFiltersOpen bool
 	fileStatusFilter   changesStatusFilter
-	// reviewedFiles is the content-current review state read from the local
-	// repository. The sequence/token guards reject obsolete asynchronous reads.
-	reviewedFiles      map[string]bool
-	reviewRequestedSeq uint64
-	reviewRequestToken uint64
-	reviewLoading      bool
-	reviewFilter       bool
-	fileTreeMode       bool
+	// review owns content-current review marks, filtering and asynchronous
+	// publication identity as one feature state.
+	review       reviewUIState
+	fileTreeMode bool
 	// fileTreeCollapsed scopes directory folds by pane, so the same path in
 	// Changes and a commit can be expanded independently.
 	fileTreeCollapsed map[string]bool
@@ -912,10 +829,11 @@ func newApp(opener repositoryOpener) *app {
 	a := &app{
 		opener:                      opener,
 		update:                      func(fn func()) { fn() },
+		repositoryWork:              newRepositoryScope(),
 		checkForUpdates:             func() {},
 		updateInfo:                  func() appUpdateInfo { return appUpdateInfo{} },
 		selectedFile:                -1,
-		reviewedFiles:               map[string]bool{},
+		review:                      newReviewUIState(),
 		fileTreeMode:                true,
 		filePaneWidth:               340,
 		navPaneWidth:                navPaneDefault,

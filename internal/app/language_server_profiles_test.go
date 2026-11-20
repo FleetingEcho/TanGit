@@ -276,7 +276,7 @@ func TestTypeScriptPreviewKeepsCachedDocumentsOpen(t *testing.T) {
 	h.tester.Frame()
 	events := connection.snapshot()
 	if len(events) != 2 {
-		t.Fatalf("preview replacement emitted %#v, want both cached documents open; server=%#v active=%q", events, h.app.additionalLanguageServers["typescript"], h.app.code.active)
+		t.Fatalf("preview replacement emitted %#v, want both cached documents open; server=%#v active=%q", events, h.app.lsp.additional["typescript"], h.app.code.active)
 	}
 	if events[1].kind != "open" || !strings.HasSuffix(events[1].uri, "/second.ts") || events[1].text != "export const second = 2\n" {
 		t.Fatalf("preview replacement events = %#v, want the second file open with its full text", events)

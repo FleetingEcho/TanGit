@@ -28,7 +28,7 @@ const (
 
 type largeRepositoryFixture struct {
 	root       string
-	session    Session
+	session    FullSession
 	rootCommit Commit
 	longCommit Commit
 	longFile   CommitFile
@@ -53,7 +53,7 @@ func newLargeRepositoryFixture(b *testing.B) *largeRepositoryFixture {
 	} else if output := runPerfGit(b, root, "rev-list", "--count", "--all"); strings.TrimSpace(output) == "" {
 		b.Fatal("LAZYGITAPP_PERF_REPO is not a readable Git repository")
 	}
-	session, err := (Opener{}).Open(context.Background(), root)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), root))
 	if err != nil {
 		b.Fatal(err)
 	}

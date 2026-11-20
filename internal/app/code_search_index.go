@@ -279,7 +279,7 @@ func (a *app) ensureCodeSearchIndex() {
 	state.refreshScheduled = false
 	directory, paths := state.directory, append([]string(nil), a.code.files...)
 	excluded := append([]string(nil), a.settings.SearchExcludedDirectories...)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	state.cancel = cancel
 	go func() {
 		defer a.recoverBackground()

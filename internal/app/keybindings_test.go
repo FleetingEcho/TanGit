@@ -152,7 +152,7 @@ func TestDisablingAllShortcutsStopsTheKeyboard(t *testing.T) {
 	}
 	h.tester.Key(ui.Ctrl, ui.KeyComma)
 	h.tester.Frame()
-	if h.app.settingsOpen {
+	if h.app.settingsUI.open {
 		t.Fatal("Ctrl+, still opened the settings with shortcuts off")
 	}
 

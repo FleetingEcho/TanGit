@@ -67,7 +67,7 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		a.onShortcut(c, 0, ui.KeyEscape, shortcut("branches/pr-checks-close", "Escape", tr("Close a dialog or cancel the current step")), func() { a.prChecksOpen = false; a.prChecksToken++ })
 		return
 	}
-	if a.settingsOpen {
+	if a.settingsUI.open {
 		a.onShortcut(c, 0, ui.KeyEscape, shortcut("settings/close", "Escape", tr("Close settings")), a.closeSettings)
 		return
 	}

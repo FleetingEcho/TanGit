@@ -40,7 +40,7 @@ func TestNormalizeSectionOrder(t *testing.T) {
 func TestWorkspaceSectionDragReordersSidebar(t *testing.T) {
 	h := menuTestApp(t)
 	h.app.pathUserData = t.TempDir()
-	h.app.settingsPage = settingsPageWorkspace
+	h.app.settingsUI.page = settingsPageWorkspace
 	h.app.openSettings()
 	h.tester.Frame()
 	for _, name := range workspaceSections {
@@ -223,7 +223,7 @@ func TestSettingsSectionPickerTogglesTabs(t *testing.T) {
 	h := menuTestApp(t)
 	h.tester.Key(ui.Ctrl, ui.KeyComma)
 	h.tester.Frame()
-	if !h.app.settingsOpen {
+	if !h.app.settingsUI.open {
 		t.Fatal("the settings modal did not open")
 	}
 

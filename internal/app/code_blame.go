@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -175,9 +174,10 @@ func (a *app) requestCodeBlame(document *codeDocument) {
 	document.blameVersion = version
 	document.blameLoading = true
 
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		lines, err := session.BlameWorkingTreeFile(context.Background(), path)
+		lines, err := requireHistorySession(session).BlameWorkingTreeFile(ctx, path)
 		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation || documentGeneration != document.generation ||
 				token != document.blameToken || !document.blameEnabled || document.state != state ||
@@ -361,9 +361,10 @@ func (a *app) openCodeBlameDetails(document *codeDocument, line int) {
 	sourcePath := document.path
 	bufferVersion := document.state.Buffer.Version()
 	hover.loading = true
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		commits, err := session.SearchCommits(context.Background(), repository.CommitFilter{Query: blame.Hash, Limit: 1})
+		commits, err := requireCommitSearchSession(session).SearchCommits(ctx, repository.CommitFilter{Query: blame.Hash, Limit: 1})
 		if err == nil && (len(commits) != 1 || commits[0].Hash != blame.Hash) {
 			err = fmt.Errorf("commit %s was not found", strings.TrimSpace(shortBlameHash(blame.Hash)))
 		}
@@ -371,8 +372,8 @@ func (a *app) openCodeBlameDetails(document *codeDocument, line int) {
 		var files []repository.CommitFile
 		var messageErr, filesErr error
 		if err == nil {
-			message, messageErr = session.CommitMessage(context.Background(), commits[0])
-			files, filesErr = session.CommitFiles(context.Background(), commits[0])
+			message, messageErr = requireHistorySession(session).CommitMessage(ctx, commits[0])
+			files, filesErr = requireHistorySession(session).CommitFiles(ctx, commits[0])
 		}
 		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation || token != hover.token || !hover.open || hover.blame.Hash != blame.Hash ||

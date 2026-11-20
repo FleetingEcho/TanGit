@@ -81,8 +81,8 @@ func homeBackgroundErrorDescription(err error) string {
 // thread. A failed pick leaves both the old setting and its cached bitmap in
 // place, and cancellation is deliberately quiet.
 func (a *app) browseHomeBackground() {
-	a.homeBackgroundSelectionSeq++
-	selection := a.homeBackgroundSelectionSeq
+	a.settingsUI.homeBackgroundSelectionSeq++
+	selection := a.settingsUI.homeBackgroundSelectionSeq
 	opts := mygo.OpenDialogOptions{
 		Parent:      a.window,
 		Title:       tr("Choose a Home background"),
@@ -98,7 +98,7 @@ func (a *app) browseHomeBackground() {
 		paths, err := chooseHomeBackgroundPath(opts)
 		if err != nil {
 			a.update(func() {
-				if selection == a.homeBackgroundSelectionSeq {
+				if selection == a.settingsUI.homeBackgroundSelectionSeq {
 					a.notify("error", "Could not set Home background", safeError(err))
 				}
 			})
@@ -110,7 +110,7 @@ func (a *app) browseHomeBackground() {
 		path := paths[0]
 		bitmap, err := readHomeBackground(path)
 		a.update(func() {
-			if selection != a.homeBackgroundSelectionSeq {
+			if selection != a.settingsUI.homeBackgroundSelectionSeq {
 				return
 			}
 			if err != nil {
@@ -119,11 +119,11 @@ func (a *app) browseHomeBackground() {
 			}
 			// Invalidate a persisted-image read that may still be in flight,
 			// then install this decoded result for both Home and the preview.
-			a.homeBackgroundGeneration++
-			a.homeBackgroundPending = ""
-			a.homeBackgroundFailed = ""
-			a.homeBackgroundPath = path
-			a.homeBackground = bitmap
+			a.settingsUI.homeBackgroundGeneration++
+			a.settingsUI.homeBackgroundPending = ""
+			a.settingsUI.homeBackgroundFailed = ""
+			a.settingsUI.homeBackgroundPath = path
+			a.settingsUI.homeBackground = bitmap
 			a.settings.HomeBackgroundPath = path
 			a.saveSettings()
 			a.notify("success", "Home background updated", path)
@@ -136,19 +136,14 @@ func (a *app) browseHomeBackground() {
 // start a fresh load after a repository closes; an overdue callback cannot
 // change that newer work because both generations have moved on.
 func (a *app) invalidateHomeBackgroundWork() {
-	a.homeBackgroundSelectionSeq++
-	a.homeBackgroundGeneration++
-	a.homeBackgroundPending = ""
-	a.homeBackgroundFailed = ""
+	a.settingsUI.invalidateHomeBackground()
 }
 
 // removeHomeBackground also invalidates unfinished selection and load work,
 // so a slow result cannot bring back an image the user just removed.
 func (a *app) removeHomeBackground() {
-	a.invalidateHomeBackgroundWork()
+	a.settingsUI.clearHomeBackground()
 	a.settings.HomeBackgroundPath = ""
-	a.homeBackground = nil
-	a.homeBackgroundPath = ""
 	a.saveSettings()
 }
 
@@ -158,43 +153,43 @@ func (a *app) removeHomeBackground() {
 func (a *app) syncHomeBackground() {
 	path := a.settings.HomeBackgroundPath
 	if path == "" {
-		if a.homeBackground != nil || a.homeBackgroundPath != "" ||
-			a.homeBackgroundPending != "" || a.homeBackgroundFailed != "" {
-			a.homeBackgroundGeneration++
-			a.homeBackground = nil
-			a.homeBackgroundPath = ""
-			a.homeBackgroundPending = ""
-			a.homeBackgroundFailed = ""
+		if a.settingsUI.homeBackground != nil || a.settingsUI.homeBackgroundPath != "" ||
+			a.settingsUI.homeBackgroundPending != "" || a.settingsUI.homeBackgroundFailed != "" {
+			a.settingsUI.homeBackgroundGeneration++
+			a.settingsUI.homeBackground = nil
+			a.settingsUI.homeBackgroundPath = ""
+			a.settingsUI.homeBackgroundPending = ""
+			a.settingsUI.homeBackgroundFailed = ""
 		}
 		return
 	}
-	if a.homeBackgroundPath == path && a.homeBackground != nil {
+	if a.settingsUI.homeBackgroundPath == path && a.settingsUI.homeBackground != nil {
 		return
 	}
-	a.homeBackground = nil
-	a.homeBackgroundPath = ""
-	if a.homeBackgroundPending == path || a.homeBackgroundFailed == path {
+	a.settingsUI.homeBackground = nil
+	a.settingsUI.homeBackgroundPath = ""
+	if a.settingsUI.homeBackgroundPending == path || a.settingsUI.homeBackgroundFailed == path {
 		return
 	}
-	a.homeBackgroundGeneration++
-	generation := a.homeBackgroundGeneration
-	a.homeBackgroundPending = path
-	a.homeBackgroundFailed = ""
+	a.settingsUI.homeBackgroundGeneration++
+	generation := a.settingsUI.homeBackgroundGeneration
+	a.settingsUI.homeBackgroundPending = path
+	a.settingsUI.homeBackgroundFailed = ""
 	go func() {
 		defer a.recoverBackground()
 		bitmap, err := readHomeBackground(path)
 		a.update(func() {
-			if generation != a.homeBackgroundGeneration || a.settings.HomeBackgroundPath != path {
+			if generation != a.settingsUI.homeBackgroundGeneration || a.settings.HomeBackgroundPath != path {
 				return
 			}
-			a.homeBackgroundPending = ""
+			a.settingsUI.homeBackgroundPending = ""
 			if err != nil {
-				a.homeBackgroundFailed = path
+				a.settingsUI.homeBackgroundFailed = path
 				a.notify("error", "Could not load Home background", homeBackgroundErrorDescription(err))
 				return
 			}
-			a.homeBackgroundPath = path
-			a.homeBackground = bitmap
+			a.settingsUI.homeBackgroundPath = path
+			a.settingsUI.homeBackground = bitmap
 		})
 	}()
 }
@@ -203,11 +198,11 @@ func (a *app) syncHomeBackground() {
 // translucent image lets the theme's solid background preserve text contrast
 // without hiding the picture.
 func (a *app) homeBackgroundView(c *ui.Context) {
-	if a.settings.HomeBackgroundDisabled || a.homeBackground == nil || a.homeBackgroundPath == "" ||
-		a.homeBackgroundPath != a.settings.HomeBackgroundPath {
+	if a.settings.HomeBackgroundDisabled || a.settingsUI.homeBackground == nil || a.settingsUI.homeBackgroundPath == "" ||
+		a.settingsUI.homeBackgroundPath != a.settings.HomeBackgroundPath {
 		return
 	}
-	ui.Image(c, a.homeBackground).
+	ui.Image(c, a.settingsUI.homeBackground).
 		Absolute().Left(0).Top(0).Right(0).Bottom(0).
 		Fit(ui.Cover).Opacity(float32(normalizeHomeBackgroundOpacity(a.settings.HomeBackgroundOpacity))).
 		ZIndex(-1).PassThrough().

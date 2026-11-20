@@ -156,7 +156,7 @@ func TestPartialPatchRoundTripsThroughTheIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	file := repository.File{Path: "lines.txt", Tracked: true, Unstaged: true, Status: " M"}
-	diff, err := session.Diff(ctx, file, repository.DiffOptions{ContextLines: 3})
+	diff, err := requireWorkingTreeDiffSession(session).Diff(ctx, file, repository.DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestPartialPatchRoundTripsThroughTheIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := session.ApplyCachedPatch(ctx, patchText, false); err != nil {
+	if err := requireChangesSession(session).ApplyCachedPatch(ctx, patchText, false); err != nil {
 		t.Fatal(err)
 	}
 	staged := runGitIn(t, dir, "diff", "--cached", "--", "lines.txt")
@@ -180,7 +180,7 @@ func TestPartialPatchRoundTripsThroughTheIndex(t *testing.T) {
 	// Both changes are in the index, so taking one back out is a partial
 	// patch of the staged side rather than the file's whole diff.
 	runGitIn(t, dir, "add", "lines.txt")
-	stagedDiff, err := session.Diff(ctx, stagedFile, repository.DiffOptions{ContextLines: 3})
+	stagedDiff, err := requireWorkingTreeDiffSession(session).Diff(ctx, stagedFile, repository.DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestPartialPatchRoundTripsThroughTheIndex(t *testing.T) {
 	if wholeFile {
 		t.Fatal("a selection of one change covers the whole file's diff")
 	}
-	if err := session.ApplyCachedPatch(ctx, reverse, true); err != nil {
+	if err := requireChangesSession(session).ApplyCachedPatch(ctx, reverse, true); err != nil {
 		t.Fatal(err)
 	}
 	staged = runGitIn(t, dir, "diff", "--cached", "--", "lines.txt")
@@ -234,7 +234,7 @@ func TestPartialPatchRoundTripsMultipleLinesAcrossHunks(t *testing.T) {
 		t.Fatal(err)
 	}
 	file := repository.File{Path: "lines.txt", Tracked: true, Unstaged: true, Status: " M"}
-	diff, err := session.Diff(ctx, file, repository.DiffOptions{ContextLines: 3})
+	diff, err := requireWorkingTreeDiffSession(session).Diff(ctx, file, repository.DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestPartialPatchRoundTripsMultipleLinesAcrossHunks(t *testing.T) {
 	if wholeFile {
 		t.Fatal("three of the file's four changes were taken for the whole file")
 	}
-	if err := session.ApplyCachedPatch(ctx, patchText, false); err != nil {
+	if err := requireChangesSession(session).ApplyCachedPatch(ctx, patchText, false); err != nil {
 		t.Fatal(err)
 	}
 	if got := runGitIn(t, dir, "show", ":lines.txt"); got != stagedContent {
@@ -265,7 +265,7 @@ func TestPartialPatchRoundTripsMultipleLinesAcrossHunks(t *testing.T) {
 	// TWENTY in the index rather than becoming a whole-file unstage.
 	runGitIn(t, dir, "add", "lines.txt")
 	stagedFile := repository.File{Path: "lines.txt", Tracked: true, Staged: true, Status: "M "}
-	stagedDiff, err := session.Diff(ctx, stagedFile, repository.DiffOptions{ContextLines: 3})
+	stagedDiff, err := requireWorkingTreeDiffSession(session).Diff(ctx, stagedFile, repository.DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +276,7 @@ func TestPartialPatchRoundTripsMultipleLinesAcrossHunks(t *testing.T) {
 	if wholeFile {
 		t.Fatal("taking the selected changes back was incorrectly treated as a whole-file unstage")
 	}
-	if err := session.ApplyCachedPatch(ctx, reverse, true); err != nil {
+	if err := requireChangesSession(session).ApplyCachedPatch(ctx, reverse, true); err != nil {
 		t.Fatal(err)
 	}
 	remainingStagedContent := strings.Replace(original, "twenty\n", "TWENTY\n", 1)
@@ -313,7 +313,7 @@ func TestPartialPatchStashesDisjointLinesAcrossHunks(t *testing.T) {
 		t.Fatal(err)
 	}
 	file := repository.File{Path: "lines.txt", Tracked: true, Unstaged: true, Status: " M"}
-	diff, err := session.Diff(ctx, file, repository.DiffOptions{ContextLines: 3})
+	diff, err := requireWorkingTreeDiffSession(session).Diff(ctx, file, repository.DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +339,7 @@ func TestPartialPatchStashesDisjointLinesAcrossHunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := session.StashPatch(ctx, "two independent changes", patchText, removalPatch); err != nil {
+	if err := requireStashSession(session).StashPatch(ctx, "two independent changes", patchText, removalPatch); err != nil {
 		t.Fatalf("stash disjoint patch: %v\npatch:\n%s", err, patchText)
 	}
 	remaining := strings.Replace(working, "TWO", "two", 1)
@@ -354,7 +354,7 @@ func TestPartialPatchStashesDisjointLinesAcrossHunks(t *testing.T) {
 	// A native stash will not overwrite the unselected dirty edit. Reset that
 	// path before proving that applying the stash restores both saved changes.
 	runGitIn(t, dir, "restore", "--worktree", "lines.txt")
-	if err := session.ApplyStash(ctx, 0, false); err != nil {
+	if err := requireStashSession(session).ApplyStash(ctx, 0, false); err != nil {
 		t.Fatal(err)
 	}
 	restored := strings.Replace(original, "two\n", "TWO\n", 1)
@@ -403,7 +403,7 @@ func TestPartialPatchStagesLinesOfANewFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	file := repository.File{Path: "new.txt", Unstaged: true, Status: "??"}
-	diff, err := session.Diff(ctx, file, repository.DiffOptions{ContextLines: 3})
+	diff, err := requireWorkingTreeDiffSession(session).Diff(ctx, file, repository.DiffOptions{ContextLines: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +430,7 @@ func TestPartialPatchStagesLinesOfANewFile(t *testing.T) {
 	if strings.Contains(patchText, "+first") || strings.Contains(patchText, "+third") {
 		t.Errorf("the partial patch took the other lines:\n%s", patchText)
 	}
-	if err := session.ApplyCachedPatch(ctx, patchText, false); err != nil {
+	if err := requireChangesSession(session).ApplyCachedPatch(ctx, patchText, false); err != nil {
 		t.Fatal(err)
 	}
 	staged := runGitIn(t, dir, "diff", "--cached", "--", "new.txt")

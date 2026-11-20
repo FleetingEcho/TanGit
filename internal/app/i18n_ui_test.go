@@ -71,7 +71,7 @@ func TestLocalizedSSHProfileSettings(t *testing.T) {
 				t.Fatalf("choose translated private-key authentication: %v", err)
 			}
 			tester.Frame()
-			if got := a.sshProfileDraft.AuthMode; got != sshAuthKey {
+			if got := a.ssh.profileDraft.AuthMode; got != sshAuthKey {
 				t.Fatalf("localized authentication choice stored %q, want %q", got, sshAuthKey)
 			}
 			assertLocalizedTexts(t, tester, choice.Code, "Private key", "A path on this machine", "SSH private-key path")

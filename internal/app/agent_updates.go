@@ -204,7 +204,7 @@ func (a *app) beginAgentUpdateFetchAndCheck() {
 	if state.cancel != nil {
 		state.cancel()
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	state.cancel = cancel
 	state.stop = make(chan struct{})
 	state.cancelRequested = false
@@ -219,7 +219,7 @@ func (a *app) beginAgentUpdateFetchAndCheck() {
 	go func() {
 		defer a.recoverBackground()
 		defer cancel()
-		if err := foreground.Fetch(ctx); err != nil {
+		if err := requireBranchRemoteSession(foreground).Fetch(ctx); err != nil {
 			a.publishAgentUpdate(token, generation, repositoryID, func(state *agentUpdateUIState) {
 				state.checking = false
 				state.cancel = nil
@@ -349,7 +349,7 @@ func (a *app) startAgentUpdateRebase(repositoryID string, targets []agentUpdateT
 	if state.cancel != nil {
 		state.cancel()
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	state.cancel = cancel
 	state.stop = make(chan struct{})
 	state.cancelRequested = false
@@ -455,7 +455,7 @@ func executeAgentUpdateRebase(ctx context.Context, opener repositoryOpener, stor
 		return result, agentwork.Task{}
 	}
 
-	if err := session.RebaseOntoBranch(ctx, target.BaseRef); err != nil {
+	if err := requireBranchRemoteSession(session).RebaseOntoBranch(ctx, target.BaseRef); err != nil {
 		result.Error = safeError(err)
 		if agentUpdateTargetConflicted(ctx, session) {
 			result.Status = agentUpdateConflicted
@@ -518,7 +518,7 @@ func (a *app) startAgentUpdateRecovery(repositoryID string, result agentUpdateRe
 		return
 	}
 	state.token++
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	state.cancel = cancel
 	state.stop = make(chan struct{})
 	state.cancelRequested = false

@@ -47,7 +47,7 @@ func (a *app) commandsSettings(c *ui.Context) {
 				})
 			}
 			flatIconButton(c, "Add command…", "Add a custom command", plusIcon, 14, 4,
-				a.customCommandFormOpen, func() { a.openCustomCommandForm(-1) })
+				a.settingsUI.customCommandFormOpen, func() { a.openCustomCommandForm(-1) })
 
 			ui.Divider(c)
 			ui.Text(c, tr("Press : anywhere in the workspace to run a one-off command. The output goes to the command log (Ctrl+L).")).
@@ -66,31 +66,30 @@ func keyCapsule(c *ui.Context, key string) {
 }
 
 func (a *app) openCustomCommandForm(index int) {
-	a.customCommandFormEdit = index
-	a.customCommandFormError = ""
+	a.settingsUI.customCommandFormEdit = index
+	a.settingsUI.customCommandFormError = ""
 	if index < 0 || index >= len(a.settings.CustomCommands) {
-		a.customCommandFormEdit = -1
-		a.customCommandFormName = ""
-		a.customCommandFormCommand = ""
-		a.customCommandFormKey = ""
-		a.customCommandFormContexts = []string{"everywhere"}
+		a.settingsUI.customCommandFormEdit = -1
+		a.settingsUI.customCommandFormName = ""
+		a.settingsUI.customCommandFormCommand = ""
+		a.settingsUI.customCommandFormKey = ""
+		a.settingsUI.customCommandFormContexts = []string{"everywhere"}
 	} else {
 		command := a.settings.CustomCommands[index]
-		a.customCommandFormName = command.Name
-		a.customCommandFormCommand = command.Command
-		a.customCommandFormKey = command.Key
-		a.customCommandFormContexts = append([]string{}, command.Contexts...)
+		a.settingsUI.customCommandFormName = command.Name
+		a.settingsUI.customCommandFormCommand = command.Command
+		a.settingsUI.customCommandFormKey = command.Key
+		a.settingsUI.customCommandFormContexts = append([]string{}, command.Contexts...)
 	}
-	a.customCommandFormOpen = true
+	a.settingsUI.customCommandFormOpen = true
 }
 
 func (a *app) closeCustomCommandForm() {
-	a.customCommandFormOpen = false
-	a.customCommandFormError = ""
+	a.settingsUI.closeCustomCommandForm()
 }
 
 func (a *app) customCommandFormContextChecked(id string) bool {
-	for _, contextID := range a.customCommandFormContexts {
+	for _, contextID := range a.settingsUI.customCommandFormContexts {
 		if contextID == id {
 			return true
 		}
@@ -101,14 +100,14 @@ func (a *app) customCommandFormContextChecked(id string) bool {
 func (a *app) toggleCustomCommandFormContext(id string, on bool) {
 	if id == "everywhere" {
 		if on {
-			a.customCommandFormContexts = []string{"everywhere"}
+			a.settingsUI.customCommandFormContexts = []string{"everywhere"}
 			return
 		}
-		a.customCommandFormContexts = nil
+		a.settingsUI.customCommandFormContexts = nil
 		return
 	}
-	contexts := make([]string, 0, len(a.customCommandFormContexts)+1)
-	for _, contextID := range a.customCommandFormContexts {
+	contexts := make([]string, 0, len(a.settingsUI.customCommandFormContexts)+1)
+	for _, contextID := range a.settingsUI.customCommandFormContexts {
 		if contextID != "everywhere" && contextID != id {
 			contexts = append(contexts, contextID)
 		}
@@ -119,33 +118,33 @@ func (a *app) toggleCustomCommandFormContext(id string, on bool) {
 	if len(contexts) == 0 {
 		contexts = []string{"everywhere"}
 	}
-	a.customCommandFormContexts = contexts
+	a.settingsUI.customCommandFormContexts = contexts
 }
 
 func (a *app) submitCustomCommandForm(c *ui.Context) {
-	name := strings.TrimSpace(a.customCommandFormName)
-	command := strings.TrimSpace(a.customCommandFormCommand)
-	key := strings.ToLower(strings.TrimSpace(a.customCommandFormKey))
+	name := strings.TrimSpace(a.settingsUI.customCommandFormName)
+	command := strings.TrimSpace(a.settingsUI.customCommandFormCommand)
+	key := strings.ToLower(strings.TrimSpace(a.settingsUI.customCommandFormKey))
 	if command == "" {
-		a.customCommandFormError = tr("Enter the command to run.")
+		a.settingsUI.customCommandFormError = tr("Enter the command to run.")
 		return
 	}
 	if key != "" {
 		if _, _, ok := parseCustomCommandKey(key); !ok {
-			a.customCommandFormError = tr("That shortcut is not recognized. Use keys like ctrl+g, shift+f2, or f9.")
+			a.settingsUI.customCommandFormError = tr("That shortcut is not recognized. Use keys like ctrl+g, shift+f2, or f9.")
 			return
 		}
 	}
 	if name == "" {
 		name = firstLine(command)
 	}
-	contexts := a.customCommandFormContexts
+	contexts := a.settingsUI.customCommandFormContexts
 	if len(contexts) == 0 {
 		contexts = []string{"everywhere"}
 	}
 	draft := customCommandSetting{Name: name, Command: command, Key: key, Contexts: contexts}
-	if a.customCommandFormEdit >= 0 && a.customCommandFormEdit < len(a.settings.CustomCommands) {
-		a.settings.CustomCommands[a.customCommandFormEdit] = draft
+	if a.settingsUI.customCommandFormEdit >= 0 && a.settingsUI.customCommandFormEdit < len(a.settings.CustomCommands) {
+		a.settings.CustomCommands[a.settingsUI.customCommandFormEdit] = draft
 	} else {
 		a.settings.CustomCommands = append(a.settings.CustomCommands, draft)
 	}
@@ -155,27 +154,27 @@ func (a *app) submitCustomCommandForm(c *ui.Context) {
 }
 
 func (a *app) customCommandForm(c *ui.Context) {
-	if !a.customCommandFormOpen {
+	if !a.settingsUI.customCommandFormOpen {
 		return
 	}
 	theme := c.Theme()
 	title := "Add command"
-	if a.customCommandFormEdit >= 0 {
+	if a.settingsUI.customCommandFormEdit >= 0 {
 		title = "Edit command"
 	}
 	ui.Column(c).Gap(10).Padding(15).Background(theme.Surface.Alpha(0.55)).
 		Border(1, theme.Border).Radius(theme.Radius + 5).Children(func() {
 		ui.Text(c, tr(title)).Bold()
 		settingRow(c, "Name", "Shown in the commands menu and the shortcut list", func() {
-			ui.TextInput(c, &a.customCommandFormName).Label(tr("Name")).
+			ui.TextInput(c, &a.settingsUI.customCommandFormName).Label(tr("Name")).
 				Placeholder(tr("Deploy preview")).Grow(1)
 		})
 		settingRow(c, "Command", "Run with your shell in the repository root", func() {
-			ui.TextInput(c, &a.customCommandFormCommand).Label(tr("Command")).
+			ui.TextInput(c, &a.settingsUI.customCommandFormCommand).Label(tr("Command")).
 				Placeholder(tr("git push origin HEAD:refs/for/main")).Grow(1).AutoFocus()
 		})
 		settingRow(c, "Shortcut", "Optional. A key like ctrl+g, shift+f2 or f9", func() {
-			ui.TextInput(c, &a.customCommandFormKey).Label(tr("Shortcut")).
+			ui.TextInput(c, &a.settingsUI.customCommandFormKey).Label(tr("Shortcut")).
 				Placeholder(tr("ctrl+g")).Grow(1)
 		})
 		ui.Text(c, tr("Active in")).Bold()
@@ -194,15 +193,15 @@ func (a *app) customCommandForm(c *ui.Context) {
 				}
 			}
 		})
-		if a.customCommandFormError != "" {
-			ui.Text(c, a.customCommandFormError).TextColor(theme.Danger)
+		if a.settingsUI.customCommandFormError != "" {
+			ui.Text(c, a.settingsUI.customCommandFormError).TextColor(theme.Danger)
 		}
 		ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
 			if ui.Button(c, tr("Cancel")).Clicked() {
 				a.closeCustomCommandForm()
 			}
 			label := "Add command"
-			if a.customCommandFormEdit >= 0 {
+			if a.settingsUI.customCommandFormEdit >= 0 {
 				label = "Save command"
 			}
 			if ui.PrimaryButton(c, tr(label)).Clicked() {

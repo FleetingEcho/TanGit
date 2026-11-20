@@ -25,7 +25,7 @@ func (a *app) beginCommit() {
 	}
 	run := func() {
 		a.beginRepositoryActionMessage(message, "", func(ctx context.Context, session repository.Session) error {
-			return session.Commit(ctx, summary, body, amend)
+			return requireChangesSession(session).Commit(ctx, summary, body, amend)
 		}, func() {
 			a.commitSummary = ""
 			a.commitBody = ""
@@ -382,7 +382,7 @@ func (a *app) confirmDiscardFile(file repository.File) {
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Discarded changes to %s", file.Path), file.Path,
 				func(ctx context.Context, session repository.Session) error {
-					return session.Discard(ctx, file)
+					return requireChangesSession(session).Discard(ctx, file)
 				}, nil)
 		},
 	})
@@ -416,7 +416,7 @@ func (a *app) confirmDiscardAllChanges() {
 		run: func() {
 			a.beginRepositoryActionMessage(tr("Discarded all changes"), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.DiscardFiles(ctx, files)
+					return requireChangesSession(session).DiscardFiles(ctx, files)
 				}, nil)
 		},
 	})
@@ -441,11 +441,11 @@ func (a *app) fileRowMenu(m *ui.Menu, index int, services ui.Services) {
 	a.selectedFile = index
 
 	reviewLabel := "Mark reviewed"
-	if a.reviewedFiles[file.Path] {
+	if a.review.files[file.Path] {
 		reviewLabel = "Mark unreviewed"
 	}
 	if m.Item(tr(reviewLabel)).Shortcut(0, ui.KeyR).Disabled(a.actionBusy).Chosen() {
-		a.setFileReviewed(file, !a.reviewedFiles[file.Path])
+		a.setFileReviewed(file, !a.review.files[file.Path])
 	}
 	m.Separator()
 	if !file.HasMergeConflicts && m.Item(tr("Send file to worktree…")).Disabled(a.actionBusy || len(courierDestinations(a.snapshot)) == 0).Chosen() {

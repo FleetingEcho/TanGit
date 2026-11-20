@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"errors"
 	"sort"
 
@@ -92,9 +91,10 @@ func (a *app) requestStackSyncPlan() {
 	a.stackSync.plan = nil
 	a.stackSync.result = nil
 	a.stackSync.planError = ""
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		plan, err := sync.ProvideStackSync(context.Background(), options)
+		plan, err := sync.ProvideStackSync(ctx, options)
 		a.updateChanged(func() bool {
 			if generation != a.generation || token != a.stackSync.token {
 				return false
@@ -133,9 +133,9 @@ func (a *app) beginApplyStackSync() {
 	a.stackSync.result = nil
 	a.actionBusy = true
 	a.actionError = ""
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		ctx := context.Background()
 		result, applyErr := sync.ApplyStackSync(ctx, plan)
 		snapshot, snapshotErr := session.Snapshot(ctx)
 		a.update(func() {

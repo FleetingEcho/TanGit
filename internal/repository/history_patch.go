@@ -102,7 +102,6 @@ type HistoryPatchState struct {
 // HistoryPatchSession is optional so existing Session test doubles and remote
 // wrappers remain source-compatible. The real gitSession implements it.
 type HistoryPatchSession interface {
-	Session
 	ApplyHistoryPatch(context.Context, HistoryPatchRequest) error
 }
 

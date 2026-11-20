@@ -1149,7 +1149,6 @@ func newUpdates() *updates {
 func (u *updates) update(fn func()) {
 	u.mu.Lock()
 	u.fns = append(u.fns, fn)
-	u.mu.Unlock()
 	// Updates coalesce a redraw wakeup in the real UI loop. Keep every
 	// function above, but never let repeated background reads block one
 	// another merely because the test has not returned to its frame loop.
@@ -1157,12 +1156,16 @@ func (u *updates) update(fn func()) {
 	case u.done <- struct{}{}:
 	default:
 	}
+	u.mu.Unlock()
 }
 
 // waitForUpdate waits for one update and runs it, as the UI loop would, before
 // the next frame.
 func (u *updates) waitForUpdate(t *testing.T) {
 	t.Helper()
+	if u.flushPending() {
+		return
+	}
 	// Real Git/index writes and race-instrumented UI work can briefly exceed
 	// two seconds on a busy CI runner. Keep a hard bound without turning
 	// scheduling delays into false assertion failures.
@@ -1174,14 +1177,53 @@ func (u *updates) waitForUpdate(t *testing.T) {
 	u.runPending()
 }
 
+// waitForPending waits for a known publication batch without assuming that
+// every callback has a distinct redraw wake. It is for tests that must prove
+// all stale callbacks were delivered before they inspect guarded state.
+func (u *updates) waitForPending(t *testing.T, count int) {
+	t.Helper()
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+	for {
+		u.mu.Lock()
+		pending := len(u.fns)
+		u.mu.Unlock()
+		if pending >= count {
+			u.flushPending()
+			return
+		}
+		select {
+		case <-u.done:
+		case <-timer.C:
+			t.Fatalf("timed out waiting for %d pending updates (have %d)", count, pending)
+		}
+	}
+}
+
+func TestWaitForUpdateRunsPendingCallbackAfterWakeCoalesces(t *testing.T) {
+	u := newUpdates()
+	run := false
+	u.update(func() { run = true })
+	<-u.done // Simulate a frame consuming the coalesced wake before the waiter.
+
+	u.waitForUpdate(t)
+	if !run {
+		t.Fatal("pending update did not run after its coalesced wake was consumed")
+	}
+}
+
 // flushPending runs callbacks whose coalesced notification may already have
 // been consumed by an earlier wait. It returns false when no callback is due.
 func (u *updates) flushPending() bool {
-	select {
-	case <-u.done:
-	default:
-	}
 	u.mu.Lock()
+	for {
+		select {
+		case <-u.done:
+			continue
+		default:
+		}
+		break
+	}
 	fns := u.fns
 	u.fns = nil
 	u.mu.Unlock()

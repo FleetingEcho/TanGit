@@ -260,7 +260,7 @@ func (a *app) startAgentIntegrationDryRun(repositoryID, familyRoot, familyOpenPa
 	if state.cancel != nil {
 		state.cancel()
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	state.cancel = cancel
 	token, generation := state.token, a.generation
 	opener, location := a.opener, a.location
@@ -429,7 +429,7 @@ func executeAgentIntegrationDryRun(ctx context.Context, opener repositoryOpener,
 
 	result.worktreePath = agentIntegrationWorktreePath(familyRoot, location.IsRemote(), token)
 	createOptions := repository.WorktreeCreateOptions{Path: result.worktreePath, Base: result.baseCommit, Detach: true}
-	if err := source.CreateWorktree(ctx, createOptions); err != nil {
+	if err := requireWorktreeSession(source).CreateWorktree(ctx, createOptions); err != nil {
 		result.completed, result.stopped, result.err = true, true, safeError(err)
 		return result
 	}
@@ -463,7 +463,7 @@ func executeAgentIntegrationDryRun(ctx context.Context, opener repositoryOpener,
 			continue
 		}
 		// The argument is deliberately the immutable capture, never Task.Branch.
-		if err := integration.MergeBranch(ctx, captured.CapturedHead); err != nil {
+		if err := requireBranchRemoteSession(integration).MergeBranch(ctx, captured.CapturedHead); err != nil {
 			step.Status, step.Detail = agentIntegrationStopped, safeError(err)
 			result.err = "merge stopped at " + target.task.Title + ": " + safeError(err)
 			stopped = true
@@ -510,7 +510,7 @@ func (a *app) beginAgentIntegrationCleanup(repositoryID, familyOpenPath, path st
 	state.token++
 	state.cleaning = true
 	state.err = ""
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	state.cancel = cancel
 	token, generation := state.token, a.generation
 	opener := a.opener
@@ -520,7 +520,7 @@ func (a *app) beginAgentIntegrationCleanup(repositoryID, familyOpenPath, path st
 		source, err := opener.Open(ctx, familyOpenPath)
 		if err == nil {
 			defer closeRepositorySession(source)
-			err = source.DeleteWorktree(ctx, path, true)
+			err = requireWorktreeSession(source).DeleteWorktree(ctx, path, true)
 		}
 		a.update(func() {
 			current := &a.agentIntegration

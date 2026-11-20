@@ -80,7 +80,7 @@ func TestLanguageServerFormatterSettingsPersistEnabledAndDisabled(t *testing.T) 
 		t.Run(test.name, func(t *testing.T) {
 			h := menuTestApp(t)
 			h.app.pathUserData = t.TempDir()
-			h.app.settingsPage = settingsPageLSP
+			h.app.settingsUI.page = settingsPageLSP
 			h.app.openSettings()
 			h.tester.Frame()
 			h.tester.Scroll(700, 480, 0, 1800)
@@ -115,14 +115,14 @@ func TestLanguageServerFormatterSettingsPersistEnabledAndDisabled(t *testing.T) 
 				t.Fatalf("persisted disabled formatter settings = %#v", reloaded)
 			}
 			h.app.loadGoLanguageServerDraft()
-			if h.app.goFormatterCommand != "" && test.id != "go" {
+			if h.app.lsp.goFormatterCommand != "" && test.id != "go" {
 				t.Fatal("another language's formatter leaked into the Go draft")
 			}
-			if test.id == "go" && h.app.goFormatterCommand != test.command {
-				t.Fatalf("reloaded Go formatter = %q", h.app.goFormatterCommand)
+			if test.id == "go" && h.app.lsp.goFormatterCommand != test.command {
+				t.Fatalf("reloaded Go formatter = %q", h.app.lsp.goFormatterCommand)
 			}
 			if test.id != "go" {
-				draft := h.app.languageServerDrafts[test.id]
+				draft := h.app.lsp.drafts[test.id]
 				if draft == nil || draft.Enabled || draft.Formatter != test.command {
 					t.Fatalf("reloaded disabled formatter draft = %#v", draft)
 				}
@@ -147,10 +147,10 @@ func TestAdditionalLanguageServerDraftsLoadAsOptIn(t *testing.T) {
 	h := menuTestApp(t)
 	h.app.settings.LanguageServers = map[string]languageServerSettings{"typescript": {Path: "C:/tools/tsls.exe"}}
 	h.app.loadGoLanguageServerDraft()
-	if draft := h.app.languageServerDrafts["typescript"]; draft == nil || !draft.Enabled || draft.Path != "C:/tools/tsls.exe" {
+	if draft := h.app.lsp.drafts["typescript"]; draft == nil || !draft.Enabled || draft.Path != "C:/tools/tsls.exe" {
 		t.Fatalf("TypeScript draft = %#v", draft)
 	}
-	if draft := h.app.languageServerDrafts["tailwind"]; draft == nil || draft.Enabled {
+	if draft := h.app.lsp.drafts["tailwind"]; draft == nil || draft.Enabled {
 		t.Fatalf("Tailwind should be opt-in: %#v", draft)
 	}
 }
@@ -165,11 +165,11 @@ func TestCustomLanguageServerEditPreservesFormatter(t *testing.T) {
 			Custom: &customLanguageServerDefinition{Name: "Example", Extensions: map[string]string{".example": "example"}},
 		},
 	}
-	h.app.customLanguageServerForm = customLanguageServerForm{
+	h.app.lsp.customForm = customLanguageServerForm{
 		Open: true, ID: "custom-example", Name: "Example edited", Path: "example-ls", Arguments: "server",
 		Extensions: ".example=example", Enabled: true, Description: "Updated definition",
 	}
-	h.app.settingsPage = settingsPageLSP
+	h.app.settingsUI.page = settingsPageLSP
 	h.app.openSettings()
 	h.tester.Frame()
 	scrollLanguageServerSettingIntoView(t, h, "Save custom language server")
@@ -269,21 +269,21 @@ func TestGoLanguageServerSettingsPersistAndTestWithoutAShell(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.waitFor(t, "the language-server test", func() bool {
-		return !h.app.languageServerTestBusy && h.app.languageServerTestResult != ""
+		return !h.app.lsp.testBusy && h.app.lsp.testResult != ""
 	})
 	h.tester.Frame()
 	invoked := <-called
 	if invoked.program != server.Path || !reflect.DeepEqual(invoked.arguments, server.Arguments) {
 		t.Fatalf("version command = %#v, want program %q arguments %q", invoked, server.Path, server.Arguments)
 	}
-	if !h.app.languageServerTestOK || !h.tester.HasText("golang.org/x/tools/gopls v9.9.9") {
-		t.Fatalf("successful test was not shown: ok=%v texts=%q", h.app.languageServerTestOK, h.texts())
+	if !h.app.lsp.testOK || !h.tester.HasText("golang.org/x/tools/gopls v9.9.9") {
+		t.Fatalf("successful test was not shown: ok=%v texts=%q", h.app.lsp.testOK, h.texts())
 	}
 }
 
 func TestLanguageServerCatalogConfiguresGoInline(t *testing.T) {
 	h := menuTestApp(t)
-	h.app.settingsPage = settingsPageLSP
+	h.app.settingsUI.page = settingsPageLSP
 	h.app.openSettings()
 	h.tester.Frame()
 	h.tester.Scroll(700, 480, 0, 1800)
@@ -336,11 +336,11 @@ func TestGoLanguageServerTestTriesConfiguredProgramsInOrder(t *testing.T) {
 	}
 	h.app.testGoLanguageServer()
 	h.waitFor(t, "the fallback language-server test", func() bool {
-		return !h.app.languageServerTestBusy && h.app.languageServerTestResult != ""
+		return !h.app.lsp.testBusy && h.app.lsp.testResult != ""
 	})
 	if !reflect.DeepEqual(programs, []string{"/missing/gopls", "/zed/gopls"}) ||
-		!h.app.languageServerTestOK || h.app.languageServerTestResult != "gopls from Zed" {
-		t.Fatalf("fallback test programs=%v ok=%v result=%q", programs, h.app.languageServerTestOK, h.app.languageServerTestResult)
+		!h.app.lsp.testOK || h.app.lsp.testResult != "gopls from Zed" {
+		t.Fatalf("fallback test programs=%v ok=%v result=%q", programs, h.app.lsp.testOK, h.app.lsp.testResult)
 	}
 }
 
@@ -353,9 +353,9 @@ func TestGoLanguageServerTestReportsFailure(t *testing.T) {
 	h := menuTestApp(t)
 	h.app.testGoLanguageServer()
 	h.waitFor(t, "the failed language-server test", func() bool {
-		return !h.app.languageServerTestBusy && h.app.languageServerTestResult != ""
+		return !h.app.lsp.testBusy && h.app.lsp.testResult != ""
 	})
-	if h.app.languageServerTestOK || h.app.languageServerTestResult != "Could not start gopls: executable not found" {
-		t.Fatalf("failed test state = ok %v, result %q", h.app.languageServerTestOK, h.app.languageServerTestResult)
+	if h.app.lsp.testOK || h.app.lsp.testResult != "Could not start gopls: executable not found" {
+		t.Fatalf("failed test state = ok %v, result %q", h.app.lsp.testOK, h.app.lsp.testResult)
 	}
 }

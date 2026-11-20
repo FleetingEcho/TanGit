@@ -597,7 +597,7 @@ func iconTextButtonState(c *ui.Context, label, tooltip string, icon *ui.SVG, pri
 // closeAllForms drops every text-entry form the sections open, so leaving a
 // repository never leaves one behind for the next.
 func (a *app) closeAllForms() {
-	a.closeSSHWorkspacePicker()
+	a.ssh.reset()
 	a.respondSSHHostKey(false)
 	a.showCommitForm = false
 	a.showBranchForm = false
@@ -645,7 +645,7 @@ func (a *app) closeAllForms() {
 	a.prChecksOpen = false
 	a.prChecksToken++
 	a.commandPromptOpen = false
-	a.customCommandFormOpen = false
+	a.settingsUI.closeCustomCommandForm()
 }
 
 // anyFormOpen reports whether a text-entry form is showing. Plain-letter
@@ -680,13 +680,13 @@ func (a *app) anyFormOpen() bool {
 		a.rebasePlanEditorOpen ||
 		a.showRenameRecent ||
 		(a.homeWorktrees.open && !a.homeWorktrees.dropdown) ||
-		a.sshProfileFormOpen ||
+		a.ssh.profileFormOpen ||
 		a.cloneOpen ||
 		a.code.fileForm != codeFileFormNone ||
 		a.code.workspaceFormOpen ||
 		a.code.languageDialog != codeLanguageDialogNone ||
 		a.term.renameID != 0 || a.term.renameGroup != 0 ||
-		a.customCommandFormOpen ||
+		a.settingsUI.customCommandFormOpen ||
 		a.commandPromptOpen ||
 		a.showBisectForm ||
 		a.showExportPatchForm ||
@@ -708,7 +708,7 @@ func (a *app) modalOpenExceptDiffFullscreen() bool {
 
 func (a *app) modalOpenIncludingDiffFullscreen(includeDiffFullscreen bool) bool {
 	return a.confirm != nil ||
-		a.settingsOpen ||
+		a.settingsUI.open ||
 		a.keybindingsOpen ||
 		a.commandLogOpen ||
 		a.commandPromptOpen ||
@@ -718,8 +718,8 @@ func (a *app) modalOpenIncludingDiffFullscreen(includeDiffFullscreen bool) bool 
 		a.stackSync.open ||
 		a.customPatch.open ||
 		a.courier.open ||
-		a.sshWorkspaceOpen ||
-		a.sshHostKeyPrompt != nil ||
+		a.ssh.workspaceOpen ||
+		a.ssh.hostKeyPrompt != nil ||
 		a.state == stateCloning ||
 		(includeDiffFullscreen && a.diffFullscreen) ||
 		a.branchFullscreen ||

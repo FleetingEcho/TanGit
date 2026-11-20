@@ -176,9 +176,9 @@ func TestSSHLifecycleModalsOwnKeyboard(t *testing.T) {
 		name string
 		open func(*app)
 	}{
-		{name: "workspace picker", open: func(a *app) { a.sshWorkspaceOpen = true }},
-		{name: "profile form", open: func(a *app) { a.sshProfileFormOpen = true }},
-		{name: "host-key prompt", open: func(a *app) { a.sshHostKeyPrompt = &sshHostKeyPrompt{} }},
+		{name: "workspace picker", open: func(a *app) { a.ssh.workspaceOpen = true }},
+		{name: "profile form", open: func(a *app) { a.ssh.profileFormOpen = true }},
+		{name: "host-key prompt", open: func(a *app) { a.ssh.hostKeyPrompt = &sshHostKeyPrompt{} }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			a := newApp(fakeOpener{})
@@ -194,14 +194,14 @@ func TestPrepareShutdownCleansUpSSHModalsAndOperations(t *testing.T) {
 	a := newApp(fakeOpener{})
 	resolveCtx, resolveCancel := context.WithCancel(context.Background())
 	testCtx, testCancel := context.WithCancel(context.Background())
-	a.sshWorkspaceOpen = true
-	a.sshWorkspaceResolving = true
-	a.sshWorkspaceResolveCancel = resolveCancel
-	a.sshProfileFormOpen = true
-	a.sshProfileTestBusy = true
-	a.sshProfileTestCancel = testCancel
+	a.ssh.workspaceOpen = true
+	a.ssh.workspaceResolving = true
+	a.ssh.workspaceResolveCancel = resolveCancel
+	a.ssh.profileFormOpen = true
+	a.ssh.profileTestBusy = true
+	a.ssh.profileTestCancel = testCancel
 	prompt := &sshHostKeyPrompt{response: make(chan bool, 1)}
-	a.sshHostKeyPrompt = prompt
+	a.ssh.hostKeyPrompt = prompt
 	if !a.modalOpen() {
 		t.Fatal("SSH picker/profile/host-key modal was not detected")
 	}
@@ -227,7 +227,7 @@ func TestPrepareShutdownCleansUpSSHModalsAndOperations(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("host-key prompt was not answered")
 	}
-	if a.sshWorkspaceOpen || a.sshProfileFormOpen || a.sshHostKeyPrompt != nil || a.modalOpen() {
+	if a.ssh.workspaceOpen || a.ssh.profileFormOpen || a.ssh.hostKeyPrompt != nil || a.modalOpen() {
 		t.Fatal("SSH forms or prompts survived shutdown preparation")
 	}
 }

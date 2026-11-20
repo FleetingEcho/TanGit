@@ -55,7 +55,7 @@ func isMediaPath(path string) bool {
 // loadMediaReview is called from the same worker as its textual diff, so the
 // caller's existing hash/token checks reject both stale text and stale images.
 func loadMediaReview(ctx context.Context, session repository.Session, request repository.MediaRequest) (*mediaReview, error) {
-	pair, err := session.Media(ctx, request)
+	pair, err := requireChangesSession(session).Media(ctx, request)
 	if err != nil {
 		return nil, err
 	}

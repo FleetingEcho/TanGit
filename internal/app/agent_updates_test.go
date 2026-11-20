@@ -452,9 +452,7 @@ func TestAgentUpdateStaleGenerationCannotPublishResult(t *testing.T) {
 	close(target.rebaseRelease)
 	// Running, result, and final completions are all still delivered by the
 	// worker, but every one must fail its generation/token/repository guard.
-	for range 3 {
-		h.updates.waitForUpdate(t)
-	}
+	h.updates.waitForPending(t, 3)
 	if h.app.generation == oldGeneration || h.app.agents.updates.open || len(h.app.agents.updates.results) != 0 {
 		t.Fatalf("stale result repopulated reset state: %#v", h.app.agents.updates)
 	}

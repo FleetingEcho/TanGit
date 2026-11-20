@@ -87,7 +87,6 @@ func CompareContinueSources(before, after ContinueSource) ContinueSourceDelta {
 // legacy callers cannot accidentally substitute Snapshot line counts for a
 // real source capture.
 type ContinueReviewSession interface {
-	Session
 	CaptureContinueSource(context.Context) (ContinueSource, error)
 }
 

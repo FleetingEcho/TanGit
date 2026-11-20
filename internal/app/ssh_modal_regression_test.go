@@ -19,10 +19,10 @@ func TestSSHHostKeyModalKeepsParentOpen(t *testing.T) {
 					a.openSSHWorkspacePicker()
 				} else {
 					a.openSettings()
-					a.settingsPage = settingsPageSSHProfiles
+					a.settingsUI.page = settingsPageSSHProfiles
 				}
 				prompt := &sshHostKeyPrompt{info: sshworkspace.HostKeyInfo{Address: "example.test:22", FingerprintSHA256: "SHA256:test"}, response: make(chan bool, 1)}
-				a.sshHostKeyPrompt = prompt
+				a.ssh.hostKeyPrompt = prompt
 				tester := ui.NewTester(a.view, 1280, 800)
 				tester.Frame()
 				switch action {
@@ -49,13 +49,13 @@ func TestSSHHostKeyModalKeepsParentOpen(t *testing.T) {
 				// The child disappears and the parent's controls return on later builds.
 				tester.Frame()
 				tester.Frame()
-				if a.sshHostKeyPrompt != nil {
+				if a.ssh.hostKeyPrompt != nil {
 					t.Fatal("host-key dialog remained open")
 				}
-				if parent == "workspace" && !a.sshWorkspaceOpen {
+				if parent == "workspace" && !a.ssh.workspaceOpen {
 					t.Fatal("host-key action closed the workspace picker")
 				}
-				if parent == "settings" && !a.settingsOpen {
+				if parent == "settings" && !a.settingsUI.open {
 					t.Fatal("host-key action closed Settings")
 				}
 			})

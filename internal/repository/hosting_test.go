@@ -14,7 +14,7 @@ type hostingCommandRecord struct {
 	directory string
 }
 
-func newHostingSession(t *testing.T, url string) (string, Session, *[]hostingCommandRecord) {
+func newHostingSession(t *testing.T, url string) (string, HostingSession, *[]hostingCommandRecord) {
 	t.Helper()
 	dir, session := newHistoryEditingSession(t)
 	writeHistoryCommit(t, dir, "readme.txt", "readme\n", "initial")

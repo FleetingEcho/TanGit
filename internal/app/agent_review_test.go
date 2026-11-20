@@ -20,7 +20,7 @@ func (o agentReviewOpener) Open(_ context.Context, path string) (repository.Sess
 	return o.session, nil
 }
 
-type agentReviewSession struct {
+type agentReviewFixtureSession struct {
 	fakeSession
 	calls      *callRecorder
 	base       string
@@ -32,32 +32,32 @@ type agentReviewSession struct {
 	closed     int
 }
 
-func (s *agentReviewSession) Snapshot(context.Context) (repository.Snapshot, error) {
+func (s *agentReviewFixtureSession) Snapshot(context.Context) (repository.Snapshot, error) {
 	snapshot := s.fakeSession.snapshot
 	snapshot.HeadHash = s.head
 	return snapshot, nil
 }
-func (s *agentReviewSession) FinalFiles(_ context.Context, base string, _ repository.DiffOptions) ([]repository.CommitFile, error) {
+func (s *agentReviewFixtureSession) FinalFiles(_ context.Context, base string, _ repository.DiffOptions) ([]repository.CommitFile, error) {
 	s.calls.record("final-files:" + base)
 	return append([]repository.CommitFile(nil), s.final...), nil
 }
-func (s *agentReviewSession) CommitRange(_ context.Context, base, head string, _, _ int) ([]repository.Commit, error) {
+func (s *agentReviewFixtureSession) CommitRange(_ context.Context, base, head string, _, _ int) ([]repository.Commit, error) {
 	s.calls.record("commit-range:" + base + ":" + head)
 	return append([]repository.Commit(nil), s.commits...), nil
 }
-func (s *agentReviewSession) FinalFileDiff(_ context.Context, base string, file repository.CommitFile, _ repository.DiffOptions) (repository.Diff, error) {
+func (s *agentReviewFixtureSession) FinalFileDiff(_ context.Context, base string, file repository.CommitFile, _ repository.DiffOptions) (repository.Diff, error) {
 	s.calls.record("final-diff:" + base + ":" + file.Path)
 	return repository.Diff{Patch: "diff --git a/" + file.Path + " b/" + file.Path + "\n--- a/" + file.Path + "\n+++ b/" + file.Path + "\n@@ -1 +1 @@\n-base\n+agent\n"}, nil
 }
-func (s *agentReviewSession) CommitFiles(_ context.Context, commit repository.Commit) ([]repository.CommitFile, error) {
+func (s *agentReviewFixtureSession) CommitFiles(_ context.Context, commit repository.Commit) ([]repository.CommitFile, error) {
 	s.calls.record("commit-files:" + commit.Hash)
 	return []repository.CommitFile{s.commitFile}, nil
 }
-func (s *agentReviewSession) CommitFileDiff(_ context.Context, commit repository.Commit, file repository.CommitFile, _ repository.DiffOptions) (repository.Diff, error) {
+func (s *agentReviewFixtureSession) CommitFileDiff(_ context.Context, commit repository.Commit, file repository.CommitFile, _ repository.DiffOptions) (repository.Diff, error) {
 	s.calls.record("commit-diff:" + commit.Hash + ":" + file.Path)
 	return repository.Diff{Patch: "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-base\n+commit\n"}, nil
 }
-func (s *agentReviewSession) Close() error {
+func (s *agentReviewFixtureSession) Close() error {
 	s.closeOnce.Do(func() { s.closed++ })
 	return nil
 }
@@ -89,7 +89,7 @@ func TestAgentReviewUsesExplicitWorktreeForAllThreeViews(t *testing.T) {
 	task := readyAgentReviewTask(t, h, store)
 	calls := &callRecorder{}
 	commit := repository.Commit{Hash: "bbbbbbbbbbbb", ShortHash: "bbbb", Subject: "Agent implementation"}
-	target := &agentReviewSession{
+	target := &agentReviewFixtureSession{
 		fakeSession: fakeSession{snapshot: repository.Snapshot{
 			Root:  task.WorktreePath,
 			Files: []repository.File{{Path: "dirty.txt", Status: " M", Unstaged: true}},

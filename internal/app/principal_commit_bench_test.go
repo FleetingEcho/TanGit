@@ -175,12 +175,12 @@ func newAppLongDiffFixture(b *testing.B) (repository.Commit, repository.CommitFi
 	if err != nil {
 		b.Fatal(err)
 	}
-	commits, err := session.RecentCommits(context.Background(), 1, 0)
+	commits, err := requireHistorySession(session).RecentCommits(context.Background(), 1, 0)
 	if err != nil || len(commits) != 1 {
 		b.Fatalf("commits=%d err=%v", len(commits), err)
 	}
 	file := repository.CommitFile{Path: "long.go"}
-	diff, err := session.CommitFileDiff(context.Background(), commits[0], file, repository.DiffOptions{ContextLines: 3})
+	diff, err := requireHistorySession(session).CommitFileDiff(context.Background(), commits[0], file, repository.DiffOptions{ContextLines: 3})
 	if err != nil || len(diff.Patch) < 100_000 {
 		b.Fatalf("diff_bytes=%d err=%v", len(diff.Patch), err)
 	}

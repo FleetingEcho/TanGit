@@ -60,7 +60,7 @@ func (a *app) receiveLocalTransferDrop(data mygotransfer.Data, directory string)
 	}
 
 	generation := a.generation
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	state := &a.localTransfers
 	state.nextID++
 	id := state.nextID

@@ -56,6 +56,7 @@ func (a *app) beginOpenWithPolicy(policy openPolicy) {
 		return
 	}
 
+	a.repositoryWork.Cancel()
 	if a.cancelOpen != nil {
 		a.cancelOpen()
 	}
@@ -217,7 +218,7 @@ func (a *app) setOpenError(path string, generation uint64, err error) {
 			// Recovery already knows its folder: select the identity without
 			// starting /home only to cancel it for the repository read below.
 			a.selectSSHWorkspaceProfileAndBrowse(location.ProfileID, false)
-			a.sshWorkspaceRoot = location.Root
+			a.ssh.workspaceRoot = location.Root
 			a.loadSSHFolder(location.Root, false, false)
 			return
 		}
@@ -236,6 +237,7 @@ func (a *app) setOpenError(path string, generation uint64, err error) {
 // opening. The sequence changes even for the core so deferred or quiet reads
 // from an older snapshot cannot land over it.
 func (a *app) installOpenedRepository(session repository.Session, snapshot repository.Snapshot) {
+	a.repositoryWork.Replace()
 	a.state = stateReady
 	a.session = session
 	var commandLog *repository.CommandLog
@@ -314,11 +316,7 @@ func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 	a.fileSearch = ""
 	a.ignoreUntracked = false
 	a.changesFiltersOpen = false
-	a.reviewedFiles = map[string]bool{}
-	a.reviewRequestedSeq = 0
-	a.reviewRequestToken++
-	a.reviewLoading = false
-	a.reviewFilter = false
+	a.review.reset()
 	a.fileStatusFilter = changesStatusAll
 	a.fileTreeCollapsed = nil
 	a.resetCode()
@@ -488,7 +486,7 @@ func (a *app) requestFileDiffMode(quiet bool) {
 	}
 	previousTextDiff := quiet && a.diffState != nil
 	previousPatch, previousKind := a.diffPatch, a.diffKind
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	a.cancelDiff = cancel
 	a.diffGeneration++
 	generation := a.diffGeneration
@@ -522,7 +520,7 @@ func (a *app) requestFileDiffMode(quiet bool) {
 	go func() {
 		defer a.recoverBackground()
 		defer cancel()
-		diff, err := session.Diff(ctx, file, options)
+		diff, err := requireWorkingTreeDiffSession(session).Diff(ctx, file, options)
 		if err == nil && ctx.Err() != nil {
 			err = ctx.Err()
 		}
@@ -612,9 +610,10 @@ func (a *app) beginBlame() {
 	a.blameLoading = true
 	a.blameError = ""
 	a.blameState = nil
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		lines, err := session.BlameFile(context.Background(), file)
+		lines, err := requireHistorySession(session).BlameFile(ctx, file)
 		var state *editor.State
 		if err == nil {
 			buffer := editor.NewBuffer(formatBlame(lines))
@@ -679,10 +678,10 @@ func (a *app) beginRepositoryActionMessage(
 	}
 	a.actionBusy = true
 	a.actionError = ""
+	ctx := a.repositoryWork.Context()
 
 	go func() {
 		defer a.recoverBackground()
-		ctx := context.Background()
 		err := action(ctx, session)
 		actionEnd := commandLog.Marker()
 		snapshotFailed := false
@@ -1138,6 +1137,7 @@ func (a *app) prepareShutdown(done func(bool)) {
 // the picker, so another repository can be opened without restarting.
 func (a *app) shutdown() {
 	a.generation++
+	a.repositoryWork.Cancel()
 	a.shutdownContinuePreflight()
 	if a.customCommandCancel != nil {
 		a.customCommandCancel()

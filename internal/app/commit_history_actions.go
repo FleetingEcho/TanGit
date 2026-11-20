@@ -44,7 +44,7 @@ func (a *app) confirmDropCommit(commit repository.Commit) {
 		success:      trf("Dropped %s", commit.ShortHash),
 		destructive:  true,
 		run: func(ctx context.Context, session repository.Session) error {
-			return session.DropCommit(ctx, commit)
+			return requireHistorySession(session).DropCommit(ctx, commit)
 		},
 	})
 }
@@ -56,7 +56,7 @@ func (a *app) confirmMoveCommit(commit repository.Commit, direction repository.C
 		confirmLabel: "Move commit",
 		destructive:  true,
 		run: func(ctx context.Context, session repository.Session) error {
-			return session.MoveCommit(ctx, commit, direction)
+			return requireHistorySession(session).MoveCommit(ctx, commit, direction)
 		},
 	}
 	if newer {
@@ -79,7 +79,7 @@ func (a *app) confirmCombineCommit(commit repository.Commit, mode repository.Com
 		success:      trf("Squashed %s into its older commit", commit.ShortHash),
 		destructive:  true,
 		run: func(ctx context.Context, session repository.Session) error {
-			return session.CombineCommit(ctx, commit, mode)
+			return requireHistorySession(session).CombineCommit(ctx, commit, mode)
 		},
 	}
 	action.message = trf("Squash %s into its older commit?", commit.ShortHash)
@@ -103,7 +103,7 @@ func (a *app) confirmAmendCommit(commit repository.Commit) {
 		success:      trf("Amended %s with staged changes", commit.ShortHash),
 		destructive:  true,
 		run: func(ctx context.Context, session repository.Session) error {
-			return session.AmendCommit(ctx, commit)
+			return requireHistorySession(session).AmendCommit(ctx, commit)
 		},
 	})
 }
@@ -116,7 +116,7 @@ func (a *app) confirmCreateFixupCommit(commit repository.Commit) {
 		confirmLabel: "Create fixup",
 		success:      trf("Created a fixup for %s", commit.ShortHash),
 		run: func(ctx context.Context, session repository.Session) error {
-			return session.CreateFixupCommit(ctx, commit)
+			return requireHistorySession(session).CreateFixupCommit(ctx, commit)
 		},
 	})
 }
@@ -130,7 +130,7 @@ func (a *app) confirmApplyFixupCommits(commit repository.Commit) {
 		success:      trf("Applied fixups from %s", commit.ShortHash),
 		destructive:  true,
 		run: func(ctx context.Context, session repository.Session) error {
-			return session.ApplyFixupCommits(ctx, commit)
+			return requireHistorySession(session).ApplyFixupCommits(ctx, commit)
 		},
 	})
 }
@@ -182,7 +182,7 @@ func (a *app) confirmEditCommit(commit repository.Commit) {
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Paused rebase at %s", commit.ShortHash), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.EditCommit(ctx, commit)
+					return requireHistorySession(session).EditCommit(ctx, commit)
 				}, nil)
 		},
 	})

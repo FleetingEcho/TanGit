@@ -26,7 +26,7 @@ func openGoDocumentWithLanguageServer(t *testing.T, files map[string]string,
 	openCodePageForTest(t, h, len(files))
 	h.app.openCodeFile("main.go", 0)
 	document := waitForCodeDocument(t, h, "main.go")
-	h.waitFor(t, "the language server", func() bool { return h.app.goLanguageServer == connection })
+	h.waitFor(t, "the language server", func() bool { return h.app.lsp.goServer == connection })
 	return h, connection, document
 }
 
@@ -349,7 +349,7 @@ func additionalLanguageServerPopupTestApp(t *testing.T) (*harness, *codeDocument
 	server := &managedLanguageServer{
 		profile: profile, connection: connection, documents: make(map[string]uint64),
 	}
-	h.app.additionalLanguageServers = map[string]*managedLanguageServer{profile.ID: server}
+	h.app.lsp.additional = map[string]*managedLanguageServer{profile.ID: server}
 	h.tester.Frame()
 	return h, document, other, connection
 }
@@ -437,7 +437,7 @@ func TestAdditionalLanguageServerEmptyHoverDoesNotRepaint(t *testing.T) {
 	server := &managedLanguageServer{
 		profile: profile, connection: connection, documents: make(map[string]uint64),
 	}
-	h.app.additionalLanguageServers = map[string]*managedLanguageServer{profile.ID: server}
+	h.app.lsp.additional = map[string]*managedLanguageServer{profile.ID: server}
 	repaint := true
 	h.app.updateChanged = func(fn func() bool) {
 		h.app.update(func() { repaint = fn() })
@@ -535,7 +535,7 @@ func TestGoLanguageServerPublishesDiagnostics(t *testing.T) {
 			"severity": 1, "message": "undefined: bad", "source": "compiler",
 		}},
 	})
-	h.app.handleGoLanguageServerNotification(h.app.goLanguageServerSeq, "textDocument/publishDiagnostics", params)
+	h.app.handleGoLanguageServerNotification(h.app.lsp.goSeq, "textDocument/publishDiagnostics", params)
 	h.updates.waitForUpdate(t)
 	h.tester.Frame()
 	diagnostics := document.state.Diagnostics()
@@ -549,7 +549,7 @@ func TestGoLanguageServerPublishesDiagnostics(t *testing.T) {
 		h.app.updateChanged = func(fn func() bool) {
 			h.app.update(func() { repaint = fn() })
 		}
-		sequence := h.app.goLanguageServerSeq
+		sequence := h.app.lsp.goSeq
 		if stale {
 			sequence--
 		}
@@ -567,7 +567,7 @@ func TestGoLanguageServerPublishesDiagnostics(t *testing.T) {
 	cleared, _ := json.Marshal(map[string]any{
 		"uri": "file:///work/project/main.go", "version": version, "diagnostics": []any{},
 	})
-	h.app.handleGoLanguageServerNotification(h.app.goLanguageServerSeq, "textDocument/publishDiagnostics", cleared)
+	h.app.handleGoLanguageServerNotification(h.app.lsp.goSeq, "textDocument/publishDiagnostics", cleared)
 	h.updates.waitForUpdate(t)
 	if !repaint || len(document.state.Diagnostics()) != 0 {
 		t.Fatalf("clearing diagnostics repaint = %v, diagnostics = %#v", repaint, document.state.Diagnostics())
@@ -577,7 +577,7 @@ func TestGoLanguageServerPublishesDiagnostics(t *testing.T) {
 	// not repaint a window that does not render this editor.
 	h.app.workspaceTab = sectionChanges
 	repaint = true
-	h.app.handleGoLanguageServerNotification(h.app.goLanguageServerSeq, "textDocument/publishDiagnostics", params)
+	h.app.handleGoLanguageServerNotification(h.app.lsp.goSeq, "textDocument/publishDiagnostics", params)
 	h.updates.waitForUpdate(t)
 	if repaint || len(document.state.Diagnostics()) != 1 {
 		t.Fatalf("hidden diagnostics repaint = %v, diagnostics = %#v", repaint, document.state.Diagnostics())
@@ -588,7 +588,7 @@ func TestGoLanguageServerPublishesDiagnostics(t *testing.T) {
 	document.languageDiagnostics[goLanguageServerID] = nil
 	document.state.SetDiagnostics(version, nil)
 	repaint = true
-	h.app.handleGoLanguageServerNotification(h.app.goLanguageServerSeq, "textDocument/publishDiagnostics", params)
+	h.app.handleGoLanguageServerNotification(h.app.lsp.goSeq, "textDocument/publishDiagnostics", params)
 	h.updates.waitForUpdate(t)
 	if repaint || len(document.state.Diagnostics()) != 1 {
 		t.Fatalf("background-document diagnostics repaint = %v, diagnostics = %#v", repaint, document.state.Diagnostics())
@@ -603,11 +603,11 @@ func TestGoLanguageServerReportsWorkspaceErrors(t *testing.T) {
 		"type":    4,
 		"message": "go.mod:3: invalid go version '1.27.3': must match format 1.23",
 	})
-	h.app.handleGoLanguageServerNotification(h.app.goLanguageServerSeq, "window/showMessage", params)
+	h.app.handleGoLanguageServerNotification(h.app.lsp.goSeq, "window/showMessage", params)
 	h.updates.waitForUpdate(t)
 	h.tester.Frame()
-	if !strings.Contains(h.app.goLanguageServerError, "Update gopls") {
-		t.Fatalf("workspace error = %q", h.app.goLanguageServerError)
+	if !strings.Contains(h.app.lsp.goError, "Update gopls") {
+		t.Fatalf("workspace error = %q", h.app.lsp.goError)
 	}
 	if h.tester.HasText("gopls issue") || !h.tester.HasText("gopls cannot analyze this workspace") {
 		t.Fatalf("workspace error notification changed: %q", h.texts())
@@ -762,12 +762,12 @@ func TestRealGoplsEditorHoverAndDefinition(t *testing.T) {
 	h.app.openCodeFile("main.go", 0)
 	document := waitForCodeDocument(t, h, "main.go")
 	h.waitFor(t, "real gopls to open the editor document", func() bool {
-		_, opened := h.app.goLanguageServerDocs["main.go"]
-		return h.app.goLanguageServer != nil && opened
+		_, opened := h.app.lsp.goDocs["main.go"]
+		return h.app.lsp.goServer != nil && opened
 	})
 	t.Cleanup(func() {
-		if h.app.goLanguageServer != nil {
-			h.app.goLanguageServer.Close()
+		if h.app.lsp.goServer != nil {
+			h.app.lsp.goServer.Close()
 		}
 	})
 

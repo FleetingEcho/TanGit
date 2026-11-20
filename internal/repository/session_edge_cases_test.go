@@ -25,7 +25,7 @@ func TestAwkwardPathsStageDiffCommitAndDiscard(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestCRLFAndNoTrailingNewlineRoundTrip(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "noneol.txt"), []byte(noneol), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestRenameShowsItsPreviousPath(t *testing.T) {
 	runGit(t, dir, "add", "-A")
 	runGit(t, dir, "commit", "-m", "old")
 	runGit(t, dir, "mv", "old name.txt", "new name.txt")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestModeChangeStagesAndCommits(t *testing.T) {
 	if err := os.Chmod(filepath.Join(dir, "run.sh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestAmendRootCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	runGit(t, dir, "add", "-A")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +300,7 @@ func TestDiscardRestoresADeletedFile(t *testing.T) {
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

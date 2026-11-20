@@ -214,14 +214,14 @@ func (a *app) languageServerFormattingTarget(document *codeDocument, selection b
 		return connection.DocumentFormatting()
 	}
 	if strings.EqualFold(filepath.Ext(document.path), ".go") {
-		connection := a.goLanguageServer
+		connection := a.lsp.goServer
 		if connection == nil || !supported(connection) {
 			return languageServerFormattingTarget{}, false
 		}
 		return languageServerFormattingTarget{
 			name: "gopls", connection: connection,
 			sync:  func() { a.syncGoLanguageServerDocument(document.path, document) },
-			valid: func() bool { return a.goLanguageServer == connection },
+			valid: func() bool { return a.lsp.goServer == connection },
 		}, true
 	}
 	for _, server := range a.additionalLanguageServersForDocument(document) {
@@ -233,7 +233,7 @@ func (a *app) languageServerFormattingTarget(document *codeDocument, selection b
 			name: server.profile.Name, connection: connection,
 			sync: func() { a.syncManagedLanguageServerDocument(server, document.path, document) },
 			valid: func() bool {
-				return a.additionalLanguageServers[server.profile.ID] == server && server.connection == connection
+				return a.lsp.additional[server.profile.ID] == server && server.connection == connection
 			},
 		}, true
 	}

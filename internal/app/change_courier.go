@@ -162,7 +162,7 @@ func (a *app) beginCourierDestination(path string) {
 	generation := a.generation
 	frozen := a.courier.patchText
 	openPath := a.worktreeOpenPath(path)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	a.courier.destination = path
 	a.courier.previewLoading = true
 	a.courier.preview = nil
@@ -183,7 +183,7 @@ func (a *app) beginCourierDestination(path string) {
 		target, err := a.opener.Open(ctx, openPath)
 		var preview repository.PatchPreview
 		if err == nil {
-			preview, err = target.PreviewPatchText(ctx, frozen)
+			preview, err = requireChangesSession(target).PreviewPatchText(ctx, frozen)
 		}
 		// Once its completion is queued, that callback either installs the
 		// target or closes it on an error or stale result.
@@ -217,7 +217,7 @@ func (a *app) beginCourierApply() {
 	// The apply goroutine now owns the target. Reset can cancel the operation,
 	// but only the goroutine closes it after ApplyPatch has returned.
 	a.courier.target = nil
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	a.courier.applyCancel = cancel
 	preview := *a.courier.preview
 	generation := a.generation
@@ -235,7 +235,7 @@ func (a *app) beginCourierApply() {
 		defer a.recoverBackground()
 		defer closeRepositorySession(target)
 		defer cancel()
-		err := target.ApplyPatch(ctx, preview)
+		err := requireChangesSession(target).ApplyPatch(ctx, preview)
 		a.update(func() {
 			if token == a.courier.token {
 				a.courier.applyCancel = nil
@@ -313,6 +313,7 @@ func (a *app) beginWorkingTreeCourierAtDiff(file repository.File, lines []patch.
 	}
 	session := a.session
 	generation := a.generation
+	ctx := a.repositoryWork.Context()
 	a.resetChangeCourier()
 	token := a.courier.token
 	a.courier.open = true
@@ -327,7 +328,7 @@ func (a *app) beginWorkingTreeCourierAtDiff(file repository.File, lines []patch.
 	a.courier.target = nil
 	go func() {
 		defer a.recoverBackground()
-		text, err := session.WorkingTreeFilePatch(context.Background(), file)
+		text, err := requireHistorySession(session).WorkingTreeFilePatch(ctx, file)
 		if err == nil && len(lines) > 0 {
 			if displayedPatch != "" {
 				var displayedLines, currentLines []string

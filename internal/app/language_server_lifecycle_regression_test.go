@@ -61,7 +61,7 @@ func TestProtocolProbeSettingsTestInitializesManagedLaunchWithoutVersionProbe(t 
 	}
 	h.app.testLanguageServerProfile("intelephense")
 	h.waitFor(t, "the managed protocol-probe settings test", func() bool {
-		return !h.app.languageServerTestBusy && h.app.languageServerTestResult != ""
+		return !h.app.lsp.testBusy && h.app.lsp.testResult != ""
 	})
 	var launch languageServerLaunch
 	select {
@@ -72,8 +72,8 @@ func TestProtocolProbeSettingsTestInitializesManagedLaunchWithoutVersionProbe(t 
 	if launch.Program != node || !reflect.DeepEqual(launch.Arguments, []string{serverScript, "--stdio"}) {
 		t.Fatalf("protocol probe launch = %q %q, want %q [%s --stdio]", launch.Program, launch.Arguments, node, serverScript)
 	}
-	if launch.Root != h.app.snapshot.Root || !connection.isClosed() || !h.app.languageServerTestOK {
-		t.Fatalf("protocol probe root=%q closed=%v ok=%v result=%q", launch.Root, connection.isClosed(), h.app.languageServerTestOK, h.app.languageServerTestResult)
+	if launch.Root != h.app.snapshot.Root || !connection.isClosed() || !h.app.lsp.testOK {
+		t.Fatalf("protocol probe root=%q closed=%v ok=%v result=%q", launch.Root, connection.isClosed(), h.app.lsp.testOK, h.app.lsp.testResult)
 	}
 }
 
@@ -104,7 +104,7 @@ func TestFailedManagedPublicationPreservesPreviousInstallationAndSettings(t *tes
 		return "ruff 2.0.0", nil
 	}
 	h.app.installLanguageServer("ruff")
-	h.waitFor(t, "the failed managed replacement", func() bool { return !h.app.languageServerInstalling["ruff"] })
+	h.waitFor(t, "the failed managed replacement", func() bool { return !h.app.lsp.installing["ruff"] })
 
 	if got := h.app.settings.LanguageServers["ruff"]; !reflect.DeepEqual(got, previous) {
 		t.Fatalf("failed publication replaced managed settings: got %#v, want %#v", got, previous)
@@ -223,7 +223,7 @@ func TestManagedUninstallRejectsConfigurationChangesWhileBusy(t *testing.T) {
 	h.app.beginManagedLanguageServerRemoval("ruff", server.Managed.Root)
 	<-started
 
-	draft := h.app.languageServerDrafts["ruff"]
+	draft := h.app.lsp.drafts["ruff"]
 	draft.Path = "/external/ruff"
 	draft.Arguments = "server"
 	draft.Enabled = true
@@ -234,7 +234,7 @@ func TestManagedUninstallRejectsConfigurationChangesWhileBusy(t *testing.T) {
 		t.Fatalf("configuration changed during managed removal: got %#v, want %#v", got, server)
 	}
 	close(release)
-	h.waitFor(t, "managed removal after rejected edits", func() bool { return !h.app.languageServerUninstalling["ruff"] })
+	h.waitFor(t, "managed removal after rejected edits", func() bool { return !h.app.lsp.uninstalling["ruff"] })
 	got := h.app.settings.LanguageServers["ruff"]
 	if got.Path != "" || len(got.Arguments) != 0 || len(got.ProbeArguments) != 0 || got.Managed != nil || !got.Disabled {
 		t.Fatalf("completed removal did not restore PATH fallback: %#v", got)
@@ -257,7 +257,7 @@ func TestFailedManagedUninstallPreservesFilesSettingsAndReportsFailure(t *testin
 	}
 
 	h.app.beginManagedLanguageServerRemoval("ruff", server.Managed.Root)
-	h.waitFor(t, "the failed managed removal", func() bool { return !h.app.languageServerUninstalling["ruff"] })
+	h.waitFor(t, "the failed managed removal", func() bool { return !h.app.lsp.uninstalling["ruff"] })
 	if got := h.app.settings.LanguageServers["ruff"]; !reflect.DeepEqual(got, server) {
 		t.Fatalf("failed uninstall changed settings: got %#v, want %#v", got, server)
 	}
@@ -300,7 +300,7 @@ func TestDuplicateManagedInstallStartsOnlyOneWorker(t *testing.T) {
 	h.app.installLanguageServer("ruff")
 	close(release)
 	h.waitFor(t, "the single managed install worker", func() bool {
-		return !h.app.languageServerInstalling["ruff"]
+		return !h.app.lsp.installing["ruff"]
 	})
 	if got := len(started); got != 1 {
 		t.Fatalf("managed install starts = %d, want 1", got)
@@ -331,7 +331,7 @@ func TestDuplicateManagedRemovalStartsOnlyOneWorker(t *testing.T) {
 	h.app.beginManagedLanguageServerRemoval("ruff", server.Managed.Root)
 	close(release)
 	h.waitFor(t, "the single managed removal worker", func() bool {
-		return !h.app.languageServerUninstalling["ruff"]
+		return !h.app.lsp.uninstalling["ruff"]
 	})
 	if got := len(started); got != 1 {
 		t.Fatalf("managed removal starts = %d, want 1", got)
@@ -374,9 +374,9 @@ func TestUnexpectedLanguageServerExitRestartsOnceAcrossRepeatedFrames(t *testing
 			close(first.done)
 			h.waitFor(t, "the unexpected language-server exit", func() bool {
 				if test.id == "go" {
-					return h.app.goLanguageServerRestartUsed
+					return h.app.lsp.goRestartUsed
 				}
-				server := h.app.additionalLanguageServers[test.id]
+				server := h.app.lsp.additional[test.id]
 				return server != nil && server.restartUsed
 			})
 			// The watcher must arrange one replacement. The connection itself is
@@ -386,8 +386,8 @@ func TestUnexpectedLanguageServerExitRestartsOnceAcrossRepeatedFrames(t *testing
 			if got := len(connections); got != 1 {
 				var detail string
 				if test.id == "go" {
-					detail = h.app.goLanguageServerError
-				} else if server := h.app.additionalLanguageServers[test.id]; server != nil {
+					detail = h.app.lsp.goError
+				} else if server := h.app.lsp.additional[test.id]; server != nil {
 					detail = server.error
 				}
 				t.Fatalf("replacement connections after crash/exit = %d, want exactly 1 (error=%q)", got, detail)
@@ -395,9 +395,9 @@ func TestUnexpectedLanguageServerExitRestartsOnceAcrossRepeatedFrames(t *testing
 			second := <-connections
 			h.waitFor(t, "the replacement language-server connection", func() bool {
 				if test.id == "go" {
-					return h.app.goLanguageServer == second
+					return h.app.lsp.goServer == second
 				}
-				server := h.app.additionalLanguageServers[test.id]
+				server := h.app.lsp.additional[test.id]
 				return server != nil && server.connection == second
 			})
 			for range 4 {
@@ -412,9 +412,9 @@ func TestUnexpectedLanguageServerExitRestartsOnceAcrossRepeatedFrames(t *testing
 			close(second.done)
 			h.waitFor(t, "the second unexpected language-server exit", func() bool {
 				if test.id == "go" {
-					return h.app.goLanguageServer == nil && h.app.goLanguageServerError != ""
+					return h.app.lsp.goServer == nil && h.app.lsp.goError != ""
 				}
-				server := h.app.additionalLanguageServers[test.id]
+				server := h.app.lsp.additional[test.id]
 				return server != nil && server.connection == nil && server.error != ""
 			})
 			for range 4 {

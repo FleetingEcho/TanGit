@@ -96,8 +96,8 @@ func TestNativeHelpShortcutRespectsShortcutScope(t *testing.T) {
 			s.tabs = []*tab{{app: a}}
 			test.prepare(a)
 			s.openNativeCurrentKeybindings()
-			if a.settingsOpen != test.wantSettings {
-				t.Errorf("Settings open = %v, want %v", a.settingsOpen, test.wantSettings)
+			if a.settingsUI.open != test.wantSettings {
+				t.Errorf("Settings open = %v, want %v", a.settingsUI.open, test.wantSettings)
 			}
 			if a.keybindingsOpen != test.wantHelp || a.keybindingsCurrentOnly != test.wantCurrent {
 				t.Errorf("help open/current = %v/%v, want %v/%v", a.keybindingsOpen, a.keybindingsCurrentOnly, test.wantHelp, test.wantCurrent)

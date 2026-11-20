@@ -43,7 +43,7 @@ func newHistoryPatchFixture(t *testing.T) historyPatchFixture {
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "later")
 	head := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
-	opened, err := (Opener{}).Open(context.Background(), dir)
+	opened, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func historyPatchReplayConflictFixture(t *testing.T) historyPatchFixture {
 
 func historyPatchStateAfterRestart(t *testing.T, dir string) (Session, OperationState) {
 	t.Helper()
-	reopened, err := (Opener{}).Open(context.Background(), dir)
+	reopened, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,7 +446,7 @@ func TestHistoryPatchDestinationApplyConflictCanFinishAfterRestart(t *testing.T)
 	writePatchImportFile(t, dir, "a.txt", []byte("one\nSELECTED\nthree\n"))
 	runGit(t, dir, "commit", "-am", "source")
 	source := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -511,7 +511,7 @@ func TestHistoryPatchNewBeforeDoesNotDuplicateAdjacentAddedLines(t *testing.T) {
 	writePatchImportFile(t, dir, "a.txt", []byte("one\nSELECTED\nNEARBY\nfour\n"))
 	runGit(t, dir, "commit", "-am", "source")
 	source := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

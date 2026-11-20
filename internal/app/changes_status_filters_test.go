@@ -76,17 +76,17 @@ func TestChangesStatusFiltersPreserveCompatibleSelectionAndClearHiddenDiff(t *te
 	if _, ok := h.app.selectedChange(); ok || h.app.selectedFile != -1 || h.app.diffState != nil {
 		t.Fatal("a hidden selected file retained selection or diff state")
 	}
-	if h.app.reviewedFiles == nil {
-		h.app.reviewedFiles = make(map[string]bool)
+	if h.app.review.files == nil {
+		h.app.review.files = make(map[string]bool)
 	}
-	h.app.reviewedFiles["untracked.txt"] = true
-	h.app.reviewFilter = true
+	h.app.review.files["untracked.txt"] = true
+	h.app.review.filter = true
 	if h.app.hasUnreviewedFiles() {
 		t.Fatal("Next unreviewed should only consider files allowed by the status filter")
 	}
 	h.app.ignoreUntracked = true
 	h.app.clearChangesFileFilters()
-	if h.app.fileStatusFilter != changesStatusAll || h.app.reviewFilter || h.app.ignoreUntracked {
+	if h.app.fileStatusFilter != changesStatusAll || h.app.review.filter || h.app.ignoreUntracked {
 		t.Fatal("clear did not reset status, ignore-untracked and review filters")
 	}
 	if rows := h.app.visibleReviewFiles(h.app.snapshot.Files); len(rows) != len(h.app.snapshot.Files) {
@@ -97,9 +97,9 @@ func TestChangesStatusFiltersPreserveCompatibleSelectionAndClearHiddenDiff(t *te
 func TestChangesStatusFiltersResetForANewRepository(t *testing.T) {
 	h := menuTestApp(t)
 	h.app.fileStatusFilter = changesStatusUntracked
-	h.app.reviewFilter = true
+	h.app.review.filter = true
 	h.app.resetRepositoryState(h.app.snapshot)
-	if h.app.fileStatusFilter != changesStatusAll || h.app.reviewFilter {
+	if h.app.fileStatusFilter != changesStatusAll || h.app.review.filter {
 		t.Fatal("a new repository inherited the old status or review filter")
 	}
 }

@@ -106,7 +106,7 @@ func (a *app) rebasePlans(session repository.Session) (repository.RebasePlanSess
 // branch menus. The legacy no-mark path remains exactly RebaseOntoBranch.
 func (a *app) rebaseOntoBranch(ctx context.Context, session repository.Session, name string) error {
 	if a.markedBaseCommit.Hash == "" {
-		return session.RebaseOntoBranch(ctx, name)
+		return requireBranchRemoteSession(session).RebaseOntoBranch(ctx, name)
 	}
 	plans, err := a.rebasePlans(session)
 	if err != nil {
@@ -366,6 +366,7 @@ func (a *app) openActiveRebasePlan() {
 	a.rebasePlanToken++
 	token := a.rebasePlanToken
 	session := a.session
+	ctx := a.repositoryWork.Context()
 	a.rebasePlanEditorOpen = true
 	a.rebasePlanLoading = true
 	a.rebasePlanError = ""
@@ -376,7 +377,7 @@ func (a *app) openActiveRebasePlan() {
 		plans, err := a.rebasePlans(session)
 		var plan repository.RebasePlan
 		if err == nil {
-			plan, err = plans.ReadRebasePlan(context.Background())
+			plan, err = plans.ReadRebasePlan(ctx)
 		}
 		a.update(func() {
 			if token != a.rebasePlanToken || !a.rebasePlanEditorOpen {

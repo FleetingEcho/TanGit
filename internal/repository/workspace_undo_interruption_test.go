@@ -40,7 +40,7 @@ func TestInterruptedUndoPreservesPostStateForReviewedRecovery(t *testing.T) {
 	if interrupted.AfterSnapshot == nil || interrupted.AfterSnapshot.ID != record.AfterSnapshot.ID || interrupted.Snapshot == nil || interrupted.Snapshot.ID != record.Snapshot.ID {
 		t.Fatal("interrupted Undo lost one of its exact recovery points")
 	}
-	reopened, err := (Opener{}).Open(context.Background(), dir)
+	reopened, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

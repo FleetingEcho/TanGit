@@ -13,8 +13,8 @@ func languageActionTestDocument(h *harness, text string) (*fakeLanguageServerCon
 	connection := newFakeLanguageServerConnection()
 	document := &codeDocument{path: "main.go", state: &editor.State{Buffer: editor.NewBuffer(text)}, loaded: true}
 	h.app.code.documents = map[string]*codeDocument{document.path: document}
-	h.app.goLanguageServer = connection
-	h.app.goLanguageServerDocs = make(map[string]uint64)
+	h.app.lsp.goServer = connection
+	h.app.lsp.goDocs = make(map[string]uint64)
 	return connection, document
 }
 

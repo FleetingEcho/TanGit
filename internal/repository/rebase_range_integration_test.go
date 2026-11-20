@@ -12,7 +12,7 @@ import (
 // different rebase plan silently.
 func TestVisualRebaseKeepsConsecutiveRangeValidation(t *testing.T) {
 	dir, commits := newRebasePlanRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

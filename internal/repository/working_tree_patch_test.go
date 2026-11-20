@@ -13,7 +13,7 @@ import (
 
 func workingTreePatchSession(t *testing.T, dir string) *gitSession {
 	t.Helper()
-	opened, err := (Opener{}).Open(context.Background(), dir)
+	opened, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

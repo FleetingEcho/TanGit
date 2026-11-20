@@ -13,7 +13,7 @@ func TestStartRebasePlanRejectsMovedTargetRef(t *testing.T) {
 	dir, commits := newRebasePlanRepository(t)
 	runGit(t, dir, "checkout", "-b", "target", commits[0].Hash)
 	runGit(t, dir, "checkout", "main")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestStartRebasePlanRejectsMovedTargetRef(t *testing.T) {
 
 func TestActiveTodoGitCASPreservesExecUpdateRefResetAndLabel(t *testing.T) {
 	dir, commits := newRebasePlanRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestActiveTodoGitCASPreservesExecUpdateRefResetAndLabel(t *testing.T) {
 
 func TestActiveTodoGitCASHandlesShortHashesAndAliases(t *testing.T) {
 	dir, commits := newRebasePlanRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestConflictedRebaseAllowsWholeTodoCAS(t *testing.T) {
 	}
 	runGit(t, dir, "commit", "-am", "main work")
 	runGit(t, dir, "checkout", "feature")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestConflictedRebaseAllowsWholeTodoCAS(t *testing.T) {
 
 func TestMalformedTodoKeepsOperationAndAbortAvailable(t *testing.T) {
 	dir, commits := newRebasePlanRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

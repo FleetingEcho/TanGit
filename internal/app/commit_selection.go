@@ -166,9 +166,9 @@ func (a *app) confirmBatchCommits(action repository.CommitRangeAction, cherry bo
 		run: func() {
 			a.beginRepositoryActionMessage(tr("Applied batch commit action"), "", func(ctx context.Context, s repository.Session) error {
 				if cherry {
-					return s.CherryPickCommits(ctx, selected)
+					return requireHistorySession(s).CherryPickCommits(ctx, selected)
 				}
-				return s.EditCommitRange(ctx, selected, action)
+				return requireHistorySession(s).EditCommitRange(ctx, selected, action)
 			}, func() { a.commitSelection = nil })
 		},
 	})
@@ -184,7 +184,9 @@ func (a *app) confirmForcePushWithLease() {
 		detail:       tr("This replaces published branch history. Git refuses if the remote branch differs from your remote-tracking reference. Review fetched changes before confirming."),
 		confirmLabel: "Force push with lease", destructive: true,
 		run: func() {
-			a.beginRepositoryActionMessage(tr("Force-pushed the branch with a lease"), "", func(ctx context.Context, s repository.Session) error { return s.ForcePushWithLease(ctx) }, nil)
+			a.beginRepositoryActionMessage(tr("Force-pushed the branch with a lease"), "", func(ctx context.Context, s repository.Session) error {
+				return requireBranchRemoteSession(s).ForcePushWithLease(ctx)
+			}, nil)
 		},
 	})
 }

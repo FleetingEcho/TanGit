@@ -138,13 +138,13 @@ func TestRewordRejectsDetachedHEADAndCommitsOutsideHEAD(t *testing.T) {
 	}
 }
 
-func newHistoryEditingSession(t *testing.T) (string, Session) {
+func newHistoryEditingSession(t *testing.T) (string, FullSession) {
 	t.Helper()
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
 	runGit(t, dir, "config", "user.name", "History Test")
 	runGit(t, dir, "config", "user.email", "history@example.com")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

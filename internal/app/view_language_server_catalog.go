@@ -16,9 +16,9 @@ func (a *app) languageServerCatalog(c *ui.Context) {
 	})
 	ui.Text(c, tr("Search, download, update, and configure language servers managed by TanGit.")).
 		TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).MaxWidth(560)
-	ui.SearchField(c, &a.languageServerCatalogQuery).Label(tr("Search language servers")).
+	ui.SearchField(c, &a.lsp.catalogQuery).Label(tr("Search language servers")).
 		Placeholder(tr("Search by language, server, or command")).MaxWidth(560)
-	if a.customLanguageServerForm.Open {
+	if a.lsp.customForm.Open {
 		a.customLanguageServerEditor(c)
 	}
 	// Keep the search field fixed while the complete catalog scrolls on its own.
@@ -27,7 +27,7 @@ func (a *app) languageServerCatalog(c *ui.Context) {
 		for _, category := range []struct{ id, label string }{{"core", "CORE — Daily development"}, {"optional", "OPTIONAL — Enable per project"}, {"custom", "CUSTOM — User defined"}} {
 			profiles := make([]languageServerProfile, 0)
 			for _, profile := range languageServerProfilesWithSettings(a.settings.LanguageServers) {
-				if profile.Category == category.id && languageServerCatalogMatches(profile, a.languageServerCatalogQuery) {
+				if profile.Category == category.id && languageServerCatalogMatches(profile, a.lsp.catalogQuery) {
 					profiles = append(profiles, profile)
 				}
 			}
@@ -44,7 +44,7 @@ func (a *app) languageServerCatalog(c *ui.Context) {
 }
 
 func (a *app) toggleLanguageServerProfile(c *ui.Context, profile languageServerProfile, enabled bool) {
-	if a.languageServerInstalling[profile.ID] || a.languageServerUninstalling[profile.ID] {
+	if a.lsp.installing[profile.ID] || a.lsp.uninstalling[profile.ID] {
 		return
 	}
 	a.invalidateLanguageServerTest()
@@ -52,19 +52,19 @@ func (a *app) toggleLanguageServerProfile(c *ui.Context, profile languageServerP
 		// Expanded checkboxes are bound to their draft and have already changed
 		// by the time they reach this shared guard. Roll those bindings back too.
 		if profile.ID == goLanguageServerID {
-			a.goLanguageServerEnabled = false
-		} else if draft := a.languageServerDrafts[profile.ID]; draft != nil {
+			a.lsp.goEnabled = false
+		} else if draft := a.lsp.drafts[profile.ID]; draft != nil {
 			draft.Enabled = false
 		}
 		a.notify("warning", tr("Download required"), trf("Download %s first, or configure an installed executable.", profile.Name))
 		return
 	}
 	if profile.ID == goLanguageServerID {
-		a.goLanguageServerEnabled = enabled
+		a.lsp.goEnabled = enabled
 		a.storeGoLanguageServerDraft(c)
 		return
 	}
-	draft := a.languageServerDrafts[profile.ID]
+	draft := a.lsp.drafts[profile.ID]
 	if draft == nil {
 		return
 	}
@@ -74,7 +74,7 @@ func (a *app) toggleLanguageServerProfile(c *ui.Context, profile languageServerP
 
 func (a *app) customLanguageServerEditor(c *ui.Context) {
 	theme := c.Theme()
-	form := &a.customLanguageServerForm
+	form := &a.lsp.customForm
 	title := "Add custom language server"
 	if form.ID != "" {
 		title = "Edit custom language server"
@@ -112,9 +112,9 @@ func (a *app) customLanguageServerEditor(c *ui.Context) {
 
 func (a *app) languageServerCatalogProfileEnabled(profile languageServerProfile) bool {
 	if profile.ID == goLanguageServerID {
-		return a.goLanguageServerEnabled
+		return a.lsp.goEnabled
 	}
-	draft := a.languageServerDrafts[profile.ID]
+	draft := a.lsp.drafts[profile.ID]
 	return draft != nil && draft.Enabled
 }
 
@@ -153,11 +153,11 @@ func languageServerCatalogMatches(profile languageServerProfile, query string) b
 func (a *app) languageServerCatalogRow(c *ui.Context, profile languageServerProfile) {
 	theme := c.Theme()
 	enabled := a.languageServerCatalogProfileEnabled(profile)
-	installing := a.languageServerInstalling[profile.ID]
-	uninstalling := a.languageServerUninstalling[profile.ID]
+	installing := a.lsp.installing[profile.ID]
+	uninstalling := a.lsp.uninstalling[profile.ID]
 	busy := installing || uninstalling
 	owned := a.ownedManagedLanguageServer(profile.ID)
-	selected := a.languageServerCatalogSelected == profile.ID
+	selected := a.lsp.catalogSelected == profile.ID
 	ui.Column(c.Key("lsp-catalog-"+profile.ID)).Border(1, theme.Border).Radius(theme.Radius).
 		Padding(10).Gap(8).Margin(0, 0, 10, 0).MaxWidth(600).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(10).Wrap().Children(func() {
@@ -217,9 +217,9 @@ func (a *app) languageServerCatalogRow(c *ui.Context, profile languageServerProf
 			flatIconButton(c, "Configure "+profile.Name, "Configure "+profile.Name, settingsIcon, 14, 6,
 				busy, func() {
 					if selected {
-						a.languageServerCatalogSelected = ""
+						a.lsp.catalogSelected = ""
 					} else {
-						a.languageServerCatalogSelected = profile.ID
+						a.lsp.catalogSelected = profile.ID
 					}
 				})
 		})
@@ -230,7 +230,7 @@ func (a *app) languageServerCatalogRow(c *ui.Context, profile languageServerProf
 }
 
 func (a *app) languageServerCatalogConfiguration(c *ui.Context, profile languageServerProfile) {
-	if a.languageServerInstalling[profile.ID] || a.languageServerUninstalling[profile.ID] {
+	if a.lsp.installing[profile.ID] || a.lsp.uninstalling[profile.ID] {
 		return
 	}
 	if profile.Custom {
@@ -244,42 +244,42 @@ func (a *app) languageServerCatalogConfiguration(c *ui.Context, profile language
 		})
 	}
 	if profile.ID == goLanguageServerID {
-		toggle := ui.Checkbox(c, &a.goLanguageServerEnabled, tr("Enable gopls")).Label(tr("Enable Go (gopls)"))
+		toggle := ui.Checkbox(c, &a.lsp.goEnabled, tr("Enable gopls")).Label(tr("Enable Go (gopls)"))
 		if toggle.Changed() {
-			a.toggleLanguageServerProfile(c, profile, a.goLanguageServerEnabled)
+			a.toggleLanguageServerProfile(c, profile, a.lsp.goEnabled)
 		}
-		path := ui.TextInput(c, &a.goLanguageServerPath).Label(trf("%s executable path", profile.Name)).
+		path := ui.TextInput(c, &a.lsp.goPath).Label(trf("%s executable path", profile.Name)).
 			Placeholder("gopls, /path/to/gopls").
 			Tooltip(tr("Comma-separated executables, tried in order")).Grow(1)
 		if path.Changed() {
 			a.storeGoLanguageServerDraft(c)
 		}
-		arguments := ui.TextArea(c, &a.goLanguageServerArgs).Label(trf("%s arguments", profile.Name)).
+		arguments := ui.TextArea(c, &a.lsp.goArgs).Label(trf("%s arguments", profile.Name)).
 			Placeholder("-remote=auto").Lines(2, 5).Grow(1)
 		if arguments.Changed() {
 			a.storeGoLanguageServerDraft(c)
 		}
-		formatter := ui.TextInput(c, &a.goFormatterCommand).Label(trf("%s formatter command", profile.Name)).
+		formatter := ui.TextInput(c, &a.lsp.goFormatterCommand).Label(trf("%s formatter command", profile.Name)).
 			Placeholder(tr("gofmt")).Tooltip(tr("Formatter reads source from stdin and writes formatted source to stdout; {{file}} is the current path."))
 		if formatter.Changed() {
 			a.storeGoLanguageServerDraft(c)
 		}
 		testLabel := trf("Test %s", profile.Name)
 		iconTextButtonState(c, testLabel, testLabel, terminalIcon, false,
-			a.languageServerTestBusy && a.languageServerTestID == profile.ID, a.testGoLanguageServer)
-		if a.languageServerTestBusy && a.languageServerTestID == profile.ID {
+			a.lsp.testBusy && a.lsp.testID == profile.ID, a.testGoLanguageServer)
+		if a.lsp.testBusy && a.lsp.testID == profile.ID {
 			ui.Spinner(c).Label(tr("Testing language server"))
 		}
-		if a.languageServerTestResult != "" && a.languageServerTestID == profile.ID {
+		if a.lsp.testResult != "" && a.lsp.testID == profile.ID {
 			color := c.Theme().Danger
-			if a.languageServerTestOK {
+			if a.lsp.testOK {
 				color = c.Theme().Success
 			}
-			ui.Text(c, a.languageServerTestResult).TextColor(color).FontSize(c.Theme().FontSize - 1)
+			ui.Text(c, a.lsp.testResult).TextColor(color).FontSize(c.Theme().FontSize - 1)
 		}
 		return
 	}
-	draft := a.languageServerDrafts[profile.ID]
+	draft := a.lsp.drafts[profile.ID]
 	if draft == nil {
 		return
 	}
@@ -305,12 +305,12 @@ func (a *app) languageServerCatalogConfiguration(c *ui.Context, profile language
 	}
 	testLabel := trf("Test %s", profile.Name)
 	iconTextButtonState(c, testLabel, testLabel, terminalIcon, false,
-		a.languageServerTestBusy && a.languageServerTestID == profile.ID, func() { a.testLanguageServerProfile(profile.ID) })
-	if a.languageServerTestResult != "" && a.languageServerTestID == profile.ID {
+		a.lsp.testBusy && a.lsp.testID == profile.ID, func() { a.testLanguageServerProfile(profile.ID) })
+	if a.lsp.testResult != "" && a.lsp.testID == profile.ID {
 		color := c.Theme().Danger
-		if a.languageServerTestOK {
+		if a.lsp.testOK {
 			color = c.Theme().Success
 		}
-		ui.Text(c, a.languageServerTestResult).TextColor(color).FontSize(c.Theme().FontSize - 1)
+		ui.Text(c, a.lsp.testResult).TextColor(color).FontSize(c.Theme().FontSize - 1)
 	}
 }

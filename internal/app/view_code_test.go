@@ -1300,7 +1300,7 @@ func TestCodeLanguageServersUseAnIconWithAHoverStatusList(t *testing.T) {
 	for _, id := range []string{"typescript", "css"} {
 		h.app.settings.LanguageServers[id] = languageServerSettings{}
 		profile, _ := languageServerProfileByID(id)
-		h.app.additionalLanguageServers[id] = &managedLanguageServer{
+		h.app.lsp.additional[id] = &managedLanguageServer{
 			profile: profile, connection: newFakeLanguageServerConnection(), documents: make(map[string]uint64),
 		}
 	}
@@ -1341,7 +1341,7 @@ func TestCodeLanguageServerShowsAnalysisProgressBesideTheIcon(t *testing.T) {
 		documents: make(map[string]uint64),
 	}
 	h.app.settings.LanguageServers["rust"] = languageServerSettings{}
-	h.app.additionalLanguageServers["rust"] = server
+	h.app.lsp.additional["rust"] = server
 	h.tester.Frame()
 
 	notify := func(method, params string) {
@@ -1383,7 +1383,7 @@ func TestCodeLanguageServerNotificationsRepaintOnlyVisibleChanges(t *testing.T) 
 	h.app.workspaceTab = sectionCode
 	profile, _ := languageServerProfileByID("rust")
 	server := &managedLanguageServer{profile: profile, sequence: 7, connection: newFakeLanguageServerConnection()}
-	h.app.additionalLanguageServers = map[string]*managedLanguageServer{profile.ID: server}
+	h.app.lsp.additional = map[string]*managedLanguageServer{profile.ID: server}
 	repaint := false
 	h.app.updateChanged = func(fn func() bool) {
 		h.app.update(func() { repaint = fn() })
@@ -1444,7 +1444,7 @@ func TestCodeLanguageServerOffersDownloadInsteadOfErrorWhenMissing(t *testing.T)
 	openRealCodeDocument(t, h, "src/main.tsx")
 	profile, _ := languageServerProfileByID("tailwind")
 	h.app.settings.LanguageServers["tailwind"] = languageServerSettings{}
-	h.app.additionalLanguageServers["tailwind"] = &managedLanguageServer{profile: profile, missing: true}
+	h.app.lsp.additional["tailwind"] = &managedLanguageServer{profile: profile, missing: true}
 	h.tester.Frame()
 
 	button, found := h.tester.Find("Language servers")

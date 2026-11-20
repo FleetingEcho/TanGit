@@ -1,15 +1,86 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
 	"lazygitapp/internal/repository"
 )
+
+type blockingReviewSession struct {
+	fakeSession
+	started  chan struct{}
+	canceled chan struct{}
+}
+
+func (s *blockingReviewSession) ReviewedFiles(ctx context.Context, _ []repository.File) (map[string]bool, error) {
+	close(s.started)
+	<-ctx.Done()
+	close(s.canceled)
+	return nil, ctx.Err()
+}
+
+func TestClosingRepositoryCancelsReviewRead(t *testing.T) {
+	a := newApp(fakeOpener{})
+	updates := newUpdates()
+	a.update = updates.update
+	session := &blockingReviewSession{
+		fakeSession: fakeSession{snapshot: repository.Snapshot{Root: "/work/project"}},
+		started:     make(chan struct{}),
+		canceled:    make(chan struct{}),
+	}
+	a.installOpenedRepository(session, session.snapshot)
+	a.requestReviewedFiles()
+	select {
+	case <-session.started:
+	case <-time.After(time.Second):
+		t.Fatal("review read did not start")
+	}
+
+	a.shutdown()
+	select {
+	case <-session.canceled:
+	case <-time.After(time.Second):
+		t.Fatal("closing the repository did not cancel its review read")
+	}
+	updates.waitForUpdate(t)
+}
+
+func TestReplacingRepositoryCancelsReviewRead(t *testing.T) {
+	a := newApp(fakeOpener{})
+	updates := newUpdates()
+	a.update = updates.update
+	previous := &blockingReviewSession{
+		fakeSession: fakeSession{snapshot: repository.Snapshot{Root: "/work/previous"}},
+		started:     make(chan struct{}),
+		canceled:    make(chan struct{}),
+	}
+	a.installOpenedRepository(previous, previous.snapshot)
+	a.requestReviewedFiles()
+	select {
+	case <-previous.started:
+	case <-time.After(time.Second):
+		t.Fatal("previous repository review read did not start")
+	}
+
+	replacement := fakeSession{snapshot: repository.Snapshot{Root: "/work/replacement"}}
+	a.installOpenedRepository(replacement, replacement.snapshot)
+	select {
+	case <-previous.canceled:
+	case <-time.After(time.Second):
+		t.Fatal("replacing the repository did not cancel the previous review read")
+	}
+	if err := a.repositoryWork.Context().Err(); err != nil {
+		t.Fatalf("replacement scope is already canceled: %v", err)
+	}
+	updates.waitForUpdate(t)
+}
 
 // The reviewed workflow is exercised through the same buttons, menu and keys a
 // user has. Content invalidation itself is covered against real Git in the
@@ -79,7 +150,7 @@ func TestReviewedRowHoverOffersUnreviewInsteadOfAnotherReview(t *testing.T) {
 		{Path: "a.txt", Status: " M", Unstaged: true, Tracked: true},
 		{Path: "b.txt", Status: " M", Unstaged: true, Tracked: true},
 	})
-	h.app.reviewedFiles["a.txt"] = true
+	h.app.review.files["a.txt"] = true
 	if err := h.tester.Click("b.txt"); err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +190,7 @@ func TestReviewFailurePreservesVisibleFileAndDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.waitFor(t, "review failure", func() bool { return h.app.actionError != "" })
-	if h.app.commitSummary != "keep this draft" || h.app.reviewedFiles["a.txt"] {
-		t.Fatalf("failed review changed draft or mark: draft=%q reviewed=%v", h.app.commitSummary, h.app.reviewedFiles["a.txt"])
+	if h.app.commitSummary != "keep this draft" || h.app.review.files["a.txt"] {
+		t.Fatalf("failed review changed draft or mark: draft=%q reviewed=%v", h.app.commitSummary, h.app.review.files["a.txt"])
 	}
 }

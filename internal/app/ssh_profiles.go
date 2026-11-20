@@ -292,38 +292,34 @@ func sshProfileValidationMessage(err error) string {
 func (a *app) openSSHProfileForm(profileID string) {
 	a.cancelSSHWorkspaceResolve()
 	a.cancelSSHProfileTest()
-	a.sshProfileFormOpen = true
-	a.sshProfileFormError = ""
-	a.sshProfileFormNotice = ""
+	a.ssh.profileFormOpen = true
+	a.ssh.profileFormError = ""
+	a.ssh.profileFormNotice = ""
 	if profileID == "" {
-		a.sshProfileDraft = newSSHProfileDraft()
+		a.ssh.profileDraft = newSSHProfileDraft()
 		return
 	}
 	for _, profile := range a.settings.SSHProfiles {
 		if profile.ID == profileID {
-			a.sshProfileDraft = sshDraftFromProfile(profile)
+			a.ssh.profileDraft = sshDraftFromProfile(profile)
 			return
 		}
 	}
-	a.sshProfileDraft = newSSHProfileDraft()
+	a.ssh.profileDraft = newSSHProfileDraft()
 }
 
 func (a *app) closeSSHProfileForm() {
-	a.cancelSSHProfileTest()
-	a.sshProfileFormOpen = false
-	a.sshProfileDraft = sshProfileDraft{}
-	a.sshProfileFormError = ""
-	a.sshProfileFormNotice = ""
+	a.ssh.resetProfileForm()
 }
 
 func (a *app) submitSSHProfileForm(c *ui.Context) {
-	profile, err := a.sshDraftProfile(a.sshProfileDraft)
+	profile, err := a.sshDraftProfile(a.ssh.profileDraft)
 	if err != nil {
-		a.sshProfileFormError = sshProfileValidationMessage(err)
-		a.sshProfileFormNotice = ""
+		a.ssh.profileFormError = sshProfileValidationMessage(err)
+		a.ssh.profileFormNotice = ""
 		return
 	}
-	draft := a.sshProfileDraft
+	draft := a.ssh.profileDraft
 	updated := false
 	for i := range a.settings.SSHProfiles {
 		if a.settings.SSHProfiles[i].ID == profile.ID {
@@ -341,7 +337,7 @@ func (a *app) submitSSHProfileForm(c *ui.Context) {
 	a.closeSSHProfileForm()
 	a.refreshSSHBrowserOnSelection()
 	if !persistent {
-		a.sshWorkspaceError = tr("Profile saved. Its new credential is available only for this session because the system keychain is unavailable.")
+		a.ssh.workspaceError = tr("Profile saved. Its new credential is available only for this session because the system keychain is unavailable.")
 	}
 	if c != nil {
 		c.Invalidate()
@@ -360,9 +356,9 @@ func (a *app) deleteSSHProfile(profileID string) {
 	}
 	a.settings.SSHProfiles = kept
 	a.deleteSSHProfileSecrets(profileID)
-	if a.sshWorkspaceProfileID == profileID {
-		a.sshWorkspaceProfileID = ""
-		a.sshWorkspaceRoot = ""
+	if a.ssh.workspaceProfileID == profileID {
+		a.ssh.workspaceProfileID = ""
+		a.ssh.workspaceRoot = ""
 	}
 	a.saveSettings()
 }
@@ -462,13 +458,13 @@ func normalizeSSHProfileID(value string) string {
 func (a *app) openSSHWorkspacePicker() {
 	a.cancelSSHWorkspaceResolve()
 	a.loadSettings()
-	a.sshWorkspaceOpen = true
-	a.sshWorkspaceProfileID = ""
-	a.sshWorkspaceRoot = "/home"
-	a.sshBrowser = sshBrowserState{}
-	a.sshWorkspaceError = ""
-	a.sshProfileFormError = ""
-	a.sshProfileFormNotice = ""
+	a.ssh.workspaceOpen = true
+	a.ssh.workspaceProfileID = ""
+	a.ssh.workspaceRoot = "/home"
+	a.ssh.browser = sshBrowserState{}
+	a.ssh.workspaceError = ""
+	a.ssh.profileFormError = ""
+	a.ssh.profileFormNotice = ""
 	if len(a.settings.SSHProfiles) == 0 {
 		a.openSSHProfileForm("")
 		return
@@ -476,19 +472,11 @@ func (a *app) openSSHWorkspacePicker() {
 }
 
 func (a *app) cancelSSHWorkspaceResolve() {
-	a.sshWorkspaceResolveSeq++
-	a.sshWorkspaceResolving = false
-	if a.sshWorkspaceResolveCancel != nil {
-		a.sshWorkspaceResolveCancel()
-		a.sshWorkspaceResolveCancel = nil
-	}
+	a.ssh.cancelWorkspaceResolve()
 }
 
 func (a *app) closeSSHWorkspacePicker() {
-	a.cancelSSHWorkspaceResolve()
-	a.closeSSHProfileForm()
-	a.sshWorkspaceOpen = false
-	a.sshWorkspaceError = ""
+	a.ssh.resetWorkspacePicker()
 }
 
 func (a *app) selectSSHWorkspaceProfile(profileID string) {
@@ -499,10 +487,10 @@ func (a *app) selectSSHWorkspaceProfileAndBrowse(profileID string, browse bool) 
 	a.cancelSSHWorkspaceResolve()
 	for _, profile := range a.settings.SSHProfiles {
 		if profile.ID == profileID {
-			a.sshBrowser = sshBrowserState{}
-			a.sshWorkspaceProfileID = profileID
-			a.sshWorkspaceRoot = "/home"
-			a.sshWorkspaceError = ""
+			a.ssh.browser = sshBrowserState{}
+			a.ssh.workspaceProfileID = profileID
+			a.ssh.workspaceRoot = "/home"
+			a.ssh.workspaceError = ""
 			if browse {
 				a.refreshSSHBrowserOnSelection()
 			}
@@ -513,7 +501,7 @@ func (a *app) selectSSHWorkspaceProfileAndBrowse(profileID string, browse bool) 
 
 func (a *app) selectedSSHProfile() (sshworkspace.Profile, bool) {
 	for _, profile := range a.settings.SSHProfiles {
-		if profile.ID == a.sshWorkspaceProfileID {
+		if profile.ID == a.ssh.workspaceProfileID {
 			return profile, true
 		}
 	}
@@ -521,38 +509,33 @@ func (a *app) selectedSSHProfile() (sshworkspace.Profile, bool) {
 }
 
 func (a *app) openSelectedSSHWorkspace() {
-	a.loadSSHFolder(a.sshWorkspaceRoot, true, a.sshBrowser.AllowInit)
+	a.loadSSHFolder(a.ssh.workspaceRoot, true, a.ssh.browser.AllowInit)
 }
 
 func (a *app) cancelSSHProfileTest() {
-	a.sshProfileTestSeq++
-	a.sshProfileTestBusy = false
-	if a.sshProfileTestCancel != nil {
-		a.sshProfileTestCancel()
-		a.sshProfileTestCancel = nil
-	}
+	a.ssh.cancelProfileTest()
 }
 
 func (a *app) testSSHProfile() {
 	if a.sshTestConnection == nil {
-		a.sshProfileFormNotice = tr("SSH connection testing is not wired yet.")
-		a.sshProfileFormError = ""
+		a.ssh.profileFormNotice = tr("SSH connection testing is not wired yet.")
+		a.ssh.profileFormError = ""
 		return
 	}
-	profile, err := a.sshDraftProfile(a.sshProfileDraft)
+	profile, err := a.sshDraftProfile(a.ssh.profileDraft)
 	if err != nil {
-		a.sshProfileFormError = sshProfileValidationMessage(err)
-		a.sshProfileFormNotice = ""
+		a.ssh.profileFormError = sshProfileValidationMessage(err)
+		a.ssh.profileFormNotice = ""
 		return
 	}
 	a.cancelSSHProfileTest()
 	ctx, cancel := context.WithCancel(context.Background())
-	a.sshProfileTestCancel = cancel
-	a.sshProfileTestBusy = true
-	a.sshProfileTestSeq++
-	sequence := a.sshProfileTestSeq
-	a.sshProfileFormError = ""
-	a.sshProfileFormNotice = tr("Testing SSH connection…")
+	a.ssh.profileTestCancel = cancel
+	a.ssh.profileTestBusy = true
+	a.ssh.profileTestSeq++
+	sequence := a.ssh.profileTestSeq
+	a.ssh.profileFormError = ""
+	a.ssh.profileFormNotice = tr("Testing SSH connection…")
 	var secrets sshProfileSecrets
 	switch profile.AuthMode {
 	case sshworkspace.AuthPassword:
@@ -560,11 +543,11 @@ func (a *app) testSSHProfile() {
 	case sshworkspace.AuthKey:
 		secrets.Passphrase, _, _ = a.sshSecrets().Get(sshworkspace.PassphraseSecretRef(profile.ID))
 	}
-	if a.sshProfileDraft.Password != "" {
-		secrets.Password = a.sshProfileDraft.Password
+	if a.ssh.profileDraft.Password != "" {
+		secrets.Password = a.ssh.profileDraft.Password
 	}
-	if a.sshProfileDraft.Passphrase != "" {
-		secrets.Passphrase = a.sshProfileDraft.Passphrase
+	if a.ssh.profileDraft.Passphrase != "" {
+		secrets.Passphrase = a.ssh.profileDraft.Passphrase
 	}
 	testConnection := a.sshTestConnection
 	go func() {
@@ -572,18 +555,18 @@ func (a *app) testSSHProfile() {
 		defer cancel()
 		err := testConnection(ctx, profile, secrets)
 		a.update(func() {
-			if sequence != a.sshProfileTestSeq {
+			if sequence != a.ssh.profileTestSeq {
 				return
 			}
-			a.sshProfileTestBusy = false
-			a.sshProfileTestCancel = nil
+			a.ssh.profileTestBusy = false
+			a.ssh.profileTestCancel = nil
 			if err == nil {
-				a.sshProfileFormNotice = tr("SSH connection succeeded.")
+				a.ssh.profileFormNotice = tr("SSH connection succeeded.")
 				return
 			}
 			message := redactSSHProfileError(err, secrets).Error()
-			a.sshProfileFormNotice = ""
-			a.sshProfileFormError = trf("SSH connection failed: %s", statusErrorLine(message))
+			a.ssh.profileFormNotice = ""
+			a.ssh.profileFormError = trf("SSH connection failed: %s", statusErrorLine(message))
 		})
 	}()
 }

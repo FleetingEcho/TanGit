@@ -52,7 +52,7 @@ func TestChangesStatusPopoverMovesUnreviewedAndFiltersFiles(t *testing.T) {
 		t.Fatalf("enable Unreviewed: %v", err)
 	}
 	h.tester.Frame()
-	if !h.app.reviewFilter || !h.app.changesFiltersOpen {
+	if !h.app.review.filter || !h.app.changesFiltersOpen {
 		t.Fatal("review checkbox should stay enabled while the popup remains open")
 	}
 	if err := h.tester.Click("Show only staged files"); err != nil {
@@ -85,13 +85,13 @@ func TestChangesStatusPopoverMovesUnreviewedAndFiltersFiles(t *testing.T) {
 
 func TestChangesStatusPopoverUnreviewedEmptyStateAndClear(t *testing.T) {
 	h := menuTestApp(t)
-	h.app.reviewedFiles = map[string]bool{"one.txt": true}
+	h.app.review.files = map[string]bool{"one.txt": true}
 	openChangesFilterPopover(t, h)
 	if err := h.tester.Click("Unreviewed"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if !h.app.reviewFilter {
+	if !h.app.review.filter {
 		t.Fatal("Unreviewed checkbox did not bind to the review filter")
 	}
 	if err := h.tester.Click("Show only staged files"); err != nil {
@@ -108,7 +108,7 @@ func TestChangesStatusPopoverUnreviewedEmptyStateAndClear(t *testing.T) {
 		t.Fatalf("clear filters from the empty state: %v", err)
 	}
 	h.tester.Frame()
-	if len(visibleChangePaths(h.app)) != 2 || h.app.reviewFilter || h.app.fileStatusFilter != changesStatusAll {
+	if len(visibleChangePaths(h.app)) != 2 || h.app.review.filter || h.app.fileStatusFilter != changesStatusAll {
 		t.Fatal("clearing filters did not restore the visible files")
 	}
 	if _, found := h.tester.AccessByRole(ui.RoleButton, "Next unreviewed"); !found {

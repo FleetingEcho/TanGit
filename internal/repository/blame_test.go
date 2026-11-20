@@ -31,7 +31,7 @@ func TestBlameReadsAllHEADLinesDespiteWorkingTreeChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestBlamePreservesCommitCoordinatesAcrossRenameAndLineShift(t *testing.T) {
 	runGit(t, dir, "add", "new.txt")
 	runGit(t, dir, "commit", "-m", "rename and insert")
 
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestBlameWorkingTreeFileAttributesUntrackedAndUnbornFiles(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("first\r\nsecond\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			session, err := (Opener{}).Open(context.Background(), dir)
+			session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 			if err != nil {
 				t.Fatal(err)
 			}

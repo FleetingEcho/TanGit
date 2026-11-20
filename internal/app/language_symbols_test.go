@@ -290,7 +290,7 @@ func TestLanguageSymbolsDialogLoadingAndEmptyResults(t *testing.T) {
 	if !h.tester.HasText("No matching symbols") || h.tester.HasText("Loading document symbols…") {
 		t.Fatal("an empty search did not show the filtered empty state")
 	}
-	connection := h.app.goLanguageServer.(*fakeLanguageServerConnection)
+	connection := h.app.lsp.goServer.(*fakeLanguageServerConnection)
 	var response func(json.RawMessage, error)
 	connection.request = func(_ string, _ any, result func(json.RawMessage, error)) {
 		response = result

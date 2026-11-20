@@ -22,7 +22,7 @@ func operationSession(t *testing.T, session Session) OperationSession {
 
 func TestMergeOperationStateAndContinue(t *testing.T) {
 	dir := conflictedRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestMergeOperationStateAndContinue(t *testing.T) {
 	}
 }
 
-func conflictedRebase(t *testing.T) (string, Session, string, string) {
+func conflictedRebase(t *testing.T) (string, FullSession, string, string) {
 	t.Helper()
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
@@ -107,7 +107,7 @@ func conflictedRebase(t *testing.T) (string, Session, string, string) {
 	runGit(t, dir, "commit", "-m", "main work")
 	ontoSHA := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
 	runGit(t, dir, "checkout", "feature")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestRebaseOperationStateContinueSkipAndAbort(t *testing.T) {
 	}
 }
 
-func conflictedCherryPick(t *testing.T) (string, Session, string, string) {
+func conflictedCherryPick(t *testing.T) (string, FullSession, string, string) {
 	t.Helper()
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
@@ -208,7 +208,7 @@ func conflictedCherryPick(t *testing.T) (string, Session, string, string) {
 	runGit(t, dir, "add", "file.txt")
 	runGit(t, dir, "commit", "-m", "main work")
 	headSHA := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestCherryPickOperationStateContinueSkipAndAbort(t *testing.T) {
 	}
 }
 
-func conflictedAM(t *testing.T) (string, Session, string, string) {
+func conflictedAM(t *testing.T) (string, FullSession, string, string) {
 	t.Helper()
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
@@ -294,7 +294,7 @@ func conflictedAM(t *testing.T) (string, Session, string, string) {
 	runGit(t, dir, "add", "file.txt")
 	runGit(t, dir, "commit", "-m", "main work")
 	headSHA := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +365,7 @@ func TestAMOperationStateContinueSkipAndAbort(t *testing.T) {
 	}
 }
 
-func conflictedRevert(t *testing.T) (string, Session, string, string) {
+func conflictedRevert(t *testing.T) (string, FullSession, string, string) {
 	t.Helper()
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
@@ -383,7 +383,7 @@ func conflictedRevert(t *testing.T) (string, Session, string, string) {
 	}
 	incomingSHA := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD~1"))
 	headSHA := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
-	snapshotSession, err := (Opener{}).Open(context.Background(), dir)
+	snapshotSession, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -472,7 +472,7 @@ func TestContinueStoppingAtTheNextRebaseConflictIsNormal(t *testing.T) {
 	runGit(t, dir, "add", "file.txt", "second.txt")
 	runGit(t, dir, "commit", "-m", "main work")
 	runGit(t, dir, "checkout", "feature")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -547,7 +547,7 @@ func TestConflictedHistoryRebaseJournalFinalizesAfterContinue(t *testing.T) {
 		hash := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
 		commits = append(commits, Commit{Hash: hash, ShortHash: hash[:7]})
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -610,7 +610,7 @@ func TestPullRebaseProvenanceRequiresOwnJournal(t *testing.T) {
 	runGit(t, dir, "add", "file.txt")
 	runGit(t, dir, "commit", "-m", "local work")
 	origSHA := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -643,7 +643,7 @@ func TestPullRebaseProvenanceRequiresOwnJournal(t *testing.T) {
 
 func TestDriveOperationReturnsLockErrorWithoutDeletingLock(t *testing.T) {
 	dir := conflictedRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -674,7 +674,7 @@ func TestDriveOperationReturnsLockErrorWithoutDeletingLock(t *testing.T) {
 
 func TestDriveOperationRefusesUnresolvedContinue(t *testing.T) {
 	dir := conflictedRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -694,7 +694,7 @@ func TestDriveOperationRefusesUnresolvedContinue(t *testing.T) {
 
 func TestDriveOperationRejectsExternallyChangedMetadata(t *testing.T) {
 	dir := conflictedRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -717,7 +717,7 @@ func TestDriveOperationRejectsExternallyChangedMetadata(t *testing.T) {
 
 func TestDriveOperationRejectsExternallyChangedState(t *testing.T) {
 	dir := conflictedRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

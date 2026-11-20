@@ -81,7 +81,7 @@ func stackSyncBranchNamed(t *testing.T, plan StackSyncPlan, name string) StackSy
 
 func stackSyncSessionFor(t *testing.T, dir string) StackSyncSession {
 	t.Helper()
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

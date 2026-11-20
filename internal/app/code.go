@@ -298,8 +298,7 @@ func (a *app) resetCode() {
 	a.code.remoteFileEdit.client = nil
 	a.code.remoteFileEdit.stampKnown = false
 	a.code.remoteFileEdit.closing = false
-	a.stopGoLanguageServer()
-	a.stopAdditionalLanguageServers()
+	a.lsp.resetRepository()
 	if a.code.searchCancel != nil {
 		a.code.searchCancel()
 	}
@@ -477,6 +476,7 @@ func (a *app) requestCodeFiles() {
 	if remote {
 		remoteClient, remoteErr = a.remoteWorkspaceClient()
 	}
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
 		var paths, emptyDirectories []string
@@ -486,9 +486,9 @@ func (a *app) requestCodeFiles() {
 		if remote {
 			err = remoteErr
 			if err == nil {
-				paths, err = listRemoteCodeFiles(context.Background(), remoteClient, root)
+				paths, err = listRemoteCodeFiles(ctx, remoteClient, root)
 				if err == nil {
-					emptyDirectories = listRemoteCodeEmptyDirectories(context.Background(), remoteClient, root)
+					emptyDirectories = listRemoteCodeEmptyDirectories(ctx, remoteClient, root)
 				}
 			}
 		} else if plain {
@@ -977,9 +977,9 @@ func (a *app) saveCodeDocumentWithOverwrite(document *codeDocument, overwrite bo
 	document.localStampKnown = true
 	document.saveError = ""
 	document.branchNotice = ""
-	if a.goLanguageServer != nil && strings.EqualFold(filepath.Ext(document.path), ".go") {
+	if a.lsp.goServer != nil && strings.EqualFold(filepath.Ext(document.path), ".go") {
 		a.syncGoLanguageServerDocument(document.path, document)
-		a.goLanguageServer.DidSave(languageServerFileURI(a.workingFilePath(document.path)))
+		a.lsp.goServer.DidSave(languageServerFileURI(a.workingFilePath(document.path)))
 	}
 	for _, server := range a.additionalLanguageServersForDocument(document) {
 		a.syncManagedLanguageServerDocument(server, document.path, document)
@@ -1379,7 +1379,7 @@ func (a *app) startCodeSearch(limit int, loadingMore bool) {
 	root := a.snapshot.Root
 	paths := append([]string(nil), a.code.files...)
 	options := a.code.searchSubmittedOptions
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	a.code.searchCancel = cancel
 	a.code.searchRunning = true
 	a.code.searchLoadingMore = loadingMore

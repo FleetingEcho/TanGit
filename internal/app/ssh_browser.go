@@ -86,16 +86,16 @@ func (a *app) loadSSHFolder(root string, open, initialize bool) {
 }
 
 func (a *app) editSSHFolderPath() {
-	a.sshBrowser.Listing = sshFolderListing{}
-	a.sshBrowser.List = ui.ListState{}
-	a.sshBrowser.CreateOpen = false
-	a.startSSHFolderJob(a.sshWorkspaceRoot, false, false, 350*time.Millisecond, nil)
+	a.ssh.browser.Listing = sshFolderListing{}
+	a.ssh.browser.List = ui.ListState{}
+	a.ssh.browser.CreateOpen = false
+	a.startSSHFolderJob(a.ssh.workspaceRoot, false, false, 350*time.Millisecond, nil)
 }
 
 func (a *app) startSSHFolderJob(root string, open, initialize bool, delay time.Duration, read func(context.Context, sshworkspace.Profile, string, bool) (sshFolderListing, error)) {
 	profile, ok := a.selectedSSHProfile()
 	if !ok {
-		a.sshWorkspaceError = tr("Choose an SSH profile first.")
+		a.ssh.workspaceError = tr("Choose an SSH profile first.")
 		return
 	}
 	root = strings.TrimSpace(root)
@@ -103,25 +103,25 @@ func (a *app) startSSHFolderJob(root string, open, initialize bool, delay time.D
 		root = "/home"
 	}
 	a.cancelSSHWorkspaceResolve()
-	a.sshWorkspaceRoot = root
-	if a.sshBrowser.Listing.Root != root {
-		a.sshBrowser.Listing = sshFolderListing{}
-		a.sshBrowser.List = ui.ListState{}
+	a.ssh.workspaceRoot = root
+	if a.ssh.browser.Listing.Root != root {
+		a.ssh.browser.Listing = sshFolderListing{}
+		a.ssh.browser.List = ui.ListState{}
 	}
-	a.sshBrowser.CreateOpen = false
-	a.sshWorkspaceError = ""
+	a.ssh.browser.CreateOpen = false
+	a.ssh.workspaceError = ""
 	if !validSSHRoot(root) {
-		a.sshWorkspaceError = tr("Enter an absolute remote folder, ~, or a path beginning with ~/.")
+		a.ssh.workspaceError = tr("Enter an absolute remote folder, ~, or a path beginning with ~/.")
 		return
 	}
-	if initialize && !a.sshBrowser.AllowInit {
+	if initialize && !a.ssh.browser.AllowInit {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	a.sshWorkspaceResolveCancel = cancel
-	a.sshWorkspaceResolving = true
-	sequence := a.sshWorkspaceResolveSeq
-	a.sshWorkspaceError = ""
+	a.ssh.workspaceResolveCancel = cancel
+	a.ssh.workspaceResolving = true
+	sequence := a.ssh.workspaceResolveSeq
+	a.ssh.workspaceError = ""
 	if read == nil {
 		read = a.sshBrowseFolder
 	}
@@ -142,25 +142,25 @@ func (a *app) startSSHFolderJob(root string, open, initialize bool, delay time.D
 		}
 		listing, err := read(ctx, profile, root, initialize)
 		a.updateChanged(func() bool {
-			if sequence != a.sshWorkspaceResolveSeq || !a.sshWorkspaceOpen {
+			if sequence != a.ssh.workspaceResolveSeq || !a.ssh.workspaceOpen {
 				return false
 			}
-			a.sshWorkspaceResolveCancel = nil
-			a.sshWorkspaceResolving = false
+			a.ssh.workspaceResolveCancel = nil
+			a.ssh.workspaceResolving = false
 			if err != nil {
 				if os.IsNotExist(err) {
-					a.sshWorkspaceError = tr("Remote folder does not exist.")
+					a.ssh.workspaceError = tr("Remote folder does not exist.")
 				} else {
-					a.sshWorkspaceError = statusErrorLine(repository.RedactSecrets(err.Error()))
+					a.ssh.workspaceError = statusErrorLine(repository.RedactSecrets(err.Error()))
 				}
 				return true
 			}
 			if !path.IsAbs(listing.Root) {
-				a.sshWorkspaceError = tr("The server returned an invalid remote folder.")
+				a.ssh.workspaceError = tr("The server returned an invalid remote folder.")
 				return true
 			}
-			a.sshBrowser.Listing = listing
-			a.sshWorkspaceRoot = listing.Root
+			a.ssh.browser.Listing = listing
+			a.ssh.workspaceRoot = listing.Root
 			if open && !listing.Repository && !initialize {
 				a.notify("info", "This folder is not a Git repository", tr("Choose a Git-managed folder or enable repository creation, then click Open."))
 			}
@@ -175,27 +175,27 @@ func (a *app) startSSHFolderJob(root string, open, initialize bool, delay time.D
 }
 
 func (a *app) beginSSHBrowserCreate(directory bool) {
-	if a.sshWorkspaceResolving || a.sshBrowser.Listing.Root == "" || a.sshWorkspaceRoot != a.sshBrowser.Listing.Root {
+	if a.ssh.workspaceResolving || a.ssh.browser.Listing.Root == "" || a.ssh.workspaceRoot != a.ssh.browser.Listing.Root {
 		return
 	}
-	a.sshBrowser.CreateOpen = true
-	a.sshBrowser.CreateDirectory = directory
-	a.sshBrowser.CreateRoot = a.sshBrowser.Listing.Root
-	a.sshBrowser.CreateName = ""
-	a.sshWorkspaceError = ""
+	a.ssh.browser.CreateOpen = true
+	a.ssh.browser.CreateDirectory = directory
+	a.ssh.browser.CreateRoot = a.ssh.browser.Listing.Root
+	a.ssh.browser.CreateName = ""
+	a.ssh.workspaceError = ""
 }
 
 func (a *app) submitSSHBrowserCreate() {
-	if !a.sshBrowser.CreateOpen || a.sshWorkspaceResolving {
+	if !a.ssh.browser.CreateOpen || a.ssh.workspaceResolving {
 		return
 	}
-	name, ok := cleanCodeEntryName(a.sshBrowser.CreateName)
+	name, ok := cleanCodeEntryName(a.ssh.browser.CreateName)
 	if !ok {
-		a.sshWorkspaceError = tr("Enter a valid name without path separators.")
+		a.ssh.workspaceError = tr("Enter a valid name without path separators.")
 		return
 	}
-	root, directory := a.sshBrowser.CreateRoot, a.sshBrowser.CreateDirectory
-	if root != a.sshWorkspaceRoot || root != a.sshBrowser.Listing.Root {
+	root, directory := a.ssh.browser.CreateRoot, a.ssh.browser.CreateDirectory
+	if root != a.ssh.workspaceRoot || root != a.ssh.browser.Listing.Root {
 		return
 	}
 	create := a.sshCreateEntry
@@ -236,7 +236,7 @@ func createSSHBrowserEntry(ctx context.Context, client *sshworkspace.Client, roo
 }
 
 func (a *app) refreshSSHBrowserOnSelection() {
-	if _, ok := a.opener.(appSSHRepositoryOpener); ok && a.sshWorkspaceOpen && !a.sshProfileFormOpen {
-		a.loadSSHFolder(a.sshWorkspaceRoot, false, false)
+	if _, ok := a.opener.(appSSHRepositoryOpener); ok && a.ssh.workspaceOpen && !a.ssh.profileFormOpen {
+		a.loadSSHFolder(a.ssh.workspaceRoot, false, false)
 	}
 }

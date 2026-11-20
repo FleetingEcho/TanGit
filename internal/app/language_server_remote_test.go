@@ -48,9 +48,9 @@ func TestRemoteDocumentsDoNotStartLocalLanguageServers(t *testing.T) {
 			if got := stats.Load(); got != 0 {
 				t.Fatalf("remote %s caused %d local manifest stats", documentPath, got)
 			}
-			if a.goLanguageServer != nil || len(a.additionalLanguageServers) != 0 {
+			if a.lsp.goServer != nil || len(a.lsp.additional) != 0 {
 				t.Fatalf("remote synchronization retained servers: gopls=%v additional=%v",
-					a.goLanguageServer, a.additionalLanguageServers)
+					a.lsp.goServer, a.lsp.additional)
 			}
 		})
 	}
@@ -61,14 +61,14 @@ func TestSwitchingFromLocalToRemoteStopsExistingLanguageServers(t *testing.T) {
 	a.code.documents["src/main.rs"] = &codeDocument{path: "src/main.rs"}
 	a.code.documents["src/main.ts"] = &codeDocument{path: "src/main.ts"}
 	goConnection := newFakeLanguageServerConnection()
-	a.goLanguageServer = goConnection
-	a.goLanguageServerDocs = map[string]uint64{"main.go": 1}
+	a.lsp.goServer = goConnection
+	a.lsp.goDocs = map[string]uint64{"main.go": 1}
 	connections := []*fakeLanguageServerConnection{goConnection}
 	for _, id := range []string{"rust", "typescript"} {
 		profile, _ := languageServerProfileByID(id)
 		connection := newFakeLanguageServerConnection()
 		connections = append(connections, connection)
-		a.additionalLanguageServers[id] = &managedLanguageServer{
+		a.lsp.additional[id] = &managedLanguageServer{
 			profile: profile, connection: connection, starting: true,
 			documents: map[string]uint64{"source": 1},
 		}
@@ -76,12 +76,12 @@ func TestSwitchingFromLocalToRemoteStopsExistingLanguageServers(t *testing.T) {
 
 	a.syncGoLanguageServer()
 
-	if a.goLanguageServer != nil || a.goLanguageServerStarting || len(a.goLanguageServerDocs) != 0 {
+	if a.lsp.goServer != nil || a.lsp.goStarting || len(a.lsp.goDocs) != 0 {
 		t.Fatalf("remote switch retained gopls state: server=%v starting=%v documents=%v",
-			a.goLanguageServer, a.goLanguageServerStarting, a.goLanguageServerDocs)
+			a.lsp.goServer, a.lsp.goStarting, a.lsp.goDocs)
 	}
-	if len(a.additionalLanguageServers) != 0 {
-		t.Fatalf("remote switch retained additional servers: %v", a.additionalLanguageServers)
+	if len(a.lsp.additional) != 0 {
+		t.Fatalf("remote switch retained additional servers: %v", a.lsp.additional)
 	}
 	for index, connection := range connections {
 		select {
@@ -105,8 +105,8 @@ func TestAdditionalLanguageServerSynchronizationAlsoRejectsRemoteDocuments(t *te
 	if got := lookups.Load(); got != 0 {
 		t.Fatalf("direct additional-server synchronization performed %d local lookups", got)
 	}
-	if len(a.additionalLanguageServers) != 0 {
-		t.Fatalf("direct additional-server synchronization created servers: %v", a.additionalLanguageServers)
+	if len(a.lsp.additional) != 0 {
+		t.Fatalf("direct additional-server synchronization created servers: %v", a.lsp.additional)
 	}
 }
 
@@ -118,7 +118,7 @@ func remoteLanguageServerTestApp(documentPath string) *app {
 		code: codeState{documents: map[string]*codeDocument{
 			documentPath: {path: documentPath},
 		}},
-		additionalLanguageServers: make(map[string]*managedLanguageServer),
+		lsp: languageServerUIState{additional: make(map[string]*managedLanguageServer)},
 		settings: appSettings{LanguageServers: map[string]languageServerSettings{
 			"go": {}, "rust": {}, "typescript": {},
 		}},

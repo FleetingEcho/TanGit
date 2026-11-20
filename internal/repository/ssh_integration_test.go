@@ -58,9 +58,9 @@ func TestOpenSSHWorkspaceRealOpenSSH(t *testing.T) {
 	// location through the SSH environment.
 	t.Setenv("GIT_DIR", filepath.Join(t.TempDir(), "not-a-repository"))
 	t.Setenv("GIT_WORK_TREE", t.TempDir())
-	session, err := OpenSSHWorkspace(ctx, client, workspace.Location{
+	session, err := openFullRepositorySessionForTest(OpenSSHWorkspace(ctx, client, workspace.Location{
 		Kind: workspace.SSH, ProfileID: server.Profile.ID, Root: dir,
-	}, nil)
+	}, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,9 +179,9 @@ func TestOpenSSHWorkspaceRecoveryRealOpenSSH(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	session, err := OpenSSHWorkspace(ctx, client, workspace.Location{
+	session, err := openFullRepositorySessionForTest(OpenSSHWorkspace(ctx, client, workspace.Location{
 		Kind: workspace.SSH, ProfileID: server.Profile.ID, Root: dir,
-	}, nil)
+	}, nil))
 	if err != nil {
 		t.Fatal(err)
 	}

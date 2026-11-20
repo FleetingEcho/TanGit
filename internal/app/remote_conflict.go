@@ -1,10 +1,6 @@
 package app
 
-import (
-	"context"
-
-	"github.com/egoist/mygo/ui/editor"
-)
+import "github.com/egoist/mygo/ui/editor"
 
 // startRemoteConflictWrite serializes an SSH conflict save behind the stamped
 // file version read by requestConflictFile. It only captures immutable data for
@@ -19,9 +15,10 @@ func (a *app) startRemoteConflictRecoveryWrite(state *conflictState, content str
 	// Pin repository identity with the stamped remote client. A later repository
 	// switch must not archive one session while writing through another.
 	session := a.session
+	ctx := a.repositoryWork.Context()
 	return a.startRemoteConflictWriteWithMutation(state, content, 0,
 		func(write func() error) error {
-			return runFileRecoveryMutation(context.Background(), session, state.path, write)
+			return runFileRecoveryMutation(ctx, session, state.path, write)
 		}, func(err error) {
 			a.refreshFileRecoveries()
 			done(err)

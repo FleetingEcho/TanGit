@@ -27,6 +27,7 @@ func (a *app) beginPatchImport() {
 	generation := a.generation
 	remote := a.location.IsRemote()
 	session := a.session
+	ctx := a.repositoryWork.Context()
 	parent := a.window
 	options := mygo.OpenDialogOptions{
 		Parent:      parent,
@@ -66,10 +67,10 @@ func (a *app) beginPatchImport() {
 			var data []byte
 			data, previewErr = os.ReadFile(paths[0])
 			if previewErr == nil {
-				preview, previewErr = session.PreviewPatchText(context.Background(), string(data))
+				preview, previewErr = requireChangesSession(session).PreviewPatchText(ctx, string(data))
 			}
 		} else {
-			preview, previewErr = session.PreviewPatch(context.Background(), paths[0])
+			preview, previewErr = requireChangesSession(session).PreviewPatch(ctx, paths[0])
 		}
 		a.update(func() {
 			if token != a.patchPreviewToken || generation != a.generation {
@@ -115,7 +116,7 @@ func (a *app) beginPatchApply() {
 	preview := *a.patchPreview
 	a.beginRepositoryActionMessage(tr("Applied patch to the working tree"), "",
 		func(ctx context.Context, session repository.Session) error {
-			return session.ApplyPatch(ctx, preview)
+			return requireChangesSession(session).ApplyPatch(ctx, preview)
 		}, a.closePatchPreview)
 }
 

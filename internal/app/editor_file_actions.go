@@ -196,9 +196,10 @@ func (a *app) openRemoteCodeItemInExplorer(relative string) {
 		return
 	}
 	generation := a.generation
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		result, runErr := runRemoteCodeItemInExplorer(context.Background(), client, root, filename)
+		result, runErr := runRemoteCodeItemInExplorer(ctx, client, root, filename)
 		if runErr == nil {
 			return
 		}
@@ -377,11 +378,12 @@ func (a *app) beginCodeFileOperation(kind codeFileOperationKind, source, destina
 	a.code.fileOperationSeq++
 	sequence, generation := a.code.fileOperationSeq, a.generation
 	a.code.fileFormError = ""
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
 		err := remoteErr
 		if remote && err == nil {
-			err = performRemoteCodeFileOperation(context.Background(), remoteClient, root, kind, source, destination)
+			err = performRemoteCodeFileOperation(ctx, remoteClient, root, kind, source, destination)
 		} else if !remote {
 			err = performCodeFileOperation(root, kind, source, destination)
 		}

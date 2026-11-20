@@ -254,9 +254,7 @@ func TestQuietRefreshReindexesCodeAfterExternalCheckout(t *testing.T) {
 // drainRefresh runs the reads the window queued, as the UI loop would.
 func drainRefresh(t *testing.T, updated *updates, reads int) {
 	t.Helper()
-	for range reads {
-		updated.waitForUpdate(t)
-	}
+	updated.waitForPending(t, reads)
 }
 
 // A file and a commit made in another app appear without the user pressing
@@ -404,7 +402,7 @@ func TestAQuietRefreshStandsAsideWhileTheUserIsBusy(t *testing.T) {
 		busy func(bool)
 	}{
 		{"editing a file", func(on bool) { a.fileEditing = on }},
-		{"a dialog", func(on bool) { a.settingsOpen = on }},
+		{"a dialog", func(on bool) { a.settingsUI.open = on }},
 		{"a diff line selection", func(on bool) { a.lineSelectMode = on }},
 	}
 	for _, tc := range cases {

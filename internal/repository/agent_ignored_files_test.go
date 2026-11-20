@@ -22,7 +22,7 @@ func newAgentIgnoredFixture(t *testing.T) agentIgnoredFixture {
 		runGit(t, directory, "init", "--initial-branch=main")
 	}
 	writeAgentIgnoredFixtureFile(t, fixture.source, ".gitignore", "*\n!visible.txt\n", 0o600)
-	session, err := (Opener{}).Open(context.Background(), fixture.dest)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), fixture.dest))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -32,7 +32,7 @@ func (a *app) beginCreateWorktree() {
 	}
 	a.beginRepositoryActionMessage(trf("Added worktree at %s", path), "",
 		func(ctx context.Context, session repository.Session) error {
-			return session.CreateWorktree(ctx, options)
+			return requireWorktreeSession(session).CreateWorktree(ctx, options)
 		}, func() {
 			a.selectedWorktree = selectedWorktreeIndex(a.snapshot.Worktrees, path)
 			a.syncWorktreeRow()
@@ -187,7 +187,7 @@ func (a *app) fetchSelectedWorktree() {
 	}
 	a.beginRepositoryActionMessage(trf("Fetched %s", worktree.Name), "",
 		func(ctx context.Context, session repository.Session) error {
-			return session.FetchWorktree(ctx, worktree.Path)
+			return requireWorktreeSession(session).FetchWorktree(ctx, worktree.Path)
 		}, nil)
 }
 
@@ -200,7 +200,7 @@ func (a *app) confirmPullSelectedWorktree() {
 		"This fast-forwards the selected worktree and changes its checked-out files. Review its local changes first.", func() {
 			a.beginRepositoryActionMessage(trf("Pulled %s", worktree.Name), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.PullWorktree(ctx, worktree.Path)
+					return requireWorktreeSession(session).PullWorktree(ctx, worktree.Path)
 				}, nil)
 		})
 }
@@ -267,7 +267,7 @@ func (a *app) confirmRemoveWorktree(worktree repository.Worktree, force bool) {
 		run: func() {
 			a.beginRepositoryActionMessage(trf("Removed worktree %s", worktree.Name), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.DeleteWorktree(ctx, worktree.Path, force)
+					return requireWorktreeSession(session).DeleteWorktree(ctx, worktree.Path, force)
 				}, nil)
 		},
 	})
@@ -287,7 +287,7 @@ func (a *app) toggleWorktreeLock(worktree repository.Worktree) {
 	if worktree.Locked {
 		a.beginRepositoryActionMessage(trf("Unlocked worktree %s", worktree.Name), "",
 			func(ctx context.Context, session repository.Session) error {
-				return session.UnlockWorktree(ctx, worktree.Path)
+				return requireWorktreeSession(session).UnlockWorktree(ctx, worktree.Path)
 			}, nil)
 		return
 	}
@@ -309,7 +309,7 @@ func (a *app) beginLockWorktree() {
 	}
 	a.beginRepositoryActionMessage(trf("Locked worktree %s", name), "",
 		func(ctx context.Context, session repository.Session) error {
-			return session.LockWorktree(ctx, path, reason)
+			return requireWorktreeSession(session).LockWorktree(ctx, path, reason)
 		}, func() {
 			a.showWorktreeLockForm = false
 			a.worktreeLockTarget = ""
@@ -333,7 +333,7 @@ func (a *app) beginRepairWorktrees() {
 	paths := splitWorktreePaths(a.worktreeRepairPaths)
 	a.beginRepositoryActionMessage(tr("Repaired worktree metadata"), "",
 		func(ctx context.Context, session repository.Session) error {
-			return session.RepairWorktrees(ctx, paths)
+			return requireWorktreeSession(session).RepairWorktrees(ctx, paths)
 		}, func() {
 			a.showWorktreeRepairForm = false
 			a.worktreeRepairPaths = ""
@@ -356,12 +356,13 @@ func (a *app) beginWorktreePrunePreview() {
 	token, generation := a.worktreePruneToken, a.generation
 	expire := strings.TrimSpace(a.worktreePruneExpire)
 	session := a.session
+	ctx := a.repositoryWork.Context()
 	a.worktreePruneLoading = true
 	a.worktreePrunePreview = nil
 	a.worktreePruneError = ""
 	go func() {
 		defer a.recoverBackground()
-		lines, err := session.PreviewPruneWorktrees(context.Background(), expire)
+		lines, err := requireWorktreeSession(session).PreviewPruneWorktrees(ctx, expire)
 		a.update(func() {
 			if token != a.worktreePruneToken || generation != a.generation || !a.showWorktreePruneForm {
 				return
@@ -395,7 +396,7 @@ func (a *app) beginPruneWorktrees() {
 		run: func() {
 			a.beginRepositoryActionMessage(tr("Pruned stale worktree records"), "",
 				func(ctx context.Context, session repository.Session) error {
-					return session.PruneWorktrees(ctx, expire)
+					return requireWorktreeSession(session).PruneWorktrees(ctx, expire)
 				}, func() {
 					a.showWorktreePruneForm = false
 					a.worktreePrunePreview = nil
@@ -427,7 +428,7 @@ func (a *app) beginMoveWorktree() {
 	force := a.worktreeMoveForce
 	a.beginRepositoryActionMessage(trf("Moved worktree %s", worktree.Name), "",
 		func(ctx context.Context, session repository.Session) error {
-			return session.MoveWorktree(ctx, worktree.Path, newPath, force)
+			return requireWorktreeSession(session).MoveWorktree(ctx, worktree.Path, newPath, force)
 		}, func() {
 			a.showWorktreeMoveForm = false
 			a.worktreeMovePath = ""

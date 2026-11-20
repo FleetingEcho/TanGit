@@ -34,12 +34,12 @@ func (a *app) syncAdditionalLanguageServers() {
 		a.stopAdditionalLanguageServers()
 		return
 	}
-	if a.settingsOpen || a.snapshot.Root == "" {
+	if a.settingsUI.open || a.snapshot.Root == "" {
 		a.stopAdditionalLanguageServers()
 		return
 	}
-	if a.additionalLanguageServers == nil {
-		a.additionalLanguageServers = make(map[string]*managedLanguageServer)
+	if a.lsp.additional == nil {
+		a.lsp.additional = make(map[string]*managedLanguageServer)
 	}
 	wanted := make(map[string]map[string]*codeDocument)
 	for path, document := range a.code.documents {
@@ -59,18 +59,18 @@ func (a *app) syncAdditionalLanguageServers() {
 			wanted[profile.ID][path] = document
 		}
 	}
-	for id, server := range a.additionalLanguageServers {
+	for id, server := range a.lsp.additional {
 		if len(wanted[id]) == 0 {
 			a.stopManagedLanguageServer(server)
-			delete(a.additionalLanguageServers, id)
+			delete(a.lsp.additional, id)
 		}
 	}
 	for id, documents := range wanted {
-		server := a.additionalLanguageServers[id]
+		server := a.lsp.additional[id]
 		if server == nil {
 			profile, _ := a.customLanguageServerProfileByID(id)
 			server = &managedLanguageServer{profile: profile}
-			a.additionalLanguageServers[id] = server
+			a.lsp.additional[id] = server
 		}
 		if id == "rust" {
 			var inputs []string
@@ -168,7 +168,7 @@ func (a *app) startManagedLanguageServer(server *managedLanguageServer) {
 		}
 		connection, err := connectLanguageServerCandidates(launch, programs)
 		a.updateChanged(func() bool {
-			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence || a.snapshot.Root != launch.Root {
+			if a.lsp.additional[server.profile.ID] != server || server.sequence != sequence || a.snapshot.Root != launch.Root {
 				if connection != nil {
 					go connection.Close()
 				}
@@ -265,7 +265,7 @@ func (a *app) watchManagedLanguageServer(server *managedLanguageServer, connecti
 			err = nil
 		}
 		a.updateChanged(func() bool {
-			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence || server.connection != connection {
+			if a.lsp.additional[server.profile.ID] != server || server.sequence != sequence || server.connection != connection {
 				return false
 			}
 			before := a.codeLanguageServerStatuses()
@@ -291,34 +291,11 @@ func (a *app) watchManagedLanguageServer(server *managedLanguageServer, connecti
 }
 
 func (a *app) stopManagedLanguageServer(server *managedLanguageServer) {
-	if server == nil {
-		return
-	}
-	server.sequence++
-	connection := server.connection
-	server.connection = nil
-	server.starting = false
-	server.analyzing = false
-	server.missing = false
-	server.error = ""
-	server.requestError = false
-	server.statusBusy = false
-	server.statusError = false
-	server.progress = nil
-	server.statusDetail = ""
-	server.restartPending = false
-	server.restartUsed = false
-	server.documents = nil
-	if connection != nil {
-		go connection.Close()
-	}
+	stopManagedLanguageServerConnection(server)
 }
 
 func (a *app) stopAdditionalLanguageServers() {
-	for id, server := range a.additionalLanguageServers {
-		a.stopManagedLanguageServer(server)
-		delete(a.additionalLanguageServers, id)
-	}
+	a.lsp.stopAdditional()
 }
 
 func (a *app) syncManagedLanguageServerDocument(server *managedLanguageServer, path string, document *codeDocument) {
@@ -376,7 +353,7 @@ func (a *app) requestManagedLanguageServerDiagnostics(server *managedLanguageSer
 			return
 		}
 		a.handleLanguageServerDiagnostics(server.profile.ID, params, func() bool {
-			return a.additionalLanguageServers[server.profile.ID] == server && server.sequence == sequence &&
+			return a.lsp.additional[server.profile.ID] == server && server.sequence == sequence &&
 				server.connection == connection && a.code.documents[path] == document &&
 				document.state != nil && document.state.Buffer != nil && document.state.Buffer.Version() == version &&
 				server.documents[path] == version
@@ -393,7 +370,7 @@ func (a *app) additionalLanguageServersForDocument(document *codeDocument) []*ma
 		if profile.ID == goLanguageServerID {
 			continue
 		}
-		server := a.additionalLanguageServers[profile.ID]
+		server := a.lsp.additional[profile.ID]
 		if server != nil && server.connection != nil {
 			servers = append(servers, server)
 		}
@@ -510,7 +487,7 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 			return
 		}
 		a.updateChanged(func() bool {
-			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence {
+			if a.lsp.additional[server.profile.ID] != server || server.sequence != sequence {
 				return false
 			}
 			before := a.codeLanguageServerStatuses()
@@ -548,7 +525,7 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 			return
 		}
 		a.updateChanged(func() bool {
-			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence {
+			if a.lsp.additional[server.profile.ID] != server || server.sequence != sequence {
 				return false
 			}
 			before := a.codeLanguageServerStatuses()
@@ -580,7 +557,7 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 			return
 		}
 		a.updateChanged(func() bool {
-			if a.additionalLanguageServers[server.profile.ID] != server || server.sequence != sequence {
+			if a.lsp.additional[server.profile.ID] != server || server.sequence != sequence {
 				return false
 			}
 			detail := strings.TrimSpace(message.Message)
@@ -597,7 +574,7 @@ func (a *app) handleManagedLanguageServerNotification(server *managedLanguageSer
 		return
 	}
 	a.handleLanguageServerDiagnostics(server.profile.ID, raw, func() bool {
-		return a.additionalLanguageServers[server.profile.ID] == server && server.sequence == sequence
+		return a.lsp.additional[server.profile.ID] == server && server.sequence == sequence
 	})
 }
 

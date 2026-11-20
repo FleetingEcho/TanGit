@@ -525,17 +525,17 @@ type codeLanguageServerStatus struct {
 // the one associated with the active extension. Profile order keeps the hover
 // panel stable as documents open and close.
 func (a *app) codeLanguageServerStatuses() []codeLanguageServerStatus {
-	statuses := make([]codeLanguageServerStatus, 0, len(a.additionalLanguageServers)+1)
+	statuses := make([]codeLanguageServerStatus, 0, len(a.lsp.additional)+1)
 	for _, profile := range languageServerProfilesWithSettings(a.settings.LanguageServers) {
 		status := codeLanguageServerStatus{id: profile.ID, name: profile.Name, custom: profile.Custom,
-			installing: a.languageServerInstalling[profile.ID]}
+			installing: a.lsp.installing[profile.ID]}
 		if profile.ID == goLanguageServerID {
-			status.running = a.goLanguageServer != nil
-			status.starting = a.goLanguageServerStarting
-			status.missing = a.goLanguageServerMissing
-			status.failed = a.goLanguageServerError != ""
-			status.detail = a.goLanguageServerError
-		} else if server := a.additionalLanguageServers[profile.ID]; server != nil {
+			status.running = a.lsp.goServer != nil
+			status.starting = a.lsp.goStarting
+			status.missing = a.lsp.goMissing
+			status.failed = a.lsp.goError != ""
+			status.detail = a.lsp.goError
+		} else if server := a.lsp.additional[profile.ID]; server != nil {
 			status.running = server.connection != nil
 			status.starting = server.starting
 			status.analyzing = server.analyzing

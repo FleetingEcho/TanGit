@@ -51,9 +51,9 @@ func TestOpenSSHWorkspaceVisualRebasePlanRealOpenSSH(t *testing.T) {
 			runGit(t, dir, "branch", "stack/topic")
 		}
 	}
-	session, err := OpenSSHWorkspace(ctx, client, workspace.Location{
+	session, err := openFullRepositorySessionForTest(OpenSSHWorkspace(ctx, client, workspace.Location{
 		Kind: workspace.SSH, ProfileID: server.Profile.ID, Root: dir,
-	}, nil)
+	}, nil))
 	if err != nil {
 		t.Fatal(err)
 	}

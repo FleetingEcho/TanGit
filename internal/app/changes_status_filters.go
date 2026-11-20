@@ -68,7 +68,7 @@ func changesFilesWithStatus(files []repository.File, filter changesStatusFilter)
 }
 
 func (a *app) changesFileFiltersActive() bool {
-	return a.ignoreUntracked || a.reviewFilter || a.fileStatusFilter != changesStatusAll
+	return a.ignoreUntracked || a.review.filter || a.fileStatusFilter != changesStatusAll
 }
 
 // changesFilterStateChanged rebuilds rows immediately and protects both
@@ -102,7 +102,7 @@ func (a *app) selectChangesStatusFilter(filter changesStatusFilter) {
 func (a *app) clearChangesFileFilters() {
 	a.fileStatusFilter = changesStatusAll
 	a.ignoreUntracked = false
-	a.reviewFilter = false
+	a.review.filter = false
 	a.changesFilterStateChanged()
 	a.changesFiltersOpen = false
 }
@@ -149,7 +149,7 @@ func (a *app) changesFilterPopover(c *ui.Context) {
 			if ignored.Changed() {
 				a.changesFilterStateChanged()
 			}
-			reviewed := ui.Checkbox(c, &a.reviewFilter, tr("Unreviewed")).
+			reviewed := ui.Checkbox(c, &a.review.filter, tr("Unreviewed")).
 				Tooltip(tr("Show only files whose current content still needs review"))
 			if reviewed.Changed() {
 				a.changesFilterStateChanged()

@@ -18,7 +18,7 @@ func TestCommitReadinessRetriesAllChecks(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("work\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestCommitHooksAlwaysRunAndRejectionPreservesHEAD(t *testing.T) {
 		t.Fatal(err)
 	}
 	runGit(t, dir, "add", "a.txt")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestCommitHooksAlwaysRunAndRejectionPreservesHEAD(t *testing.T) {
 
 func TestCommitReadinessRejectsConflictsAndActiveOperations(t *testing.T) {
 	dir := conflictedRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestCommitCompletesSquashMerge(t *testing.T) {
 	runGit(t, dir, "commit", "-am", "topic")
 	runGit(t, dir, "checkout", "main")
 	runGit(t, dir, "merge", "--squash", "topic")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestCommitReadinessRejectsEmptyIdentityBeforeHooks(t *testing.T) {
 	if err := os.WriteFile(hookPath, []byte("#!/bin/sh\ntouch \""+filepath.Join(dir, "hook-ran")+"\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

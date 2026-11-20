@@ -23,7 +23,7 @@ func TestSnapshotRedactsRepositoryURLsAndEditPreservesOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opened, err := (Opener{}).Open(ctx, dir)
+	opened, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestRepositoryURLsCannotPersistNewCredentials(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
-	opened, err := (Opener{}).Open(ctx, dir)
+	opened, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 	if err != nil {
 		t.Fatal(err)
 	}

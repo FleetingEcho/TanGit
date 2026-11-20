@@ -11,7 +11,7 @@ import (
 // otherwise touch the working tree, and an empty stage differs from absence.
 func TestConflictStagesReadBaseCurrentIncomingWithoutMutation(t *testing.T) {
 	dir := conflictedRepository(t)
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestConflictStagesDistinguishDeletedSides(t *testing.T) {
 	for _, kind := range []string{"DU", "UD"} {
 		t.Run(kind, func(t *testing.T) {
 			dir := conflictRepository(t, kind)
-			session, err := (Opener{}).Open(context.Background(), dir)
+			session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 			if err != nil {
 				t.Fatal(err)
 			}

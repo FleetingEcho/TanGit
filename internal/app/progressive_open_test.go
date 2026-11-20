@@ -258,10 +258,18 @@ func TestProgressiveOpenShowsHistoryLoadingInsteadOfEmpty(t *testing.T) {
 			}
 
 			close(session.detailsRelease)
-			updated.waitForUpdate(t)
-			updated.waitForUpdate(t)
-			updated.waitForUpdate(t)
-			tester.Frame()
+			for range 8 {
+				tester.Frame()
+				query := a.commitQueryFor(target)
+				if !a.repositoryDetailsLoading && !query.loading && len(query.matches) > 0 {
+					break
+				}
+				updated.waitForUpdate(t)
+			}
+			query := a.commitQueryFor(target)
+			if a.repositoryDetailsLoading || query.loading || len(query.matches) == 0 {
+				t.Fatal("deferred repository history did not finish")
+			}
 			if tester.HasText("Reading the branch's history…") || !tester.HasText("Deferred history") {
 				t.Fatalf("loaded history did not replace loading state: %q", tester.Texts())
 			}
@@ -303,8 +311,13 @@ func TestProgressiveOpenDefaultsHistoryAndGraphToCurrentBranch(t *testing.T) {
 			t.Errorf("target %d limit = %d, want %d", target, query.limit, repository.SnapshotCommitLimit)
 		}
 	}
-	updated.waitForUpdate(t)
-	updated.waitForUpdate(t)
+	for range 8 {
+		history, graph := a.commitQueryFor(sectionHistory), a.commitQueryFor(sectionGraph)
+		if !history.loading && !graph.loading && len(history.matches) == 1 && len(graph.matches) == 1 {
+			break
+		}
+		updated.waitForUpdate(t)
+	}
 	for _, target := range []int{sectionHistory, sectionGraph} {
 		query := a.commitQueryFor(target)
 		if query.loading || query.err != "" || len(query.matches) != 1 {

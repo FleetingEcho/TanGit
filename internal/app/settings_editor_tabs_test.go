@@ -19,7 +19,7 @@ func TestSettingsSeparatesLanguageServersFromEditor(t *testing.T) {
 		t.Fatalf("open the standalone LSP category: %v", err)
 	}
 	h.tester.Frame()
-	if h.app.settingsPage != settingsPageLSP || !h.tester.HasText("Language Server Catalog") {
+	if h.app.settingsUI.page != settingsPageLSP || !h.tester.HasText("Language Server Catalog") {
 		t.Fatalf("LSP category did not show the language server catalog: %q", h.texts())
 	}
 	if h.tester.HasText("Editor key bindings") {

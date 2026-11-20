@@ -128,7 +128,7 @@ func (a *app) beginConflictAdvice() {
 	if assist.cancel != nil {
 		assist.cancel()
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	assist.cancel = cancel
 	assist.running = true
 	assist.sourceAgent = sourceAgent

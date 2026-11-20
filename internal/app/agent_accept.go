@@ -41,7 +41,7 @@ func (a *app) confirmAcceptAgentCommits() {
 					return
 				}
 				a.beginRepositoryActionMessage(tr("Accepted agent commits"), "", func(ctx context.Context, session repository.Session) error {
-					return session.CherryPickCommits(ctx, commits)
+					return requireHistorySession(session).CherryPickCommits(ctx, commits)
 				}, func() {
 					a.finishAcceptedAgentTask(taskID)
 				})
@@ -72,7 +72,7 @@ func (a *app) confirmMergeAgentTask() {
 					return
 				}
 				a.beginRepositoryActionMessage(tr("Accepted agent branch"), "", func(ctx context.Context, session repository.Session) error {
-					return session.MergeBranch(ctx, task.Branch)
+					return requireBranchRemoteSession(session).MergeBranch(ctx, task.Branch)
 				}, func() {
 					a.finishAcceptedAgentTask(taskID)
 				})

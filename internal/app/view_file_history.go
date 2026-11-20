@@ -1,8 +1,6 @@
 package app
 
 import (
-	"context"
-
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
@@ -45,11 +43,12 @@ func (a *app) findFileHistories(path string) {
 	if session == nil {
 		return
 	}
+	ctx := a.repositoryWork.Context()
 	a.fileHistoryToken++
 	token := a.fileHistoryToken
 	go func() {
 		defer a.recoverBackground()
-		commits, err := session.FileCommits(context.Background(), path, fileHistoryPage, 0)
+		commits, err := requireHistorySession(session).FileCommits(ctx, path, fileHistoryPage, 0)
 		a.updateChanged(func() bool {
 			if token != a.fileHistoryToken {
 				return false
@@ -94,9 +93,10 @@ func (a *app) openFileHistory(path string) {
 		a.fileHistoryError = "No repository is open."
 		return
 	}
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		commits, err := session.FileCommits(context.Background(), path, fileHistoryPage, 0)
+		commits, err := requireHistorySession(session).FileCommits(ctx, path, fileHistoryPage, 0)
 		a.updateChanged(func() bool {
 			if token != a.fileHistoryToken || !a.fileHistoryOpen || a.fileHistoryPath != path {
 				return false
@@ -136,9 +136,10 @@ func (a *app) loadMoreFileHistory() {
 	skip := a.fileHistoryRead
 	token := a.fileHistoryToken
 	a.fileHistoryLoadingMore = true
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		commits, err := session.FileCommits(context.Background(), path, fileHistoryPage, skip)
+		commits, err := requireHistorySession(session).FileCommits(ctx, path, fileHistoryPage, skip)
 		a.updateChanged(func() bool {
 			if token != a.fileHistoryToken || !a.fileHistoryOpen || a.fileHistoryPath != path {
 				return false
@@ -229,9 +230,10 @@ func (a *app) loadFileHistoryCommit(commit repository.Commit, force bool) {
 	token := a.fileHistoryFilesToken
 	path := a.fileHistoryPath
 	session := a.session
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		files, err := session.CommitFiles(context.Background(), commit)
+		files, err := requireHistorySession(session).CommitFiles(ctx, commit)
 		a.updateChanged(func() bool {
 			if token != a.fileHistoryFilesToken || !a.fileHistoryOpen || a.fileHistoryPath != path {
 				return false
@@ -281,15 +283,16 @@ func (a *app) loadFileHistoryDiff(commit repository.Commit, file repository.Comm
 	session := a.session
 	layout, wrap := a.diffLayout(), a.diffWrap
 	options := a.diffOptions
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		diff, err := session.CommitFileDiff(context.Background(), commit, file, options)
+		diff, err := requireHistorySession(session).CommitFileDiff(ctx, commit, file, options)
 		var state *editor.DiffState
 		var media *mediaReview
 		if err == nil {
 			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
 			if err == nil && state == nil && isMediaPath(file.Path) {
-				media, err = loadMediaReview(context.Background(), session, repository.MediaRequest{
+				media, err = loadMediaReview(ctx, session, repository.MediaRequest{
 					Source: repository.MediaCommit, Commit: commit, CommitFile: file,
 				})
 			}

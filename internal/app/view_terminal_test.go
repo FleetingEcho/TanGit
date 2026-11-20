@@ -1425,7 +1425,7 @@ func TestTerminalShortcutIsGlobalAcrossFormsAndShortcutPreference(t *testing.T) 
 		{name: "confirmation", open: func(a *app) {
 			a.askConfirm(confirmRequest{title: "Discard changes", run: func() {}})
 		}, stillOpen: func(a *app) bool { return a.confirm != nil }},
-		{name: "settings", open: func(a *app) { a.openSettings() }, stillOpen: func(a *app) bool { return a.settingsOpen }},
+		{name: "settings", open: func(a *app) { a.openSettings() }, stillOpen: func(a *app) bool { return a.settingsUI.open }},
 		{name: "other shortcuts disabled", open: func(a *app) { a.settings.DisableShortcuts = true }, stillOpen: func(a *app) bool { return a.settings.DisableShortcuts }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -1630,7 +1630,7 @@ func TestTerminalFocusSuppressesAppShortcuts(t *testing.T) {
 	}
 	h.tester.Key(ui.Ctrl, ui.KeyComma)
 	h.tester.Frame()
-	if h.app.settingsOpen {
+	if h.app.settingsUI.open {
 		t.Fatal("Ctrl+, opened settings while the terminal had focus")
 	}
 	h.tester.Key(0, ui.KeyF1)

@@ -18,7 +18,7 @@ func (a *app) startRepositoryWatch(session repository.Session) {
 	if !ok {
 		return
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	// Register cancellation before starting any filesystem work. In particular,
 	// closing a page while a large tree is being walked must stop that walk.
 	a.cancelRepositoryWatch = cancel

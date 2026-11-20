@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"strconv"
 	"strings"
 
@@ -145,9 +144,10 @@ func (a *app) beginCompare() {
 	session := a.session
 	generation := a.generation
 	token := a.compare.token
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		files, err := session.CompareFiles(context.Background(), from, to, options)
+		files, err := requireHistorySession(session).CompareFiles(ctx, from, to, options)
 		a.updateChanged(func() bool {
 			if generation != a.generation || token != a.compare.token {
 				return false
@@ -282,9 +282,10 @@ func (a *app) requestCompareFileDiff() {
 	from, to := a.compare.appliedFrom, a.compare.appliedTo
 	options := a.compare.appliedOptions
 	layout, wrap := a.diffLayout(), a.diffWrap
+	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		diff, err := session.CompareFileDiff(context.Background(), from, to, file, options)
+		diff, err := requireHistorySession(session).CompareFileDiff(ctx, from, to, file, options)
 		var state *editor.DiffState
 		if err == nil && (diff.Patch != "" || diff.OldText != "" || diff.NewText != "") {
 			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)

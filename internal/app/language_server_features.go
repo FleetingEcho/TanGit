@@ -172,7 +172,7 @@ func languageServerWordRange(text string, offset int) (int, int) {
 
 func (a *app) goLanguageRequest(document *codeDocument, requestSequence *uint64, offset int, method string,
 	result func(json.RawMessage, error, string, uint64) bool) {
-	connection := a.goLanguageServer
+	connection := a.lsp.goServer
 	if connection == nil || document == nil || document.state == nil || document.state.Buffer == nil ||
 		a.code.documents[document.path] != document {
 		return
@@ -188,16 +188,16 @@ func (a *app) goLanguageRequest(document *codeDocument, requestSequence *uint64,
 	}
 	connection.Request(method, params, func(raw json.RawMessage, err error) {
 		a.updateChanged(func() bool {
-			if a.goLanguageServer != connection || a.code.documents[document.path] != document ||
+			if a.lsp.goServer != connection || a.code.documents[document.path] != document ||
 				document.state == nil || document.state.Buffer == nil ||
 				*requestSequence != sequence || document.state.Buffer.Version() != version {
 				return false
 			}
 			changed := false
 			if err != nil && !isLanguageServerContentModified(err) && !isLanguageServerRequestTimeout(err) {
-				previous := a.goLanguageServerError
+				previous := a.lsp.goError
 				a.reportGoLanguageServerError(err.Error())
-				changed = previous != a.goLanguageServerError
+				changed = previous != a.lsp.goError
 			}
 			resultChanged := result(raw, err, text, version)
 			return changed || resultChanged
@@ -616,23 +616,23 @@ func (a *app) handleGoLanguageServerNotification(sequence uint64, method string,
 			return
 		}
 		a.updateChanged(func() bool {
-			if sequence != a.goLanguageServerSeq {
+			if sequence != a.lsp.goSeq {
 				return false
 			}
 			detail := strings.TrimSpace(message.Message)
 			if strings.Contains(strings.ToLower(detail), "invalid go version") {
 				detail += ". Update gopls or select a newer gopls executable in Settings."
 			}
-			previous := a.goLanguageServerError
+			previous := a.lsp.goError
 			a.reportGoLanguageServerError(detail)
-			return previous != a.goLanguageServerError
+			return previous != a.lsp.goError
 		})
 		return
 	}
 	if method != "textDocument/publishDiagnostics" {
 		return
 	}
-	a.handleLanguageServerDiagnostics(goLanguageServerID, raw, func() bool { return sequence == a.goLanguageServerSeq })
+	a.handleLanguageServerDiagnostics(goLanguageServerID, raw, func() bool { return sequence == a.lsp.goSeq })
 }
 
 func (a *app) handleLanguageServerDiagnostics(serverID string, raw json.RawMessage, valid func() bool) {

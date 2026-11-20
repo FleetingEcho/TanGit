@@ -42,9 +42,9 @@ func (a *app) confirmReflogReplay(redo bool) {
 			a.beginRepositoryActionMessage(success, "",
 				func(ctx context.Context, session repository.Session) error {
 					if redo {
-						return session.RedoExpected(ctx, identity)
+						return requireHistorySession(session).RedoExpected(ctx, identity)
 					}
-					return session.UndoExpected(ctx, identity)
+					return requireHistorySession(session).UndoExpected(ctx, identity)
 				}, nil)
 		},
 	})

@@ -470,7 +470,7 @@ func TestFileRecoveryCancelAndIndexCrashRequireExplicitRetry(t *testing.T) {
 			if err := session.(*gitSession).writeFileRecoveryRecord(stored); err != nil {
 				t.Fatal(err)
 			}
-			reopened, err := (Opener{}).Open(ctx, dir)
+			reopened, err := openFullRepositorySessionForTest((Opener{}).Open(ctx, dir))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -586,9 +586,9 @@ func applyFileRecoveryStateForTest(t *testing.T, session Session, relativePath s
 	}
 }
 
-func openFileRecoveryWorkflowForTest(t *testing.T, dir string) (Session, FileRecoveryWorkflowSession) {
+func openFileRecoveryWorkflowForTest(t *testing.T, dir string) (FullSession, FileRecoveryWorkflowSession) {
 	t.Helper()
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}

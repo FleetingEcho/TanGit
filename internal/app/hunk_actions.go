@@ -15,11 +15,11 @@ import (
 // patch. The repository returns one opaque approval containing private bytes,
 // options, and its state digest; only that same value can subsequently apply.
 func previewAndApplyPatch(ctx context.Context, session repository.Session, request repository.PatchRequest) error {
-	preview, err := session.PreviewPatchRequest(ctx, request)
+	preview, err := requireChangesSession(session).PreviewPatchRequest(ctx, request)
 	if err != nil {
 		return err
 	}
-	return session.ApplyPatch(ctx, preview)
+	return requireChangesSession(session).ApplyPatch(ctx, preview)
 }
 
 // changedFileNavigation moves through actual file rows, leaving section and

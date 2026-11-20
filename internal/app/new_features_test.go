@@ -271,7 +271,7 @@ func TestNewFeatureSurfacesRenderInEveryLanguage(t *testing.T) {
 	for _, language := range []string{"zh-Hans", "zh-Hant", "ja", "es", "fr"} {
 		h.app.settings.Language = language
 		h.app.showPRForm = false
-		h.app.settingsOpen = false
+		h.app.settingsUI.open = false
 		h.tester.Frame()
 
 		h.app.openCreatePullRequestForm()
@@ -293,7 +293,7 @@ func TestNewFeatureSurfacesRenderInEveryLanguage(t *testing.T) {
 		if !strings.Contains(strings.Join(h.texts(), " "), label) {
 			t.Errorf("%s Commands settings did not use the localized heading %q", language, label)
 		}
-		h.app.settingsOpen = false
+		h.app.settingsUI.open = false
 	}
 }
 

@@ -20,7 +20,7 @@ func TestUndoFirstCommitRestoresUnbornHeadAndStagedFiles(t *testing.T) {
 	}
 	runGit(t, dir, "add", "first.txt")
 	index := gitOutput(t, dir, "ls-files", "--stage")
-	session, err := (Opener{}).Open(context.Background(), dir)
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
 		t.Fatal(err)
 	}
