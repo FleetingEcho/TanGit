@@ -40,11 +40,16 @@ func (a *app) invokeShortcut(def shortcutDefinition, run func(repository.Shortcu
 // Context, Element and window registration paths stay distinct so focus and
 // modal behavior are not changed by logging.
 func (a *app) onShortcut(c *ui.Context, mods ui.Modifiers, key ui.Key, def shortcutDefinition, run func()) {
-	c.OnShortcut(mods, key, func() { a.invokeShortcut(def, func(_ repository.ShortcutInvocation) { run() }) })
+	c.DescribeShortcut(ui.ShortcutDescriptor{ID: def.id, Label: def.label, AlreadyRecorded: true}, mods, key)
+	c.OnShortcut(mods, key, func() { a.invokeShortcut(def, shortcutCallback(run)) })
 }
 
 func shortcut(id, chord, label string) shortcutDefinition {
 	return shortcutDefinition{id: id, chord: chord, label: label}
+}
+
+func (a *app) installShortcutObserver(c *ui.Context) {
+	c.ObserveShortcuts(a.onNativeShortcut)
 }
 
 func cmdShortcutChord() string {
@@ -55,11 +60,39 @@ func cmdShortcutChord() string {
 }
 
 func (a *app) onWindowShortcut(c *ui.Context, mods ui.Modifiers, key ui.Key, def shortcutDefinition, run func()) {
-	c.OnWindowShortcut(mods, key, func() { a.invokeShortcut(def, func(_ repository.ShortcutInvocation) { run() }) })
+	c.DescribeShortcut(ui.ShortcutDescriptor{ID: def.id, Label: def.label, AlreadyRecorded: true}, mods, key)
+	c.OnWindowShortcut(mods, key, func() { a.invokeShortcut(def, shortcutCallback(run)) })
 }
 
 func (a *app) onElementShortcut(e ui.Element, mods ui.Modifiers, key ui.Key, def shortcutDefinition, run func()) {
-	e.OnShortcut(mods, key, func() { a.invokeShortcut(def, func(_ repository.ShortcutInvocation) { run() }) })
+	e.DescribeShortcut(ui.ShortcutDescriptor{ID: def.id, Label: def.label, AlreadyRecorded: true}, mods, key)
+	e.OnShortcut(mods, key, func() { a.invokeShortcut(def, shortcutCallback(run)) })
+}
+
+// onElementSubmit annotates the callback, never the view construction itself.
+// Registration must not acknowledge anything before a real submit action.
+func (a *app) onElementSubmit(e ui.Element, def shortcutDefinition, run func()) {
+	e.DescribeShortcut(ui.ShortcutDescriptor{ID: def.id, Label: def.label, AlreadyRecorded: true}, 0, ui.KeyEnter)
+	e.OnSubmit(func() { a.invokeShortcut(def, shortcutCallback(run)) })
+}
+
+// onOverlayShortcut preserves the exact trigger/priority of MyGo modal
+// shortcuts. It reports only a shortcut the active overlay actually receives;
+// callers can keep their existing body and pointer-click branches separate.
+func (a *app) onOverlayShortcut(e ui.Element, mods ui.Modifiers, key ui.Key, def shortcutDefinition, run func()) bool {
+	e.DescribeShortcut(ui.ShortcutDescriptor{ID: def.id, Label: def.label, AlreadyRecorded: true}, mods, key)
+	if !e.OverlayShortcut(mods, key) {
+		return false
+	}
+	a.invokeShortcut(def, shortcutCallback(run))
+	return true
+}
+
+func shortcutCallback(run func()) func(repository.ShortcutInvocation) {
+	if run == nil {
+		return nil
+	}
+	return func(_ repository.ShortcutInvocation) { run() }
 }
 
 func customShortcutDefinition(command customCommandSetting) shortcutDefinition {

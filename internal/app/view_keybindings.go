@@ -210,14 +210,14 @@ func (a *app) keybindingsModal(c *ui.Context) {
 			// the modal's focus scope. This makes ? and F1 respond immediately
 			// after the dialog's switch re-enables the keyboard.
 			if !a.settings.DisableShortcuts && !c.FocusTakesText() {
-				if back.OverlayShortcut(ui.Shift, ui.KeySlash) {
+				if a.onOverlayShortcut(back, ui.Shift, ui.KeySlash, shortcut("keybindings/modal-current", "?", tr("Show shortcuts for the current page")), nil) {
 					a.openCurrentKeybindings()
 				}
-				if back.OverlayShortcut(0, ui.KeyF1) {
+				if a.onOverlayShortcut(back, 0, ui.KeyF1, shortcut("keybindings/modal-all", "F1", tr("Open the complete shortcut list")), nil) {
 					a.openKeybindings()
 				}
 			}
-			if panel.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
+			if panel.PressedOutside() || a.onOverlayShortcut(back, 0, ui.KeyEscape, shortcut("keybindings/modal-close", "Escape", tr("Close a dialog or cancel the current step")), nil) {
 				a.closeKeybindings()
 			}
 		})

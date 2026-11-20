@@ -1425,12 +1425,17 @@ func (rt *engine) settleKeys() {
 
 // shortcut registers that element id (0 for the window) handles mods+key
 // and reports whether such a key was delivered to it.
-func (rt *engine) shortcut(id uint64, mods Modifiers, key Key) bool {
+func (rt *engine) shortcut(id uint64, mods Modifiers, key Key, receiver ...string) bool {
 	rt.nextRegs = append(rt.nextRegs, shortcutReg{id: id, mods: mods, key: key})
 	for i, d := range rt.delivered {
 		if d.id == id && d.mods == mods && d.key == key {
 			rt.delivered = append(rt.delivered[:i], rt.delivered[i+1:]...)
 			rt.consumed, rt.shortcutRepeat = true, d.repeat
+			label := ""
+			if len(receiver) > 0 {
+				label = receiver[0]
+			}
+			rt.emitShortcut(id, mods, key, label)
 			return true
 		}
 	}
@@ -1947,7 +1952,7 @@ func (e *node) Shortcut(mods Modifiers, key Key) bool {
 	if e.disabled() {
 		return false
 	}
-	return e.c.rt.shortcut(e.id, mods, key)
+	return e.c.rt.shortcut(e.id, mods, key, e.label)
 }
 
 // PointerPosition returns the pointer's position relative to the

@@ -11,6 +11,86 @@ import (
 	"lazygitapp/internal/repository"
 )
 
+func TestShortcutAuditDoesNotFireWhileBuildingViews(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.attachRepositoryCommandLog(repository.NewCommandLog())
+	for range 4 {
+		h.tester.Frame()
+	}
+	if h.tester.HasText("Open the chosen item") {
+		t.Fatal("a submit acknowledgement appeared without user input")
+	}
+	for _, entry := range h.app.commandLogEntries() {
+		if entry.Shortcut != nil {
+			t.Fatalf("building a view fabricated a keyboard invocation: %+v", entry)
+		}
+	}
+	for _, toast := range h.app.pendingToasts {
+		if toast.kind == "shortcut" {
+			t.Fatal("building a view fabricated a shortcut notification")
+		}
+	}
+}
+
+func TestNativeListShortcutIsRecordedOnce(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.attachRepositoryCommandLog(repository.NewCommandLog())
+	h.tester.Key(0, ui.KeyDown)
+	h.tester.Frame()
+	entries := h.app.commandLogEntries()
+	seen := []repository.ShortcutInvocation{}
+	for _, entry := range entries {
+		if entry.Shortcut != nil {
+			seen = append(seen, *entry.Shortcut)
+		}
+	}
+	if len(seen) != 1 {
+		t.Fatalf("one native Down produced %d shortcuts: %+v", len(seen), seen)
+	}
+	if seen[0].Chord != "Down" || seen[0].Label != "Move through a list" {
+		t.Fatalf("native shortcut lost its provenance: %+v", seen[0])
+	}
+	h.tester.Key(0, ui.KeyDown)
+	h.tester.Frame()
+	count := 0
+	for _, entry := range h.app.commandLogEntries() {
+		if entry.Shortcut != nil {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("two native Down inputs produced %d shortcuts, want 2", count)
+	}
+}
+
+func TestCommitFormSubmitUsesVerifiedActionMetadata(t *testing.T) {
+	h, calls := menuTestAppWithCalls(t)
+	h.app.attachRepositoryCommandLog(repository.NewCommandLog())
+	h.app.showCommitForm = true
+	h.tester = ui.NewTester(func(c *ui.Context) {
+		h.app.installShortcutObserver(c)
+		h.app.commitForm(c)
+	}, 480, 260)
+	if err := h.tester.Click("Summary"); err != nil {
+		t.Fatalf("focus commit summary: %v; texts=%q", err, h.tester.Texts())
+	}
+	h.app.commitSummary = "verify keyboard submit"
+	h.tester.Frame()
+	h.tester.Key(0, ui.KeyEnter)
+	h.tester.Frame()
+	h.waitFor(t, "the form submission", func() bool { return calls.has("commit:verify keyboard submit") })
+	var invocation *repository.ShortcutInvocation
+	for _, entry := range h.app.commandLogEntries() {
+		if entry.Shortcut != nil && entry.Shortcut.ID == "changes/commit-staged" {
+			invocation = entry.Shortcut
+			break
+		}
+	}
+	if invocation == nil || invocation.Chord != "Enter" || invocation.Label != "Commit the staged changes" {
+		t.Fatalf("submit provenance = %+v, want the commit's semantic action", invocation)
+	}
+}
+
 func TestCustomShortcutRecordsItsCommandAndAcknowledgement(t *testing.T) {
 	h, _ := menuTestAppWithCalls(t)
 	h.app.attachRepositoryCommandLog(repository.NewCommandLog())
@@ -40,6 +120,15 @@ func TestCustomShortcutRecordsItsCommandAndAcknowledgement(t *testing.T) {
 	copied := formatCommandLog(h.app.commandLogEntries())
 	if !strings.Contains(copied, "F5") || !strings.Contains(copied, "custom refresh key") {
 		t.Fatalf("copied log loses shortcut provenance: %q", copied)
+	}
+	keyboardEntries := 0
+	for _, entry := range h.app.commandLogEntries() {
+		if entry.Shortcut != nil {
+			keyboardEntries++
+		}
+	}
+	if keyboardEntries != 1 {
+		t.Fatalf("one custom F5 produced %d audit records, want 1", keyboardEntries)
 	}
 
 }

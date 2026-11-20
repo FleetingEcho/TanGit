@@ -1080,16 +1080,16 @@ func (s *shell) registerShortcuts(c *ui.Context) {
 	if a := s.activeApp(); a != nil && a.modalOpen() {
 		return
 	}
-	c.OnShortcut(ui.Cmd, ui.KeyT, func() { s.request(s.showHome) })
-	c.OnShortcut(ui.Cmd, ui.KeyW, func() {
+	s.onShortcut(c, ui.Cmd, ui.KeyT, shortcut("tabs/new-home", cmdShortcutChord()+"+T", tr("Open a new tab or the picker")), func() { s.request(s.showHome) })
+	s.onShortcut(c, ui.Cmd, ui.KeyW, shortcut("tabs/close-active", cmdShortcutChord()+"+W", tr("Close the active tab")), func() {
 		s.request(func() {
 			if t := s.activeTab(); t != nil {
 				s.closeTab(t)
 			}
 		})
 	})
-	c.OnShortcut(ui.Ctrl, ui.KeyTab, func() { s.request(func() { s.cycleTab(1) }) })
-	c.OnShortcut(ui.Ctrl|ui.Shift, ui.KeyTab, func() { s.request(func() { s.cycleTab(-1) }) })
+	s.onShortcut(c, ui.Ctrl, ui.KeyTab, shortcut("tabs/cycle-next", "Ctrl+Tab", tr("Switch to the next tab")), func() { s.request(func() { s.cycleTab(1) }) })
+	s.onShortcut(c, ui.Ctrl|ui.Shift, ui.KeyTab, shortcut("tabs/cycle-previous", "Ctrl+Shift+Tab", tr("Switch to the previous tab")), func() { s.request(func() { s.cycleTab(-1) }) })
 }
 
 // titleBarView draws the window's own title bar: the brand, the tabs, +, and
@@ -1279,8 +1279,8 @@ func (s *shell) tabView(c *ui.Context, i int, width float32) {
 		pill.Background(ui.Transparent).Border(1, ui.Transparent)
 	}
 	pill.Tooltip(t.tooltip())
-	pill.OnShortcut(0, ui.KeyEnter, func() { s.request(func() { s.activateTab(t) }) })
-	pill.OnShortcut(0, ui.KeySpace, func() { s.request(func() { s.activateTab(t) }) })
+	s.onElementShortcut(pill, 0, ui.KeyEnter, shortcut("tabs/activate-enter", "Enter", tr("Open the chosen item")), func() { s.request(func() { s.activateTab(t) }) })
+	s.onElementShortcut(pill, 0, ui.KeySpace, shortcut("tabs/activate-space", "Space", tr("Open the chosen item")), func() { s.request(func() { s.activateTab(t) }) })
 	services := c.Services()
 	closeClicked := false
 	pill.Children(func() {
