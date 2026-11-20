@@ -94,8 +94,6 @@ func (a *app) cacheRepositoriesModal(c *ui.Context) {
 							fileImageIcon, a.confirm != nil || !a.cacheUsage.loaded,
 							a.cacheCleanupBusy, a.confirmAvatarCaches)
 					})
-					iconTextButton(c, "Back to Cache", "Return to cache settings", closeIcon,
-						a.confirm != nil, a.cacheRepositories.close)
 				})
 			if a.confirm == nil && (panel.PressedOutside() || a.onOverlayShortcut(back, 0, ui.KeyEscape,
 				shortcut("settings/repository-caches-close", "Escape", tr("Back to Cache")), nil)) {
