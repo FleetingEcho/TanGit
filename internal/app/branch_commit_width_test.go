@@ -43,16 +43,19 @@ func TestBranchCommitsStartWithComfortableMetadataWidth(t *testing.T) {
 	if !hashOK || !authorOK || !relativeOK {
 		t.Fatalf("commit metadata missing: hash=%v author=%v time=%v (%q)", hashOK, authorOK, relativeOK, tt.Texts())
 	}
-	listPane, ok := tt.Find("Commits")
+	paneInfo, ok := tt.AccessByRole(ui.RoleList, tr("Commits"))
 	if !ok {
-		t.Fatal("the selected branch has no commit workspace")
+		t.Fatal("the selected branch has no accessible commit list")
 	}
+	// Test against the actual interactive list, not the similarly named
+	// heading text box, whose width is unrelated to the pane's viewport.
+	listPane := paneInfo.Bounds
 	for name, rect := range map[string]ui.Rect{"hash": hash, "author": author, "relative": relative} {
 		if math.Abs(float64(rect.X)-float64(listPane.X)) < 0.1 {
 			t.Fatalf("%s overlaps the Commits title: %+v and %+v", name, rect, listPane)
 		}
 		if rect.X+rect.W > listPane.X+listPane.W+1 {
-			t.Errorf("%s is clipped beyond the Commits pane: %+v", name, rect)
+			t.Errorf("%s is clipped beyond the Commits list: %+v; list=%+v", name, rect, listPane)
 		}
 	}
 }
