@@ -899,3 +899,81 @@ func (s *shell) tabTitles() string {
 	}
 	return strings.Join(titles, ", ")
 }
+
+// A tab's right-click menu sets a background color; the history remembers it
+// for the next opening, and reset returns the tab to the theme's colors.
+func TestShellTabColorRemembersAcrossOpens(t *testing.T) {
+	s, tt, _ := newShellTester(t, repository.Snapshot{Root: "/work/project"})
+	// The fake commits its repository into the history the way the real open
+	// path does before a user can color its tab.
+	tab := readyShellTab(s, "/work/project")
+	tab.app.recentRepositories = []recentRepository{{Path: "/work/project"}}
+	tt.Frame()
+	if err := tt.RightClick("project"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Tab color…"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Red"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	want := formatCustomAccent(accentChoices["Red"])
+	hex, ok := tab.app.recentTabColorHex("/work/project")
+	if !ok || hex != want {
+		t.Fatalf("remembered tab color = %q (ok=%v), want %q", hex, ok, want)
+	}
+	// A reader of the stored history sees the same color.
+	loaded := loadRecentRepositories(tab.app.dataDir())
+	if len(loaded) == 0 || loaded[0].TabColor != want {
+		t.Fatalf("the history did not keep the tab color: %#v", loaded)
+	}
+	// A fresh app reading the history back picks the color up again, as the
+	// next start does.
+	reopened := &app{}
+	reopened.recentRepositories = loadRecentRepositories(tab.app.dataDir())
+	if hex, ok := reopened.recentTabColorHex("/work/project"); !ok || hex != want {
+		t.Fatalf("reopening lost the remembered tab color: %q (ok=%v)", hex, ok)
+	}
+	// Reset returns the tab to the theme's own background.
+	if err := tt.RightClick("project"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Tab color…"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("Reset tab color"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if _, ok := tab.app.recentTabColorHex("/work/project"); ok {
+		t.Fatal("reset did not clear the remembered tab color")
+	}
+}
+
+// rememberTabColor ignores an unparseable color instead of storing it.
+func TestRememberTabColorRejectsBadHex(t *testing.T) {
+	a := newApp(pathOpener{})
+	dir := t.TempDir()
+	a.pathUserData = dir
+	a.recentRepositories = []recentRepository{{Path: "/work/project", TabColor: ""}}
+	a.rememberTabColor("/work/project", "not-a-color")
+	if got := a.recentRepositories[0].TabColor; got != "" {
+		t.Fatalf("an invalid color was stored: %q", got)
+	}
+	a.rememberTabColor("/work/project", "#c56f6f")
+	if got := a.recentRepositories[0].TabColor; got != "#c56f6f" {
+		t.Fatalf("valid color was not stored: %q", got)
+	}
+	// Forgetting a path with no remembered color is a no-op.
+	before := a.historyRevision
+	a.forgetTabColor("/work/nowhere")
+	if a.historyRevision != before {
+		t.Fatal("forgetting an unknown path bumped the history revision")
+	}
+}

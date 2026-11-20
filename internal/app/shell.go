@@ -182,6 +182,13 @@ type shell struct {
 	// back to a safe screen rather than taking the window with it.
 	crash string
 	title string
+
+	// tabColorTab names the tab whose color panel is open, nil while the
+	// palette picker is closed; tabColorOpen follows the popover's own
+	// open state; tabColorCustom carries the ColorWell's live value.
+	tabColorTab    *tab
+	tabColorOpen   bool
+	tabColorCustom ui.Color
 }
 
 // newShell builds the window's frame without a window yet: a test builds one
@@ -344,7 +351,7 @@ func (s *shell) view(c *ui.Context) {
 	systemDark := c.Theme().Dark
 	s.pullSettings()
 	currentLanguage = normalizeLanguage(s.settings.Language)
-	c.SetTheme(themeForSettings(s.settings, systemDark))
+	c.SetTheme(themeForSettingsCached(s.settings, systemDark))
 	s.refreshTitle()
 	s.registerShortcuts(c)
 
@@ -1270,36 +1277,57 @@ func (s *shell) tabView(c *ui.Context, i int, width float32) {
 		Gap(gap).Padding(0, pad).Radius(pillRadius(theme)).
 		Role(ui.RoleTab).Checked(active).Label(t.title()).Focusable().FocusRing(true)
 	hovered := pill.Hovered()
+	// A remembered tab background belongs to the repository, not the session:
+	// the pill keeps it through every start until the user resets it.
+	tabColor, hasTabColor := t.app.recentTabColor(t.path())
 	switch {
 	case active:
-		pill.Background(theme.Surface).Border(1, theme.Border)
+		if hasTabColor {
+			pill.Background(tabColor).Border(1, tabColor.Mix(ui.Hex("#000000"), 0.25))
+		} else {
+			pill.Background(theme.Surface).Border(1, theme.Border)
+		}
 	case hovered:
-		pill.Background(theme.SurfaceHover.Alpha(0.6)).Border(1, ui.Transparent)
+		if hasTabColor {
+			pill.Background(tabColor.Mix(ui.Hex("#ffffff"), 0.18)).Border(1, ui.Transparent)
+		} else {
+			pill.Background(theme.SurfaceHover.Alpha(0.6)).Border(1, ui.Transparent)
+		}
 	default:
-		pill.Background(ui.Transparent).Border(1, ui.Transparent)
+		if hasTabColor {
+			pill.Background(tabColor.Alpha(0.82)).Border(1, ui.Transparent)
+		} else {
+			pill.Background(ui.Transparent).Border(1, ui.Transparent)
+		}
 	}
 	pill.Tooltip(t.tooltip())
 	s.onElementShortcut(pill, 0, ui.KeyEnter, shortcut("tabs/activate-enter", "Enter", tr("Open the chosen item")), func() { s.request(func() { s.activateTab(t) }) })
 	s.onElementShortcut(pill, 0, ui.KeySpace, shortcut("tabs/activate-space", "Space", tr("Open the chosen item")), func() { s.request(func() { s.activateTab(t) }) })
 	services := c.Services()
 	closeClicked := false
+	foreground := theme.TextMuted
+	linked := theme.Accent
+	if hasTabColor {
+		foreground = accentText(tabColor)
+		linked = accentText(tabColor)
+	}
 	pill.Children(func() {
 		if t.pinned {
 			icon := pinIcon
 			if t.linkedWorktree() {
 				icon = worktreesIcon
 			}
-			ui.Icon(c, icon).FontSize(11).TextColor(theme.TextMuted)
+			ui.Icon(c, icon).FontSize(11).TextColor(foreground)
 			return
 		}
 		if t.linkedWorktree() && !narrow {
-			ui.Icon(c, worktreesIcon).FontSize(12).TextColor(theme.Accent)
+			ui.Icon(c, worktreesIcon).FontSize(12).TextColor(linked)
 		}
 		showClose := (active || hovered) && s.canClose(t) && !tiny
 		if showClose && narrow {
 			// The close control takes the room the title would have, so a
 			// crowded strip can still put away the page on screen.
-			closeClicked = s.tabCloseButton(c, t)
+			closeClicked = s.tabCloseButton(c, t, foreground)
 			return
 		}
 		if tiny {
@@ -1311,31 +1339,39 @@ func (s *shell) tabView(c *ui.Context, i int, width float32) {
 		if active {
 			color = theme.Text
 		}
+		if hasTabColor {
+			color = accentText(tabColor)
+		}
 		title := ui.Text(c, t.title()).Grow(1).SingleLine().TextColor(color)
 		if active {
 			title.Bold()
 		}
 		if showClose {
-			closeClicked = s.tabCloseButton(c, t)
+			closeClicked = s.tabCloseButton(c, t, foreground)
 		}
 	})
 	if pill.Clicked() && !closeClicked {
 		s.request(func() { s.activateTab(t) })
 	}
 	pill.PopoverMenu(func(m *ui.Menu) { s.tabMenu(m, t, services) })
+	if s.tabColorTab == t {
+		panel := ui.Popover(c, pill, &s.tabColorOpen, func() { s.tabColorPanel(c, t) })
+		if panel.Dismissed() {
+			s.tabColorTab = nil
+		}
+	}
 }
 
 // tabCloseButton closes one page from its pill, without also switching to it.
-func (s *shell) tabCloseButton(c *ui.Context, t *tab) bool {
-	theme := c.Theme()
+func (s *shell) tabCloseButton(c *ui.Context, t *tab, foreground ui.Color) bool {
 	button := ui.ButtonBase(c).Size(16, 16).Radius(4).Center()
 	button.Label(tr("Close tab") + " " + t.title()).Tooltip(tr("Close tab"))
 	hovered := button.Hovered()
 	button.Children(func() {
-		ui.Icon(c, closeIcon).FontSize(10).TextColor(theme.TextMuted)
+		ui.Icon(c, closeIcon).FontSize(10).TextColor(foreground)
 	})
 	if hovered {
-		button.Background(theme.SurfacePressed)
+		button.Background(foreground.Alpha(0.22))
 	}
 	if !button.Clicked() {
 		return false
@@ -1375,6 +1411,9 @@ func (s *shell) tabMenu(m *ui.Menu, t *tab, services ui.Services) {
 		if m.Item(tr("Rename tab")).Chosen() {
 			s.request(func() { s.renameTab(t) })
 		}
+		if m.Item(tr("Tab color…")).Chosen() {
+			s.request(func() { s.tabColorTab = t; s.tabColorOpen = true; s.tabColorCustom = ui.Color{} })
+		}
 		m.Separator()
 		label := "Pin tab"
 		if t.pinned {
@@ -1410,6 +1449,67 @@ func (s *shell) tabMenu(m *ui.Menu, t *tab, services ui.Services) {
 			toast.notifyCopied(services, "repository path", t.path())
 		}
 	}
+}
+
+// tabColorPanel is the palette picker a tab offers: a row of the accent
+// swatches, a well for a custom color, and the way back to the theme. The
+// chosen color is written to the repository's remembered history entry, so it
+// follows the repository into every future opening.
+func (s *shell) tabColorPanel(c *ui.Context, t *tab) {
+	theme := c.Theme()
+	a := t.app
+	hex, has := a.recentTabColorHex(t.path())
+	ui.Column(c).Gap(10).Padding(12).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+			ui.Text(c, tr("Tab color")).Bold()
+			ui.Spacer(c).Grow(1)
+			if has {
+				if ui.Button(c, tr("Reset tab color")).Clicked() {
+					a.forgetTabColor(t.path())
+					s.tabColorOpen = false
+					s.tabColorTab = nil
+				}
+			}
+		})
+		ui.Row(c).Gap(6).Wrap().Children(func() {
+			for _, name := range accentNames {
+				color := accentChoices[name]
+				chosen := has && hex == formatCustomAccent(color)
+				swatch := ui.ButtonBase(c).Size(26, 26).Radius(theme.Radius + 4).Center()
+				swatch.Label(tr(name)).Tooltip(tr(name)).Background(color)
+				switch {
+				case chosen:
+					swatch.Border(2, theme.Text)
+				case swatch.Hovered():
+					swatch.Border(2, theme.Text.Alpha(0.5))
+				}
+				swatch.Children(func() {
+					if chosen {
+						ui.Icon(c, commitIcon).FontSize(14).TextColor(accentText(color))
+					}
+				})
+				if swatch.Clicked() {
+					// A swatch is a finished choice: apply it and put the palette away.
+					a.rememberTabColor(t.path(), formatCustomAccent(color))
+					s.tabColorOpen = false
+					s.tabColorTab = nil
+				}
+			}
+			if s.tabColorCustom == (ui.Color{}) {
+				if chosenColor, ok := parseCustomAccent(hex); ok {
+					s.tabColorCustom = chosenColor
+				} else {
+					s.tabColorCustom = ui.RGB(64, 105, 225)
+				}
+			}
+			well := ui.ColorWell(c, &s.tabColorCustom).Label(tr("Custom tab color")).
+				Tooltip(tr("Choose a custom tab color"))
+			if well.Changed() {
+				a.rememberTabColor(t.path(), formatCustomAccent(
+					ui.RGB(s.tabColorCustom.R, s.tabColorCustom.G, s.tabColorCustom.B)))
+			}
+		})
+	})
 }
 
 // windowControlsView draws minimize, maximize or restore, full screen, and

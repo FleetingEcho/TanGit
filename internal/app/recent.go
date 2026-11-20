@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/egoist/mygo/ui"
 	"strings"
 
 	"github.com/egoist/mygo"
@@ -31,6 +33,10 @@ type recentRepository struct {
 	// RepositoryPath identifies the main worktree that owns this linked
 	// checkout. It is distinct from Path, which remains the checkout itself.
 	RepositoryPath string `json:"repositoryPath,omitempty"`
+	// TabColor is the background the repository's tab keeps while open: one of
+	// the accent swatches, or a #rrggbb custom color. Empty keeps the theme's
+	// own tab background.
+	TabColor string `json:"tabColor,omitempty"`
 }
 
 // recentNameLimit bounds a card's name, in characters, so a long one cannot
@@ -92,6 +98,70 @@ func recentStorePath(dir string) string {
 		return ""
 	}
 	return filepath.Join(dir, recentRepositoriesFile)
+}
+
+// recentTabColorHex returns the remembered tab background for path, if any.
+func (a *app) recentTabColorHex(path string) (string, bool) {
+	want := cleanRepoPath(path)
+	for _, repo := range a.recentRepositories {
+		if repo.EditorOnly {
+			continue
+		}
+		if cleanRecentPath(repo.Path) == want && repo.TabColor != "" {
+			return repo.TabColor, true
+		}
+	}
+	return "", false
+}
+
+// recentTabColor returns the remembered tab background color for path, if any.
+func (a *app) recentTabColor(path string) (ui.Color, bool) {
+	hex, ok := a.recentTabColorHex(path)
+	if !ok {
+		return ui.Color{}, false
+	}
+	color, ok := parseCustomAccent(hex)
+	return color, ok
+}
+
+// rememberTabColor stores path's tab background in the history, replacing
+// whatever it had. Unknown or absent colors keep the remembered one as it is.
+func (a *app) rememberTabColor(path, hex string) {
+	if _, ok := parseCustomAccent(hex); !ok {
+		return
+	}
+	want := cleanRepoPath(path)
+	for i := range a.recentRepositories {
+		if a.recentRepositories[i].EditorOnly {
+			continue
+		}
+		if cleanRecentPath(a.recentRepositories[i].Path) == want {
+			a.recentRepositories[i].TabColor = hex
+			a.historyRevision++
+			_ = saveRecentRepositories(a.dataDir(), a.recentRepositories)
+			return
+		}
+	}
+}
+
+// forgetTabColor clears path's remembered tab background, so the tab returns
+// to the theme's own colors.
+func (a *app) forgetTabColor(path string) {
+	want := cleanRepoPath(path)
+	changed := false
+	for i := range a.recentRepositories {
+		if a.recentRepositories[i].EditorOnly {
+			continue
+		}
+		if cleanRecentPath(a.recentRepositories[i].Path) == want && a.recentRepositories[i].TabColor != "" {
+			a.recentRepositories[i].TabColor = ""
+			changed = true
+		}
+	}
+	if changed {
+		a.historyRevision++
+		_ = saveRecentRepositories(a.dataDir(), a.recentRepositories)
+	}
 }
 
 // loadRecentRepository reads the history stored in the directory dir. It
