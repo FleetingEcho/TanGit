@@ -61,6 +61,9 @@ type appSettings struct {
 	// DisableShortcutToasts suppresses only shortcut acknowledgement notices.
 	// The audit log and operation results remain visible.
 	DisableShortcutToasts bool `json:"disableShortcutToasts,omitempty"`
+	// ShortcutToastsConfigured distinguishes a deliberate toggle from an older
+	// settings file written before the default-off behavior; older files stay off.
+	ShortcutToastsConfigured bool `json:"shortcutToastsConfigured,omitempty"`
 	// AutoFetchInterval is how often, in minutes, the window fetches every
 	// remote while it is open and idle. Zero disables background fetching.
 	AutoFetchInterval int `json:"autoFetchInterval"`
@@ -198,6 +201,8 @@ func defaultSettings() appSettings {
 		EditorSemanticHighlighting:  true,
 		EditorMinimap:               true,
 		EditorStickyScroll:          true,
+		DisableShortcutToasts:       true,
+		ShortcutToastsConfigured:    true,
 		AutoFetchInterval:           5,
 		AutoFetchConfigured:         true,
 		SearchExcludedDirectories:   defaultWorkspaceSearchExcludedDirectories(),
@@ -212,6 +217,13 @@ func defaultSettings() appSettings {
 // normalizeSettings fills what a damaged or older file leaves empty and
 // rejects values no theme can use, so the app starts with something sane.
 func normalizeSettings(s appSettings) appSettings {
+	if !s.ShortcutToastsConfigured {
+		// An older settings file predates the default-off behavior, so the
+		// fresh or legacy file starts with acknowledgements off; the first
+		// save writes the configured marker together with the preference.
+		s.DisableShortcutToasts = true
+		s.ShortcutToastsConfigured = true
+	}
 	if _, ok := themeChoices[s.Theme]; !ok {
 		s.Theme = defaultTheme
 	}

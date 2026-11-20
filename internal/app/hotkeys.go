@@ -26,6 +26,7 @@ func (a *app) hotkeysSwitch(c *ui.Context) {
 			toggle.Label(tr("Shortcut notifications")).
 				Tooltip(tr("Show shortcut acknowledgements while keeping Command Log and operation notifications visible.")).OnClick(func() {
 				a.settings.DisableShortcutToasts = !a.settings.DisableShortcutToasts
+				a.settings.ShortcutToastsConfigured = true
 				a.settingsChanged(c)
 			})
 			ui.Text(c, tr("Shortcut notifications")).SingleLine().FontSize(c.Theme().FontSize - 1)
