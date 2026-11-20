@@ -75,9 +75,80 @@ func (a *app) confirmAbortOperation() {
 	})
 }
 
+// commitMessageDetailState is the lazily read, read-only message of the
+// selected commit. Its generation rejects an A-B-A completion even when a
+// backend returns a result after its context has been cancelled.
+type commitMessageDetailState struct {
+	hash       string
+	message    repository.CommitMessage
+	loading    bool
+	error      string
+	expanded   bool
+	cancel     context.CancelFunc
+	generation uint64
+}
+
+func (s *commitMessageDetailState) reset() {
+	if s.cancel != nil {
+		s.cancel()
+		s.cancel = nil
+	}
+	s.generation++
+	s.hash = ""
+	s.message = repository.CommitMessage{}
+	s.loading = false
+	s.error = ""
+	s.expanded = false
+}
+
+func (a *app) requestCommitMessage(state *commitMessageDetailState, commit repository.Commit, visible func() bool) {
+	if a.session == nil || state.hash == commit.Hash {
+		return
+	}
+	session := a.session
+	repositoryGeneration := a.generation
+	state.reset()
+	requestGeneration := state.generation
+	ctx, cancel := context.WithCancel(context.Background())
+	state.cancel = cancel
+	state.hash = commit.Hash
+	state.loading = true
+
+	go func() {
+		defer a.recoverBackground()
+		defer cancel()
+		message, err := session.CommitMessage(ctx, commit)
+		a.updateChanged(func() bool {
+			if requestGeneration != state.generation || state.hash != commit.Hash {
+				return false
+			}
+			state.cancel = nil
+			state.loading = false
+			if repositoryGeneration != a.generation {
+				// An action rewrote the repository. Drop the key so the next
+				// frame reads the selected commit again.
+				state.hash = ""
+				state.message = repository.CommitMessage{}
+				return visible()
+			}
+			if err != nil {
+				state.error = safeError(err)
+				return visible()
+			}
+			state.message = message
+			return visible()
+		})
+	}()
+}
+
+func (a *app) requestHistoryCommitMessage(commit repository.Commit) {
+	a.requestCommitMessage(&a.commitDetailMessage, commit, a.commitDetailsVisible)
+}
+
 // resetCommitDetails drops what the commit detail pane read, so the next
 // frame reads the chosen commit again after an action changed it.
 func (a *app) resetCommitDetails() {
+	a.commitDetailMessage.reset()
 	a.codeBlameHistoryTarget = nil
 	if a.cancelCommitFiles != nil {
 		a.cancelCommitFiles()
@@ -671,6 +742,8 @@ func (a *app) commitDetailsSplitWith(c *ui.Context, width, height *float32, coll
 // selections, async reads, keyboard identities, and pane sizes.
 type commitDetailViewState struct {
 	scope           string
+	message         *commitMessageDetailState
+	requestMessage  func(repository.Commit)
 	filesHash       *string
 	filesLoading    *bool
 	filesError      *string
@@ -694,8 +767,10 @@ type commitDetailViewState struct {
 
 func (a *app) historyCommitDetailViewState() commitDetailViewState {
 	return commitDetailViewState{
-		scope:     fileTreeCommitScope,
-		filesHash: &a.commitFilesHash, filesLoading: &a.commitFilesLoading, filesError: &a.commitFilesError,
+		scope:          fileTreeCommitScope,
+		message:        &a.commitDetailMessage,
+		requestMessage: a.requestHistoryCommitMessage,
+		filesHash:      &a.commitFilesHash, filesLoading: &a.commitFilesLoading, filesError: &a.commitFilesError,
 		files: &a.commitFiles, fileRows: &a.commitFileRows, fileList: &a.commitFileList,
 		selectedFileRow: &a.selectedCommitFileRow, selectedFile: &a.selectedCommitFile,
 		filesHeight: &a.commitFilesHeight, filesWidth: &a.commitFilesWidth, filesCollapsed: &a.commitFilesCollapsed,
@@ -711,6 +786,57 @@ func (a *app) commitDetailCard(c *ui.Context, commit *repository.Commit, emptyLa
 	islandCard(c, ui.Column(c).Grow(1).Gap(10).Padding(16)).Children(func() {
 		a.commitDetailBody(c, commit, emptyLabel, actionIcons, a.historyCommitDetailViewState())
 	})
+}
+
+const (
+	commitMessageCompactHeight  = float32(120)
+	commitMessageExpandedHeight = float32(320)
+)
+
+// commitMessageBody keeps a long read-only body from squeezing out the files
+// and diff below it. Text.Selectable supports selection and Copy without
+// turning this view into the history-editing Reword form.
+func (a *app) commitMessageBody(c *ui.Context, commit repository.Commit, state commitDetailViewState) {
+	state.requestMessage(commit)
+	message := state.message
+	switch {
+	case message.loading:
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+			ui.Spinner(c).Label(tr("Loading the full commit message…"))
+			ui.Text(c, tr("Loading the full commit message…")).TextColor(c.Theme().TextMuted)
+		})
+	case message.error != "":
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+			ui.Text(c, message.error).TextColor(c.Theme().Danger).SingleLine().Tooltip(message.error).Grow(1).MinWidth(0)
+			if ui.Button(c, tr("Retry")).Clicked() {
+				message.hash = ""
+				state.requestMessage(commit)
+			}
+		})
+	case message.message.Description != "":
+		ui.Column(c).FillWidth().Gap(4).Children(func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				ui.Text(c, tr("Description")).Bold().TextColor(c.Theme().TextMuted).Grow(1)
+				label := "Expand commit message"
+				if message.expanded {
+					label = "Collapse commit message"
+				}
+				button := ui.Button(c, tr(label)).Shrink(0)
+				if button.Clicked() {
+					message.expanded = !message.expanded
+				}
+			})
+			body := ui.Scroll(c).FillWidth().Label(tr("Commit message"))
+			if message.expanded {
+				body.MaxHeight(commitMessageExpandedHeight)
+			} else {
+				body.MaxHeight(commitMessageCompactHeight)
+			}
+			body.Children(func() {
+				ui.Text(c, message.message.Description).Selectable().FillWidth()
+			})
+		})
+	}
 }
 
 // commitDetailBody is the one presentation used by History, Graph, Reflog,
@@ -759,6 +885,7 @@ func (a *app) commitDetailBody(c *ui.Context, commit *repository.Commit, emptyLa
 	if len(commit.Tags) > 0 {
 		ui.Textf(c, tr("Tags: %s"), strings.Join(commit.Tags, ", ")).TextColor(theme.TextMuted)
 	}
+	a.commitMessageBody(c, *commit, state)
 	state.requestDetails(*commit)
 	if *state.filesLoading && *state.files == nil {
 		loadingPane(c, "Loading commit details", "Loading commit details…")
