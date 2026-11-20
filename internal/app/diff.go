@@ -390,12 +390,19 @@ func (a *app) commitSubject(index int) string {
 	return subject
 }
 
+const (
+	diffFullscreenDetailsMinHeight = float32(60)
+	diffRegionMinHeight            = float32(200)
+)
+
 // openDiffFullscreen shows the active diff over the whole window, for reading
 // a large change without the panes around it.
 func (a *app) openDiffFullscreen() {
 	if _, ok := a.activeDiff(); !ok {
 		return
 	}
+	a.diffFullscreenDetailsHeight = diffFullscreenDetailsMinHeight
+	a.diffFullscreenMessageScroll = ui.ScrollState{}
 	a.diffFullscreen = true
 }
 
@@ -560,8 +567,30 @@ func (a *app) diffContextButton(c *ui.Context) {
 	}
 }
 
+// fullscreenCommitDetail returns the selected commit and its existing
+// detail state for the metadata pane above a commit's whole-window diff.
+func (a *app) fullscreenCommitDetail() (repository.Commit, commitDetailViewState, bool) {
+	if a.fileHistoryOpen {
+		return repository.Commit{}, commitDetailViewState{}, false
+	}
+	switch a.workspaceTab {
+	case sectionHistory, sectionGraph, sectionReflog:
+		commit, ok := a.selectedVisibleCommit()
+		return commit, a.historyCommitDetailViewState(), ok
+	case sectionBranches:
+		if a.selectedBranchCommit < 0 || a.selectedBranchCommit >= len(a.branchCommits) {
+			return repository.Commit{}, commitDetailViewState{}, false
+		}
+		return a.branchCommits[a.selectedBranchCommit], a.branchCommitDetailViewState(), true
+	default:
+		return repository.Commit{}, commitDetailViewState{}, false
+	}
+}
+
 // diffFullscreenView draws the active diff over the workspace, with the way
 // back at its top right and, beside the diff, the files it can switch between.
+// Commit diffs also have a compact details card above a draggable middle
+// divider; pulling it down reveals the shared metadata/Markdown renderer.
 func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 	if !a.diffFullscreen {
 		return
@@ -578,26 +607,70 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 		}
 		panel.Children(func() {
 			a.headerViewWithID(c, "fullscreen-toolbar")
-			islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(10, 14)).Children(func() {
-				ui.Icon(c, diffSplitIcon).FontSize(18).TextColor(theme.Accent)
-				ui.Column(c).Gap(1).Grow(1).Children(func() {
-					ui.Text(c, target.title).FontSize(17).Bold().SingleLine().Tooltip(target.title)
-					if target.subtitle != "" {
-						ui.Text(c, target.subtitle).TextColor(theme.TextMuted).
-							FontSize(theme.FontSize - 1).SingleLine()
+			commit, detailState, hasCommitDetails := a.fullscreenCommitDetail()
+			showCommitDetails := ok && hasCommitDetails
+			if showCommitDetails && a.diffFullscreenDetailsHeight < diffFullscreenDetailsMinHeight {
+				a.diffFullscreenDetailsHeight = diffFullscreenDetailsMinHeight
+			}
+			renderHeader := func(details func()) {
+				card := ui.Column(c).Gap(10).Padding(10, 14)
+				if showCommitDetails {
+					card.Grow(1)
+				}
+				islandCard(c, card).Children(func() {
+					ui.Row(c).AlignItems(ui.Center).Gap(10).Shrink(0).Children(func() {
+						ui.Icon(c, diffSplitIcon).FontSize(18).TextColor(theme.Accent)
+						ui.Column(c).Gap(1).Grow(1).Children(func() {
+							ui.Text(c, target.title).FontSize(17).Bold().SingleLine().Tooltip(target.title)
+							if target.subtitle != "" {
+								ui.Text(c, target.subtitle).TextColor(theme.TextMuted).
+									FontSize(theme.FontSize - 1).SingleLine()
+							}
+						})
+						if a.compareDiffControlsActive() {
+							a.compareDiffViewOptions(c, true)
+						} else {
+							a.diffWhitespaceButton(c)
+							a.diffContextButton(c)
+							a.diffLayoutButton(c)
+							a.diffWrapButton(c)
+							a.exportDiffButton(c)
+							iconButton(c, "Restore diff view", "Restore diff view", shrinkIcon, false, a.closeDiffFullscreen)
+						}
+					})
+					if details != nil {
+						ui.Box(c).Grow(1).MinHeight(0).Label(tr("Commit details")).Children(details)
 					}
 				})
-				if a.compareDiffControlsActive() {
-					a.compareDiffViewOptions(c, true)
-				} else {
-					a.diffWhitespaceButton(c)
-					a.diffContextButton(c)
-					a.diffLayoutButton(c)
-					a.diffWrapButton(c)
-					a.exportDiffButton(c)
-					iconButton(c, "Restore diff view", "Restore diff view", shrinkIcon, false, a.closeDiffFullscreen)
+			}
+			renderDiff := func() {
+				if !ok {
+					ui.Column(c).Grow(1).Center().Children(func() {
+						ui.Text(c, tr("There is no diff to show.")).TextColor(theme.TextMuted)
+					})
+					return
 				}
-			})
+				files := a.fullscreenDiffFiles()
+				a.diffFullscreenRows = files
+				if len(files) == 0 {
+					a.diffFullscreenDiff(c, theme, target)
+					return
+				}
+				a.diffFullscreenFilesView(c, theme, target, files)
+			}
+			if showCommitDetails {
+				paneSplitVerticalReserve(c, &a.diffFullscreenDetailsHeight, diffRegionMinHeight, func() {
+					if a.diffFullscreenDetailsHeight <= diffFullscreenDetailsMinHeight+1 {
+						renderHeader(nil)
+						return
+					}
+					renderHeader(func() {
+						a.commitDetailMetadataBody(c, &commit, detailState, &a.diffFullscreenMessageScroll)
+					})
+				}, renderDiff).Grow(1)
+				return
+			}
+			renderHeader(nil)
 			if a.workspaceTab == sectionChanges {
 				ui.Column(c).Padding(10, 14).Children(func() {
 					a.hunkActionControls(c)
@@ -607,19 +680,7 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 				})
 			}
 			ui.Divider(c)
-			if !ok {
-				ui.Column(c).Grow(1).Center().Children(func() {
-					ui.Text(c, tr("There is no diff to show.")).TextColor(theme.TextMuted)
-				})
-				return
-			}
-			files := a.fullscreenDiffFiles()
-			a.diffFullscreenRows = files
-			if len(files) == 0 {
-				a.diffFullscreenDiff(c, theme, target)
-				return
-			}
-			a.diffFullscreenFilesView(c, theme, target, files)
+			renderDiff()
 		})
 		if panel.OverlayShortcut(0, ui.KeyEscape) {
 			a.closeDiffFullscreen()

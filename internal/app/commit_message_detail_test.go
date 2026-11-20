@@ -150,6 +150,64 @@ func copyCommitMessageLine(t *testing.T, h *harness, label, want string) {
 	}
 }
 
+func TestCommitMessageDividerUsesUserChosenHeight(t *testing.T) {
+	session := &commitMessageDetailSession{read: func(_ context.Context, commit repository.Commit) (repository.CommitMessage, error) {
+		return repository.CommitMessage{Summary: commit.Subject, Description: "A short body."}, nil
+	}}
+	h, _ := commitMessageDetailHarness(t, sectionHistory, session)
+	h.tester.Frame()
+	h.waitFor(t, "the short body", func() bool { return h.tester.HasText("A short body.") })
+	h.tester.Frame()
+	h.tester.Frame()
+	before, found := h.tester.Find("Commit message")
+	if !found {
+		t.Fatal("the short commit body is missing")
+	}
+	height := h.app.commitDetailMessage.height
+	grip := gripRect(t, h.tester, true)
+	centerY := grip.Y + grip.H/2
+	filesHeader, found := h.tester.Find("Commit files")
+	if !found {
+		t.Fatal("the changed-files header is missing")
+	}
+	topGap := centerY - (before.Y + before.H)
+	bottomGap := filesHeader.Y - centerY
+	if topGap < commitDetailsPaneGap/2-1 || bottomGap < commitDetailsPaneGap/2-1 {
+		t.Fatalf("middle divider is pressed against the panes: top=%.1f bottom=%.1f, want about %.1f DIP on both sides",
+			topGap, bottomGap, commitDetailsPaneGap/2)
+	}
+	dragVerticalPaneGrip(t, h.tester, ui.Rect{X: before.X, W: before.W}, before.Y+before.H, 160)
+	chosen := h.app.commitDetailMessage.height
+	if chosen <= height {
+		t.Fatalf("the user could not enlarge an already-complete body: before=%v after=%v", height, chosen)
+	}
+	for range 3 {
+		h.tester.Frame()
+		if h.app.commitDetailMessage.height != chosen {
+			t.Fatalf("the outer divider changed the user's height without further dragging: chosen=%v after=%v", chosen, h.app.commitDetailMessage.height)
+		}
+	}
+}
+
+func TestCommitMessageDividerKeepsTwoHundredDIPForDiff(t *testing.T) {
+	session := &commitMessageDetailSession{read: func(_ context.Context, commit repository.Commit) (repository.CommitMessage, error) {
+		return repository.CommitMessage{Summary: commit.Subject, Description: "A short body."}, nil
+	}}
+	h, _ := commitMessageDetailHarness(t, sectionHistory, session)
+	h.tester.Frame()
+	h.waitFor(t, "the commit diff", func() bool { return h.app.commitDiffState != nil })
+	h.tester.Frame()
+	before, found := h.tester.Find("Commit message")
+	if !found {
+		t.Fatal("the commit body is missing")
+	}
+	dragVerticalPaneGrip(t, h.tester, ui.Rect{X: before.X, W: before.W}, before.Y+before.H, 10000)
+	diff, found := h.tester.Find("Diff")
+	if !found || diff.H < 199 {
+		t.Fatalf("dragging gave the diff %.1f DIP, want at least 200: %+v", diff.H, diff)
+	}
+}
+
 func TestCommitMessageMiddleDividerResizesAndScrollsBody(t *testing.T) {
 	var lines []string
 	for i := range 40 {
@@ -173,7 +231,10 @@ func TestCommitMessageMiddleDividerResizesAndScrollsBody(t *testing.T) {
 			if !ok || before.H <= 0 {
 				t.Fatalf("missing visible commit body: %+v", before)
 			}
-			for _, label := range []string{"Expand diff", "Expand commit message", "Collapse commit message"} {
+			if _, exists := h.tester.Find("Expand diff"); !exists {
+				t.Error("the commit-title maximize control is missing")
+			}
+			for _, label := range []string{"Expand commit message", "Collapse commit message"} {
 				if button, exists := h.tester.Find(label); exists {
 					t.Errorf("details maximize control %q is still present at %+v", label, button)
 				}
