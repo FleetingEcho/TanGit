@@ -318,6 +318,17 @@ func (a *app) toggleTerminalPanel() {
 
 func (a *app) terminalVisible() bool { return a.term.panelOpen }
 
+// terminalFocused reports whether the keyboard focus sits inside the terminal
+// dock. While it does, the shell owns the keys: the window's own shortcuts
+// must stay out of the way except the global terminal toggle and the
+// terminal's search.
+func (a *app) terminalFocused(c *ui.Context) bool {
+	if !a.term.panelOpen {
+		return false
+	}
+	return a.terminalDockHandle.FocusWithin(c)
+}
+
 func (a *app) hideTerminalView() { a.leaveTerminal() }
 
 func (a *app) leaveTerminal() {
@@ -823,7 +834,7 @@ func (a *app) terminalPaneView(c *ui.Context) {
 		a.term.pendingMoveID = 0
 		a.term.pendingMoveTarget = 0
 	}
-	ui.Column(c).Grow(1).Gap(0).Label(tr("Terminal pane")).Children(func() {
+	ui.Column(c).Grow(1).Gap(0).Label(tr("Terminal pane")).Bind(&a.terminalDockHandle).Children(func() {
 		islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(4).Padding(4, 8)).Label(tr("Terminal actions")).Children(func() {
 			a.terminalTabsView(c)
 			active := a.activeTerminal()
@@ -960,6 +971,11 @@ func (a *app) terminalSessionView(c *ui.Context, index int) {
 					})
 					if button.Clicked() {
 						a.term.active = index
+						// Put the keyboard back in this shell, not on the
+						// button, so the app's shortcuts stay out of the way.
+						if handle := a.keyboardHandles[fmt.Sprintf("terminal-%d", session.id)]; handle != nil {
+							handle.Focus()
+						}
 					}
 					searchLabel := fmt.Sprintf("%s %d", tr("Search terminal"), number)
 					flatIconButton(c, searchLabel, "Search terminal scrollback", searchIcon, 13, 4, session.pane == nil, func() {

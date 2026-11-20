@@ -438,9 +438,12 @@ type app struct {
 	// the list shows, the draft the modal edits, and the matches, which page
 	// in by asking for a larger limit as the list reaches its end. The Graph
 	// keeps its own, so narrowing one page leaves the other whole.
-	historyFilter      commitQuery
-	graphFilter        commitQuery
-	graphLayoutCache   graphLayoutCacheState
+	historyFilter    commitQuery
+	graphFilter      commitQuery
+	graphLayoutCache graphLayoutCacheState
+	// terminalDockHandle identifies the terminal dock's root control across
+	// frames, so the app can tell whether the dock owns the keyboard.
+	terminalDockHandle ui.Handle
 	branchVisibleCache filteredCache
 	reflogVisibleCache filteredCache
 	remoteVisibleCache filteredCache
