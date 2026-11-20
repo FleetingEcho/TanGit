@@ -57,6 +57,9 @@ type appSettings struct {
 	// DisableShortcuts switches the window's keyboard shortcuts off. The
 	// header icons keep working, so every action stays reachable.
 	DisableShortcuts bool `json:"disableShortcuts"`
+	// DisableShortcutToasts suppresses only shortcut acknowledgement notices.
+	// The audit log and operation results remain visible.
+	DisableShortcutToasts bool `json:"disableShortcutToasts,omitempty"`
 	// AutoFetchInterval is how often, in minutes, the window fetches every
 	// remote while it is open and idle. Zero disables background fetching.
 	AutoFetchInterval int `json:"autoFetchInterval"`

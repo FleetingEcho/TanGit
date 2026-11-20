@@ -117,6 +117,10 @@ func (a *app) commandLogEntry(c *ui.Context, entry repository.CommandEntry) {
 	}
 	ui.Column(c).FillWidth().Gap(4).Padding(6, 4).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+			if entry.Shortcut != nil {
+				ui.Text(c, entry.Shortcut.Chord).TextColor(theme.Accent).Bold().
+					FontSize(theme.FontSize - 1).Tooltip(entry.Shortcut.ID)
+			}
 			if !entry.At.IsZero() {
 				ui.Text(c, entry.At.Format("15:04:05")).TextColor(theme.TextMuted).
 					FontSize(theme.FontSize - 1).Width(60)
@@ -129,7 +133,7 @@ func (a *app) commandLogEntry(c *ui.Context, entry repository.CommandEntry) {
 				ui.Text(c, tr("failed")).TextColor(theme.Danger).Bold().
 					FontSize(theme.FontSize - 1)
 			}
-			commandLogHighlighted(c, "$ "+entry.Command, a.commandLogQuery, theme.Text)
+			commandLogHighlighted(c, commandLogEntryText(entry), a.commandLogQuery, theme.Text)
 		})
 		if output := strings.TrimRight(entry.Output, "\n"); output != "" {
 			ui.Box(c).FillWidth().Padding(7, 9).Radius(theme.Radius-1).
@@ -182,7 +186,7 @@ func formatCommandLog(entries []repository.CommandEntry) string {
 		if !entry.At.IsZero() {
 			fmt.Fprintf(&text, "[%s] ", entry.At.Format("15:04:05"))
 		}
-		fmt.Fprintf(&text, "$ %s\n", entry.Command)
+		fmt.Fprintf(&text, "%s\n", commandLogEntryText(entry))
 		if output := strings.TrimRight(entry.Output, "\n"); output != "" {
 			text.WriteString(output)
 			text.WriteString("\n")

@@ -21,6 +21,9 @@ type CommandEntry struct {
 	Command string
 	Output  string
 	Failed  bool
+	// Shortcut is the immutable accepted keyboard cause, when this entry
+	// describes a keyboard invocation rather than an ordinary shell command.
+	Shortcut *ShortcutInvocation
 	// Origin distinguishes commands explicitly requested by the user from
 	// Git commands started by this repository session.
 	Origin CommandOrigin
@@ -291,10 +294,15 @@ func (l *CommandLog) Note(text string) {
 	// incomplete lines. Merely starting a different command must not flush
 	// another writer's pending secret fragments, so that stays in its stream.
 	l.flushPendingLocked()
-	if len(l.entries) == 0 {
+	index := len(l.entries) - 1
+	for index >= 0 && l.entries[index].Shortcut != nil {
+		index--
+	}
+	if index < 0 {
+		index = len(l.entries)
 		l.appendEntryLocked(CommandEntry{At: time.Now(), Command: "Git action"})
 	}
-	entry := &l.entries[len(l.entries)-1]
+	entry := &l.entries[index]
 	entry.Failed = true
 	if entry.Output != "" && !strings.HasSuffix(entry.Output, "\n") {
 		entry.Output += "\n"

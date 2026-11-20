@@ -39,6 +39,9 @@ var zhHant = map[string]string{
 	"Hotkeys":                   "快捷鍵",
 	"Enable hotkeys":            "啟用快捷鍵",
 	"Enable keyboard shortcuts": "啟用鍵盤快捷鍵",
+	"Run a one-off shell command": "執行一次性 Shell 命令",
+	"Shortcut notifications":    "快捷鍵通知",
+	"Show shortcut acknowledgements while keeping Command Log and operation notifications visible.": "顯示快捷鍵觸發提示，同時保留命令日誌和其他操作通知。",
 
 	// Operations requiring attention.
 	"Edit remote":      "編輯遠端",
