@@ -447,11 +447,13 @@ func paneSplitWithGripReserve(c *ui.Context, value *float32, vertical, percent b
 			grip.Background(theme.SurfaceHover)
 		}
 		grip.Children(func() {
-			mark := "⋮"
-			if vertical {
-				mark = "⋯"
+			// A glyph's line box is taller than this grip and its baseline can
+			// push the visual center down. The native icon has the same fixed
+			// bounds as the grip and remains centered in either orientation.
+			icon := ui.Icon(c, moreIcon).FontSize(12).TextColor(theme.TextMuted).Center()
+			if !vertical {
+				icon.Rotate(90)
 			}
-			ui.Text(c, mark).FontSize(12).TextColor(theme.TextMuted)
 		})
 
 		delta := dx
