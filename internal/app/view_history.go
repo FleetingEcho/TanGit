@@ -80,16 +80,17 @@ func (a *app) confirmAbortOperation() {
 // selected commit. Its generation rejects an A-B-A completion even when a
 // backend returns a result after its context has been cancelled.
 type commitMessageDetailState struct {
-	hash       string
-	message    repository.CommitMessage
-	loading    bool
-	error      string
-	height     float32
-	raw        bool
-	markdown   *markdown.Options
-	scroll     ui.ScrollState
-	cancel     context.CancelFunc
-	generation uint64
+	hash           string
+	message        repository.CommitMessage
+	loading        bool
+	error          string
+	height         float32
+	heightByCommit map[string]float32
+	raw            bool
+	markdown       *markdown.Options
+	scroll         ui.ScrollState
+	cancel         context.CancelFunc
+	generation     uint64
 }
 
 func (s *commitMessageDetailState) reset() {
@@ -805,50 +806,7 @@ func (a *app) commitMessageBody(c *ui.Context, commit repository.Commit, state c
 // normal details and fullscreen details are mounted together. A nil state
 // keeps scrolling in the element's own identity instead of sharing a Handle.
 func (a *app) commitMessageBodyWithScrollState(c *ui.Context, commit repository.Commit, state commitDetailViewState, scrollState *ui.ScrollState) {
-	state.requestMessage(commit)
-	message := state.message
-	switch {
-	case message.loading:
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Spinner(c).Label(tr("Loading the full commit message…"))
-			ui.Text(c, tr("Loading the full commit message…")).TextColor(c.Theme().TextMuted)
-		})
-	case message.error != "":
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Text(c, message.error).TextColor(c.Theme().Danger).SingleLine().Tooltip(message.error).Grow(1).MinWidth(0)
-			if ui.Button(c, tr("Retry")).Clicked() {
-				message.hash = ""
-				state.requestMessage(commit)
-			}
-		})
-	case message.message.Description != "":
-		ui.Column(c).Fill().Gap(4).Children(func() {
-			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-				ui.Text(c, tr("Description")).Bold().TextColor(c.Theme().TextMuted).Grow(1)
-				label, icon := "Show raw commit message", fileCodeIcon
-				if message.raw {
-					label, icon = "Show rendered commit message", fileDocIcon
-				}
-				flatIconButton(c, label, label, icon, 14, 3, false, func() {
-					message.raw = !message.raw
-				})
-			})
-			body := ui.Scroll(c).Grow(1).FillWidth().Label(tr("Commit message"))
-			if scrollState != nil {
-				body.TrackScroll(scrollState)
-			}
-			body.Children(func() {
-				if message.raw {
-					ui.Text(c, message.message.Description).Selectable().FillWidth()
-					return
-				}
-				if message.markdown == nil {
-					message.markdown = &markdown.Options{WrapCode: true}
-				}
-				markdown.View(c, message.message.Description, message.markdown)
-			})
-		})
-	}
+	_ = a.preferredCommitDescriptionHeight(c, commit, state, scrollState)
 }
 
 // commitDetailBody is the one presentation used by History, Graph, Reflog,
@@ -1015,8 +973,7 @@ func (a *app) commitDetailBodyWithOptions(c *ui.Context, commit *repository.Comm
 		}).Grow(1)
 	}
 	if state.message.message.Description != "" && !state.message.loading && state.message.error == "" {
-		paneSplitVerticalReserve(c, &state.message.height, diffRegionMinHeight,
-			func() { a.commitMessageBody(c, *commit, state) }, filesAndDiff).Grow(1)
+		a.commitDescriptionSplit(c, *commit, state, filesAndDiff).Grow(1)
 		return
 	}
 	a.commitMessageBody(c, *commit, state)
