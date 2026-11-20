@@ -27,6 +27,7 @@ const (
 	settingsPageSSHProfiles
 	settingsPageCodeEditor
 	settingsPageLSP
+	settingsPageCache
 )
 
 func (a *app) openSettings() {
@@ -124,7 +125,7 @@ func (a *app) settingsModal(c *ui.Context) {
 				})
 			// Help belongs to the workspace underneath Settings. Opening it here
 			// closes Settings first so two modal overlays never compete for input.
-			if !a.settings.DisableShortcuts && !c.FocusTakesText() && a.code.shortcutRecording == "" {
+			if a.confirm == nil && !a.settings.DisableShortcuts && !c.FocusTakesText() && a.code.shortcutRecording == "" {
 				if a.onOverlayShortcut(back, ui.Shift, ui.KeySlash, shortcut("settings/modal-current-shortcuts", "?", tr("Show shortcuts for the current page")), nil) {
 					a.closeSettings()
 					a.openCurrentKeybindings()
@@ -134,9 +135,10 @@ func (a *app) settingsModal(c *ui.Context) {
 					a.openKeybindings()
 				}
 			}
-			// Testing an SSH profile can put host verification above Settings.
-			// A click in that overlay must not dismiss this dialog and cancel it.
-			if a.sshHostKeyPrompt == nil && (panel.PressedOutside() || a.onOverlayShortcut(back, 0, ui.KeyEscape, shortcut("settings/modal-close", "Escape", tr("Close settings")), nil)) {
+			// Confirmation and host-key prompts are child overlays. While either
+			// is present, Settings must not interpret its click or Escape as an
+			// outside dismissal of the parent dialog as well.
+			if a.confirm == nil && a.sshHostKeyPrompt == nil && (panel.PressedOutside() || a.onOverlayShortcut(back, 0, ui.KeyEscape, shortcut("settings/modal-close", "Escape", tr("Close settings")), nil)) {
 				if a.code.shortcutRecording != "" {
 					a.stopEditorShortcutRecording()
 				} else {
@@ -180,6 +182,29 @@ func settingsGroup(c *ui.Context, icon *ui.SVG, title, hint string) {
 	})
 }
 
+// settingsSwitchControl renders a switch and its label without a wrapping
+// row, so related preferences can also share a row without changing layout.
+func settingsSwitchControl(c *ui.Context, label, tooltip string, value *bool) bool {
+	toggle := ui.Switch(c, value).Label(tr(label))
+	if tooltip == "" {
+		tooltip = label
+	}
+	toggle.Tooltip(tr(tooltip))
+	ui.Text(c, tr(label)).FontSize(c.Theme().FontSize - 1).SingleLine()
+	return toggle.Changed()
+}
+
+// settingsSwitch keeps every boolean preference in the same compact form:
+// the switch itself first, then its readable label. Returning Changed lets
+// callers preserve their existing persistence or confirmation behavior.
+func settingsSwitch(c *ui.Context, label, tooltip string, value *bool) bool {
+	changed := false
+	ui.Row(c).AlignItems(ui.Center).Gap(12).Wrap().Children(func() {
+		changed = settingsSwitchControl(c, label, tooltip, value)
+	})
+	return changed
+}
+
 // settingRow is one labelled control, with its label and hint on the left and
 // the control on the right.
 func settingRow(c *ui.Context, label, hint string, control func()) {
@@ -212,6 +237,7 @@ func (a *app) settingsBody(c *ui.Context) {
 				a.settingsPageButton(c, settingsPageEditor, fileCodeIcon, "Editor")
 				a.settingsPageButton(c, settingsPageLSP, terminalIcon, "LSP")
 				a.settingsPageButton(c, settingsPageWorkspace, worktreesIcon, "Workspace")
+				a.settingsPageButton(c, settingsPageCache, trashIcon, "Cache")
 				a.settingsPageButton(c, settingsPageCommands, commandIcon, "Commands")
 				a.settingsPageButton(c, settingsPageSSHProfiles, remotesIcon, "SSH profiles")
 				a.settingsPageButton(c, settingsPageUpdates, updateIcon, "Updates")
@@ -236,6 +262,8 @@ func (a *app) settingsBody(c *ui.Context) {
 					a.sshProfileSettings(c)
 				case settingsPageUpdates:
 					settingsSection(c, func() { a.updatesSettings(c) })
+				case settingsPageCache:
+					settingsSection(c, func() { a.cacheSettings(c) })
 				default:
 					a.appearanceSettings(c)
 				}
@@ -271,6 +299,53 @@ func (a *app) settingsPageButton(c *ui.Context, page int, icon *ui.SVG, label st
 	}
 }
 
+func (a *app) cacheSettings(c *ui.Context) {
+	a.ensureCacheUsage()
+	theme := c.Theme()
+	totalDescription := "Disk space used by Zoekt code-search indexes and downloaded commit-author avatars."
+	indexDescription := "Indexes built and queried by Zoekt. They speed up full-text Code Search across local repository files without rescanning every file for every query."
+	avatarDescription := "Commit-author images shown next to commits. Caching avoids repeated downloads from Git hosting services."
+	settingsSection(c, func() {
+		settingsGroup(c, trashIcon, "Cache", "Storage used by Zoekt code-search indexes and downloaded author avatars")
+		switch {
+		case a.cacheCleanupBusy:
+			ui.Text(c, tr("Clearing cache…")).TextColor(theme.TextMuted)
+		case !a.cacheUsage.loaded:
+			ui.Text(c, tr("Measuring cache…")).TextColor(theme.TextMuted)
+		default:
+			cacheUsageRow := func(label, description string, size int64) {
+				ui.Row(c).AlignItems(ui.Center).Gap(8).MinHeight(36).Children(func() {
+					ui.Text(c, tr(label)).Bold()
+					cacheInfoBadge(c, label, description)
+					ui.Box(c).Grow(1)
+					ui.Text(c, formatRemoteTransferBytes(size)).Bold().TextColor(theme.Accent).
+						Tooltip(tr(description))
+				})
+			}
+			cacheUsageRow("Total cache", totalDescription, a.cacheUsage.totalBytes())
+			cacheUsageRow("Zoekt search indexes", indexDescription, a.cacheUsage.indexBytes)
+			cacheUsageRow("Cached avatars", avatarDescription, a.cacheUsage.avatarBytes)
+		}
+		ui.Divider(c)
+		settingRow(c, "Cache", "", func() {
+			iconButton(c, "Refresh cache size", "Remeasure the disk space used by Zoekt indexes and cached author avatars", refreshIcon,
+				a.cacheUsage.loading || a.cacheCleanupBusy, a.refreshCacheUsage)
+			iconTextButtonState(c, "Clear cache", "Delete Zoekt code-search indexes and cached author avatars. They are recreated when needed.", trashIcon,
+				false, a.cacheCleanupBusy, a.openCacheCleaner)
+		})
+		ui.Text(c, tr("Only Zoekt indexes and downloaded avatars are included. Unsaved editor recovery and Git safety journals are never cleared.")).
+			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+	})
+}
+
+func cacheInfoBadge(c *ui.Context, label, description string) {
+	theme := c.Theme()
+	ui.Box(c).Size(20, 20).Radius(10).Center().Background(theme.Accent.Alpha(0.08)).
+		Role(ui.RoleImage).Label(trf("%s information", tr(label))).Tooltip(tr(description)).Children(func() {
+		ui.Icon(c, infoIcon).FontSize(13).TextColor(theme.Accent)
+	})
+}
+
 func (a *app) appearanceSettings(c *ui.Context) {
 	settingsSection(c, func() {
 		settingsGroup(c, themeIcon, "Appearance", "Color, language, and your Home screen")
@@ -290,10 +365,7 @@ func (a *app) appearanceSettings(c *ui.Context) {
 		ui.Divider(c)
 		settingRow(c, "Home background", "An image behind the repository picker", func() {
 			enabled := !a.settings.HomeBackgroundDisabled
-			toggle := ui.Checkbox(c, &enabled, "").
-				Label(tr("Enable Home background")).
-				Tooltip(tr("Show or hide the chosen image without removing it"))
-			if toggle.Changed() {
+			if settingsSwitch(c, "Enable Home background", "Show or hide the chosen image without removing it", &enabled) {
 				a.settings.HomeBackgroundDisabled = !enabled
 				a.settingsChanged(c)
 			}
@@ -442,21 +514,18 @@ func (a *app) behaviorSettings(c *ui.Context) {
 				}
 			})
 			ui.Divider(c)
-			rows := ui.Checkbox(c, &a.settings.DiffSplit, tr("Show diffs side by side")).
-				Label(tr("Show diffs side by side"))
-			if rows.Changed() {
+			rows := settingsSwitch(c, "Show diffs side by side", "", &a.settings.DiffSplit)
+			if rows {
 				a.applySettingsChange()
 				c.Invalidate()
 			}
-			wrap := ui.Checkbox(c, &a.settings.DiffWrap, tr("Wrap long diff lines")).
-				Label(tr("Wrap long diff lines"))
-			if wrap.Changed() {
+			wrap := settingsSwitch(c, "Wrap long diff lines", "", &a.settings.DiffWrap)
+			if wrap {
 				a.applySettingsChange()
 				c.Invalidate()
 			}
-			untracked := ui.Checkbox(c, &a.settings.IgnoreUntracked, tr("Ignore untracked files")).
-				Label(tr("Ignore untracked files"))
-			if untracked.Changed() {
+			untracked := settingsSwitch(c, "Ignore untracked files", "", &a.settings.IgnoreUntracked)
+			if untracked {
 				a.applySettingsChange()
 				c.Invalidate()
 			}
@@ -466,9 +535,7 @@ func (a *app) behaviorSettings(c *ui.Context) {
 			ui.Text(c, tr("Fetches every remote while the window is open so branches, ahead/behind counts and tags stay current. Your working tree is not touched.")).
 				TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).MaxWidth(480)
 			fetchOn := a.settings.AutoFetchInterval > 0
-			fetchBox := ui.Checkbox(c, &fetchOn, tr("Fetch remotes in the background")).
-				Label(tr("Fetch remotes in the background"))
-			if fetchBox.Changed() {
+			if settingsSwitch(c, "Fetch remotes in the background", "", &fetchOn) {
 				if fetchOn {
 					a.settings.AutoFetchInterval = 5
 					a.autoFetchChoice = 5
@@ -482,9 +549,7 @@ func (a *app) behaviorSettings(c *ui.Context) {
 			if fetchOn {
 				a.backgroundFetchIntervalChoice(c)
 			}
-			prune := ui.Checkbox(c, &a.settings.FetchPrune, tr("Prune stale remote-tracking branches on fetch")).
-				Label(tr("Prune stale remote-tracking branches on fetch"))
-			if prune.Changed() {
+			if settingsSwitch(c, "Prune stale remote-tracking branches on fetch", "", &a.settings.FetchPrune) {
 				a.applySettingsChange()
 				c.Invalidate()
 			}
@@ -708,9 +773,28 @@ func (a *app) builtInEditorPreferenceSettings(c *ui.Context) {
 		{"Minimap", &a.settings.EditorMinimap},
 		{"Sticky symbol header", &a.settings.EditorStickyScroll},
 	} {
-		box := ui.Checkbox(c, item.value, tr(item.label))
-		if box.Changed() {
+		if settingsSwitch(c, item.label, "", item.value) {
 			a.settingsChanged(c)
+		}
+	}
+	a.zoektSearchSettings(c)
+}
+
+// zoektSearchSettings is the per-repository opt-out for indexed search.
+// It shares the Settings switch layout; only disabling asks for confirmation
+// because that action also deletes this repository's index cache.
+func (a *app) zoektSearchSettings(c *ui.Context) {
+	if a.currentZoektRepositoryRoot() == "" {
+		settingRow(c, "Code search", tr("Open a repository to choose whether it uses Zoekt."), func() {})
+		return
+	}
+	enabled := a.zoektCodeSearchEnabled()
+	if settingsSwitch(c, "Use Zoekt code search",
+		"Zoekt builds a local full-text index of repository files to speed up Code Search. Disable it to use ripgrep or the built-in search and save disk space.", &enabled) {
+		if enabled {
+			a.enableZoekt(c)
+		} else {
+			a.confirmDisableZoekt(c)
 		}
 	}
 }

@@ -3,33 +3,29 @@ package app
 import "github.com/egoist/mygo/ui"
 
 // The switch is on when shortcuts are enabled. Keep the stored inverse flag
-// for compatibility with existing settings files.
+// for compatibility with existing settings files, with no confirmation for
+// ordinary preference changes.
 func (a *app) hotkeysSwitch(c *ui.Context) {
+	enabled := !a.settings.DisableShortcuts
+	notifications := !a.settings.DisableShortcutToasts
+	changed, notificationsChanged := false, false
 	ui.Row(c).AlignItems(ui.Center).Gap(12).Wrap().Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
-			ui.Text(c, tr("Keyboard shortcuts")).SingleLine().FontSize(c.Theme().FontSize - 1)
-			enabled := !a.settings.DisableShortcuts
-			toggle := ui.Switch(c, &enabled)
-			toggle.Label(tr("Enable keyboard shortcuts")).Tooltip(tr("Enable keyboard shortcuts")).OnClick(func() {
-				a.settings.DisableShortcuts = !a.settings.DisableShortcuts
-				a.settingsChanged(c)
-				if a.settings.DisableShortcuts {
-					a.notify("info", "Keyboard shortcuts disabled", tr("The header icons keep every action reachable."))
-				} else {
-					a.notify("success", "Keyboard shortcuts enabled", tr("Press ? to show keyboard shortcuts."))
-				}
-			})
-		})
-		ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
-			enabled := !a.settings.DisableShortcutToasts
-			toggle := ui.Switch(c, &enabled)
-			toggle.Label(tr("Shortcut notifications")).
-				Tooltip(tr("Show shortcut acknowledgements while keeping Command Log and operation notifications visible.")).OnClick(func() {
-				a.settings.DisableShortcutToasts = !a.settings.DisableShortcutToasts
-				a.settings.ShortcutToastsConfigured = true
-				a.settingsChanged(c)
-			})
-			ui.Text(c, tr("Shortcut notifications")).SingleLine().FontSize(c.Theme().FontSize - 1)
-		})
+		changed = settingsSwitchControl(c, "Enable keyboard shortcuts", "Enable keyboard shortcuts", &enabled)
+		notificationsChanged = settingsSwitchControl(c, "Shortcut notifications",
+			"Show shortcut acknowledgements while keeping Command Log and operation notifications visible.", &notifications)
 	})
+	if changed {
+		a.settings.DisableShortcuts = !enabled
+		a.settingsChanged(c)
+		if a.settings.DisableShortcuts {
+			a.notify("info", "Keyboard shortcuts disabled", tr("The header icons keep every action reachable."))
+		} else {
+			a.notify("success", "Keyboard shortcuts enabled", tr("Press ? to show keyboard shortcuts."))
+		}
+	}
+	if notificationsChanged {
+		a.settings.DisableShortcutToasts = !notifications
+		a.settings.ShortcutToastsConfigured = true
+		a.settingsChanged(c)
+	}
 }

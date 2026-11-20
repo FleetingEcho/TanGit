@@ -128,6 +128,15 @@ type app struct {
 	// externalRefresh lets the shell limit filesystem-triggered reads to the
 	// page the user can see. Nil means a standalone app refreshes directly.
 	externalRefresh func()
+	// cacheOpenRoots reports every open tab's repository root, so reclaiming
+	// caches for a forgotten card never deletes data another tab is using.
+	cacheOpenRoots func() []string
+	// onCachesCleared lets the shell invalidate every tab's in-memory index
+	// state after the user explicitly clears all regenerable cache data.
+	onCachesCleared func()
+	// onZoektPreferenceChanged cancels every tab's builders for the same local
+	// repository before its cache is deleted, including non-visible tabs.
+	onZoektPreferenceChanged func(canonicalRoot string)
 
 	// term owns the shared dock's shells, tabs, splits, edge and restored size.
 	term terminalState
@@ -148,6 +157,9 @@ type app struct {
 	// data such as Zoekt shards outside every repository working tree.
 	pathUserData       string
 	pathCache          string
+	cacheCleanupBusy   bool
+	cacheCleanupSerial uint64
+	cacheUsage         cacheUsageState
 	authorAvatars      *authorAvatarStore
 	recentRepositories []recentRepository
 	// historyLoading and historyLoaded keep filesystem reads away from
