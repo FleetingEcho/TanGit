@@ -34,6 +34,8 @@ func (a *app) cacheRepositoriesModal(c *ui.Context) {
 							ui.Text(c, tr("Free search-index space one project at a time")).
 								TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 						})
+						iconButton(c, "Refresh repository caches", "Measure current published and unfinished index sizes", refreshIcon,
+							a.confirm != nil || a.cacheCleanupBusy || a.cacheRepositories.loading, a.refreshRepositoryCaches)
 						iconButton(c, "Close repository cache manager", "Back to cache settings", closeIcon,
 							a.confirm != nil, a.cacheRepositories.close)
 					})
@@ -59,7 +61,20 @@ func (a *app) cacheRepositoriesModal(c *ui.Context) {
 					default:
 						ui.Scroll(c).Grow(1).FillWidth().Label(tr("Recent repository caches")).Children(func() {
 							ui.Column(c).FillWidth().Gap(8).Children(func() {
-								for _, row := range a.cacheRepositories.rows {
+								previousKind := cachePublishedRecent
+								for i, row := range a.cacheRepositories.rows {
+									if i == 0 || row.kind != previousKind {
+										label := tr("Recent projects")
+										switch row.kind {
+										case cachePublishedUnlisted:
+											label = tr("Other published search indexes")
+										case cacheIndexBuildTemporary:
+											label = tr("Unfinished index builds")
+										}
+										ui.Text(c, label).Bold().TextColor(c.Theme().TextMuted).
+											FontSize(c.Theme().FontSize - 1)
+									}
+									previousKind = row.kind
 									a.cacheRepositoryRow(c, row)
 								}
 							})
@@ -93,9 +108,9 @@ func (a *app) cacheRepositoriesModal(c *ui.Context) {
 func (a *app) cacheRepositoryRow(c *ui.Context, row cacheRepositoryRow) {
 	theme := c.Theme()
 	project := row.recent
-	c.Key(fmt.Sprintf("repository-cache:%s:%t", project.Path, project.EditorOnly))
+	c.Key(fmt.Sprintf("repository-cache:%d/%t:%s", row.kind, project.EditorOnly, row.indexKey+cacheRepositoryRowPath(row)))
 	size := formatRemoteTransferBytes(row.bytes)
-	if row.bytes == 0 {
+	if row.bytes == 0 && row.kind == cachePublishedRecent {
 		size = tr("No cached index")
 	}
 	ui.Column(c).FillWidth().Padding(12).Gap(7).
@@ -104,34 +119,47 @@ func (a *app) cacheRepositoryRow(c *ui.Context, row cacheRepositoryRow) {
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				icon := worktreesIcon
 				switch {
+				case row.kind == cacheIndexBuildTemporary:
+					icon = refreshIcon
+				case row.kind == cachePublishedUnlisted:
+					icon = searchIcon
 				case project.EditorOnly:
 					icon = folderIcon
 				case project.Worktree:
 					icon = worktreesIcon
 				}
 				ui.Icon(c, icon).FontSize(16).TextColor(theme.Accent)
-				ui.Text(c, project.displayName()).Bold().Grow(1).MinWidth(0).SingleLine().Tooltip(project.Path)
+				ui.Text(c, cacheRepositoryRowName(row)).Bold().Grow(1).MinWidth(0).SingleLine().Tooltip(cacheRepositoryRowPath(row))
 				if row.protected {
 					ui.Text(c, tr("Shared or in use")).FontSize(theme.FontSize - 1).TextColor(theme.Warning)
 				}
 				ui.Text(c, size).Bold().TextColor(theme.Accent)
 			})
-			ui.Text(c, project.Path).SingleLine().Grow(1).MinWidth(0).
-				FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).Tooltip(project.Path)
+			ui.Text(c, cacheRepositoryRowPath(row)).SingleLine().Grow(1).MinWidth(0).
+				FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).Tooltip(cacheRepositoryRowPath(row))
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-				if project.Worktree {
+				if row.kind == cachePublishedRecent && project.Worktree {
 					ui.Text(c, tr("Worktree")).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
 				}
-				if project.EditorOnly {
+				if row.kind == cachePublishedRecent && project.EditorOnly {
 					ui.Text(c, tr("Editor folder")).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
 				}
 				ui.Box(c).Grow(1)
-				clear := ui.Button(c, tr("Clear cache")).
+				label, action := tr("Clear cache"), tr("Delete this project's search index, keeping its recent entry")
+				if row.kind == cachePublishedUnlisted {
+					label, action = tr("Clear this index"), tr("Delete this unlisted search index without changing recent entries")
+				} else if row.kind == cacheIndexBuildTemporary {
+					label, action = tr("Clear unfinished indexes"), tr("Stop index builds and delete only unfinished temporary indexes")
+				}
+				clear := ui.Button(c, label).
 					Disabled(a.cacheCleanupBusy || a.confirm != nil || row.bytes == 0 || row.protected).
-					Tooltip(tr("Delete this project's search index, keeping its recent entry")).
-					Label(trf("Clear cache for %s", project.displayName()))
+					Tooltip(action).
+					Label(trf("Clear cache for %s", cacheRepositoryRowName(row)))
 				if clear.Clicked() {
 					a.confirmRepositoryCache(row, false)
+				}
+				if row.kind != cachePublishedRecent {
+					return
 				}
 				remove := ui.Button(c, tr("Remove from recent")).
 					Disabled(a.cacheCleanupBusy || a.confirm != nil).

@@ -388,6 +388,11 @@ func buildCodeSearchIndex(ctx context.Context, root string, paths, excluded []st
 	if !codeSearchIndexingSupported() {
 		return missing, errCodeSearchIndexUnavailable
 	}
+	releaseBuild, ok := acquireCodeSearchIndexBuild()
+	if !ok {
+		return missing, context.Canceled
+	}
+	defer releaseBuild()
 	unlock := lockCodeSearchIndex(directory)
 	defer unlock()
 	if err := ctx.Err(); err != nil {
@@ -414,7 +419,9 @@ func buildCodeSearchIndex(ctx context.Context, root string, paths, excluded []st
 	if err = os.MkdirAll(parent, 0o700); err != nil {
 		return missing, err
 	}
-	cleanupCodeSearchIndexStaging(parent, time.Now())
+	// Staging cleanup is serialized globally in cache GC and explicit cache
+	// clearing. One repository's per-index lock must not imply it owns another
+	// repository's unfinished generation in this shared parent directory.
 	staging, err := os.MkdirTemp(parent, ".tangit-index-")
 	if err != nil {
 		return missing, err
