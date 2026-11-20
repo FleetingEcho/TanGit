@@ -48,7 +48,7 @@ jobs:
       - name: Stress asynchronous UI publication
         run: >-
           go test ./internal/app
-          -run '^(TestRealGitContinueDetectsLengthInvariantChangesBeforeDriver|TestCodeCheckoutRefreshesFilesDocumentsAndSearchWithoutDiscardingEdits|TestAgentUpdateStaleGenerationCannotPublishResult|TestShowingTheWindowRefreshesEveryPage|TestClosingRepositoryCancelsReviewRead|TestReplacingRepositoryCancelsReviewRead|TestWaitForUpdateRunsPendingCallbackAfterWakeCoalesces)$'
+          -run '^(TestRealGitContinueDetectsLengthInvariantChangesBeforeDriver|TestCodeCheckoutRefreshesFilesDocumentsAndSearchWithoutDiscardingEdits|TestAgentUpdateStaleGenerationCannotPublishResult|TestShowingTheWindowRefreshesEveryPage|TestClosingRepositoryCancelsReviewRead|TestReplacingRepositoryCancelsReviewRead|TestWorktreeTerminalWaitsForTargetTabAndKeepsIsolation|TestWaitForUpdateRunsPendingCallbackAfterWakeCoalesces)$'
           -count=10 -timeout=5m
       - name: Race-test shared repository and agent state
         run: go test -race ./internal/repository ./internal/agentwork ./internal/agentcli ./internal/app

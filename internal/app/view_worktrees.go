@@ -160,10 +160,32 @@ func (a *app) openSelectedWorktreeTerminal() {
 	if !ok || worktree.Missing {
 		return
 	}
+	if worktree.Current {
+		a.openTerminal()
+		return
+	}
+	if a.openTerminalTab != nil {
+		a.openTerminalTab(a.worktreeOpenPath(worktree.Path))
+		return
+	}
+	// Standalone local apps retain the system-terminal fallback due to no
+	// owning tab. Remote opens keep their previous in-app behavior.
 	if a.location.IsRemote() {
 		a.openWorktree(worktree)
 		return
 	}
+	a.openWorktreeSystemTerminal(worktree)
+}
+
+func (a *app) openSelectedWorktreeSystemTerminal() {
+	worktree, ok := a.selectedWorktreeValue()
+	if !ok || worktree.Missing || a.location.IsRemote() {
+		return
+	}
+	a.openWorktreeSystemTerminal(worktree)
+}
+
+func (a *app) openWorktreeSystemTerminal(worktree repository.Worktree) {
 	if err := launchWorktreeTerminal(worktree.Path); err != nil {
 		a.notify("error", "Could not open terminal", safeError(err))
 	}
@@ -473,9 +495,13 @@ func (a *app) worktreeRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) 
 			a.selectWorktreeRow(row.Index)
 			a.openSelectedWorktreeInEditor()
 		}
-		if m.Item(tr("Open terminal here")).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Open worktree terminal")).Disabled(a.actionBusy).Chosen() {
 			a.selectWorktreeRow(row.Index)
 			a.openSelectedWorktreeTerminal()
+		}
+		if !a.location.IsRemote() && m.Item(tr("Open system terminal here")).Disabled(a.actionBusy).Chosen() {
+			a.selectWorktreeRow(row.Index)
+			a.openSelectedWorktreeSystemTerminal()
 		}
 		if !a.location.IsRemote() && m.Item(tr("Show in file manager")).Disabled(a.actionBusy).Chosen() {
 			a.selectWorktreeRow(row.Index)
