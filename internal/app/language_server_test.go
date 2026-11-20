@@ -179,12 +179,17 @@ func TestGoLanguageServerSurvivesPreviewReplacement(t *testing.T) {
 	waitForCodeDocument(t, h, "second.go")
 	h.tester.Frame()
 	events := connection.snapshot()
-	if len(events) != 3 {
-		t.Fatalf("Go preview replacement emitted %#v, want two opens and one close", events)
+	// Replacing a preview removes its tab, not its cached document. Both
+	// files stay open on the warm server; the second opens with the full
+	// contents rather than an empty placeholder followed by a change.
+	if len(events) != 2 {
+		t.Fatalf("Go preview replacement emitted %#v, want both documents held open", events)
 	}
-	if events[1].kind != "open" || !strings.HasSuffix(events[1].uri, "/second.go") ||
-		events[2].kind != "close" || !strings.HasSuffix(events[2].uri, "/first.go") {
-		t.Fatalf("Go preview replacement events = %#v, want open second before close first", events)
+	if events[0].kind != "open" || !strings.HasSuffix(events[0].uri, "/first.go") {
+		t.Fatalf("Go preview replacement did not open the first file: %#v", events)
+	}
+	if events[1].kind != "open" || !strings.HasSuffix(events[1].uri, "/second.go") || events[1].text != "package second\n" {
+		t.Fatalf("Go preview replacement events = %#v, want the second file open with its full text", events)
 	}
 	if got := len(launches); got != 1 {
 		t.Fatalf("gopls launches = %d, want one server retained across preview replacement", got)

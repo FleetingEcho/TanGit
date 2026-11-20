@@ -246,10 +246,10 @@ func TestMultipleLanguageServersShareATypeScriptDocument(t *testing.T) {
 	h.waitFor(t, "TypeScript definition", func() bool { return h.app.code.active == "target.ts" })
 }
 
-// Replacing a preview must not briefly leave a server with no open documents.
-// TypeScript disposes an inferred project at that point, so the next file pays
-// for a fresh types analysis even though it belongs to the same workspace.
-func TestTypeScriptPreviewOpensItsReplacementBeforeClosingTheOldFile(t *testing.T) {
+// Replacing a preview removes its tab but retains its cached document, so
+// TypeScript keeps both files open on the same warm inferred project. The
+// replacement opens with its full text, not an empty loading placeholder.
+func TestTypeScriptPreviewKeepsCachedDocumentsOpen(t *testing.T) {
 	connection := newFakeLanguageServerConnection()
 	launches := make(chan languageServerLaunch, 2)
 	stubLanguageServerConnection(t, func(launch languageServerLaunch) (languageServerConnection, error) {
@@ -275,12 +275,11 @@ func TestTypeScriptPreviewOpensItsReplacementBeforeClosingTheOldFile(t *testing.
 	waitForCodeDocument(t, h, "second.ts")
 	h.tester.Frame()
 	events := connection.snapshot()
-	if len(events) != 3 {
-		t.Fatalf("preview replacement emitted %#v, want two opens and one close; server=%#v active=%q documents=%v", events, h.app.additionalLanguageServers["typescript"], h.app.code.active, h.app.code.documents)
+	if len(events) != 2 {
+		t.Fatalf("preview replacement emitted %#v, want both cached documents open; server=%#v active=%q", events, h.app.additionalLanguageServers["typescript"], h.app.code.active)
 	}
-	if events[1].kind != "open" || !strings.HasSuffix(events[1].uri, "/second.ts") ||
-		events[2].kind != "close" || !strings.HasSuffix(events[2].uri, "/first.ts") {
-		t.Fatalf("preview replacement events = %#v, want open second before close first", events)
+	if events[1].kind != "open" || !strings.HasSuffix(events[1].uri, "/second.ts") || events[1].text != "export const second = 2\n" {
+		t.Fatalf("preview replacement events = %#v, want the second file open with its full text", events)
 	}
 	if got := len(launches); got != 1 {
 		t.Fatalf("TypeScript launches = %d, want one server retained across preview replacement", got)

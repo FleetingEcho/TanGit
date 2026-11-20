@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 
 	"lazygitapp/internal/repository"
 )
@@ -45,6 +46,44 @@ func TestCommitActionButtonsUseDistinctIcons(t *testing.T) {
 		if bytes.Equal(firstIcon.Pix, secondIcon.Pix) {
 			t.Errorf("action buttons %q render the same icon", pair)
 		}
+	}
+}
+
+// Choosing another commit keeps the file list and diff on the screen while
+// the next ones load instead of replacing them with blank loading panes.
+func TestCommitDetailsKeepTheirContentWhileLoading(t *testing.T) {
+	session := &controlledCommitDetailPublicationSession{
+		started: make(chan string, 1),
+		release: make(chan []repository.CommitFile, 1),
+	}
+	t.Cleanup(func() { session.release <- []repository.CommitFile{{Path: "next.go"}} })
+	a := newApp(fakeOpener{})
+	a.session = session
+	a.workspaceTab = sectionHistory
+	a.commitFilesHash = "first"
+	a.commitFiles = []repository.CommitFile{{Path: "old.go"}}
+	a.selectedCommitFile, a.selectedCommitFileRow = 0, 0
+	a.commitDiffHash, a.commitDiffPath = "first", "old.go"
+	a.commitDiffState = &editor.DiffState{Old: editor.NewBuffer("before\n"), New: editor.NewBuffer("after\n")}
+	previous := a.commitDiffState
+	next := repository.Commit{Hash: "second", Subject: "Next commit"}
+	a.requestCommitDetails(next)
+	<-session.started
+	if a.commitFiles == nil || a.commitDiffState != previous {
+		t.Fatal("choosing another commit cleared the current file list or diff")
+	}
+	tt := ui.NewTester(func(c *ui.Context) {
+		a.commitDetailBody(c, &next, "Select a commit", nil, a.historyCommitDetailViewState())
+	}, 800, 600)
+	tt.Frame()
+	if !tt.HasText("old.go") || tt.HasText(tr("Loading commit details…")) {
+		t.Fatal("the next commit replaced its existing files with a loading pane")
+	}
+	if a.commitDiffState != previous {
+		t.Fatal("drawing the next commit unloaded the diff already on screen")
+	}
+	if _, ok := tt.Find(tr("Loading commit details")); !ok {
+		t.Fatal("the retained commit files do not show their load in progress")
 	}
 }
 
