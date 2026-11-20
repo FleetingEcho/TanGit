@@ -116,12 +116,10 @@ func TestWholeWindowDiffSwitchesFiles(t *testing.T) {
 	h.waitFor(t, "the first file's diff", func() bool {
 		return h.app.commitDiffState != nil && !h.app.commitDiffLoading
 	})
-	if err := h.tester.Click("Expand diff"); err != nil {
-		t.Fatalf("review the diff in the whole window: %v", err)
-	}
+	h.app.openDiffFullscreen()
 	h.tester.Frame()
 	if !h.app.diffFullscreen {
-		t.Fatal("the expand icon did not open the whole-window diff")
+		t.Fatal("the whole-window diff did not open")
 	}
 	if len(h.app.diffFullscreenRows) != len(h.app.commitFiles) {
 		t.Fatalf("the whole-window diff lists %d files, the commit changed %d",
@@ -174,9 +172,7 @@ func TestWholeWindowDiffFileListCollapsesAndRestores(t *testing.T) {
 	h.waitFor(t, "the first file's diff", func() bool {
 		return h.app.commitDiffState != nil && !h.app.commitDiffLoading
 	})
-	if err := h.tester.Click("Expand diff"); err != nil {
-		t.Fatalf("review the diff in the whole window: %v", err)
-	}
+	h.app.openDiffFullscreen()
 	h.tester.Frame()
 
 	width := h.app.diffFullscreenFilesWidth
@@ -222,9 +218,7 @@ func TestWholeWindowDiffResizesItsFileList(t *testing.T) {
 	h.waitFor(t, "the first file's diff", func() bool {
 		return h.app.commitDiffState != nil && !h.app.commitDiffLoading
 	})
-	if err := h.tester.Click("Expand diff"); err != nil {
-		t.Fatalf("review the diff in the whole window: %v", err)
-	}
+	h.app.openDiffFullscreen()
 	h.tester.Frame()
 
 	before := h.app.diffFullscreenFilesWidth
