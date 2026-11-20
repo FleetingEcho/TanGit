@@ -1,6 +1,7 @@
 package app
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -61,6 +62,26 @@ func TestKeybindingsModalListsAndFiltersShortcuts(t *testing.T) {
 	}
 	if a.keybindingFilter != "" {
 		t.Fatalf("the filter survived closing: %q", a.keybindingFilter)
+	}
+}
+
+func TestKeybindingsFooterKeepsDoneButtonBesideTheSwitches(t *testing.T) {
+	a := newApp(fakeOpener{})
+	tester := ui.NewTester(a.keybindingsFooter, 716, 140)
+	tester.Frame()
+	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+		saveScreenshot(t, dir, "keybindings-footer", tester)
+	}
+
+	if _, found := tester.Find("The header icons keep every action reachable."); found {
+		t.Fatal("the shortcut footer still shows the redundant hint")
+	}
+	done, found := tester.AccessByRole(ui.RoleButton, "Done")
+	if !found {
+		t.Fatal("the shortcut footer Done button is missing")
+	}
+	if done.Bounds.X+done.Bounds.W > 716 {
+		t.Errorf("the shortcut footer Done button escaped the row: %+v", done.Bounds)
 	}
 }
 
