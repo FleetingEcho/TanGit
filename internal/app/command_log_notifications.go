@@ -24,13 +24,12 @@ func (a *app) attachRepositoryCommandLog(log *repository.CommandLog) {
 	})
 }
 
-// openCommandLog shows commands entered by the user by default. Hosting or Git
-// errors use openGitCommandLog to land in their actual section, not silently
-// look missing behind the default tab after command history was filtered.
+// openCommandLog shows background Git commands by default. User commands stay
+// one explicit tab away, and command errors land directly in that section.
 func (a *app) openCommandLog() {
 	a.commandLogOpen = true
 	a.commandLogVisible.Store(true)
-	a.commandLogUser = true
+	a.commandLogUser = false
 	a.commandLogQuery = ""
 }
 

@@ -6,10 +6,28 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+func showBackgroundFetchInterval(t *testing.T, h *harness) {
+	t.Helper()
+	for range 12 {
+		bounds, found := h.tester.Find("Background fetch interval")
+		if found && bounds.W > 0 && bounds.H > 0 && bounds.Y >= 0 && bounds.Y+bounds.H <= 800 {
+			return
+		}
+		delta := float32(260)
+		if found && bounds.Y < 0 {
+			delta = -260
+		}
+		h.tester.Scroll(700, 400, 0, delta)
+		h.tester.Frame()
+	}
+	t.Fatalf("could not scroll Background fetch interval into view: %v", h.tester.Texts())
+}
+
 func TestBackgroundFetchSelectorChoosesPreset(t *testing.T) {
 	h := menuTestApp(t)
 	h.app.openSettingsSection(settingsPageBehavior)
 	h.tester.Frame()
+	showBackgroundFetchInterval(t, h)
 	if err := h.tester.Click("Background fetch interval"); err != nil {
 		t.Fatal(err)
 	}
@@ -28,6 +46,7 @@ func TestBackgroundFetchSelectorAcceptsAndPersistsCustomMinutes(t *testing.T) {
 	h.app.pathUserData = t.TempDir()
 	h.app.openSettingsSection(settingsPageBehavior)
 	h.tester.Frame()
+	showBackgroundFetchInterval(t, h)
 
 	if !h.tester.HasText("5 min") {
 		t.Fatalf("the current interval is missing from the selector: %v", h.tester.Texts())
@@ -86,6 +105,7 @@ func TestBackgroundFetchSelectorAcceptsAndPersistsCustomMinutes(t *testing.T) {
 	h.app.closeSettings()
 	h.app.openSettingsSection(settingsPageBehavior)
 	h.tester.Frame()
+	showBackgroundFetchInterval(t, h)
 	if h.app.settingsUI.autoFetchChoice != backgroundFetchCustomChoice || !h.tester.HasText("Custom…") {
 		t.Fatal("an existing custom interval was not restored as Custom")
 	}

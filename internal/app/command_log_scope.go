@@ -1,7 +1,6 @@
 package app
 
 import (
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -47,12 +46,16 @@ func (a *app) commandLogTools(c *ui.Context) {
 			git++
 		}
 	}
-	ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
-		commandLogScopeButton(c, "Your commands", "Show commands you chose to run", user,
-			a.commandLogUser, func() { a.commandLogUser = true })
-		commandLogScopeButton(c, "Background Git commands", "Show Git and hosting actions from TanGit", git,
-			!a.commandLogUser, func() { a.commandLogUser = false })
-	})
+	section := 0
+	if a.commandLogUser {
+		section = 1
+	}
+	tabs := ui.Tabs(c, &section,
+		fmt.Sprintf("%s (%d)", tr("Background Git commands"), git),
+		fmt.Sprintf("%s (%d)", tr("Your commands"), user))
+	if tabs.Changed() {
+		a.commandLogUser = section == 1
+	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		ui.Icon(c, searchIcon).FontSize(14).TextColor(c.Theme().TextMuted)
 		ui.TextInput(c, &a.commandLogQuery).Label(tr("Search commands")).
@@ -78,23 +81,6 @@ func commandLogEntrySearchText(entry repository.CommandEntry) string {
 		text = entry.Shortcut.Chord + "\n" + entry.Shortcut.ID + "\n" + text
 	}
 	return text
-}
-
-func commandLogScopeButton(c *ui.Context, title, tooltip string, count int, active bool, run func()) {
-	label := tr(title)
-	var button ui.Element
-	if active {
-		button = ui.PrimaryButton(c, "")
-	} else {
-		button = ui.Button(c, "")
-	}
-	button = compactTextButton(button).Label(label).Tooltip(tr(tooltip)).Gap(6).Children(func() {
-		ui.Text(c, label)
-		ui.Badge(c, strconv.Itoa(count))
-	})
-	if button.Clicked() {
-		run()
-	}
 }
 
 // highlightPart is one chunk of rendered command output. Parts preserve order

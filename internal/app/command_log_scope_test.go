@@ -8,6 +8,25 @@ import (
 	"lazygitapp/internal/repository"
 )
 
+func commandLogTabTitle(tester *ui.Tester, title string) string {
+	for _, node := range tester.AccessAll() {
+		if node.Role == ui.RoleTab && strings.HasPrefix(node.Name, title+" (") {
+			return node.Name
+		}
+	}
+	return title
+}
+
+func openUserCommandLogForTest(t *testing.T, a *app, tester *ui.Tester) {
+	t.Helper()
+	a.openCommandLog()
+	tester.Frame()
+	if err := tester.Click(commandLogTabTitle(tester, "Your commands")); err != nil {
+		t.Fatalf("open user command log: %v", err)
+	}
+	tester.Frame()
+}
+
 func TestCommandLogSectionsAndSearch(t *testing.T) {
 	a, tester, _ := realCommandHarness(t)
 	a.commandLog.Record("git rev-parse HEAD", "abc123", false)
@@ -19,21 +38,16 @@ func TestCommandLogSectionsAndSearch(t *testing.T) {
 	if !tester.HasText("Your commands") || !tester.HasText("Background Git commands") {
 		t.Fatalf("missing sections: %q", tester.Texts())
 	}
-	if !tester.HasText("$ git status --short") || tester.HasText("$ git rev-parse HEAD") {
-		t.Fatalf("default section does not contain only user commands: %q", tester.Texts())
-	}
-	if err := tester.Click("Background Git commands"); err != nil {
-		t.Fatalf("switch to Git section: %v", err)
-	}
-	tester.Frame()
 	if !tester.HasText("$ git rev-parse HEAD") || tester.HasText("$ git status --short") {
-		t.Fatalf("Git section includes the wrong entries: %q", tester.Texts())
+		t.Fatalf("default section does not contain only background Git commands: %q", tester.Texts())
 	}
-
-	if err := tester.Click("Your commands"); err != nil {
-		t.Fatalf("return to user commands: %v", err)
+	if err := tester.Click(commandLogTabTitle(tester, "Your commands")); err != nil {
+		t.Fatalf("switch to user commands: %v", err)
 	}
 	tester.Frame()
+	if !tester.HasText("$ git status --short") || tester.HasText("$ git rev-parse HEAD") {
+		t.Fatalf("user section includes the wrong entries: %q", tester.Texts())
+	}
 	if err := tester.Click("Search commands"); err != nil {
 		t.Fatalf("focus command search: %v", err)
 	}
@@ -63,6 +77,44 @@ func TestCommandLogSectionsAndSearch(t *testing.T) {
 	tester.Frame()
 	if !tester.HasText("No commands match your search.") {
 		t.Fatalf("missing filter-empty state: %q", tester.Texts())
+	}
+}
+
+func TestCommandLogUsesStandardOrderedTabsAndKeyboard(t *testing.T) {
+	a, tester, _ := realCommandHarness(t)
+	a.commandLog.Record("git rev-parse HEAD", "abc123", false)
+	a.commandLog.BeginUserCommand("git status --short")("?? untracked.txt\n", false)
+	a.openCommandLog()
+	tester.Frame()
+
+	background, found := tester.AccessByRole(ui.RoleTab, commandLogTabTitle(tester, "Background Git commands"))
+	if !found {
+		t.Fatalf("standard background tab is missing: %q", tester.Texts())
+	}
+	user, found := tester.AccessByRole(ui.RoleTab, commandLogTabTitle(tester, "Your commands"))
+	if !found {
+		t.Fatalf("standard user tab is missing: %q", tester.Texts())
+	}
+	if background.Bounds.X >= user.Bounds.X {
+		t.Fatalf("command tabs are not ordered background then user: background=%+v user=%+v", background.Bounds, user.Bounds)
+	}
+	if !background.Selected || user.Selected {
+		t.Fatalf("default tab is not background Git commands: background=%+v user=%+v", background.Selected, user.Selected)
+	}
+	if !tester.HasText("$ git rev-parse HEAD") {
+		t.Fatal("default background tab does not show its Git entries")
+	}
+	if err := tester.Click(commandLogTabTitle(tester, "Your commands")); err != nil {
+		t.Fatal(err)
+	}
+	tester.Frame()
+	if !a.commandLogUser || !tester.HasText("$ git status --short") {
+		t.Fatal("clicking the standard user tab did not select its entries")
+	}
+	tester.Key(0, ui.KeyLeft)
+	tester.Frame()
+	if a.commandLogUser || !tester.HasText("$ git rev-parse HEAD") {
+		t.Fatal("arrow-key tab navigation did not return to background commands")
 	}
 }
 
@@ -103,7 +155,7 @@ func TestHighlightedCommandCopiesWithoutInsertedWhitespace(t *testing.T) {
 	a.commandLog.Clear()
 	a.commandLog.BeginUserCommand("git remote -v")("origin  https://example.com/team/project.git\n", false)
 	a.commandLogQuery = "remote"
-	a.openCommandLog()
+	openUserCommandLogForTest(t, a, tester)
 	a.commandLogQuery = "remote"
 	tester.Frame()
 	link, ok := tester.Find("origin  https://example.com/team/project.git")
