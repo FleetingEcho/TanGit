@@ -410,7 +410,10 @@ func TestRepositoryActionsStayAvailableWhileDiffMaximized(t *testing.T) {
 	if err := h.tester.Click("Push"); err != nil {
 		t.Fatalf("click Push: %v", err)
 	}
-	h.waitFor(t, "the push confirmation", func() bool { return h.app.confirm != nil })
+	h.waitFor(t, "the push confirmation", func() bool { return h.app.confirm != nil && !h.app.confirm.disabled })
+	// The preview enables Continue on publication. Build that newly enabled
+	// frame before clicking it, then ordinary UI interactions continue.
+	h.tester.Frame()
 	if err := h.tester.Click("Continue"); err != nil {
 		t.Fatalf("confirm the push: %v", err)
 	}

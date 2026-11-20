@@ -5,6 +5,7 @@ package i18n
 // future additions to be translated in the same change.
 var sourceCoverageTranslations = map[string]map[string]string{
 	"zh-Hans": {
+		"Checking stacked branches…":      "正在检查堆叠分支…",
 		"Undo Conflict Resolution":        "撤销冲突解决",
 		"Undo the last resolution in %s?": "要撤销 %s 中的上一次解决操作吗？",
 		"This replaces the current Result with the text before the last resolution. The index and Git operation are not changed.": "这会将当前 Result 替换为上一次解决前的文本，不会更改 index 或 Git 操作。",
@@ -530,6 +531,7 @@ var sourceCoverageTranslations = map[string]map[string]string{
 		"TanGit saves the current WIP first, then restores the checkpoint's staged, unstaged, and untracked files. Newer commits prevent restoration.": "TanGit 会先保存当前的未完成工作，再恢复检查点中已暂存、未暂存和未跟踪的文件。存在更新的提交时无法恢复。",
 	},
 	"zh-Hant": {
+		"Checking stacked branches…":      "正在檢查堆疊分支…",
 		"Undo Conflict Resolution":        "撤銷衝突解決",
 		"Undo the last resolution in %s?": "要撤銷 %s 中的上一次解決操作嗎？",
 		"This replaces the current Result with the text before the last resolution. The index and Git operation are not changed.": "這會將目前 Result 替換為上一次解決前的文字，不會變更 index 或 Git 操作。",
@@ -1055,6 +1057,7 @@ var sourceCoverageTranslations = map[string]map[string]string{
 		"TanGit saves the current WIP first, then restores the checkpoint's staged, unstaged, and untracked files. Newer commits prevent restoration.": "TanGit 會先儲存目前的未完成工作，再還原檢查點中已暫存、未暫存和未追蹤的檔案。存在較新的提交時無法還原。",
 	},
 	"ja": {
+		"Checking stacked branches…":      "スタックされたブランチを確認しています…",
 		"Undo Conflict Resolution":        "競合解決を元に戻す",
 		"Undo the last resolution in %s?": "%s の直前の解決を元に戻しますか？",
 		"This replaces the current Result with the text before the last resolution. The index and Git operation are not changed.": "現在の Result を直前の解決前のテキストに置き換えます。index と Git 操作は変更されません。",
@@ -1580,6 +1583,7 @@ var sourceCoverageTranslations = map[string]map[string]string{
 		"TanGit saves the current WIP first, then restores the checkpoint's staged, unstaged, and untracked files. Newer commits prevent restoration.": "TanGit は現在の作業中の変更を先に保存してから、チェックポイントのステージ済み、未ステージ、未追跡のファイルを復元します。新しいコミットがある場合は復元できません。",
 	},
 	"es": {
+		"Checking stacked branches…":      "Comprobando ramas apiladas…",
 		"Undo Conflict Resolution":        "Deshacer resolución de conflictos",
 		"Undo the last resolution in %s?": "¿Deshacer la última resolución en %s?",
 		"This replaces the current Result with the text before the last resolution. The index and Git operation are not changed.": "Esto reemplaza el Result actual con el texto anterior a la última resolución. El índice y la operación de Git no cambian.",
@@ -2105,6 +2109,7 @@ var sourceCoverageTranslations = map[string]map[string]string{
 		"TanGit saves the current WIP first, then restores the checkpoint's staged, unstaged, and untracked files. Newer commits prevent restoration.": "TanGit guarda primero el trabajo en curso actual y después restaura los archivos preparados, sin preparar y sin seguimiento del punto de control. La existencia de commits posteriores impide la restauración.",
 	},
 	"fr": {
+		"Checking stacked branches…":      "Vérification des branches empilées…",
 		"Undo Conflict Resolution":        "Annuler la résolution du conflit",
 		"Undo the last resolution in %s?": "Annuler la dernière résolution dans %s ?",
 		"This replaces the current Result with the text before the last resolution. The index and Git operation are not changed.": "Ceci remplace le Result actuel par le texte d’avant la dernière résolution. L’index et l’opération Git ne sont pas modifiés.",

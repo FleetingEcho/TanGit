@@ -1,6 +1,7 @@
 package app
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -11,7 +12,7 @@ import (
 func (h *harness) confirmAttentionForTest(t *testing.T) {
 	t.Helper()
 	h.waitFor(t, "operation confirmation", func() bool {
-		return h.app.confirm != nil && !h.app.actionBusy
+		return h.app.confirm != nil && !h.app.actionBusy && !h.app.confirm.disabled
 	})
 	if h.app.confirm == nil {
 		t.Fatal("operation did not ask for confirmation")
@@ -22,6 +23,58 @@ func (h *harness) confirmAttentionForTest(t *testing.T) {
 	h.tester.Frame()
 	if err := h.tester.Click("Continue"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPushShowsConfirmationBeforeDiscoveryWithoutStartingWork(t *testing.T) {
+	h, calls := historyHarness(t)
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+	h.app.session = &blockingStackDiscoverySession{
+		fakeSession: fakeSession{snapshot: h.app.snapshot, calls: calls}, release: release,
+	}
+
+	h.app.confirmPush()
+
+	if h.app.confirm == nil {
+		t.Fatalf("push confirmation is delayed behind stack discovery; working=%v", h.app.actionBusy)
+	}
+	if h.app.actionBusy {
+		t.Fatal("stack discovery marks push as working before the confirmed action")
+	}
+	if !h.app.confirm.disabled {
+		t.Fatal("push can be accepted before its stack preview is ready")
+	}
+	if calls.has("push") {
+		t.Fatal("push ran before confirmation")
+	}
+	releaseOnce.Do(func() { close(release) })
+	h.waitFor(t, "the stack preview to become ready", func() bool {
+		return h.app.confirm != nil && !h.app.confirm.disabled
+	})
+	h.app.acceptConfirm()
+	h.waitFor(t, "the accepted stacked push", func() bool {
+		return calls.has("push-stack:base") && !h.app.actionBusy
+	})
+}
+
+func TestCancelingPushDuringDiscoveryDoesNotReopenConfirmation(t *testing.T) {
+	h, _ := historyHarness(t)
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+	h.app.session = &blockingStackDiscoverySession{fakeSession: fakeSession{snapshot: h.app.snapshot}, release: release}
+
+	h.app.confirmPush()
+	if h.app.confirm == nil {
+		t.Fatal("push did not show its immediate confirmation")
+	}
+	h.app.cancelConfirm()
+	releaseOnce.Do(func() { close(release) })
+	h.updates.waitForUpdate(t)
+	if h.app.confirm != nil {
+		t.Fatal("a canceled push reopened its confirmation after stack discovery")
 	}
 }
 
@@ -91,7 +144,7 @@ func TestAttentionOperationsRequireConfirmationAndCancel(t *testing.T) {
 			before := len(calls.all())
 			tc.run(h.app)
 			if tc.name == "push" {
-				h.waitFor(t, "push confirmation", func() bool { return h.app.confirm != nil })
+				h.waitFor(t, "push confirmation", func() bool { return h.app.confirm != nil && !h.app.confirm.disabled })
 			}
 			if h.app.confirm == nil {
 				t.Fatal("operation did not ask for confirmation")

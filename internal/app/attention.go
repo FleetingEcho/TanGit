@@ -26,47 +26,60 @@ func (a *app) confirmAttention(title, target, detail string, run func()) {
 }
 
 func (a *app) confirmPush() {
-	if a.actionBusy || a.session == nil {
+	if a.actionBusy || a.session == nil || a.confirm != nil {
 		return
 	}
 	session := a.session
 	generation := a.generation
+	// Preflight only gathers preview information. It must not mark an actual
+	// push as running before its confirmation has even appeared.
+	var stack []string
+	a.confirmAttention("Push", a.snapshot.Branch,
+		"This publishes local commits to the remote branch. Review the destination and commits before continuing.",
+		func() { a.pushBranches(stack) })
+	request := a.confirm
+	request.disabled = true
 	parent := a.repositoryWork.Context()
-	a.actionBusy = true
 	go func() {
 		defer a.recoverBackground()
 		ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 		defer cancel()
-		stack, _ := requireBranchRemoteSession(session).StackedBranches(ctx)
+		discovered, _ := requireBranchRemoteSession(session).StackedBranches(ctx)
 		a.update(func() {
-			if generation != a.generation {
+			// A close, accepted confirmation, or a different repository invalidates
+			// this preview. In particular, cancellation cannot open it again.
+			if generation != a.generation || a.confirm != request {
 				return
 			}
-			a.actionBusy = false
-			a.confirmPushCandidates(stack)
+			stack = discovered
+			a.completePushConfirmation(request, discovered)
 		})
 	}()
 }
 
-func (a *app) confirmPushCandidates(stack []string) {
-	if len(stack) > 0 {
-		detail := trf("This pushes %d stacked branch%s below %s first, then %s itself.", len(stack), pluralS(len(stack)), a.snapshot.Branch, a.snapshot.Branch) +
-			"\n\n" + strings.Join(stack, " → ") + " → " + a.snapshot.Branch +
-			"\n\n" + tr("Each push publishes that branch's unpushed commits. Nothing is force-pushed.")
-		a.confirmAttention("Push", a.snapshot.Branch, detail, func() {
-			a.beginRepositoryActionMessage(trf("Pushed %s and %d stacked branch%s", a.snapshot.Branch, len(stack), pluralS(len(stack))), "", func(ctx context.Context, s repository.Session) error {
-				if err := requireBranchRemoteSession(s).PushStack(ctx, stack); err != nil {
-					return err
-				}
-				return requireBranchRemoteSession(s).Push(ctx)
-			}, nil)
-		})
+func (a *app) completePushConfirmation(request *confirmRequest, stack []string) {
+	request.disabled = false
+	if len(stack) == 0 {
 		return
 	}
-	a.confirmAttention("Push", a.snapshot.Branch,
-		"This publishes local commits to the remote branch. Review the destination and commits before continuing.", func() {
-			a.beginRepositoryActionMessage(tr("Pushed the branch"), "", func(ctx context.Context, s repository.Session) error { return requireBranchRemoteSession(s).Push(ctx) }, nil)
-		})
+	request.detail = trf("This pushes %d stacked branch%s below %s first, then %s itself.", len(stack), pluralS(len(stack)), a.snapshot.Branch, a.snapshot.Branch) +
+		"\n\n" + strings.Join(stack, " → ") + " → " + a.snapshot.Branch +
+		"\n\n" + tr("Each push publishes that branch's unpushed commits. Nothing is force-pushed.")
+}
+
+// pushBranches is called only by the accepted confirmation, with the preview
+// finished. Its actionBusy/Working transition therefore describes real work.
+func (a *app) pushBranches(stack []string) {
+	if len(stack) == 0 {
+		a.beginRepositoryActionMessage(tr("Pushed the branch"), "", func(ctx context.Context, s repository.Session) error { return requireBranchRemoteSession(s).Push(ctx) }, nil)
+		return
+	}
+	a.beginRepositoryActionMessage(trf("Pushed %s and %d stacked branch%s", a.snapshot.Branch, len(stack), pluralS(len(stack))), "", func(ctx context.Context, s repository.Session) error {
+		if err := requireBranchRemoteSession(s).PushStack(ctx, stack); err != nil {
+			return err
+		}
+		return requireBranchRemoteSession(s).Push(ctx)
+	}, nil)
 }
 
 // confirmPushFollowTags pushes the branch carrying the tags that point at the
