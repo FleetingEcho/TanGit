@@ -34,6 +34,11 @@ type CommandEntry struct {
 	id uint64
 }
 
+// ID identifies one record for its logger's entire lifetime, including after
+// earlier records are evicted or the caller clears the log. It is deliberately
+// opaque: selection and reveal requests must not infer identity from text.
+func (e CommandEntry) ID() uint64 { return e.id }
+
 // CommandOrigin is the source shown in the command-log sections.
 type CommandOrigin uint8
 
@@ -446,13 +451,13 @@ func (l *CommandLog) Marker() uint64 {
 // attaches text to it. Commands after end, such as snapshots or ref refreshes,
 // are deliberately excluded. If no command exists in that range, retain an
 // informative Git-action entry instead of dropping the error entirely.
-func (l *CommandLog) FailRange(start, end uint64, text string) {
+func (l *CommandLog) FailRange(start, end uint64, text string) uint64 {
 	if l == nil {
-		return
+		return 0
 	}
 	text = strings.TrimSpace(RedactSecrets(text))
 	if text == "" {
-		return
+		return 0
 	}
 	l.mu.Lock()
 	index := -1
@@ -472,6 +477,7 @@ func (l *CommandLog) FailRange(start, end uint64, text string) {
 		l.appendEntryLocked(CommandEntry{At: time.Now(), Command: "Git action"})
 	}
 	entry := &l.entries[index]
+	failedID := entry.id
 	if stream := l.streams[entry.id]; stream != nil && stream.pending != "" {
 		l.appendOutputTextLocked(entry.id, RedactSecrets(stream.pending))
 		stream.pending = ""
@@ -491,4 +497,5 @@ func (l *CommandLog) FailRange(start, end uint64, text string) {
 	}
 	l.mu.Unlock()
 	l.notifyListener()
+	return failedID
 }

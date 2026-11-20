@@ -38,7 +38,7 @@ func (a *app) commandLogModal(c *ui.Context) {
 					ui.Divider(c)
 					a.commandLogTools(c)
 					ui.Divider(c)
-					ui.Scroll(c).Grow(1).Children(func() {
+					ui.Scroll(c).Grow(1).TrackScroll(&a.commandLogScroll).Children(func() {
 						a.commandLogBody(c, entries)
 					})
 					ui.Divider(c)
@@ -79,6 +79,10 @@ func (a *app) commandLogHeader(c *ui.Context, count int) {
 // and the reason it failed are what the pane shows without scrolling.
 func (a *app) commandLogBody(c *ui.Context, entries []repository.CommandEntry) {
 	theme := c.Theme()
+	// One explicit navigation request wins once only; ordinary output updates
+	// and later repaints must not take the reader back to the failed record.
+	reveal := a.commandLogReveal
+	a.commandLogReveal = nil
 	if len(entries) == 0 {
 		query := strings.TrimSpace(a.commandLogQuery)
 		message := tr("No commands in this section yet.")
@@ -107,13 +111,17 @@ func (a *app) commandLogBody(c *ui.Context, entries []repository.CommandEntry) {
 	// copied, as Git's own message is worth pasting elsewhere.
 	ui.Column(c).FillWidth().Gap(4).Selectable().Children(func() {
 		for i := len(entries) - 1; i >= 0; i-- {
-			a.commandLogEntry(c, entries[i])
+			if id := entries[i].ID(); id != 0 {
+				c.Key(fmt.Sprintf("command-log-entry:%d", id))
+			}
+			targeted := reveal != nil && entries[i].ID() == reveal.id
+			a.commandLogEntry(c, entries[i], targeted)
 			ui.Divider(c)
 		}
 	})
 }
 
-func (a *app) commandLogEntry(c *ui.Context, entry repository.CommandEntry) {
+func (a *app) commandLogEntry(c *ui.Context, entry repository.CommandEntry, reveal ...bool) {
 	theme := c.Theme()
 	color := theme.TextMuted
 	container := ui.Column(c).FillWidth().Gap(4).Padding(6, 4).
@@ -124,6 +132,13 @@ func (a *app) commandLogEntry(c *ui.Context, entry repository.CommandEntry) {
 		// missed while scanning output. Normal commands stay quiet by contrast.
 		container = container.Background(theme.Danger.Alpha(0.14)).
 			Border(1, theme.Danger.Alpha(0.55)).Radius(theme.Radius - 1)
+	}
+	targeted := len(reveal) > 0 && reveal[0]
+	if targeted {
+		// Preserve the failed row's red background and add a distinct focus
+		// outline, then reveal only this graph identity one time.
+		container = container.Border(2, theme.Accent)
+		container.ScrollIntoView(ui.ScrollIntoViewOptions{Block: ui.ScrollCenter})
 	}
 	container.Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {

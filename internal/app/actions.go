@@ -172,6 +172,7 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 		if detailsErr != nil {
 			err := fmt.Errorf("load repository details: %w", detailsErr)
 			a.actionError = safeError(err)
+			a.actionFailure = nil
 			a.notifyError(err)
 			return
 		}
@@ -681,6 +682,7 @@ func (a *app) beginRepositoryActionMessage(
 	}
 	a.actionBusy = true
 	a.actionError = ""
+	a.actionFailure = nil
 	ctx := a.repositoryWork.Context()
 
 	go func() {
@@ -749,14 +751,19 @@ func (a *app) beginRepositoryActionMessage(
 			}
 			if err != nil {
 				a.actionError = safeError(err)
+				target := commandLogFailureTarget{log: commandLog}
 				if a.commandLog != nil {
 					if snapshotFailed {
-						commandLog.FailRange(actionEnd, commandLog.Marker(), safeError(err))
+						target.id = commandLog.FailRange(actionEnd, commandLog.Marker(), safeError(err))
 					} else {
-						commandLog.FailRange(actionStart, actionEnd, safeError(err))
+						target.id = commandLog.FailRange(actionStart, actionEnd, safeError(err))
 					}
 				}
-				a.notifyError(err)
+				if target.id != 0 {
+					selected := target
+					a.actionFailure = &selected
+				}
+				a.notifyError(err, target)
 				return
 			}
 			if onSuccess != nil {
@@ -1172,6 +1179,7 @@ func (a *app) shutdown() {
 	a.flushEdits()
 	a.actionBusy = false
 	a.actionError = ""
+	a.actionFailure = nil
 	a.repositoryDetailsLoading = false
 	a.refreshToken++
 	a.refreshBusy = false

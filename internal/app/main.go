@@ -240,6 +240,10 @@ type app struct {
 	// commands; commandLogQuery filters the selected section, highlighted.
 	commandLogUser  bool
 	commandLogQuery string
+	// commandLogScroll belongs to the document, not one command entry.
+	// commandLogReveal is a one-shot, identity-bound scroll request.
+	commandLogScroll ui.ScrollState
+	commandLogReveal *commandLogFailureTarget
 	// commandPromptOpen shows the one-off shell command line that ':' opens;
 	// commandPromptText holds what the user typed into it.
 	commandPromptOpen bool
@@ -583,6 +587,7 @@ type app struct {
 	lineSelectRanges []editor.DiffLineRange
 	actionBusy       bool
 	actionError      string
+	actionFailure    *commandLogFailureTarget
 	// patchPreviewOpen owns the read-only patch import dialog. Its token
 	// invalidates a native pick or preview that finishes after cancellation or
 	// after another repository opens; the repository revalidates before apply.
