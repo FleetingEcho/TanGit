@@ -134,8 +134,8 @@ type app struct {
 	// cacheOpenRoots reports every open tab's repository root, so reclaiming
 	// caches for a forgotten card never deletes data another tab is using.
 	cacheOpenRoots func() []string
-	// onCachesCleared lets the shell invalidate every tab's in-memory index
-	// state after the user explicitly clears all regenerable cache data.
+	// onCachesCleared lets the shell cancel and invalidate every tab's index
+	// when the user clears cache, before or after the affected files are removed.
 	onCachesCleared func()
 	// onZoektPreferenceChanged cancels every tab's builders for the same local
 	// repository before its cache is deleted, including non-visible tabs.

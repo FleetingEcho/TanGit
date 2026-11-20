@@ -253,7 +253,11 @@ func cleanupForgottenRepositories(o repositoryCacheOwnership, removed []string) 
 // recovery files for editorRecoveryOrphanAge.
 func gcRepositoryCaches(o repositoryCacheOwnership, now time.Time) {
 	if o.cacheDir != "" {
-		gcCodeSearchCache(o, now)
+		beginCodeSearchIndexMaintenance()
+		withCodeSearchIndexMaintenance(func() {
+			cleanupCodeSearchIndexStaging(filepath.Join(o.cacheDir, codeSearchCacheDirName), now)
+			gcCodeSearchCache(o, now)
+		})
 	}
 	if o.dataDir != "" {
 		gcEditorRecovery(o, now)
@@ -438,22 +442,35 @@ func regenerableCacheBytes(cacheDir string) int64 {
 
 // clearRegenerableCaches removes every search index, including those used by
 // open tabs, plus cached avatars. Unlike GC this is an explicit user action;
-// the shell resets every tab's index state afterwards so active workspaces
+// the shell cancels every tab's builders before filesystem deletion, and this
+// function then waits for them under the maintenance lease. Active workspaces
 // validate and rebuild on demand. It returns the measured number of bytes
 // actually released, excluding anything that could not be removed.
-func clearRegenerableCaches(cacheDir string) int64 {
-	before := regenerableCacheBytes(cacheDir)
-	root := filepath.Join(cacheDir, codeSearchCacheDirName)
-	entries, _ := os.ReadDir(root)
-	for _, entry := range entries {
-		if entry.IsDir() && cacheHashHex(entry.Name(), 16) {
-			removeCodeSearchIndexDirectory(filepath.Join(root, entry.Name()))
+func clearRegenerableCaches(cacheDir string) (freed int64) {
+	// Measure and remove under the same lease: a builder must not publish,
+	// finish or start a staging directory while the global clear is running.
+	beginCodeSearchIndexMaintenance()
+	withCodeSearchIndexMaintenance(func() {
+		before := regenerableCacheBytes(cacheDir)
+		root := filepath.Join(cacheDir, codeSearchCacheDirName)
+		entries, _ := os.ReadDir(root)
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			directory := filepath.Join(root, entry.Name())
+			if cacheHashHex(entry.Name(), 16) {
+				removeCodeSearchIndexDirectory(directory)
+			} else if strings.HasPrefix(entry.Name(), ".tangit-index-") {
+				_ = os.RemoveAll(directory)
+			}
 		}
-	}
-	if cacheDir != "" {
-		_ = os.RemoveAll(filepath.Join(cacheDir, avatarCacheDirName))
-	}
-	return max(before-regenerableCacheBytes(cacheDir), 0)
+		if cacheDir != "" {
+			_ = os.RemoveAll(filepath.Join(cacheDir, avatarCacheDirName))
+		}
+		freed = max(before-regenerableCacheBytes(cacheDir), 0)
+	})
+	return freed
 }
 
 // openCacheCleaner measures before asking, so the confirmation can tell the
@@ -486,8 +503,8 @@ func (a *app) openCacheCleaner() {
 	})
 }
 
-// clearApplicationCache performs the confirmed cleanup off the UI thread and
-// then lets the shell revalidate any workspace whose index was just removed.
+// clearApplicationCache stops builders on the UI thread, then performs the
+// confirmed cleanup off the UI thread. Workspace revalidation remains on demand.
 func (a *app) clearApplicationCache() {
 	if a.pathCache == "" || a.cacheCleanupBusy {
 		return
@@ -496,15 +513,13 @@ func (a *app) clearApplicationCache() {
 	a.cacheCleanupSerial++
 	a.notify("info", "Clearing cache…", "")
 	cacheDir := a.pathCache
+	a.invalidateSearchIndexBeforeCacheClear()
 	cacheCleanupAsync(func() {
 		defer a.recoverBackground()
 		freed := clearRegenerableCaches(cacheDir)
 		a.update(func() {
 			a.cacheCleanupBusy = false
 			a.invalidateCacheUsage()
-			if a.onCachesCleared != nil {
-				a.onCachesCleared()
-			}
 			a.notify("success", "Cache cleared",
 				trf("Freed %s. Zoekt indexes and avatars will be recreated as needed.", formatRemoteTransferBytes(freed)))
 		})

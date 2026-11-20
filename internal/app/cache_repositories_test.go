@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -257,6 +258,201 @@ func TestRepositoryCacheModalListsProjectsAndConfirmsRemoval(t *testing.T) {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("project-specific confirmation removed preserved data %s: %v", path, err)
 		}
+	}
+}
+
+func TestUnlistedIndexCleanupIsScopedAndRevalidatesOwners(t *testing.T) {
+	parent := t.TempDir()
+	recentRoot := cacheTestRepository(t, parent, "recent")
+	unlistedRoot := cacheTestRepository(t, parent, "unlisted")
+	a, updated := cacheRepositoriesTestApp(t, recentRepository{Path: recentRoot})
+	recentIndex, _ := writeCacheForRepository(t, a, recentRoot)
+	unlistedIndex, unlistedRecovery := writeCacheForRepository(t, a, unlistedRoot)
+	manifest, err := json.Marshal(codeSearchIndexManifest{Version: codeSearchIndexVersion, Root: unlistedRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(unlistedIndex, codeSearchIndexManifestFile), manifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.openRepositoryCaches()
+	updated.runPending()
+	var row cacheRepositoryRow
+	for _, candidate := range a.cacheRepositories.rows {
+		if candidate.kind == cachePublishedUnlisted {
+			row = candidate
+		}
+	}
+	if row.kind != cachePublishedUnlisted || row.root != unlistedRoot {
+		t.Fatalf("unlisted index did not retain its recorded root: %+v", row)
+	}
+
+	a.confirmRepositoryCache(row, false)
+	if a.confirm == nil || a.confirm.title != "Clear unlisted search index" {
+		t.Fatalf("unlisted confirmation has the wrong scope: %+v", a.confirm)
+	}
+	a.cancelConfirm()
+	if _, err := os.Stat(unlistedIndex); err != nil {
+		t.Fatalf("unlisted cancel deleted the index: %v", err)
+	}
+	a.confirmRepositoryCache(row, false)
+	a.acceptConfirm()
+	updated.runPending()
+	if _, err := os.Stat(unlistedIndex); !os.IsNotExist(err) {
+		t.Fatalf("unlisted index survived its explicit cleanup: %v", err)
+	}
+	for _, path := range []string{recentIndex, unlistedRecovery} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("unlisted cleanup removed preserved data %s: %v", path, err)
+		}
+	}
+	if len(a.recentRepositories) != 1 || a.recentRepositories[0].Path != recentRoot {
+		t.Fatalf("unlisted cleanup changed recent history: %+v", a.recentRepositories)
+	}
+
+	// A cached list is a proposal, not a deletion authorization. Revalidate
+	// ownership if a new card for the previous unlisted root appears before
+	// the old row's confirmed operation actually starts.
+	writeCacheForRepository(t, a, unlistedRoot)
+	a.recentRepositories = append(a.recentRepositories, recentRepository{Path: unlistedRoot})
+	a.clearRepositoryCache(row, false)
+	if _, err := os.Stat(unlistedIndex); err != nil {
+		t.Fatalf("revalidation deleted an index that just gained an owner: %v", err)
+	}
+	last := a.pendingToasts[len(a.pendingToasts)-1]
+	if last.title != "Index cache kept" {
+		t.Fatalf("stale index deletion did not report retained ownership: %+v", last)
+	}
+}
+
+func TestRepositoryCacheInventoryAccountsForUnlistedAndStaging(t *testing.T) {
+	parent := t.TempDir()
+	selectedRoot := cacheTestRepository(t, parent, "selected")
+	unlistedRoot := cacheTestRepository(t, parent, "unlisted")
+	a, _ := cacheRepositoriesTestApp(t, recentRepository{Path: selectedRoot})
+	writeCacheForRepository(t, a, selectedRoot)
+	writeCacheForRepository(t, a, unlistedRoot)
+	for _, name := range []string{".tangit-index-2313360354", ".tangit-index-428520547"} {
+		directory := filepath.Join(a.pathCache, codeSearchCacheDirName, name)
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "partial.zoekt"), []byte("unfinished"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rows := measureRepositoryCaches(a.repositoryCacheOwnership())
+	if len(rows) != 3 {
+		t.Fatalf("cache inventory omits unlisted or groups unfinished indexes incorrectly: %+v", rows)
+	}
+	var listed int64
+	for _, row := range rows {
+		listed += row.bytes
+	}
+	want := codeSearchIndexDiskBytes(filepath.Join(a.pathCache, codeSearchCacheDirName))
+	if listed != want {
+		t.Fatalf("listed index bytes = %d, disk total = %d; rows = %+v", listed, want, rows)
+	}
+}
+
+func TestRepositoryCacheModalShowsAndClearsUnfinishedIndexes(t *testing.T) {
+	syncCacheCleanup(t)
+	h := menuTestApp(t)
+	parent := t.TempDir()
+	h.app.pathCache = filepath.Join(parent, "cache")
+	h.app.pathUserData = filepath.Join(parent, "data")
+	recentRoot := cacheTestRepository(t, parent, "recent")
+	unlistedRoot := cacheTestRepository(t, parent, "unlisted")
+	h.app.recentRepositories = []recentRepository{{Path: recentRoot, Name: "Important"}}
+	recentIndex, _ := writeCacheForRepository(t, h.app, recentRoot)
+	unlistedIndex, _ := writeCacheForRepository(t, h.app, unlistedRoot)
+	staging := filepath.Join(h.app.pathCache, codeSearchCacheDirName, ".tangit-index-428520547")
+	if err := os.MkdirAll(staging, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	partial, err := os.Create(filepath.Join(staging, "partial.zoekt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Sparse data reproduces the reported GiB-scale size without allocating
+	// several GiB of real disk space in a unit test.
+	if err := partial.Truncate(7580 << 20); err != nil {
+		partial.Close()
+		t.Fatal(err)
+	}
+	if err := partial.Close(); err != nil {
+		t.Fatal(err)
+	}
+	resets := 0
+	h.app.onCachesCleared = func() { resets++ }
+	h.app.openSettingsSection(settingsPageCache)
+	h.app.openRepositoryCaches()
+	h.tester.Frame()
+	h.updates.runPending()
+	h.tester.Frame()
+	for _, text := range []string{"Recent projects", "Other published search indexes", "Unfinished index builds", "7.4 GiB"} {
+		if !h.tester.HasText(text) {
+			t.Fatalf("cache scope %q is missing: %q", text, h.texts())
+		}
+	}
+	scrollRepositoryCachesToEnd(t, h.tester)
+	if err := h.tester.Click("Clear cache for Unfinished index builds"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.confirm == nil || h.app.confirm.confirmLabel != "Stop builds and clear unfinished indexes" {
+		t.Fatalf("temporary-index cleanup has no explicit stop-build confirmation: %+v", h.app.confirm)
+	}
+	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+		saveScreenshot(t, dir, "repository-cache-unfinished-confirm", h.tester)
+	}
+	if err := h.tester.Click("Cancel"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if _, err := os.Stat(staging); err != nil || resets != 0 {
+		t.Fatalf("cancelled temporary-index cleanup changed state: err=%v resets=%d", err, resets)
+	}
+	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+		saveScreenshot(t, dir, "repository-cache-unfinished", h.tester)
+	}
+
+	scrollRepositoryCachesToEnd(t, h.tester)
+	if err := h.tester.Click("Clear cache for Unfinished index builds"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Stop builds and clear unfinished indexes"); err != nil {
+		t.Fatal(err)
+	}
+	h.updates.runPending()
+	h.tester.Frame()
+	h.waitFor(t, "the published indexes after unfinished-cache cleanup", func() bool {
+		return len(h.app.cacheRepositories.rows) == 2
+	})
+	for _, path := range []string{recentIndex, unlistedIndex} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("completed index was removed with staging: %s: %v", path, err)
+		}
+	}
+	if _, err := os.Stat(staging); !os.IsNotExist(err) {
+		t.Fatalf("unfinished index survived its own cleanup: %v", err)
+	}
+	if len(h.app.recentRepositories) != 1 || h.app.recentRepositories[0].Path != recentRoot || resets != 1 {
+		t.Fatalf("temporary-index cleanup changed recents or did not invalidate builders: recents=%+v resets=%d", h.app.recentRepositories, resets)
+	}
+}
+
+func scrollRepositoryCachesToEnd(t *testing.T, tester *ui.Tester) {
+	t.Helper()
+	viewport, found := tester.Find("Recent repository caches")
+	if !found {
+		t.Fatal("cache-repository scroll viewport is missing")
+	}
+	for range 3 {
+		tester.Scroll(viewport.X+viewport.W/2, viewport.Y+viewport.H/2, 0, 240)
+		tester.Frame()
 	}
 }
 
