@@ -41,6 +41,10 @@ var GuidedConflictTranslations = []struct {
 	{"Conflict resolution checklist", "冲突解决清单", "衝突解決清單", "競合解決チェックリスト", "Lista de resolución de conflictos", "Liste de contrôle de la résolution des conflits"},
 	{"Made a mistake here? Restore unresolved returns the saved unresolved file and Git stages.", "在这里误操作了？“恢复未解决冲突”会还原已保存的未解决文件和 Git 阶段。", "在這裡誤操作了？「還原未解決衝突」會還原已儲存的未解決檔案和 Git 階段。", "ここで誤操作しましたか？「未解決の競合を復元」は保存された未解決ファイルと Git ステージを復元します。", "¿Cometiste un error aquí? Restaurar conflicto sin resolver recupera el archivo sin resolver guardado y las etapas de Git.", "Une erreur ici ? Restaurer le conflit non résolu récupère le fichier non résolu enregistré et les étapes Git."},
 	{"No recovery is available for the selected file.", "所选文件没有可用的恢复记录。", "所選檔案沒有可用的復原記錄。", "選択したファイルに利用できる復元記録はありません。", "No hay ninguna recuperación disponible para el archivo seleccionado.", "Aucune récupération n’est disponible pour le fichier sélectionné."},
+	{"Undo Conflict Resolution", "撤销冲突解决", "撤銷衝突解決", "競合解決を元に戻す", "Deshacer resolución de conflictos", "Annuler la résolution du conflit"},
+	{"Undo the last resolution in %s?", "要撤销 %s 中的上一次解决操作吗？", "要撤銷 %s 中的上一次解決操作嗎？", "%s の直前の解決を元に戻しますか？", "¿Deshacer la última resolución en %s?", "Annuler la dernière résolution dans %s ?"},
+	{"This replaces the current Result with the text before the last resolution. The index and Git operation are not changed.", "这会将当前 Result 替换为上一次解决前的文本，不会更改 index 或 Git 操作。", "這會將目前 Result 替換為上一次解決前的文字，不會變更 index 或 Git 操作。", "現在の Result を直前の解決前のテキストに置き換えます。index と Git 操作は変更されません。", "Esto reemplaza el Result actual con el texto anterior a la última resolución. El índice y la operación de Git no cambian.", "Ceci remplace le Result actuel par le texte d’avant la dernière résolution. L’index et l’opération Git ne sont pas modifiés."},
+	{"Undo resolution", "撤销解决", "撤銷解決", "解決を元に戻す", "Deshacer resolución", "Annuler la résolution"},
 }
 
 func init() {

@@ -975,7 +975,26 @@ func (a *app) scrollToSelectedConflict() {
 	a.conflictScrollTo = a.conflictState.selectedLine()
 }
 
-// undoConflictResolution puts back the content before the last pick.
+// confirmUndoConflictResolution makes every resolution-undo entry stop at a
+// confirmation, including compact toolbar actions and each keyboard variant.
+func (a *app) confirmUndoConflictResolution() {
+	state := a.conflictState
+	if state == nil || len(state.undo) == 0 || a.conflictMutationReason() != "" {
+		return
+	}
+	a.askConfirm(confirmRequest{
+		title:        "Undo Conflict Resolution",
+		message:      trf("Undo the last resolution in %s?", state.path),
+		detail:       tr("This replaces the current Result with the text before the last resolution. The index and Git operation are not changed."),
+		confirmLabel: "Undo resolution",
+		destructive:  true,
+		run:          a.undoConflictResolution,
+	})
+}
+
+// undoConflictResolution applies the confirmed restoration. It still rechecks
+// availability when the modal is accepted and keeps the existing write-failure
+// recovery behavior for both local and SSH conflicts.
 func (a *app) undoConflictResolution() {
 	if a.conflictState == nil || a.actionBusy {
 		return
