@@ -92,6 +92,7 @@ func (a *app) themeMenuItems(m *ui.Menu, c *ui.Context) {
 
 func (a *app) closeSettings() {
 	a.stopEditorShortcutRecording()
+	a.cacheRepositories.close()
 	a.settingsUI.close()
 	a.closeSSHProfileForm()
 	a.saveSettings()
@@ -101,6 +102,11 @@ func (a *app) closeSettings() {
 // showing, applies every change to the next frame, and stores it at once.
 func (a *app) settingsModal(c *ui.Context) {
 	if !a.settingsUI.open {
+		return
+	}
+	// Keep cache management as a child modal without competing parent input.
+	if a.cacheRepositories.open {
+		a.cacheRepositoriesModal(c)
 		return
 	}
 	theme := c.Theme()
@@ -326,9 +332,11 @@ func (a *app) cacheSettings(c *ui.Context) {
 		}
 		ui.Divider(c)
 		settingRow(c, "Cache", "", func() {
+			iconTextButton(c, "Manage repositories", "Choose which recent repository's search index to clear",
+				searchIcon, a.cacheCleanupBusy, a.openRepositoryCaches)
 			iconButton(c, "Refresh cache size", "Remeasure the disk space used by Zoekt indexes and cached author avatars", refreshIcon,
 				a.cacheUsage.loading || a.cacheCleanupBusy, a.refreshCacheUsage)
-			iconTextButtonState(c, "Clear cache", "Delete Zoekt code-search indexes and cached author avatars. They are recreated when needed.", trashIcon,
+			iconTextButtonState(c, "Clear cache", "Delete ALL Zoekt code-search indexes and cached author avatars across every project. They are recreated when needed.", trashIcon,
 				false, a.cacheCleanupBusy, a.openCacheCleaner)
 		})
 		ui.Text(c, tr("Only Zoekt indexes and downloaded avatars are included. Unsaved editor recovery and Git safety journals are never cleared.")).

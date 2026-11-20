@@ -593,9 +593,20 @@ func (a *app) rememberOpenedFolder(path string) {
 	a.cleanupEvictedRecents(before)
 }
 
-// forgetRecent removes one card from the history, leaving the same path on the
-// other Home tab alone.
+// forgetRecent removes one card from the history, leaving the same path on
+// the other Home tab alone. Its conventional GC also removes now-unowned
+// cache paths and editor recovery, as the Home card action has always done.
 func (a *app) forgetRecent(path string, editorOnly bool) {
+	a.forgetRecentWithCachePolicy(path, editorOnly, true)
+}
+
+// forgetRecentKeepingRecovery is deliberately separate from the manual Home
+// GC: a Cache-page action forgets the card, not unsaved editor contents.
+func (a *app) forgetRecentKeepingRecovery(path string, editorOnly bool) {
+	a.forgetRecentWithCachePolicy(path, editorOnly, false)
+}
+
+func (a *app) forgetRecentWithCachePolicy(path string, editorOnly, reclaimCaches bool) {
 	before := append([]recentRepository(nil), a.recentRepositories...)
 	kept := make([]recentRepository, 0, len(a.recentRepositories))
 	for _, r := range a.recentRepositories {
@@ -606,7 +617,9 @@ func (a *app) forgetRecent(path string, editorOnly bool) {
 	a.recentRepositories = kept
 	a.historyRevision++
 	_ = saveRecentRepositories(a.dataDir(), a.recentRepositories)
-	a.cleanupEvictedRecents(before)
+	if reclaimCaches {
+		a.cleanupEvictedRecents(before)
+	}
 }
 
 // recentWorktree reports the identity already remembered for this card. It

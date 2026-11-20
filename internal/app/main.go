@@ -166,6 +166,7 @@ type app struct {
 	cacheCleanupBusy   bool
 	cacheCleanupSerial uint64
 	cacheUsage         cacheUsageState
+	cacheRepositories  cacheRepositoriesState
 	authorAvatars      *authorAvatarStore
 	recentRepositories []recentRepository
 	// historyLoading and historyLoaded keep filesystem reads away from
