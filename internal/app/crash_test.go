@@ -122,6 +122,21 @@ func TestPaletteIndexWrapsNegative(t *testing.T) {
 	}
 }
 
+func TestRemoteBranchIdentityIncludesRemote(t *testing.T) {
+	a := newApp(fakeOpener{})
+	a.snapshot.Remotes = []repository.Remote{
+		{Name: "origin", Branches: []repository.RemoteBranch{{Name: "feature"}}},
+		{Name: "upstream", Branches: []repository.RemoteBranch{{Name: "feature"}}},
+	}
+	a.selectedRemote = 0
+	origin := a.remoteBranches.Key(0)
+	a.selectedRemote = 1
+	upstream := a.remoteBranches.Key(0)
+	if origin == upstream {
+		t.Fatalf("identical branch names from different remotes share identity %v", origin)
+	}
+}
+
 // The remote-branch list asks for keys before its selection is known to be
 // valid; an out-of-range read must report an empty row rather than panic.
 func TestRemoteBranchRowsGuardTheirSelection(t *testing.T) {
@@ -135,7 +150,7 @@ func TestRemoteBranchRowsGuardTheirSelection(t *testing.T) {
 	}}}
 
 	a.selectedRemote = 0
-	if got := a.remoteBranches.Key(1); got != "feature" {
+	if got := a.remoteBranches.Key(1); got != (struct{ Remote, Branch string }{"origin", "feature"}) {
 		t.Fatalf("Key(1) = %v, want feature", got)
 	}
 	if got := a.remoteBranches.Label(0); got != "main" {

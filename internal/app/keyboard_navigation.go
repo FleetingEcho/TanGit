@@ -97,6 +97,10 @@ func (a *app) keyboardListID(s *ui.ListState) string {
 // Register before Rows: a list remains the same widget, with the toolkit's
 // arrow-key selection, accessibility, scrolling, Tab and context-menu support.
 func (a *app) keyboardList(c *ui.Context, s *ui.ListState, n int) ui.Element {
+	// Refreshing ordered rows must not dislodge the reader. MyGo keeps the
+	// pixel/row offset for stable item keys while identity continues to follow
+	// each item. Explicit navigation and dataset changes still call ScrollTo.
+	s.KeepOffset = s.Key != nil
 	id := a.keyboardListID(s)
 	c.Key("keyboard-list:" + id)
 	e := a.keyboardPanelTabs(id, a.keyboardPane(c, id, ui.List(c, s, n)).Label(tr(keyboardPaneLabel(id))))

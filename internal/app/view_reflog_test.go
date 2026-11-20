@@ -27,6 +27,19 @@ func TestDuplicateReflogEntriesHaveDistinctRowIdentity(t *testing.T) {
 	}
 }
 
+func TestReflogRowIdentitySurvivesEarlierInsert(t *testing.T) {
+	a := newApp(nil)
+	entry := repository.Commit{Hash: "c330bf9f", ShortHash: "c330bf9f", Subject: "reset: moving to HEAD", UnixTimestamp: 1_700_000_000}
+	a.snapshot.Reflog = []repository.Commit{entry, entry}
+	first, second := a.reflogList.Key(0), a.reflogList.Key(1)
+
+	a.snapshot.Reflog = append([]repository.Commit{{Hash: "feedface", Subject: "different operation", UnixTimestamp: 1_800_000_000}}, a.snapshot.Reflog...)
+	if first != a.reflogList.Key(1) || second != a.reflogList.Key(2) {
+		t.Fatalf("reflog identities moved when a different entry was prepended: first=%v/%v second=%v/%v",
+			first, a.reflogList.Key(1), second, a.reflogList.Key(2))
+	}
+}
+
 func reflogHarness(t *testing.T) (*harness, *callRecorder) {
 	t.Helper()
 	h, calls := menuTestAppWithCalls(t)

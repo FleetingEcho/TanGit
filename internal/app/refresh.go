@@ -236,6 +236,17 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 	refsChanged := was.refs != now.refs
 	filesChanged := was.files != now.files
 	codeFilesChanged := was.codeFiles != now.codeFiles
+	visibleCount := 0
+	checkout := a.refreshCodeAfterCheckout(old, snapshot)
+	if refsChanged && !checkout && a.session != nil && old.Root == snapshot.Root && isCommitSection(a.workspaceTab) &&
+		!a.commitQueryFor(a.workspaceTab).narrows() {
+		// Never replace a reader's long history by the snapshot's first page
+		// while its preserved range is being re-read.
+		visibleCount = len(a.visibleCommits())
+	}
+	if visibleCount > repository.SnapshotCommitLimit {
+		snapshot.Commits = append([]repository.Commit(nil), old.Commits...)
+	}
 	selected := a.captureSelection("")
 
 	if !refsChanged {
@@ -249,7 +260,6 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 	a.fileRecoveryRefreshSeq++
 	a.snapshot = snapshot
 	a.snapshotSeq++
-	checkout := a.refreshCodeAfterCheckout(old, snapshot)
 	if refsChanged && !checkout {
 		a.refreshCodeBlameAfterRepositoryMutation()
 	}
@@ -262,6 +272,9 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 	}
 	a.restoreSelection(selected)
 
+	if refsChanged && visibleCount > repository.SnapshotCommitLimit {
+		a.reloadVisibleCommitHistory(visibleCount)
+	}
 	if refsChanged {
 		// The branch browse is a read of its own, against a branch that
 		// moved: ask for it again, keeping the commit and the file the user
@@ -276,10 +289,18 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 		// A narrowed list is a snapshot of Git's search, so each filtered
 		// page is read again for the changed commits to show.
 		if a.historyFilter.narrows() {
-			a.runCommitFilter(sectionHistory, selected.commit)
+			if checkout {
+				a.runCommitFilter(sectionHistory, selected.commit)
+			} else {
+				a.runCommitFilterMode(sectionHistory, selected.commit, false)
+			}
 		}
 		if a.graphFilter.narrows() {
-			a.runCommitFilter(sectionGraph, selected.commit)
+			if checkout {
+				a.runCommitFilter(sectionGraph, selected.commit)
+			} else {
+				a.runCommitFilterMode(sectionGraph, selected.commit, false)
+			}
 		}
 	}
 	if filesChanged {
@@ -294,6 +315,36 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 			a.requestQuietFileDiff()
 		}
 	}
+}
+
+// reloadVisibleCommitHistory reloads only the range the user has already
+// paged through. The visible old range remains in place until the coherent
+// replacement arrives; failures do not truncate it or move the reader's view.
+func (a *app) reloadVisibleCommitHistory(count int) {
+	session := a.session
+	generation := a.generation
+	token := a.commitsToken
+	a.commitsLoading = true
+	a.commitsError = ""
+	ctx := a.repositoryWork.Context()
+	go func() {
+		defer a.recoverBackground()
+		commits, err := requireHistorySession(session).RecentCommits(ctx, count, 0)
+		a.updateChanged(func() bool {
+			if generation != a.generation || token != a.commitsToken {
+				return false
+			}
+			a.commitsLoading = false
+			if err != nil {
+				a.commitsError = safeError(err)
+				return isCommitSection(a.workspaceTab)
+			}
+			a.snapshot.Commits = commits
+			a.commitsMore = len(commits) == count
+
+			return isCommitSection(a.workspaceTab)
+		})
+	}()
 }
 
 // fileState names one file as the working-tree signature does: its status and

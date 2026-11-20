@@ -640,6 +640,7 @@ func (a *app) branchHeaderView(c *ui.Context, branch repository.Branch) {
 // reads the branch then selected again. An action changed the commits, and a
 // read still in flight must not land on the new state.
 func (a *app) resetBranchCommits() {
+	a.branchCommitsKeep = ""
 	a.branchCommitDetailMessage.reset()
 	a.branchCommitsToken++
 	a.branchCommitToken++
@@ -695,19 +696,26 @@ func (a *app) requestBranchCommits(branch string) {
 	// A quiet refresh names the commit it keeps chosen; a user asking for
 	// another branch leaves both empty, and the list starts at its top.
 	keep := a.branchCommitsKeep
+	if keep != "" {
+		// Preserve the whole range already paged through on a quiet refresh,
+		// rather than replacing it with the first page.
+		filter.Limit = max(filter.Limit, a.branchCommitsLimit, len(a.branchCommits))
+	}
 	a.branchCommitsKeep = ""
 	a.branchCommitsBranch = key
 	a.branchCommitsLoading = true
 	a.branchCommitsError = ""
 	a.branchCommitsMoreError = ""
 	a.branchCommitsMore = false
-	a.branchCommitsLimit = repository.SnapshotCommitLimit
+	a.branchCommitsLimit = filter.Limit
 	a.branchCommitsLoadingMore = false
 	a.branchCommitsToken++
 	token := a.branchCommitsToken
 	a.branchCommitDetailMessage.reset()
-	a.branchCommits = nil
-	a.selectedBranchCommit = -1
+	if keep == "" {
+		a.branchCommits = nil
+		a.selectedBranchCommit = -1
+	}
 	a.branchCommitToken++
 	a.branchCommitFiles = nil
 	a.branchCommitFilesHash = ""
@@ -730,7 +738,7 @@ func (a *app) requestBranchCommits(branch string) {
 		if filtered {
 			commits, err = requireCommitSearchSession(session).SearchCommits(ctx, filter)
 		} else {
-			commits, err = requireBranchCommitsSession(session).BranchCommits(ctx, branch, repository.SnapshotCommitLimit)
+			commits, err = requireBranchCommitsSession(session).BranchCommits(ctx, branch, filter.Limit)
 		}
 		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation || token != a.branchCommitsToken {
@@ -748,19 +756,13 @@ func (a *app) requestBranchCommits(branch string) {
 			// hash: the list moved because the branch did, not because they
 			// chose another commit.
 			if keep != "" {
-				for i, commit := range commits {
-					if commit.Hash == keep {
-						a.selectedBranchCommit = i
-						break
-					}
-				}
+				a.selectedBranchCommit = selectedCommitIndex(commits, keep)
 			}
 			if a.selectedBranchCommit < 0 && len(commits) > 0 {
 				a.selectedBranchCommit = 0
 			}
-			if a.workspaceTab == sectionBranches {
-				// A new branch, filter, or refresh replaces the result set.
-				// Unlike requestMoreBranchCommits, this starts at its top.
+			if a.workspaceTab == sectionBranches && keep == "" {
+				// Only a newly chosen branch or filter set starts at its top.
 				a.branchCommitList.ScrollTo(0, ui.Start)
 			}
 			return a.workspaceTab == sectionBranches
