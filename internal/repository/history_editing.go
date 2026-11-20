@@ -76,10 +76,12 @@ func (s *gitSession) RewordCommit(ctx context.Context, commit Commit, summary, d
 		return fmt.Errorf("reword commit: %w", err)
 	}
 	if models.IsHeadCommit(commits, index) {
-		if err := s.git.Commit.RewordLastCommit(summary, description).Run(); err != nil {
-			return fmt.Errorf("reword HEAD: %w", err)
-		}
-		return nil
+		return s.runWorkspaceMutation(ctx, OperationCommit, "Reword "+commit.ShortHash, true, func() error {
+			if err := s.git.Commit.RewordLastCommit(summary, description).Run(); err != nil {
+				return fmt.Errorf("reword HEAD: %w", err)
+			}
+			return nil
+		})
 	}
 	return s.runHistoryRebase("Reword "+commit.ShortHash, func() error {
 		if err := s.rewordCommit(commits, index, summary, description); err != nil {
@@ -281,10 +283,12 @@ func (s *gitSession) AmendCommit(ctx context.Context, commit Commit) error {
 		return fmt.Errorf("amend commit: %w", err)
 	}
 	if models.IsHeadCommit(commits, index) {
-		if err := s.git.Commit.AmendHead(); err != nil {
-			return fmt.Errorf("amend %s: %w", commit.ShortHash, err)
-		}
-		return nil
+		return s.runWorkspaceMutation(ctx, OperationCommit, "Amend "+commit.ShortHash, true, func() error {
+			if err := s.git.Commit.AmendHead(); err != nil {
+				return fmt.Errorf("amend %s: %w", commit.ShortHash, err)
+			}
+			return nil
+		})
 	}
 	return s.runHistoryRebase("Amend "+commit.ShortHash, func() error {
 		if err := s.amendToCommit(commits, index); err != nil {
@@ -306,10 +310,12 @@ func (s *gitSession) CreateFixupCommit(ctx context.Context, commit Commit) error
 	if _, _, err := s.editableHeadHistory(commit.Hash); err != nil {
 		return fmt.Errorf("create fixup commit: %w", err)
 	}
-	if err := s.git.Commit.CreateFixupCommit(commit.Hash); err != nil {
-		return fmt.Errorf("create fixup for %s: %w", commit.ShortHash, err)
-	}
-	return nil
+	return s.withWorkspaceMutation(ctx, OperationCommit, "Create fixup for "+commit.ShortHash, true, func() error {
+		if err := s.git.Commit.CreateFixupCommit(commit.Hash); err != nil {
+			return fmt.Errorf("create fixup for %s: %w", commit.ShortHash, err)
+		}
+		return nil
+	})
 }
 
 // ApplyFixupCommits performs Git's autosquash from the selected commit through
@@ -336,7 +342,11 @@ func (s *gitSession) ApplyFixupCommits(ctx context.Context, commit Commit) error
 // rebase reflog. Callers hold the worktree lock across preflight and this edit.
 // Its before/after HEAD pair lets Undo identify this exact edit.
 func (s *gitSession) runHistoryRebase(summary string, run func() error) error {
-	record, err := s.beginOperation(OperationRebase, summary, UndoResetHead, nil)
+	snapshot, err := s.captureWorkSnapshot(context.Background(), RecoverySnapshotKind, summary)
+	if err != nil {
+		return err
+	}
+	record, err := s.beginOperation(OperationRebase, summary, UndoResetHead, &snapshot)
 	if err != nil {
 		return err
 	}

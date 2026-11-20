@@ -540,6 +540,27 @@ func (s *gitSession) DriveOperation(ctx context.Context, options OperationDriveO
 		return fmt.Errorf("resolve all conflicts before continuing the %s", current.Type)
 	}
 
+	if supportsOperationTransitionRecovery(current.Type) {
+		label := map[OperationAction]string{OperationActionContinue: "Continue", OperationActionSkip: "Skip", OperationActionAbort: "Abort"}[options.Action]
+		summary := fmt.Sprintf("%s %s", label, current.Type)
+		return s.runWorkspaceMutation(ctx, OperationTransition, summary, true, func() error {
+			return s.driveCheckedOperation(ctx, current, options)
+		})
+	}
+	return s.driveCheckedOperation(ctx, current, options)
+}
+
+func (s *gitSession) driveCheckedOperation(ctx context.Context, current OperationState, options OperationDriveOptions) error {
+	// Full-workspace capture is deliberately more expensive than the original
+	// preflight Read. Recheck the accepted immutable operation immediately
+	// before the step, so it cannot apply to newly arrived conflicts or edits.
+	latest, err := s.OperationState(ctx)
+	if err != nil {
+		return err
+	}
+	if latest.Fingerprint != current.Fingerprint {
+		return fmt.Errorf("%w: operation changed before the step could run", ErrOperationChanged)
+	}
 	workingTreeState := s.workingTreeState()
 	action := string(options.Action)
 	if s.sshClient == nil {

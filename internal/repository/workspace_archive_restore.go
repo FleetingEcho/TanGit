@@ -156,7 +156,11 @@ func (s *gitSession) restoreWorkspaceRepositoryArchive(snapshotHash string) erro
 		if _, keep := savedFiles[entry.Path]; keep {
 			continue
 		}
-		if err := s.fileService().Remove(s.joinPath(gitDir, entry.Path)); err != nil && !os.IsNotExist(err) {
+		filename, err := s.repositoryStateFilePath(entry.Path)
+		if err != nil {
+			return err
+		}
+		if err := s.fileService().Remove(filename); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove replaced operation metadata %q: %w", entry.Path, err)
 		}
 	}
@@ -168,7 +172,11 @@ func (s *gitSession) restoreWorkspaceRepositoryArchive(snapshotHash string) erro
 	}
 	sort.Slice(removeDirs, func(i, j int) bool { return len(removeDirs[i]) > len(removeDirs[j]) })
 	for _, name := range removeDirs {
-		if err := s.fileService().RemoveAll(s.joinPath(gitDir, name)); err != nil {
+		filename, err := s.repositoryStateFilePath(name)
+		if err != nil {
+			return err
+		}
+		if err := s.fileService().RemoveAll(filename); err != nil {
 			return fmt.Errorf("remove replaced operation directory %q: %w", name, err)
 		}
 	}
@@ -180,25 +188,45 @@ func (s *gitSession) restoreWorkspaceRepositoryArchive(snapshotHash string) erro
 	}
 	sort.Slice(dirs, func(i, j int) bool { return dirs[i].Path < dirs[j].Path })
 	for _, entry := range dirs {
-		if err := s.fileService().MkdirAll(s.joinPath(gitDir, entry.Path), os.FileMode(entry.Mode)); err != nil {
+		filename, err := s.repositoryStateFilePath(entry.Path)
+		if err != nil {
+			return err
+		}
+		if err := s.fileService().MkdirAll(filename, os.FileMode(entry.Mode)); err != nil {
 			return fmt.Errorf("restore operation directory %q: %w", entry.Path, err)
+		}
+	}
+	if err := s.updateWorkspaceRefs(saved.Refs); err != nil {
+		return err
+	}
+	// update-ref may append to the stash reflog as a side effect. Restore the
+	// saved named log afterwards, or remove only that log if there was none.
+	// This is not a general deletion of .git history or reflogs.
+	if _, keep := savedFiles["logs/refs/stash"]; !keep {
+		if err := s.fileService().Remove(s.joinPath(gitDir, "logs/refs/stash")); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove new stash reflog: %w", err)
 		}
 	}
 	for _, entry := range saved.Manifest.FileModes {
 		if strings.HasPrefix(entry.Path, "refs/") {
 			continue
 		}
-		if err := s.fileService().WriteFileAtomic(s.joinPath(gitDir, entry.Path), saved.Files[entry.Path], os.FileMode(entry.Mode)); err != nil {
+		filename, err := s.repositoryStateFilePath(entry.Path)
+		if err != nil {
+			return err
+		}
+		if err := s.fileService().WriteFileAtomic(filename, saved.Files[entry.Path], os.FileMode(entry.Mode)); err != nil {
 			return fmt.Errorf("restore operation metadata %q: %w", entry.Path, err)
 		}
 	}
 	for i := len(dirs) - 1; i >= 0; i-- {
-		if err := s.fileService().Chmod(s.joinPath(gitDir, dirs[i].Path), os.FileMode(dirs[i].Mode)); err != nil {
+		filename, err := s.repositoryStateFilePath(dirs[i].Path)
+		if err != nil {
+			return err
+		}
+		if err := s.fileService().Chmod(filename, os.FileMode(dirs[i].Mode)); err != nil {
 			return fmt.Errorf("restore operation directory permissions %q: %w", dirs[i].Path, err)
 		}
-	}
-	if err := s.updateWorkspaceRefs(saved.Refs); err != nil {
-		return err
 	}
 	if err := s.restoreWorkspaceIndex(saved.Index); err != nil {
 		return err
