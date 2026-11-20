@@ -63,17 +63,23 @@ func (a *app) authorAvatar(c *ui.Context, commit repository.Commit, size float32
 }
 
 func drawAuthorAvatar(c *ui.Context, name, email string, size float32, bitmap *ui.Bitmap) {
-	avatar := ui.Row(c).Width(size).Height(size).Radius(size / 2).
-		Background(avatarColor(name, email)).Center().
-		Label(authorLabel(name, email)).Shrink(0).Clip()
-	avatar.Children(func() {
-		if bitmap != nil {
-			ui.Image(c, bitmap).Size(size, size).Fit(ui.Cover).Role(ui.RoleImage).Label(authorLabel(name, email))
-			return
-		}
-		ui.Text(c, authorInitial(name, email)).
-			Bold().FontSize(size * 0.5).TextColor(avatarTextColor).SingleLine()
-	})
+	initial := authorInitial(name, email)
+	if bitmap == nil && initial == "?" {
+		// The native initials intentionally produce no glyph for punctuation.
+		// Preserve our visible unknown-author fallback for that one case.
+		avatar := ui.Row(c).Width(size).Height(size).Radius(size / 2).
+			Background(avatarColor(name, email)).Center().
+			Label(authorLabel(name, email)).Shrink(0).Clip()
+		avatar.Children(func() {
+			ui.Text(c, "?").Bold().FontSize(size * 0.5).TextColor(avatarTextColor)
+		})
+		return
+	}
+	// Native Avatar owns the circular crop and photo path. Passing the
+	// established initial/palette preserves TanGit's identity across themes
+	// and its readable, single-letter presentation for ordinary authors.
+	ui.Avatar(c, initial, bitmap).Size(size, size).
+		Background(avatarColor(name, email)).Label(authorLabel(name, email))
 }
 
 // authorInitial is the letter the avatar shows: the first letter of the

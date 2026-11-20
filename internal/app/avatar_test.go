@@ -62,6 +62,32 @@ func TestAuthorColorWithoutAnAuthor(t *testing.T) {
 	}
 }
 
+func TestAuthorAvatarUsesNativeControl(t *testing.T) {
+	tester := ui.NewTester(func(c *ui.Context) {
+		drawAuthorAvatar(c, "Ada Lovelace", "ada@example.com", 24, nil)
+	}, 120, 80)
+	tester.Frame()
+	if _, found := tester.AccessByRole(ui.RoleImage, "Ada Lovelace"); !found {
+		t.Fatalf("author is not rendered by the native Avatar image role: %q", tester.Texts())
+	}
+	if !containsText(tester.Texts(), "A") {
+		t.Fatalf("native Avatar does not preserve the author initial: %q", tester.Texts())
+	}
+	if !rectHasColor(tester, "Ada Lovelace", avatarColor("Ada Lovelace", "ada@example.com")) {
+		t.Fatal("native Avatar lost the author's stable palette color")
+	}
+}
+
+func TestAuthorAvatarKeepsUnknownAuthorFallback(t *testing.T) {
+	tester := ui.NewTester(func(c *ui.Context) {
+		drawAuthorAvatar(c, "", "", 24, nil)
+	}, 120, 80)
+	tester.Frame()
+	if !containsText(tester.Texts(), "?") {
+		t.Fatalf("unknown author has no visible fallback: %q", tester.Texts())
+	}
+}
+
 func TestHistoryRowsShowAuthorAvatars(t *testing.T) {
 	h, _ := historyHarness(t)
 	// The fixture's commits are Ada's, so every row's avatar holds an A.
