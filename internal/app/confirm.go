@@ -9,10 +9,13 @@ import (
 // confirmRequest is a question an operation asks before it runs:
 // what it is about to do, why, and the label of the button that does it.
 type confirmRequest struct {
-	title            string
-	message          string
-	detail           string
-	confirmLabel     string
+	title        string
+	message      string
+	detail       string
+	confirmLabel string
+	// disabled holds acceptance while the modal's read-only preflight runs.
+	// It does not hide the question or present the preflight as repository work.
+	disabled         bool
 	alternativeLabel string
 	alternative      func()
 	destructive      bool
@@ -61,7 +64,7 @@ func (a *app) cancelConfirm() {
 // button cannot run the same action twice during the following rebuild.
 func (a *app) acceptConfirm() {
 	request := a.confirm
-	if request == nil {
+	if request == nil || request.disabled {
 		return
 	}
 	a.confirm = nil
@@ -105,6 +108,12 @@ func (a *app) confirmModal(c *ui.Context) {
 					if request.detail != "" {
 						ui.Text(c, request.detail).TextColor(theme.TextMuted)
 					}
+					if request.disabled {
+						ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+							ui.Spinner(c).TextColor(theme.Warning).Label(tr("Working"))
+							ui.Text(c, tr("Checking stacked branches…")).TextColor(theme.TextMuted)
+						})
+					}
 					ui.Row(c).Justify(ui.End).Gap(8).Padding(4, 0).Children(func() {
 						if ui.Button(c, tr("Cancel")).Clicked() {
 							a.cancelConfirm()
@@ -113,7 +122,7 @@ func (a *app) confirmModal(c *ui.Context) {
 							a.confirm = nil
 							request.alternative()
 						}
-						button := ui.Button(c, request.confirmLabel)
+						button := ui.Button(c, request.confirmLabel).Disabled(request.disabled)
 						if request.destructive {
 							button.Background(theme.Danger).TextColor(ui.Hex("#ffffff"))
 						}

@@ -157,7 +157,7 @@ func TestPushOffersStackedBranches(t *testing.T) {
 	h, calls := menuTestAppWithCalls(t)
 	h.app.session = &stackedPushSession{fakeSession: fakeSession{calls: calls, snapshot: h.app.snapshot}}
 	h.app.confirmPush()
-	h.waitFor(t, "push confirmation", func() bool { return h.app.confirm != nil })
+	h.waitFor(t, "push confirmation", func() bool { return h.app.confirm != nil && !h.app.confirm.disabled })
 	h.app.acceptConfirm()
 	h.waitFor(t, "stacked push", func() bool { return calls.has("push-stack:one,two") })
 }
@@ -479,7 +479,7 @@ func TestStackDiscoveryDoesNotBlockUIShowingConfirmation(t *testing.T) {
 	case release <- struct{}{}:
 	default:
 	}
-	h.waitFor(t, "push confirmation", func() bool { return h.app.confirm != nil })
+	h.waitFor(t, "push confirmation", func() bool { return h.app.confirm != nil && !h.app.confirm.disabled })
 	h.confirmAttentionForTest(t)
 	h.waitFor(t, "stack push", func() bool { return calls.has("push-stack:base") && !h.app.actionBusy })
 }
