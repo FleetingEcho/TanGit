@@ -5,6 +5,8 @@ package i18n
 // future additions to be translated in the same change.
 var sourceCoverageTranslations = map[string]map[string]string{
 	"zh-Hans": {
+		"Activity & recovery": "活动与恢复",
+		"Review repository operations and safely restore supported actions": "查看仓库操作，并安全恢复支持的操作",
 
 		"Clear cache": "清理缓存",
 		"Clear all Zoekt search indexes and cached avatars?":                                           "清理所有 Zoekt 搜索索引和头像缓存？",
@@ -524,6 +526,8 @@ var sourceCoverageTranslations = map[string]map[string]string{
 		"TanGit saves the current WIP first, then restores the checkpoint's staged, unstaged, and untracked files. Newer commits prevent restoration.": "TanGit 会先保存当前的未完成工作，再恢复检查点中已暂存、未暂存和未跟踪的文件。存在更新的提交时无法恢复。",
 	},
 	"zh-Hant": {
+		"Activity & recovery": "活動與復原",
+		"Review repository operations and safely restore supported actions": "檢視倉儲操作，並安全復原支援的動作",
 
 		"Clear cache": "清除快取",
 		"Clear all Zoekt search indexes and cached avatars?":                                           "清除所有 Zoekt 搜尋索引與頭像快取？",
@@ -1043,6 +1047,8 @@ var sourceCoverageTranslations = map[string]map[string]string{
 		"TanGit saves the current WIP first, then restores the checkpoint's staged, unstaged, and untracked files. Newer commits prevent restoration.": "TanGit 會先儲存目前的未完成工作，再還原檢查點中已暫存、未暫存和未追蹤的檔案。存在較新的提交時無法還原。",
 	},
 	"ja": {
+		"Activity & recovery": "アクティビティと復元",
+		"Review repository operations and safely restore supported actions": "リポジトリの操作を確認し、対応する操作を安全に復元します",
 
 		"Clear cache": "キャッシュを消去",
 		"Clear all Zoekt search indexes and cached avatars?":                                           "すべての Zoekt 検索インデックスとアバターキャッシュを消去しますか？",
@@ -1562,6 +1568,8 @@ var sourceCoverageTranslations = map[string]map[string]string{
 		"TanGit saves the current WIP first, then restores the checkpoint's staged, unstaged, and untracked files. Newer commits prevent restoration.": "TanGit は現在の作業中の変更を先に保存してから、チェックポイントのステージ済み、未ステージ、未追跡のファイルを復元します。新しいコミットがある場合は復元できません。",
 	},
 	"es": {
+		"Activity & recovery": "Actividad y recuperación",
+		"Review repository operations and safely restore supported actions": "Revisa las operaciones del repositorio y restaura de forma segura las acciones compatibles",
 
 		"Clear cache": "Limpiar caché",
 		"Clear all Zoekt search indexes and cached avatars?":                                           "¿Limpiar todos los índices de búsqueda de Zoekt y avatares almacenados en caché?",
@@ -2081,6 +2089,8 @@ var sourceCoverageTranslations = map[string]map[string]string{
 		"TanGit saves the current WIP first, then restores the checkpoint's staged, unstaged, and untracked files. Newer commits prevent restoration.": "TanGit guarda primero el trabajo en curso actual y después restaura los archivos preparados, sin preparar y sin seguimiento del punto de control. La existencia de commits posteriores impide la restauración.",
 	},
 	"fr": {
+		"Activity & recovery": "Activité et récupération",
+		"Review repository operations and safely restore supported actions": "Examinez les opérations du dépôt et restaurez prudemment les actions prises en charge",
 
 		"Clear cache": "Vider le cache",
 		"Clear all Zoekt search indexes and cached avatars?":                                           "Vider tous les index de recherche Zoekt et avatars mis en cache ?",

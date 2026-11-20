@@ -1431,6 +1431,10 @@ func (a *app) statusBar(c *ui.Context) {
 				iconButton(c, "Keyboard shortcuts", "Keyboard shortcuts (F1)", keyboardIcon,
 					false, a.openKeybindings)
 			}
+			if !a.editorOnlyWorkspace() && a.statusActionVisible("activity") {
+				iconButton(c, "Activity & recovery", "Review repository operations and safely restore supported actions",
+					historyIcon, false, a.openActivityRecovery)
+			}
 			if !a.editorOnlyWorkspace() && a.statusActionVisible("command-log") {
 				button := ui.ButtonBase(c).AlignItems(ui.Center).Gap(5).Padding(2, 7).
 					Radius(theme.Radius).Label(tr("Command log")).

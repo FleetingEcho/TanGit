@@ -11,6 +11,13 @@ import (
 	"lazygitapp/internal/repository"
 )
 
+// openActivityRecovery exposes the operation journal through its own status
+// entry. Other recovery links keep the tab they selected.
+func (a *app) openActivityRecovery() {
+	a.savedWorkPanel = 1
+	a.showRecoveryModal = true
+}
+
 func (a *app) recoveryModal(c *ui.Context) {
 	if !a.showRecoveryModal || a.confirm != nil {
 		return

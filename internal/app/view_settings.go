@@ -946,6 +946,8 @@ func toolbarActionIcon(id string) *ui.SVG {
 		return commandIcon
 	case "pull-requests":
 		return externalLinkIcon
+	case "activity":
+		return historyIcon
 	case "terminal":
 		return terminalIcon
 	case "keyboard-shortcuts":

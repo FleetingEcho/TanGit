@@ -108,6 +108,27 @@ func operationHeadDetail(record repository.OperationRecord) string {
 	return before + " → " + after
 }
 
+// operationScopeDetail keeps journal provenance visible when several tabs or
+// linked worktrees share a journal. Older records without a branch still show
+// whichever immutable scope they captured.
+func operationScopeDetail(record repository.OperationRecord) string {
+	branch := record.Branch
+	if record.BranchAfter != "" && record.BranchAfter != branch {
+		if branch == "" {
+			branch = record.BranchAfter
+		} else {
+			branch += " → " + record.BranchAfter
+		}
+	}
+	if branch != "" && record.Worktree != "" {
+		return branch + " · " + record.Worktree
+	}
+	if branch != "" {
+		return branch
+	}
+	return record.Worktree
+}
+
 func (a *app) safetyJournalBody(c *ui.Context) {
 	theme := c.Theme()
 	if len(a.snapshot.Operations) == 0 {
@@ -126,10 +147,14 @@ func (a *app) safetyJournalBody(c *ui.Context) {
 					ui.Column(c).Gap(3).Grow(1).Children(func() {
 						ui.Text(c, record.Summary).SingleLine().Tooltip(record.Summary)
 						detail := time.Unix(record.CreatedAt, 0).Format("2006-01-02 15:04")
+						if scope := operationScopeDetail(record); scope != "" {
+							detail += " · " + scope
+						}
 						if heads := operationHeadDetail(record); heads != "" {
 							detail += " · " + heads
 						}
-						ui.Text(c, detail).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2).SingleLine()
+						ui.Text(c, detail).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2).
+							SingleLine().Ellipsis("…").Tooltip(detail)
 						if record.Error != "" {
 							ui.Text(c, record.Error).TextColor(theme.Danger).FontSize(theme.FontSize - 2).SingleLine().Tooltip(record.Error)
 						}
