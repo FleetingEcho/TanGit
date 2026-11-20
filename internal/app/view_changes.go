@@ -735,6 +735,8 @@ func (a *app) changesHeader(c *ui.Context) {
 				Tooltip(trf("%d changed files", files))
 		}
 		ui.Spacer(c).Grow(1)
+		a.fileMutationIndicator(c)
+		c.Key("changes-header-actions")
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
 			flatIconButton(c, "Commit staged changes", "Ctrl+Enter", commitIcon, 15, 5, !a.canCommit(), a.beginCommit)
 			treeLabel, treeTooltip := "Show files as tree", "Group files by directory"
@@ -1098,11 +1100,18 @@ func (a *app) beginStageFile(file repository.File, stage bool) {
 	if a.actionBusy || a.session == nil {
 		return
 	}
+	var mutationSerial uint64
+	if stage && file.HasMergeConflicts {
+		mutationSerial = a.beginFileMutation()
+	}
+	generation := a.generation
 	a.beginRepositoryAction(file.Path, func(ctx context.Context, session repository.Session) error {
 		if stage {
 			if file.HasMergeConflicts {
 				return runFileRecoveryMutation(ctx, session, file.Path, func() error {
 					return requireChangesSession(session).Stage(ctx, file)
+				}, func() {
+					a.acceptFileMutation(mutationSerial, generation)
 				})
 			}
 			return requireChangesSession(session).Stage(ctx, file)

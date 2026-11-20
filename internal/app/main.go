@@ -587,6 +587,7 @@ type app struct {
 	lineSelectRanges []editor.DiffLineRange
 	actionBusy       bool
 	actionError      string
+	fileMutation     fileMutationState
 	actionFailure    *commandLogFailureTarget
 	// patchPreviewOpen owns the read-only patch import dialog. Its token
 	// invalidates a native pick or preview that finishes after cancellation or

@@ -16,9 +16,20 @@ import (
 // Lightweight Session fakes predate V2 and take the legacy path. Real local
 // and SSH sessions implement FileRecoveryWorkflowSession; unsupported file
 // kinds return before mutate and are never silently resolved without a copy.
-func runFileRecoveryMutation(ctx context.Context, session repository.Session, path string, mutate func() error) error {
+func runFileRecoveryMutation(ctx context.Context, session repository.Session, path string, mutate func() error, accepted ...func()) error {
+	notifyAccepted := func() {}
+	if len(accepted) > 0 && accepted[0] != nil {
+		called := false
+		notifyAccepted = func() {
+			if !called {
+				called = true
+				accepted[0]()
+			}
+		}
+	}
 	recovery, ok := session.(repository.FileRecoveryWorkflowSession)
 	if !ok {
+		notifyAccepted()
 		return mutate()
 	}
 
@@ -34,6 +45,10 @@ func runFileRecoveryMutation(ctx context.Context, session repository.Session, pa
 		return fmt.Errorf("prepare persistent conflict recovery for %s: %w", path, captureErr)
 	}
 	if id == "" {
+		// This is a durable recovery write, not a read-only preview. Normal
+		// staging accepts just before Archive; a known existing record accepts
+		// below immediately before its mutation.
+		notifyAccepted()
 		record, archiveErr := recovery.ArchiveFileRecovery(ctx, repository.FileRecoveryArchive{
 			Path: path, After: initial,
 		})
@@ -43,6 +58,9 @@ func runFileRecoveryMutation(ctx context.Context, session repository.Session, pa
 		id = record.OperationID
 	}
 
+	if id != "" {
+		notifyAccepted()
+	}
 	mutationErr := mutate()
 	// Record the actual after-state even when Git reports an error: conflict
 	// resolution can fail after changing one of the worktree/index components.
