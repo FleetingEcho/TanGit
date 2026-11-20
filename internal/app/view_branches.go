@@ -1013,11 +1013,14 @@ func (a *app) branchCommitsView(c *ui.Context, branch repository.Branch) {
 				a.authorAvatar(row.Context, commit, 18)
 				ui.Column(row.Context).Gap(2).Grow(1).Children(func() {
 					ui.Text(row.Context, commit.Subject).SingleLine()
-					ui.Row(row.Context).Gap(8).Children(func() {
-						ui.Text(row.Context, commit.ShortHash).TextColor(secondaryRowColor(theme, row))
-						ui.Text(row.Context, commit.AuthorName).TextColor(secondaryRowColor(theme, row))
+					ui.Row(row.Context).Gap(8).MinWidth(0).Children(func() {
+						ui.Text(row.Context, commit.ShortHash).TextColor(secondaryRowColor(theme, row)).
+							SingleLine().MinWidth(0)
+						ui.Text(row.Context, commit.AuthorName).TextColor(secondaryRowColor(theme, row)).
+							SingleLine().MinWidth(0).Tooltip(commit.AuthorName)
 						if rel := relTime(commit.UnixTimestamp); rel != "" {
-							ui.Text(row.Context, rel).TextColor(secondaryRowColor(theme, row))
+							ui.Text(row.Context, rel).TextColor(secondaryRowColor(theme, row)).
+								SingleLine().MinWidth(0).Tooltip(rel)
 						}
 					})
 				})

@@ -2,6 +2,7 @@ package app
 
 import (
 	"image/color"
+	"math"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -16,6 +17,33 @@ func dragTo(t *testing.T, tester *ui.Tester, x, y, dx, dy float32) {
 	tester.Frame()
 	tester.Release(x+dx, y+dy)
 	tester.Frame()
+}
+
+// dragVerticalPaneGrip uses the visible, accessible sash in the measured
+// pane. Header text bounds and independently rounded list geometry make a
+// synthetic edge point miss the native splitter at different font metrics.
+func dragVerticalPaneGrip(t *testing.T, tester *ui.Tester, pane ui.Rect, dividerY, deltaY float32) {
+	t.Helper()
+	closest := math.Inf(1)
+	var grip ui.Rect
+	found := false
+	for _, info := range tester.AccessAll() {
+		bounds := info.Bounds
+		if info.Name != tr("Drag to resize") || info.Offscreen || bounds.W <= bounds.H ||
+			bounds.X+bounds.W/2 < pane.X || bounds.X+bounds.W/2 > pane.X+pane.W {
+			continue
+		}
+		distance := math.Abs(float64(bounds.Y + bounds.H/2 - dividerY))
+		if distance < closest {
+			closest = distance
+			grip = bounds
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no vertical pane grip for %+v at Y=%v", pane, dividerY)
+	}
+	dragTo(t, tester, grip.X+grip.W/2, grip.Y+grip.H/2, 0, deltaY)
 }
 
 func TestSidebarDividerResizesTheWorkspace(t *testing.T) {
