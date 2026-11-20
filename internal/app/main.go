@@ -164,7 +164,6 @@ type app struct {
 	// opening, renaming, and removing a match always affect the right entry.
 	recentFilter   string
 	visibleRecent  []int
-	recentGrid     ui.GridState
 	selectedRecent int
 	homeWorktrees  homeWorktreePickerState
 
@@ -1013,22 +1012,6 @@ func newApp(opener repositoryOpener) *app {
 	a.navList.Label = func(row int) string {
 		if section, ok := a.navRow(row); ok {
 			return tr(workspaceSections[section])
-		}
-		return ""
-	}
-	// The cards draw their own frame: the grid only places them, since a
-	// chosen cell paints a frame of the theme's radius around content the
-	// card insets, leaving a lip at the corners where the two disagree.
-	a.recentGrid.Key = func(item int) any {
-		if item >= 0 && item < len(a.visibleRecent) {
-			repo := a.recentRepositories[a.visibleRecent[item]]
-			return recentKey(repo.Path, repo.EditorOnly)
-		}
-		return item
-	}
-	a.recentGrid.Label = func(item int) string {
-		if item >= 0 && item < len(a.visibleRecent) {
-			return a.recentRepositories[a.visibleRecent[item]].Path
 		}
 		return ""
 	}
