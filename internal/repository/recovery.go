@@ -63,11 +63,15 @@ func workSnapshotRef(kind, id string) (string, error) {
 // publishes it under a hidden TanGit ref instead of refs/stash and never cleans
 // the working tree. A failed capture therefore cannot destroy user work.
 func (s *gitSession) captureWorkSnapshot(ctx context.Context, kind, name string) (WorkSnapshot, error) {
-	return s.captureWorkSnapshotWithIgnored(ctx, kind, name, nil)
+	ignored, err := s.ignoredWorkspacePaths()
+	if err != nil {
+		return WorkSnapshot{}, err
+	}
+	return s.captureWorkSnapshotWithIgnored(ctx, kind, name, ignored)
 }
 
 // captureWorkSnapshotWithIgnored also saves selected ignored paths. Ordinary
-// snapshots omit dependency and build trees; destructive reset passes only the
+// snapshots include ignored files as well; destructive reset passes only the
 // ignored paths its target can overwrite.
 func (s *gitSession) captureWorkSnapshotWithIgnored(ctx context.Context, kind, name string, ignored []string) (WorkSnapshot, error) {
 	if err := ctx.Err(); err != nil {
@@ -96,6 +100,10 @@ func (s *gitSession) captureWorkSnapshotWithIgnored(ctx context.Context, kind, n
 	if err != nil {
 		return WorkSnapshot{}, fmt.Errorf("capture untracked recovery: %w", err)
 	}
+	hash, err = s.attachWorkspacePermissions(hash, name, listing)
+	if err != nil {
+		return WorkSnapshot{}, fmt.Errorf("capture workspace permissions: %w", err)
+	}
 	ref, err := workSnapshotRef(kind, hash)
 	if err != nil {
 		return WorkSnapshot{}, fmt.Errorf("prepare recovery ref for %q: %w", hash, err)
@@ -121,6 +129,28 @@ func (s *gitSession) recoveryUntrackedListing(ignored []string) (string, error) 
 // resetIgnoredPaths finds ignored files that a hard reset between before and
 // after can replace. Only added target paths matter: a path tracked on both
 // sides cannot also be ignored, and unrelated ignored trees need no hashing.
+// ignoredWorkspacePaths lists ignored files without interpreting them as
+// tracked changes or flattening symlink entries. Recovery includes them in
+// both snapshots and compare-and-swap fingerprints, not only reset collisions.
+func (s *gitSession) ignoredWorkspacePaths() ([]string, error) {
+	output, err := s.cmd.New([]string{"git", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"}).RunWithOutput()
+	if err != nil {
+		return nil, fmt.Errorf("list ignored recovery files: %w: %s", err, strings.TrimSpace(output))
+	}
+	var paths []string
+	for _, name := range strings.Split(strings.TrimSuffix(output, "\x00"), "\x00") {
+		if name == "" {
+			continue
+		}
+		if err := validateFileRecoveryPath(name); err != nil {
+			return nil, fmt.Errorf("unsupported recovery path %q: %w", name, err)
+		}
+		paths = append(paths, name)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
 func (s *gitSession) resetIgnoredPaths(before, after string) ([]string, error) {
 	if before == after {
 		return nil, nil
@@ -374,12 +404,93 @@ func (s *gitSession) RestoreWorkSnapshot(ctx context.Context, snapshot WorkSnaps
 // applyWorkSnapshot performs the write after the caller has completed the
 // appropriate validation. Public snapshot restores reject overlaps above;
 // journal Undo instead validates the operation's complete exact after-state.
-func (s *gitSession) applyWorkSnapshot(snapshot WorkSnapshot) error {
-	output, err := s.cmd.New([]string{"git", "stash", "apply", "--index", snapshot.Hash}).RunWithOutput()
+func snapshotRepositoryPath(name string) error {
+	if name == ".git" || strings.HasPrefix(name, ".git/") {
+		return fmt.Errorf("%w: snapshot points into .git metadata", ErrFileRecoveryUnsupported)
+	}
+	return validateFileRecoveryPath(name)
+}
+
+func (s *gitSession) restoreSnapshotPaths(hash string, paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	for _, name := range paths {
+		if err := snapshotRepositoryPath(name); err != nil {
+			return err
+		}
+	}
+	listing := strings.Join(paths, "\x00")
+	name, cleanup, err := s.temporaryFile("tangit-recovery-paths-", []byte(listing), 0o600)
 	if err != nil {
-		return fmt.Errorf("restore recovery: %w: %s", err, strings.TrimSpace(output))
+		return err
+	}
+	defer cleanup()
+	output, err := s.cmd.New([]string{
+		"git", "--literal-pathspecs", "restore", "--source=" + hash,
+		"--worktree", "--pathspec-from-file=" + name, "--pathspec-file-nul", "--",
+	}).RunWithOutput()
+	if err != nil {
+		return fmt.Errorf("restore selected snapshot paths: %w: %s", err, strings.TrimSpace(output))
 	}
 	return nil
+}
+
+func (s *gitSession) applyWorkSnapshot(snapshot WorkSnapshot) error {
+	if _, err := s.gitText("rev-parse", "--verify", snapshot.Hash+"^{tree}"); err != nil {
+		return fmt.Errorf("recovery snapshot is not a complete work tree: %w", err)
+	}
+	var paths, deleted []string
+	for _, filter := range []struct {
+		filter string
+		to     *[]string
+	}{{"D", &deleted}, {"AM", &paths}} {
+		out, err := s.cmd.New([]string{
+			"git", "diff", "--no-renames", "--name-only", "--diff-filter=" + filter.filter,
+			"-z", snapshot.Hash + "^1", snapshot.Hash, "--",
+		}).RunWithOutput()
+		if err != nil {
+			return fmt.Errorf("compare recovery to its base tree: %w: %s", err, strings.TrimSpace(out))
+		}
+		for _, name := range strings.Split(strings.TrimSuffix(out, "\x00"), "\x00") {
+			if name == "" {
+				continue
+			}
+			if err := snapshotRepositoryPath(name); err != nil {
+				return err
+			}
+			*filter.to = append(*filter.to, name)
+		}
+	}
+	for _, name := range deleted {
+		if err := snapshotRepositoryPath(name); err != nil {
+			return err
+		}
+		file := s.fileRecoveryWorktreePath(name)
+		description, err := s.fileService().Lstat(file)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !description.Mode().IsRegular() && description.Mode()&os.ModeSymlink == 0 {
+			return fmt.Errorf("%w: unsupported deletion target %s", ErrFileRecoveryUnsupported, name)
+		}
+		if err := s.fileService().Remove(file); err != nil {
+			return fmt.Errorf("remove deleted snapshot file %s: %w", name, err)
+		}
+	}
+	if err := s.restoreSnapshotPaths(snapshot.Hash, paths); err != nil {
+		return err
+	}
+	if _, err := s.cmd.New([]string{"git", "read-tree", snapshot.Hash + "^2^{tree}"}).RunWithOutput(); err != nil {
+		return fmt.Errorf("restore recovery index: %w", err)
+	}
+	if err := s.restoreSnapshotUntracked(snapshot); err != nil {
+		return err
+	}
+	return s.restoreWorkspacePermissions(snapshot.Hash)
 }
 
 func (s *gitSession) DeleteWorkSnapshot(ctx context.Context, snapshot WorkSnapshot) error {
