@@ -1,6 +1,7 @@
 package app
 
 import (
+	"hash/fnv"
 	"sort"
 	"strings"
 
@@ -196,9 +197,89 @@ func normalizeFileTreeRow(rows []fileTreeRow, selectedRow, selectedSource *int) 
 	}
 }
 
-func (a *app) syncFileTreeRows(scope string, paths []string, previous []fileTreeRow, selectedRow, selectedSource *int) []fileTreeRow {
-	directory := selectedFileTreeDirectory(previous, *selectedRow)
+// filePathsMemoKey keys the path slice built from one commit/stash files
+// slice; the files slices the detail panes hold are replaced wholesale on
+// reload, never edited in place, so the slice identity keys the memo.
+type filePathsMemoKey struct {
+	first  *repository.CommitFile
+	length int
+}
+
+// pathsForFiles returns the paths of a commit's files, memoized by the files
+// slice identity and its length.
+func (a *app) pathsForFiles(files []repository.CommitFile) []string {
+	var first *repository.CommitFile
+	if len(files) > 0 {
+		first = &files[0]
+	}
+	key := filePathsMemoKey{first: first, length: len(files)}
+	if cached, ok := a.filePathsMemo[key]; ok {
+		return cached
+	}
+	paths := commitFilePaths(files)
+	if a.filePathsMemo == nil || len(a.filePathsMemo) >= 32 {
+		a.filePathsMemo = make(map[filePathsMemoKey][]string)
+	}
+	a.filePathsMemo[key] = paths
+	return paths
+}
+
+// collapsedSignature names a collapsed-directories map for the rows memo:
+// the map is edited in place, so its contents are fingerprinted in key order.
+func collapsedSignature(collapsed map[string]bool) uint64 {
+	if len(collapsed) == 0 {
+		return 0
+	}
+	keys := make([]string, 0, len(collapsed))
+	for key := range collapsed {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	h := fnv.New64a()
+	for _, key := range keys {
+		_, _ = h.Write([]byte(key))
+		if collapsed[key] {
+			_, _ = h.Write([]byte{1})
+		} else {
+			_, _ = h.Write([]byte{0})
+		}
+		_, _ = h.Write([]byte{0})
+	}
+	return h.Sum64()
+}
+
+type fileTreeRowsMemoKeyType struct {
+	scope     string
+	first     *repository.CommitFile
+	length    int
+	mode      bool
+	collapsed uint64
+}
+
+// fileTreeRowsFor memoizes the visible tree rows per (scope, files identity,
+// layout mode, collapsed signature); idle frames reuse them verbatim.
+func (a *app) fileTreeRowsFor(scope string, files []repository.CommitFile, paths []string) []fileTreeRow {
+	collapsed := collapsedSignature(a.fileTreeCollapsed)
+	var first *repository.CommitFile
+	if len(files) > 0 {
+		first = &files[0]
+	}
+	key := fileTreeRowsMemoKeyType{scope: scope, first: first, length: len(files), mode: a.fileTreeMode, collapsed: collapsed}
+	if cached, ok := a.fileTreeRowsMemo[key]; ok {
+		return cached
+	}
 	rows := a.fileTreeRows(scope, paths)
+	if a.fileTreeRowsMemo == nil || len(a.fileTreeRowsMemo) >= 32 {
+		a.fileTreeRowsMemo = make(map[fileTreeRowsMemoKeyType][]fileTreeRow)
+	}
+	a.fileTreeRowsMemo[key] = rows
+	return rows
+}
+
+func (a *app) syncFileTreeRows(scope string, files []repository.CommitFile, previous []fileTreeRow, selectedRow, selectedSource *int) []fileTreeRow {
+	paths := a.pathsForFiles(files)
+	directory := selectedFileTreeDirectory(previous, *selectedRow)
+	rows := a.fileTreeRowsFor(scope, files, paths)
 	if directory != "" {
 		*selectedRow = fileTreeDirectoryIndex(rows, directory)
 		*selectedSource = -1

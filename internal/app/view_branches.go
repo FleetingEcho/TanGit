@@ -317,7 +317,7 @@ func branchDisplay(branch repository.Branch) string {
 }
 
 func (a *app) visibleBranches() []int {
-	return filteredSourceRows(len(a.snapshot.Branches), a.branchSearch, func(source int) string {
+	return filteredCached(&a.branchVisibleCache, a.snapshotSeq, len(a.snapshot.Branches), a.branchSearch, func(source int) string {
 		branch := a.snapshot.Branches[source]
 		return strings.Join([]string{branch.Name, branch.DisplayName, branch.Subject,
 			branch.UpstreamRemote, branch.UpstreamBranch}, "\x00")
