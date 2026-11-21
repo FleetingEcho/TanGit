@@ -670,6 +670,7 @@ func (a *app) codeEditorPane(c *ui.Context) {
 	pane.OnShortcut(ui.Cmd|ui.Shift, ui.KeyS, a.saveCodeEdits)
 	pane.OnShortcut(ui.Alt, ui.KeyLeft, func() { a.navigateCodeHistory(true) })
 	pane.OnShortcut(ui.Alt, ui.KeyRight, func() { a.navigateCodeHistory(false) })
+	a.codeEditorOutlineShortcuts(pane)
 	pane.Children(func() {
 		if len(a.code.tabs) == 0 {
 			a.codeEmptyEditor(c)
@@ -688,18 +689,6 @@ func (a *app) codeEditorPane(c *ui.Context) {
 			return
 		}
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(7, 14).Children(func() {
-			back := compactIconButton(ui.Button(c, "")).Label(tr("Navigate back")).
-				Tooltip(tr("Navigate back") + " (Alt+Left)").Disabled(len(a.code.back) == 0)
-			back.Children(func() { ui.Text(c, "←").FontSize(theme.FontSize + 1) })
-			if back.Clicked() {
-				a.navigateCodeHistory(true)
-			}
-			forward := compactIconButton(ui.Button(c, "")).Label(tr("Navigate forward")).
-				Tooltip(tr("Navigate forward") + " (Alt+Right)").Disabled(len(a.code.forward) == 0)
-			forward.Children(func() { ui.Text(c, "→").FontSize(theme.FontSize + 1) })
-			if forward.Clicked() {
-				a.navigateCodeHistory(false)
-			}
 			breadcrumb := ""
 			if document.state != nil && document.state.Buffer != nil {
 				if offset, ok := codeLanguageOffset(document); ok {
@@ -711,9 +700,23 @@ func (a *app) codeEditorPane(c *ui.Context) {
 				location += "  ›  " + breadcrumb
 			}
 			ui.Text(c, location).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1).SingleLine().Tooltip(location)
-			if ui.Button(c, tr("Outline")).Padding(3, 8).Clicked() {
-				a.openLanguageSymbols(document)
+			if len(a.code.back) > 0 || len(a.code.forward) > 0 {
+				back := compactIconButton(ui.Button(c, "")).Label(tr("Navigate back")).
+					Tooltip(tr("Navigate back") + " (Alt+Left)").Disabled(len(a.code.back) == 0)
+				back.Children(func() { ui.Text(c, "←").FontSize(theme.FontSize + 1) })
+				if back.Clicked() {
+					a.navigateCodeHistory(true)
+				}
+				forward := compactIconButton(ui.Button(c, "")).Label(tr("Navigate forward")).
+					Tooltip(tr("Navigate forward") + " (Alt+Right)").Disabled(len(a.code.forward) == 0)
+				forward.Children(func() { ui.Text(c, "→").FontSize(theme.FontSize + 1) })
+				if forward.Clicked() {
+					a.navigateCodeHistory(false)
+				}
 			}
+			flatIconButton(c, "Outline", "Symbols in the current document", fileBracesIcon, 14, 4, false, func() {
+				a.openLanguageSymbols(document)
+			})
 			a.codeLanguageServersButton(c)
 			if isMarkdownDocument(document.path) {
 				tooltip := "Show Markdown preview"

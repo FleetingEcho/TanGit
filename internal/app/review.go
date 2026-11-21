@@ -58,9 +58,10 @@ func (a *app) reviewProgress() (reviewed, total int) {
 	return reviewed, total
 }
 
-// visibleReviewFiles applies review filtering before sections/counts are
-// built, keeping headers and keyboard selection consistent with visible rows.
+// visibleReviewFiles applies status and local review filters before
+// sections/counts are built, keeping headers and keyboard selection aligned.
 func (a *app) visibleReviewFiles(files []repository.File) []repository.File {
+	files = changesFilesWithStatus(files, a.fileStatusFilter)
 	if !a.reviewFilter {
 		return files
 	}
@@ -74,7 +75,7 @@ func (a *app) visibleReviewFiles(files []repository.File) []repository.File {
 }
 
 func (a *app) hasUnreviewedFiles() bool {
-	for _, file := range a.snapshot.Files {
+	for _, file := range changesFilesWithStatus(a.snapshot.Files, a.fileStatusFilter) {
 		if !a.reviewedFiles[file.Path] {
 			return true
 		}

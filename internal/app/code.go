@@ -85,6 +85,7 @@ type codeDocument struct {
 	symbolSeq            uint64
 	symbolVersion        uint64
 	symbolsRequested     bool
+	symbolsLoading       bool
 	symbols              []languageServerDocumentSymbol
 	inlaySeq             uint64
 	inlayVersion         uint64
@@ -145,7 +146,12 @@ type codeState struct {
 	languageOffset      int
 	languageRename      string
 	languageError       string
+	languageSymbols     languageSymbolsViewState
 	languageActions     []languageServerCodeAction
+	shortcutQuery       string
+	shortcutRecording   string
+	shortcutSlot        int
+	shortcutError       string
 	languageReferences  []languageServerLocation
 	languagePeekPath    string
 	languagePeekState   *editor.State

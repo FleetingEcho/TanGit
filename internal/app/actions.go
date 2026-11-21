@@ -313,6 +313,7 @@ func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 	a.reviewRequestToken++
 	a.reviewLoading = false
 	a.reviewFilter = false
+	a.fileStatusFilter = changesStatusAll
 	a.fileTreeCollapsed = nil
 	a.resetCode()
 	a.stagedExpanded, a.changesExpanded = true, true
