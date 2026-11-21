@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/egoist/mygo/ui/editor"
 )
 
 func TestFailedExternalLanguageServerOffersManagedInstall(t *testing.T) {
@@ -382,6 +384,102 @@ func fakeOwnedLanguageServerInstallation(t *testing.T, profile languageServerPro
 		Path: executable, Arguments: append([]string(nil), profile.Arguments...),
 		ProbeArguments: append([]string(nil), profile.VersionArguments...),
 		OwnedRoot:      staging, ManagedRoot: root, ProbeRequired: true,
+	}
+}
+
+func TestGoInstallStartsServerAndClearsMissingStatus(t *testing.T) {
+	originalInstall := performLanguageServerInstall
+	originalProbe := probeLanguageServerInstallation
+	originalLookPath := languageServerLookPath
+	originalConnect := connectLanguageServer
+	t.Cleanup(func() {
+		performLanguageServerInstall = originalInstall
+		probeLanguageServerInstallation = originalProbe
+		languageServerLookPath = originalLookPath
+		connectLanguageServer = originalConnect
+	})
+	h := menuTestApp(t)
+	h.app.pathUserData = t.TempDir()
+	h.app.code.documents = map[string]*codeDocument{"main.go": {
+		path: "main.go", state: &editor.State{Buffer: editor.NewBuffer("package main\n")},
+	}}
+	h.app.goLanguageServerMissing = true
+	installed := false
+	probeLanguageServerInstallation = func(languageServerInstallation) (string, error) { return "gopls test", nil }
+	languageServerLookPath = func(program string) (string, error) {
+		if !installed || filepath.Clean(program) != filepath.Clean(filepath.Join(managedLanguageServerRoot(h.app.pathUserData, "go"), "bin", executableName("gopls"))) {
+			return "", errors.New("gopls is not installed")
+		}
+		return program, nil
+	}
+	connection := newFakeLanguageServerConnection()
+	connectLanguageServer = func(languageServerLaunch) (languageServerConnection, error) { return connection, nil }
+	performLanguageServerInstall = func(profile languageServerProfile, dataDir string) (languageServerInstallation, error) {
+		installed = true
+		return fakeOwnedLanguageServerInstallation(t, profile, dataDir), nil
+	}
+
+	h.app.installLanguageServer("go")
+	h.waitFor(t, "the installed Go language server to start", func() bool { return h.app.goLanguageServer != nil })
+	profile, _ := languageServerProfileByID("go")
+	if !h.app.languageServerExecutableAvailable(profile) || h.app.goLanguageServerMissing {
+		t.Fatalf("managed Go installation remains unavailable: missing=%v settings=%+v", h.app.goLanguageServerMissing, h.app.goLanguageServerSettings())
+	}
+	statuses := h.app.codeLanguageServerStatuses()
+	if len(statuses) != 1 || !statuses[0].running || statuses[0].missing || statuses[0].installing || statuses[0].failed {
+		t.Fatalf("installed Go server status = %+v", statuses)
+	}
+}
+
+func TestAvailableGoServerRecoversFromMissingStatus(t *testing.T) {
+	originalLookPath := languageServerLookPath
+	originalConnect := connectLanguageServer
+	t.Cleanup(func() {
+		languageServerLookPath = originalLookPath
+		connectLanguageServer = originalConnect
+	})
+	h := menuTestApp(t)
+	h.app.settings.LanguageServers = map[string]languageServerSettings{"go": {Path: "/managed/gopls"}}
+	h.app.code.documents = map[string]*codeDocument{"main.go": {
+		path: "main.go", state: &editor.State{Buffer: editor.NewBuffer("package main\n")},
+	}}
+	h.app.goLanguageServerMissing = true
+	languageServerLookPath = func(program string) (string, error) { return program, nil }
+	connection := newFakeLanguageServerConnection()
+	connectLanguageServer = func(languageServerLaunch) (languageServerConnection, error) { return connection, nil }
+
+	h.app.syncGoLanguageServer()
+	h.waitFor(t, "available Go server to recover from a stale missing status", func() bool { return h.app.goLanguageServer != nil })
+	statuses := h.app.codeLanguageServerStatuses()
+	if h.app.goLanguageServerMissing || len(statuses) != 1 || !statuses[0].running || statuses[0].missing {
+		t.Fatalf("stale download state remains: missing=%v statuses=%+v", h.app.goLanguageServerMissing, statuses)
+	}
+}
+
+func TestAvailableManagedServerRecoversFromMissingStatus(t *testing.T) {
+	originalLookPath := languageServerLookPath
+	originalConnect := connectLanguageServer
+	t.Cleanup(func() {
+		languageServerLookPath = originalLookPath
+		connectLanguageServer = originalConnect
+	})
+	h := menuTestApp(t)
+	profile, _ := languageServerProfileByID("ruff")
+	h.app.settings.LanguageServers = map[string]languageServerSettings{"ruff": {Path: "/managed/ruff"}}
+	h.app.code.documents = map[string]*codeDocument{"main.py": {
+		path: "main.py", state: &editor.State{Buffer: editor.NewBuffer("answer = 42\n")},
+	}}
+	server := &managedLanguageServer{profile: profile, missing: true}
+	h.app.additionalLanguageServers = map[string]*managedLanguageServer{"ruff": server}
+	languageServerLookPath = func(program string) (string, error) { return program, nil }
+	connection := newFakeLanguageServerConnection()
+	connectLanguageServer = func(languageServerLaunch) (languageServerConnection, error) { return connection, nil }
+
+	h.app.syncGoLanguageServer()
+	h.waitFor(t, "available managed server to recover from a stale missing status", func() bool { return server.connection != nil })
+	statuses := h.app.codeLanguageServerStatuses()
+	if server.missing || len(statuses) != 1 || !statuses[0].running || statuses[0].missing {
+		t.Fatalf("stale managed-server download state remains: server=%+v statuses=%+v", server, statuses)
 	}
 }
 

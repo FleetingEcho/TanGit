@@ -92,6 +92,12 @@ func (a *app) syncAdditionalLanguageServers() {
 			}
 		}
 		if server.connection == nil {
+			// A managed install or PATH change can make an executable available
+			// after this state was recorded. Clear it only after availability is
+			// validated again, then use the normal guarded startup path.
+			if server.missing && (server.profile.Custom || a.languageServerExecutableAvailable(server.profile)) {
+				server.missing = false
+			}
 			if !server.starting && !server.missing && (server.error == "" || server.restartPending) {
 				a.startManagedLanguageServer(server)
 			}
