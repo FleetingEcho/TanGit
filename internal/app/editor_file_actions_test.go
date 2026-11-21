@@ -634,14 +634,16 @@ func TestCodeCloseKeepsUnsavedBuffersAndWaitsForFileOperations(t *testing.T) {
 	useRealCodeWorkspace(t, h, map[string]string{"note.txt": "original\n"})
 	document := openRealCodeDocument(t, h, "note.txt")
 	document.state.Insert("unsaved\n")
-	realWrite := writeWorkingFile
+	realWrite, realCheckedWrite := writeWorkingFile, writeWorkingFileChecked
+	t.Cleanup(func() { writeWorkingFile, writeWorkingFileChecked = realWrite, realCheckedWrite })
 	writeWorkingFile = func(string, []byte) error { return errors.New("disk full") }
+	writeWorkingFileChecked = func(string, []byte, localFileStamp, bool) error { return errors.New("disk full") }
 	h.app.closeCodeFile("note.txt")
 	h.app.acceptConfirm()
 	if h.app.code.documents["note.txt"] != document || document.saveError == "" || !document.state.Buffer.Modified() {
 		t.Fatalf("a failed close discarded its buffer: document=%p error=%q", h.app.code.documents["note.txt"], document.saveError)
 	}
-	writeWorkingFile = realWrite
+	writeWorkingFile, writeWorkingFileChecked = realWrite, realCheckedWrite
 	h.app.code.fileOperationBusy = true
 	h.app.closeCodeFile("note.txt")
 	if h.app.code.documents["note.txt"] != document {

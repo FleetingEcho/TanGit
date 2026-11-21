@@ -120,6 +120,8 @@ type stdioLanguageServer struct {
 	once                    sync.Once
 	documentFormatting      bool
 	documentRangeFormatting bool
+	languageFeatures        map[string]bool
+	semanticTokenTypes      []string
 	onNotify                func(method string, params json.RawMessage)
 }
 
@@ -169,9 +171,20 @@ func connectStdioLanguageServer(launch languageServerLaunch) (languageServerConn
 				"serverStatusNotification": true,
 			},
 			"textDocument": map[string]any{
-				"synchronization":    map[string]any{"didSave": true},
-				"hover":              map[string]any{"contentFormat": []string{"markdown", "plaintext"}},
-				"definition":         map[string]any{"linkSupport": true},
+				"synchronization": map[string]any{"didSave": true},
+				"hover":           map[string]any{"contentFormat": []string{"markdown", "plaintext"}},
+				"definition":      map[string]any{"linkSupport": true},
+				"references":      map[string]any{},
+				"rename":          map[string]any{"prepareSupport": false},
+				"codeAction":      map[string]any{"dataSupport": false},
+				"signatureHelp":   map[string]any{"signatureInformation": map[string]any{"documentationFormat": []string{"markdown", "plaintext"}}},
+				"documentSymbol":  map[string]any{"hierarchicalDocumentSymbolSupport": true},
+				"inlayHint":       map[string]any{},
+				"semanticTokens": map[string]any{
+					"requests": map[string]any{"full": true}, "tokenTypes": languageServerSemanticTokenTypes,
+					"tokenModifiers": []string{"declaration", "definition", "readonly", "static", "deprecated", "abstract", "async", "modification", "documentation", "defaultLibrary"},
+					"formats":        []string{"relative"},
+				},
 				"formatting":         map[string]any{},
 				"rangeFormatting":    map[string]any{},
 				"publishDiagnostics": map[string]any{"relatedInformation": true},
@@ -193,6 +206,8 @@ func connectStdioLanguageServer(launch languageServerLaunch) (languageServerConn
 	}
 	server.documentFormatting = languageServerDocumentFormattingSupported(initialized)
 	server.documentRangeFormatting = languageServerRangeFormattingSupported(initialized)
+	server.languageFeatures = languageServerSupportedFeatures(initialized)
+	server.semanticTokenTypes = languageServerSemanticTokenLegend(initialized)
 	server.notify("initialized", map[string]any{})
 	return server, nil
 }
@@ -233,6 +248,34 @@ func languageServerFormattingProviderSupported(raw json.RawMessage) bool {
 	}
 	var options map[string]any
 	return json.Unmarshal(raw, &options) == nil && options != nil
+}
+
+func languageServerSupportedFeatures(raw json.RawMessage) map[string]bool {
+	var initialized struct {
+		Capabilities map[string]json.RawMessage `json:"capabilities"`
+	}
+	if json.Unmarshal(raw, &initialized) != nil {
+		return nil
+	}
+	providers := map[string]string{
+		"textDocument/signatureHelp":       "signatureHelpProvider",
+		"textDocument/documentSymbol":      "documentSymbolProvider",
+		"textDocument/inlayHint":           "inlayHintProvider",
+		"textDocument/semanticTokens/full": "semanticTokensProvider",
+	}
+	features := make(map[string]bool, len(providers))
+	for method, provider := range providers {
+		features[method] = languageServerFormattingProviderSupported(initialized.Capabilities[provider])
+	}
+	return features
+}
+
+func (s *stdioLanguageServer) SupportsLanguageFeature(method string) bool {
+	return s.languageFeatures[method]
+}
+
+func (s *stdioLanguageServer) SemanticTokenTypes() []string {
+	return s.semanticTokenTypes
 }
 
 func (s *stdioLanguageServer) Done() <-chan error { return s.done }

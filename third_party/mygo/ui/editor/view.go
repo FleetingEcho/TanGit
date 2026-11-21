@@ -26,6 +26,7 @@ type view struct {
 	hl       Highlighter // the buffer's, as of the last frame
 	hlGen    int         // counts the highlighters the view had
 	readOnly bool
+	semantic []SemanticToken
 
 	font       ui.Font
 	style      text.Style
@@ -1493,6 +1494,14 @@ func (v *view) colorsOf(l *lineLayout, out *runColors) {
 	for _, t := range l.toks {
 		out.ends = append(out.ends, l.toDisp(t.End, false))
 		out.colors = append(out.colors, v.theme.TokenColor(t.Kind))
+	}
+	lineEnd := l.start + len(l.text)
+	for _, token := range v.semantic {
+		start, end := max(token.Start, l.start), min(token.End, lineEnd)
+		if start >= end {
+			continue
+		}
+		out.overlay(l.toDisp(start-l.start, false), l.toDisp(end-l.start, false), v.theme.TokenColor(token.Kind))
 	}
 	for i, sg := range l.segs {
 		switch sg.kind {
