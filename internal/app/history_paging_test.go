@@ -242,11 +242,6 @@ func TestBranchUpdatesResetCommitScrollToTop(t *testing.T) {
 			a.branchFilterDraft.Query = "needle"
 			a.clearCommitFilter(sectionBranches)
 		}},
-		{name: "refresh", apply: func(a *app, _ *updates) {
-			next := a.snapshot
-			next.HeadHash = "new-head"
-			a.applyQuietSnapshot(next, snapshotSigns{}, snapshotSigns{refs: "changed"})
-		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			a, updated, tester := branchScrollFixture(t)
@@ -257,6 +252,32 @@ func TestBranchUpdatesResetCommitScrollToTop(t *testing.T) {
 				return !a.branchCommitsLoading && first == 0
 			})
 		})
+	}
+}
+
+func TestQuietBranchRefreshKeepsVisibleCommit(t *testing.T) {
+	a, updated, tester := branchScrollFixture(t)
+	first, _ := a.branchCommitList.Visible()
+	if first < 0 || first >= len(a.branchCommits) {
+		t.Fatalf("branch scroll fixture has no visible commit: first=%d", first)
+	}
+	wantHash := a.branchCommits[first].Hash
+	loaded := len(a.branchCommits)
+	requestedLimit := a.branchCommitsLimit
+	token := a.branchCommitsToken
+	next := a.snapshot
+	next.Commits = append([]repository.Commit(nil), a.branchCommits[:repository.SnapshotCommitLimit]...)
+	next.HeadHash = "new-head"
+	a.applyQuietSnapshot(next, snapshotSigns{}, snapshotSigns{refs: "changed"})
+	h := &harness{app: a, tester: tester, updates: updated}
+	h.waitFor(t, "the quiet branch history reload", func() bool {
+		return a.branchCommitsToken != token && !a.branchCommitsLoading &&
+			a.branchCommitsLimit >= requestedLimit && len(a.branchCommits) >= loaded
+	})
+	tester.Frame()
+	assertListCommitVisible(t, &a.branchCommitList, a.branchCommits, wantHash)
+	if len(a.branchCommits) < loaded {
+		t.Fatalf("quiet branch refresh discarded loaded pages: got %d, want at least %d", len(a.branchCommits), loaded)
 	}
 }
 

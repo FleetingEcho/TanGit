@@ -1063,7 +1063,10 @@ func newApp(opener repositoryOpener) *app {
 		if !ok {
 			return row
 		}
-		return branch.Name
+		return struct {
+			Remote string
+			Branch string
+		}{a.snapshot.Remotes[a.selectedRemote].Name, branch.Name}
 	}
 	a.remoteBranches.Label = func(row int) string {
 		branch, ok := a.remoteBranchAt(row)
@@ -1151,18 +1154,13 @@ func newApp(opener repositoryOpener) *app {
 	a.reflogList.Selected = &a.selectedReflogRow
 	a.reflogList.Key = func(row int) any {
 		rows := a.visibleReflog()
-		entry, ok := sourceRow(rows, a.snapshot.Reflog, row)
+		_, ok := sourceRow(rows, a.snapshot.Reflog, row)
 		if !ok {
 			return row
 		}
-		// Reflog may record identical reset operations in the same second.
-		// Include the snapshot seat so those entries never share pointer state.
-		return struct {
-			Source    int
-			Hash      string
-			Timestamp int64
-			Subject   string
-		}{rows[row], entry.Hash, entry.UnixTimestamp, entry.Subject}
+		// Source rows move whenever a new reflog record is prepended.
+		// Identity therefore uses content plus its duplicate occurrence.
+		return reflogRowIdentity(a.snapshot.Reflog, rows[row])
 	}
 	a.reflogList.Label = func(row int) string {
 		entry, ok := sourceRow(a.visibleReflog(), a.snapshot.Reflog, row)

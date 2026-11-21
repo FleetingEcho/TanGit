@@ -315,12 +315,6 @@ func (a *app) runCommitFilterMode(target int, selectedHash string, resetScroll b
 	if a.session == nil {
 		return
 	}
-	firstVisible := -1
-	if !resetScroll && a.workspaceTab == target {
-		// Replacing the enlarged result prefix changes list anchoring on some
-		// datasets. Keep the reader's actual top row across that replacement.
-		firstVisible, _ = a.commitList.Visible()
-	}
 	query := a.commitQueryFor(target)
 	filter := query.applied
 	if filter.Limit <= 0 {
@@ -353,12 +347,18 @@ func (a *app) runCommitFilterMode(target int, selectedHash string, resetScroll b
 			// A read for a page the user has left must not move the
 			// selection the page on screen is showing.
 			if a.workspaceTab == target {
+				// A newer selection wins over a stale read initiated for the
+				// previous choice. Empty retains the normal initial selection.
+				currentSelection := commitHashAt(a.visibleCommits(), a.selectedCommit)
+				if selectedHash != "" && currentSelection != selectedHash {
+					a.selectedCommit = selectedCommitIndex(commits, currentSelection)
+					return
+				}
 				a.selectedCommit = selectedCommitIndex(commits, selectedHash)
-				switch {
-				case resetScroll:
+				if resetScroll {
 					a.commitList.ScrollTo(0, ui.Start)
-				case firstVisible >= 0:
-					a.commitList.ScrollTo(firstVisible, ui.Start)
+					// Otherwise list keys preserve the reader's commit without
+					// overwriting a newer manual scroll with an older row index.
 				}
 			}
 		})
