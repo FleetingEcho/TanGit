@@ -121,6 +121,9 @@ var (
 	// selectLinesIcon starts the mode that picks a range of lines: a
 	// bracket holding the rows it will span, which the mode then stages as
 	// one patch.
+	// hunkModeIcon enters the mode that shows the hunk actions: one block
+	// of a diff, set off between its neighbours.
+	hunkModeIcon    = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 3h11"/><rect x="3" y="5.8" width="10" height="4.4" rx="1.1"/><path d="M2.5 13h11"/></svg>`))
 	selectLinesIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 2.6H2.6v10.8h1.6"/><path d="M7.2 4.2h6.2"/><path d="M7.2 8h6.2"/><path d="M7.2 11.8h6.2"/></svg>`))
 	// selectCommitsIcon toggles the checkboxes used to choose several commits.
 	selectCommitsIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 4 1.2 1.2L6 2.8"/><path d="M8.5 4h5"/><path d="m2.5 11 1.2 1.2L6 9.8"/><path d="M8.5 11h5"/></svg>`))

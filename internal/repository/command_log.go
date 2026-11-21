@@ -193,6 +193,11 @@ func (l *CommandLog) streamLocked(id uint64) *commandLogStream {
 	return stream
 }
 
+// AppendOutput adds live output to a running command's record. Complete lines
+// are redacted and published as they arrive; completion then replaces the
+// output with the command's full, redacted result.
+func (l *CommandLog) AppendOutput(id uint64, text string) { l.appendOutput(id, text) }
+
 func (l *CommandLog) appendOutput(id uint64, text string) {
 	if l == nil || text == "" || id == 0 {
 		return
@@ -393,6 +398,7 @@ func (l *CommandLog) beginOrigin(command string, origin CommandOrigin) (uint64, 
 			entry := &l.entries[index]
 			entry.Running = false
 			entry.Failed = failed
+			delete(l.streams, id)
 			entry.Output = RedactSecrets(output)
 			if len(entry.Output) > commandOutputLimit {
 				entry.Output = entry.Output[:commandOutputLimit]

@@ -33,6 +33,8 @@ func twoHunkChangesApp(t *testing.T, files []repository.File) (*harness, *callRe
 	t.Helper()
 	h, calls := changesHunkApp(t, files, twoHunkPatch)
 	h.waitFor(t, "the two-hunk diff", func() bool { return h.app.diffState != nil })
+	h.app.hunkMode = true
+	h.tester.Frame()
 	return h, calls
 }
 
@@ -234,6 +236,8 @@ func TestUnsupportedHunkActionsStayVisibleAndExplainWhy(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			h, _ := changesHunkApp(t, test.files, test.patch)
+			h.app.hunkMode = true
+			h.tester.Frame()
 			if !test.files[0].HasMergeConflicts {
 				h.waitFor(t, "unsupported diff", func() bool { return h.app.diffPatch == test.patch })
 				h.tester.Frame()
@@ -279,5 +283,33 @@ func TestChangedFileNavigationButtonsAndShortcuts(t *testing.T) {
 	h.tester.Frame()
 	if change, _ := h.app.selectedChange(); change.file.Path != "b.txt" {
 		t.Fatalf("previous button did not wrap to %q", change.file.Path)
+	}
+}
+
+// The hunk actions stay out of the way until hunk mode is entered from the
+// toolbar's single icon button, and leaving it hides them again.
+func TestHunkActionsAreHiddenUntilHunkMode(t *testing.T) {
+	h, _ := twoHunkChangesApp(t, unstagedTrackedFile())
+	h.app.hunkMode = false
+	h.app.stopLineSelection()
+	h.tester.Frame()
+	for _, action := range []string{"Stage hunk", "Discard hunk", "Next hunk"} {
+		if h.tester.HasText(action) {
+			t.Fatalf("%q is shown outside hunk mode", action)
+		}
+	}
+	if err := h.tester.Click("Select changes"); err != nil {
+		t.Fatalf("enter hunk mode: %v", err)
+	}
+	h.tester.Frame()
+	if !h.app.hunkMode || !h.tester.HasText("Hunk 1/3") {
+		t.Fatalf("hunk mode did not show the hunk actions: %q", h.texts())
+	}
+	if err := h.tester.Click("Stop selecting changes"); err != nil {
+		t.Fatalf("leave hunk mode: %v", err)
+	}
+	h.tester.Frame()
+	if h.app.hunkMode || h.tester.HasText("Next hunk") {
+		t.Fatal("hunk actions remain after leaving hunk mode")
 	}
 }

@@ -1292,7 +1292,7 @@ func TestScreenshot(t *testing.T) {
 		settleShot(t, tt, updated, func() bool {
 			return a.diffState != nil && a.diffPatch != "" && !a.diffLoading
 		})
-		if err := tt.Click("Select multiple lines"); err != nil {
+		if err := tt.Click("Select changes"); err != nil {
 			t.Fatalf("enter the multi-line mode: %v", err)
 		}
 		tt.Frame()

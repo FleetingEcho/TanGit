@@ -9,9 +9,7 @@ import (
 
 func TestStashSelectedLinesUsesOnlyTheirIndependentChanges(t *testing.T) {
 	h, calls := twoHunkChangesApp(t, unstagedTrackedFile())
-	if err := h.tester.Click("Select multiple lines"); err != nil {
-		t.Fatal(err)
-	}
+	h.app.startLineSelection()
 	h.tester.Frame()
 	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1})
 	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 5, End: 5})

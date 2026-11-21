@@ -47,9 +47,50 @@ func (a *app) changedFileNavigation(direction int) {
 // the existing conflict editor at narrow widths.
 func (a *app) changedFileAndHunkNavigationControls(c *ui.Context) {
 	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(4).Children(func() {
-		a.hunkActionControls(c)
+		a.hunkModeButton(c)
+		if a.hunkMode {
+			a.hunkActionControls(c)
+		} else {
+			ui.Row(c).Grow(1).MinWidth(0)
+		}
 		a.changedFileNavigationControls(c)
 	})
+}
+
+// selectionModeButton is the one way into choosing changes, whether by hunk
+// or by line: it shows the hunk actions and the line-selection row, which stay
+// hidden otherwise so the diff toolbar is a single quiet row of icons.
+func (a *app) hunkModeButton(c *ui.Context) {
+	theme := c.Theme()
+	active := a.hunkMode || a.lineSelectMode
+	label, tooltip := "Select changes", "Choose changes to stage or discard: click line numbers to pick lines, or use the hunk actions ([ and ] move between hunks)"
+	if active {
+		label, tooltip = "Stop selecting changes", "Stop selecting changes and hide the hunk and line actions"
+	}
+	button := ui.ButtonBase(c).Size(26, 26).Center().Radius(theme.Radius).
+		Border(1, theme.Border).Label(tr(label)).Tooltip(tr(tooltip)).Selected(active)
+	switch {
+	case active:
+		button.Background(theme.Accent.Alpha(0.18)).Border(1, theme.Accent.Alpha(0.6))
+	case button.Hovered():
+		button.Background(theme.SurfaceHover)
+	}
+	button.Children(func() {
+		color := theme.TextMuted
+		if active {
+			color = theme.Accent
+		}
+		ui.Icon(c, hunkModeIcon).FontSize(15).TextColor(color)
+	})
+	if button.Clicked() {
+		if active {
+			a.hunkMode = false
+			a.stopLineSelection()
+		} else {
+			a.hunkMode = true
+			a.startLineSelection()
+		}
+	}
 }
 
 // changedFileNavigationControls stays available while the newly chosen diff
@@ -240,7 +281,12 @@ func (a *app) hunkActionControls(c *ui.Context) {
 	disabled := mutationReason != ""
 	theme := c.Theme()
 	row := ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(5)
+	// The hunk-mode button shares this toolbar row; count its room so the
+	// compact layout still starts at the same pane width as before it existed.
 	paneWidth := a.measuredActionGroupWidth(c, row)
+	if paneWidth > 0 {
+		paneWidth += 30
+	}
 	compactLabels := normalizeConflictActionStyle(a.settings.ConflictActionStyle) == conflictActionStyleIconsLabels &&
 		(paneWidth <= 0 || paneWidth < conflictCompactPaneWidth)
 	row.Children(func() {
@@ -249,7 +295,7 @@ func (a *app) hunkActionControls(c *ui.Context) {
 				SingleLine().Width(0).Grow(1).Tooltip(tr(mutationReason))
 		} else {
 			ui.Text(c, trf("Hunk %d/%d", status.hunk+1, status.count)).TextColor(theme.TextMuted).
-				FontSize(theme.FontSize - 2).Grow(1)
+				FontSize(theme.FontSize - 2).SingleLine().Width(0).Grow(1)
 		}
 		actions := make([]actionControl, 0, 4)
 		if status.staged {

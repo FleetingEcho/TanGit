@@ -55,6 +55,7 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 				Run: func(ctx commandContext) {
 					if id := ctx.App.startCustomCommand(rest, commandTitle(rest)); id != 0 {
 						ctx.Shell.palette.shellRun = paletteShellRun{app: ctx.App, entryID: id}
+						ctx.Shell.rememberShellLine(rest)
 					}
 				},
 			})
@@ -81,7 +82,8 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 					}
 					return state
 				},
-				Run: func(ctx commandContext) { ctx.App.checkoutBranch(branch.Name) },
+				Run:     func(ctx commandContext) { ctx.App.checkoutBranch(branch.Name) },
+				Actions: []commandAction{{Label: "Copy branch name", Run: func(ctx commandContext) { ctx.App.notifyCopied(ctx.App.services, "branch name", branch.Name) }}},
 			})
 		}
 	case '#':
@@ -102,6 +104,11 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 					return state
 				},
 				Run: func(ctx commandContext) { ctx.App.revealCommit(commit.Hash) },
+				Actions: []commandAction{
+					{Label: "Check out this commit", Run: func(ctx commandContext) { ctx.App.confirmCheckoutCommit(commit) }},
+					{Label: "Copy commit hash", Run: func(ctx commandContext) { ctx.App.notifyCopied(ctx.App.services, "commit hash", commit.Hash) }},
+					{Label: "Copy commit subject", Run: func(ctx commandContext) { ctx.App.notifyCopied(ctx.App.services, "commit subject", commit.Subject) }},
+				},
 			})
 		}
 	case '/':
@@ -117,6 +124,13 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 				Group: commandGroupChanges, Prefix: '/', Glyph: editIcon,
 				Resolve: repositoryStateAllowBusy,
 				Run:     func(ctx commandContext) { ctx.App.revealChangedFile(file.Path) },
+				Actions: []commandAction{
+					{Label: "Stage or unstage this file", Run: func(ctx commandContext) {
+						ctx.App.revealChangedFile(file.Path)
+						ctx.App.toggleStageSelected()
+					}},
+					{Label: "Copy file path", Run: func(ctx commandContext) { ctx.App.notifyCopied(ctx.App.services, "file path", file.Path) }},
+				},
 			})
 		}
 	}

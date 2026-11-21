@@ -684,7 +684,12 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 			// every other pane uses.
 			if a.workspaceTab == sectionChanges {
 				islandCard(c, ui.Column(c).Padding(8, 10).Gap(4)).Children(func() {
-					a.hunkActionControls(c)
+					ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(4).Children(func() {
+						a.hunkModeButton(c)
+						if a.hunkMode {
+							a.hunkActionControls(c)
+						}
+					})
 					if a.lineSelectionAvailable() {
 						a.lineSelectionControls(c, false)
 					}

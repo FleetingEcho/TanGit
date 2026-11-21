@@ -610,7 +610,10 @@ type app struct {
 	// lineSelectMode adds independently clicked lines to lineSelectRanges;
 	// adjacent ones coalesce, while gaps stay unselected. lineSelectRange and
 	// lineSelectHas retain the viewer's latest range as the Shift-click anchor.
-	lineSelectMode   bool
+	lineSelectMode bool
+	// hunkMode shows the diff's hunk actions (stage, discard, previous and
+	// next hunk); the toolbar otherwise keeps to a single button for it.
+	hunkMode         bool
 	lineSelectRange  editor.DiffLineRange
 	lineSelectHas    bool
 	lineSelectRanges []editor.DiffLineRange

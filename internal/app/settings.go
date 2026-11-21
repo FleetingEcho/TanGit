@@ -140,6 +140,12 @@ type appSettings struct {
 	// buttons. Nil, including in older settings files, shows every action.
 	HiddenHeaderActions []string `json:"hiddenHeaderActions,omitempty"`
 	HiddenStatusActions []string `json:"hiddenStatusActions,omitempty"`
+	// PinnedCommands, RecentCommands and ShellHistory are the command
+	// palette's pinned and recently run commands (by ID) and the shell lines
+	// run with its ! mode, newest first.
+	PinnedCommands []string `json:"pinnedCommands,omitempty"`
+	RecentCommands []string `json:"recentCommands,omitempty"`
+	ShellHistory   []string `json:"shellHistory,omitempty"`
 	// RemoteWebURLs stores browser-page overrides by repository root and then
 	// remote name, allowing origin, upstream, and arbitrary hosts to differ.
 	RemoteWebURLs map[string]map[string]string `json:"remoteWebUrls,omitempty"`
@@ -314,6 +320,9 @@ func normalizeSettings(s appSettings) appSettings {
 	s.ConflictActionStyle = normalizeConflictActionStyle(s.ConflictActionStyle)
 	s.HiddenHeaderActions = normalizeHiddenToolbarActions(s.HiddenHeaderActions, headerToolbarActions)
 	s.HiddenStatusActions = normalizeHiddenToolbarActions(s.HiddenStatusActions, statusToolbarActions)
+	s.PinnedCommands = normalizeCommandList(s.PinnedCommands, 50)
+	s.RecentCommands = normalizeCommandList(s.RecentCommands, 20)
+	s.ShellHistory = normalizeCommandList(s.ShellHistory, 50)
 	s.RemoteWebURLs = normalizeRemoteWebURLs(s.RemoteWebURLs)
 	s.SSHProfiles = normalizeSSHProfiles(s.SSHProfiles)
 	return s
@@ -1060,4 +1069,25 @@ func fontChoicesFrom(families []ui.FontFamily, selected string) []string {
 		return strings.ToLower(choices[i+1]) < strings.ToLower(choices[j+1])
 	})
 	return slices.Compact(choices)
+}
+
+// normalizeCommandList drops blanks and duplicates, keeps the first (newest)
+// occurrence and caps the list.
+func normalizeCommandList(values []string, limit int) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, min(len(values), limit))
+	seen := make(map[string]bool, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value) == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+		if len(out) == limit {
+			break
+		}
+	}
+	return out
 }

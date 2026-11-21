@@ -52,6 +52,10 @@ type commandPaletteState struct {
 	recent          []commandID
 	pinned          []commandID
 	shellRun        paletteShellRun
+	shellHistory    []string
+	historyPos      int
+	historyDraft    string
+	actionIndex     int
 	notice          string
 	revealSelection bool
 }
@@ -71,6 +75,9 @@ func (s *shell) openCommandPalette(c *ui.Context) {
 		return
 	}
 	s.palette.open = true
+	s.loadPaletteState()
+	s.palette.historyPos = -1
+	s.palette.actionIndex = 0
 	if _, ok := s.palette.shellRun.entry(); !ok {
 		s.palette.shellRun = paletteShellRun{}
 	}
@@ -121,16 +128,101 @@ func (s *shell) rememberCommand(id commandID) {
 		}
 	}
 	s.palette.recent = recent
+	s.savePaletteState()
+}
+
+func commandIDsToStrings(ids []commandID) []string {
+	out := make([]string, len(ids))
+	for index, id := range ids {
+		out[index] = string(id)
+	}
+	return out
+}
+
+// loadPaletteState reads the persisted pins, recents and shell history from
+// the active workspace's settings.
+func (s *shell) loadPaletteState() {
+	a := s.activeApp()
+	if a == nil {
+		return
+	}
+	toIDs := func(values []string) []commandID {
+		ids := make([]commandID, len(values))
+		for index, value := range values {
+			ids[index] = commandID(value)
+		}
+		return ids
+	}
+	s.palette.pinned = toIDs(a.settings.PinnedCommands)
+	s.palette.recent = toIDs(a.settings.RecentCommands)
+	s.palette.shellHistory = append([]string(nil), a.settings.ShellHistory...)
+}
+
+// savePaletteState stores the pins, recents and shell history beside the
+// other preferences so they survive a restart.
+func (s *shell) savePaletteState() {
+	a := s.activeApp()
+	if a == nil {
+		return
+	}
+	a.settings.PinnedCommands = normalizeCommandList(commandIDsToStrings(s.palette.pinned), 50)
+	a.settings.RecentCommands = normalizeCommandList(commandIDsToStrings(s.palette.recent), 20)
+	a.settings.ShellHistory = normalizeCommandList(s.palette.shellHistory, 50)
+	if a.dataDir() != "" {
+		a.saveSettings()
+	}
+}
+
+// rememberShellLine records a ! command line, newest first.
+func (s *shell) rememberShellLine(line string) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
+	}
+	s.palette.shellHistory = normalizeCommandList(append([]string{line}, s.palette.shellHistory...), 50)
+	s.palette.historyPos = -1
+	s.savePaletteState()
+}
+
+// recallShellLine moves through the ! history: older with delta 1, newer with
+// -1. Moving past the newest entry restores what was being typed.
+func (s *shell) recallShellLine(delta int) {
+	history := s.palette.shellHistory
+	if len(history) == 0 {
+		return
+	}
+	if s.palette.historyPos < 0 {
+		if delta < 0 {
+			return
+		}
+		_, s.palette.historyDraft = commandQueryMode(s.palette.query)
+	}
+	next := s.palette.historyPos + delta
+	switch {
+	case next < 0:
+		s.palette.historyPos = -1
+		s.palette.query = "!" + s.palette.historyDraft
+	case next >= len(history):
+		return
+	default:
+		s.palette.historyPos = next
+		s.palette.query = "!" + history[next]
+	}
+	s.palette.selected = 0
 }
 
 // invokeCommand is shared by palette and Command Catalog-backed cards. It
 // re-resolves the current tab and command state; no row callback is retained.
 func (s *shell) invokeCommand(id commandID) commandInvokeResult {
+	return s.invokeCommandAction(id, 0)
+}
+
+func (s *shell) invokeCommandAction(id commandID, action int) commandInvokeResult {
 	if s == nil {
 		return commandInvokeResult{Status: commandInvokeUnknown, Reason: "The window is unavailable"}
 	}
 	ctx := s.commandContext()
-	result := s.catalogFor(ctx).Invoke(ctx, id)
+	result := s.catalogFor(ctx).InvokeAction(ctx, id, action)
 	if !result.Accepted() {
 		if s.palette.open {
 			s.palette.notice = tr(result.Reason)
@@ -155,10 +247,12 @@ func (s *shell) togglePinnedCommand(id commandID) {
 	for index, existing := range s.palette.pinned {
 		if existing == id {
 			s.palette.pinned = append(s.palette.pinned[:index:index], s.palette.pinned[index+1:]...)
+			s.savePaletteState()
 			return
 		}
 	}
 	s.palette.pinned = append(s.palette.pinned, id)
+	s.savePaletteState()
 }
 
 // commandPaletteSection names the empty-query section a candidate belongs to.
@@ -253,6 +347,7 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 			return
 		}
 		s.palette.selected = min(max(s.palette.selected+delta, 0), len(candidates)-1)
+		s.palette.actionIndex = 0
 		s.palette.revealSelection = true
 		s.palette.notice = ""
 	}
@@ -267,9 +362,15 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 		scope = tab.title()
 	}
 	move := func(delta int) {
+		if mode == '!' && len(s.palette.shellHistory) > 0 {
+			// The ! list holds one row; Up and Down walk the shell history.
+			s.recallShellLine(-delta)
+			return
+		}
 		if len(candidates) == 0 {
 			return
 		}
+		s.palette.actionIndex = 0
 		s.palette.selected = (s.palette.selected + delta + len(candidates)) % len(candidates)
 		s.palette.revealSelection = true
 		s.palette.notice = ""
@@ -278,7 +379,16 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 		if len(candidates) == 0 {
 			return
 		}
-		s.invokeCommand(candidates[s.palette.selected].ID)
+		s.invokeCommandAction(candidates[s.palette.selected].ID, s.palette.actionIndex)
+	}
+	cycleAction := func() {
+		if len(candidates) == 0 {
+			return
+		}
+		count := len(candidates[s.palette.selected].ActionLabels)
+		if count > 0 {
+			s.palette.actionIndex = (s.palette.actionIndex + 1) % (count + 1)
+		}
 	}
 	ui.Overlay(c, func() {
 		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
@@ -313,8 +423,11 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 				s.palette.search.OnShortcut(c, 0, ui.KeyPageUp, func() { jump(-8) })
 				s.palette.search.OnShortcut(c, 0, ui.KeyPageDown, func() { jump(8) })
 				s.palette.search.OnShortcut(c, ui.Ctrl, ui.KeyB, pinSelected)
+				s.palette.search.OnShortcut(c, 0, ui.KeyTab, cycleAction)
 				search.OnSubmit(invokeSelected)
 				if search.Changed() {
+					s.palette.historyPos = -1
+					s.palette.actionIndex = 0
 					s.palette.selected = 0
 					s.palette.revealSelection = true
 					s.palette.notice = ""
@@ -364,7 +477,7 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 				s.paletteShellOutput(c)
 				ui.Divider(c)
 				ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
-					ui.Text(c, tr("↑↓ Navigate · PgUp/PgDn Jump · Enter Run · Ctrl+B Pin · Escape Close")).TextColor(theme.TextMuted).
+					ui.Text(c, tr("↑↓ Navigate · PgUp/PgDn Jump · Tab Actions · Enter Run · Ctrl+B Pin · Escape Close")).TextColor(theme.TextMuted).
 						FontSize(theme.FontSize - 1).Grow(1)
 					if s.palette.notice != "" {
 						ui.Text(c, s.palette.notice).TextColor(theme.Warning).FontSize(theme.FontSize - 1).
@@ -392,6 +505,9 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 			}
 			if back.OverlayShortcut(0, ui.KeyPageDown) {
 				jump(8)
+			}
+			if back.OverlayShortcut(0, ui.KeyTab) {
+				cycleAction()
 			}
 			if back.OverlayShortcut(ui.Ctrl, ui.KeyB) {
 				pinSelected()
@@ -457,6 +573,13 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 			}
 		})
 		ui.Column(c).Gap(2).Shrink(0).AlignItems(ui.End).Children(func() {
+			if selected && len(candidate.ActionLabels) > 0 {
+				hint := tr("Tab: more actions")
+				if s.palette.actionIndex > 0 && s.palette.actionIndex <= len(candidate.ActionLabels) {
+					hint = tr("Enter: ") + candidate.ActionLabels[s.palette.actionIndex-1]
+				}
+				ui.Text(c, hint).FontSize(theme.FontSize - 2).TextColor(theme.Warning).SingleLine()
+			}
 			groupLabel := tr(candidate.Group.label())
 			if candidate.Pinned {
 				groupLabel = "★ " + groupLabel

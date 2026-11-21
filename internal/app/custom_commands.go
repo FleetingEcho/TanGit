@@ -1,12 +1,14 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"lazygitapp/internal/app/proc"
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -236,6 +238,37 @@ func (a *app) selectedRemoteName() (string, bool) {
 // custom commands and Continue checks use this exact implementation, so their
 // trust declaration describes the code that actually runs.
 func runTrustedShellCommand(ctx context.Context, root, command string) (string, error) {
+	return runTrustedShellCommandStream(ctx, root, command, nil)
+}
+
+// lockedOutput collects a command's combined output while handing each chunk
+// to emit as it arrives. One writer serves stdout and stderr, so they stay
+// interleaved in order exactly as CombinedOutput would keep them.
+type lockedOutput struct {
+	mu   sync.Mutex
+	buf  bytes.Buffer
+	emit func(string)
+}
+
+func (o *lockedOutput) Write(p []byte) (int, error) {
+	o.mu.Lock()
+	o.buf.Write(p)
+	o.mu.Unlock()
+	if o.emit != nil {
+		o.emit(string(p))
+	}
+	return len(p), nil
+}
+
+func (o *lockedOutput) String() string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.buf.String()
+}
+
+// runTrustedShellCommandStream is runTrustedShellCommand that also reports
+// output while the command runs.
+func runTrustedShellCommandStream(ctx context.Context, root, command string, emit func(string)) (string, error) {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
@@ -245,8 +278,11 @@ func runTrustedShellCommand(ctx context.Context, root, command string) (string, 
 	cmd.Dir = root
 	repository.ConfigureBackgroundCommand(cmd)
 	proc.ConfigureCustomCancellation(cmd)
-	output, err := cmd.CombinedOutput()
-	return string(output), err
+	output := &lockedOutput{emit: emit}
+	cmd.Stdout = output
+	cmd.Stderr = output
+	err := cmd.Run()
+	return output.String(), err
 }
 
 // runCustomCommand runs a custom command, or an ad-hoc prompt command, in
@@ -317,7 +353,9 @@ func (a *app) startCustomCommand(command, label string) uint64 {
 		defer a.recoverBackground()
 		defer close(jobDone)
 		defer cancel()
-		output, err := runTrustedShellCommand(ctx, root, expanded)
+		output, err := runTrustedShellCommandStream(ctx, root, expanded, func(text string) {
+			commandLog.AppendOutput(entryID, text)
+		})
 		done(output, err != nil)
 	}()
 	return entryID

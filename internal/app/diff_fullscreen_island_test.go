@@ -32,6 +32,7 @@ func TestFullscreenHunkRowWearsAnIsland(t *testing.T) {
 	h.settle(t)
 	h.waitFor(t, "diff", func() bool { return a.diffState != nil && !a.diffLoading })
 	a.openDiffFullscreen()
+	a.hunkMode = true
 	h.tester.Frame()
 
 	theme := themeForSettings(a.settings, true)

@@ -224,17 +224,24 @@ func (a *app) extendLineSelection(state *editor.DiffState, clicked editor.DiffLi
 func (a *app) lineSelectionControls(c *ui.Context, withHint bool) {
 	theme := c.Theme()
 	count, selected := a.selectedLineCount()
+	// One selection mode serves hunks and lines: its row exists only after
+	// the toolbar's Select changes button, a line-number click or a selection.
+	if !a.hunkMode && !a.lineSelectMode && !selected {
+		// An empty placeholder keeps the viewer's position in the column, so
+		// the row appearing never makes MyGo see a new diff viewer and drop its
+		// keyboard focus.
+		ui.Column(c)
+		return
+	}
 	ui.Column(c).FillWidth().Gap(4).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 			ui.Row(c).Grow(1).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
+				label := "Select lines to stage"
 				if a.lineSelectMode {
-					ui.Icon(c, selectLinesIcon).FontSize(14).TextColor(theme.Accent).
-						Label(tr("Selecting multiple lines")).Tooltip(tr("Selecting multiple lines")).Shrink(0)
-				} else {
-					iconButton(c, "Select multiple lines",
-						"Click line numbers to add them to one selection, then stage them together",
-						selectLinesIcon, false, a.startLineSelection)
+					label = "Selecting multiple lines"
 				}
+				ui.Icon(c, selectLinesIcon).FontSize(14).TextColor(theme.Accent).
+					Label(tr(label)).Tooltip(tr(label)).Shrink(0)
 				if selected {
 					ui.Text(c, selectedLinesLabel(count)).TextColor(theme.TextMuted).
 						FontSize(theme.FontSize - 2).SingleLine().Shrink(0)
@@ -249,16 +256,6 @@ func (a *app) lineSelectionControls(c *ui.Context, withHint bool) {
 						SingleLine().Width(0).Grow(1).Tooltip(tr(hint))
 				}
 			})
-			if !a.customPatchActive() && a.diffState != nil && a.diffPatch != "" {
-				label, tooltip := "Send current hunk to worktree…", "Preview and copy the current hunk to another worktree"
-				action := a.beginCurrentHunkCourier
-				if selected {
-					label, tooltip = "Send selected lines to worktree…", "Preview and copy only the selected lines to another worktree"
-					action = a.beginSelectedLinesCourier
-				}
-				iconButton(c, label, a.courierButtonTooltip(tooltip), worktreesIcon,
-					a.actionBusy || len(courierDestinations(a.snapshot)) == 0, action)
-			}
 			if a.lineSelectMode {
 				button := ui.ButtonBase(c).Size(22, 22).Padding(3).Radius(4).
 					Label(tr("Cancel")).Tooltip(tr("Leave the selection alone and stop choosing lines"))
@@ -267,6 +264,7 @@ func (a *app) lineSelectionControls(c *ui.Context, withHint bool) {
 				})
 				if button.Clicked() {
 					a.stopLineSelection()
+					a.hunkMode = false
 				}
 			}
 		})

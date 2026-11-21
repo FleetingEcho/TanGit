@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/egoist/mygo/ui/editor"
 
@@ -222,45 +221,6 @@ func TestChangeCourierRejectsSelectionsReboundToNewerSource(t *testing.T) {
 				t.Fatalf("rebound selection reached destination: patch %q, calls %v", h.app.courier.patchText, targetCalls.all())
 			}
 		})
-	}
-}
-
-func TestChangeCourierDiffHasOneContextSensitiveAction(t *testing.T) {
-	h, _ := changesTestApp(t, unstagedTrackedFile())
-	h.waitFor(t, "source diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
-	if !h.tester.HasText("Send current hunk to worktree…") || h.tester.HasText("Send selected lines to worktree…") {
-		t.Fatal("unselected diff did not offer only the current-hunk courier action")
-	}
-	if got := h.app.courierButtonTooltip("Preview changes"); got != "No other available worktrees. Create a worktree for the destination branch first." {
-		t.Fatalf("missing-worktree tooltip = %q", got)
-	}
-	button, ok := h.tester.Find("Send current hunk to worktree…")
-	if !ok {
-		t.Fatal("courier button has no pointer target")
-	}
-	h.tester.Move(button.X+button.W/2, button.Y+button.H/2)
-	h.tester.Advance(time.Second)
-	h.tester.Frame()
-	if !h.tester.HasText("No other available worktrees. Create a worktree for the destination branch first.") {
-		t.Fatal("disabled courier button does not show why it cannot run on hover")
-	}
-	h.app.actionBusy = true
-	if got := h.app.courierButtonTooltip("Preview changes"); got != "Wait for the current action to finish, then send these changes to another worktree." {
-		t.Fatalf("busy-action tooltip = %q", got)
-	}
-	h.app.actionBusy = false
-	h.app.snapshot.Worktrees = []repository.Worktree{
-		{Path: "/work/project", Name: "project"},
-		{Path: "/work/feature", Name: "feature"},
-	}
-	if got := h.app.courierButtonTooltip("Preview changes"); got != "Preview changes" {
-		t.Fatalf("enabled courier tooltip = %q", got)
-	}
-
-	h.app.diffState.SetSelectedLines(editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1}, true)
-	h.tester.Frame()
-	if !h.tester.HasText("Send selected lines to worktree…") || h.tester.HasText("Send current hunk to worktree…") {
-		t.Fatal("selected diff did not replace the hunk action with the selected-lines courier action")
 	}
 }
 

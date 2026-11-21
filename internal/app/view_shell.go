@@ -1058,7 +1058,8 @@ func (a *app) headerViewWithID(c *ui.Context, keyboardID string) {
 						})
 				}
 			}
-			// Labeled actions lead the toolbar; optional icon-only actions follow.
+			// The command palette leads the toolbar, then repository, workspace and
+			// application actions.
 			editorOnly := a.editorOnlyWorkspace()
 			repositoryActions := !editorOnly && a.anyHeaderActionVisible("fetch", "pull", "push")
 			editorVisible := a.headerActionVisible("editor") && a.snapshot.Root != "" &&
@@ -1066,7 +1067,24 @@ func (a *app) headerViewWithID(c *ui.Context, keyboardID string) {
 			refreshVisible := !editorOnly && a.headerActionVisible("refresh")
 			workspaceActions := refreshVisible || editorVisible
 			paletteVisible := a.showCommandPalette != nil && a.headerActionVisible("palette")
-			applicationActions := paletteVisible || a.anyHeaderActionVisible("theme", "settings")
+			themeSettings := a.anyHeaderActionVisible("theme", "settings")
+			// The palette leads the toolbar; each non-empty group after it is
+			// divided from the previous one.
+			groupsDrawn := 0
+			startGroup := func(visible bool) {
+				if !visible {
+					return
+				}
+				if groupsDrawn > 0 {
+					toolbarSeparator(c)
+				}
+				groupsDrawn++
+			}
+			startGroup(paletteVisible)
+			if paletteVisible {
+				iconButton(c, "Command Palette", "Search commands ("+cmdShortcutChord()+"+Shift+P)", searchIcon, false, a.showCommandPalette)
+			}
+			startGroup(repositoryActions)
 			if !editorOnly && a.headerActionVisible("fetch") {
 				iconButton(c, "Fetch", "Fetch from the remotes", fetchIcon,
 					a.actionBusy || len(a.snapshot.Remotes) == 0, a.beginFetch)
@@ -1083,21 +1101,14 @@ func (a *app) headerViewWithID(c *ui.Context, keyboardID string) {
 						a.confirmPush()
 					})
 			}
-			if repositoryActions && (workspaceActions || applicationActions) {
-				toolbarSeparator(c)
-			}
+			startGroup(workspaceActions)
 			if refreshVisible {
 				iconButton(c, "Refresh", "Refresh (F5)", refreshIcon, a.actionBusy, a.beginRefresh)
 			}
 			if editorVisible {
 				a.editorButton(c)
 			}
-			if workspaceActions && applicationActions {
-				toolbarSeparator(c)
-			}
-			if paletteVisible {
-				iconButton(c, "Command Palette", "Search commands ("+cmdShortcutChord()+"+Shift+P)", searchIcon, false, a.showCommandPalette)
-			}
+			startGroup(themeSettings)
 			if a.headerActionVisible("theme") {
 				a.themeButton(c)
 			}

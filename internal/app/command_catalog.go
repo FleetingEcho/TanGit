@@ -95,8 +95,17 @@ type commandSpec struct {
 	Prefix byte
 	// KeepOpen leaves the palette open after the command is accepted.
 	KeepOpen bool
-	Resolve  func(commandContext) commandState
-	Run      func(commandContext)
+	// Actions are alternatives to Run, reached with Tab in the palette.
+	Actions []commandAction
+	Resolve func(commandContext) commandState
+	Run     func(commandContext)
+}
+
+// commandAction is a secondary action of a command row, such as copying the
+// hash of a commit row. Candidates expose only its label.
+type commandAction struct {
+	Label string
+	Run   func(commandContext)
 }
 
 type textRange struct {
@@ -116,6 +125,8 @@ type commandCandidate struct {
 	DisabledReason string
 	MatchRanges    []textRange
 	Pinned         bool
+	// ActionLabels are the labels of the row's secondary actions.
+	ActionLabels []string
 
 	matchRank   int
 	contextRank int
@@ -385,8 +396,9 @@ func (c *commandCatalog) SearchPinned(ctx commandContext, query string, recent, 
 			ID: spec.ID, Label: label, Detail: detail, Group: spec.Group,
 			Chord: spec.Chord, Icon: spec.Icon, Glyph: spec.Glyph, Enabled: state.Enabled,
 			DisabledReason: tr(state.DisabledReason), MatchRanges: match.ranges,
-			Pinned:    pinnedSet[spec.ID],
-			matchRank: match.rank, contextRank: state.ContextScore,
+			Pinned:       pinnedSet[spec.ID],
+			ActionLabels: commandActionLabels(spec.Actions),
+			matchRank:    match.rank, contextRank: state.ContextScore,
 			recentRank: recentRank, emptyRank: emptyRank,
 		})
 	}
@@ -422,6 +434,23 @@ func (c *commandCatalog) SearchPinned(ctx commandContext, query string, recent, 
 // Invoke resolves the spec again immediately before running it. In particular,
 // it never trusts a candidate created before a tab, selection or refresh change.
 func (c *commandCatalog) Invoke(ctx commandContext, id commandID) commandInvokeResult {
+	return c.InvokeAction(ctx, id, 0)
+}
+
+func commandActionLabels(actions []commandAction) []string {
+	if len(actions) == 0 {
+		return nil
+	}
+	labels := make([]string, len(actions))
+	for index, action := range actions {
+		labels[index] = tr(action.Label)
+	}
+	return labels
+}
+
+// InvokeAction runs a command's default action (0) or one of its secondary
+// actions (1…), with the same invoke-time revalidation as Invoke.
+func (c *commandCatalog) InvokeAction(ctx commandContext, id commandID, action int) commandInvokeResult {
 	if c == nil {
 		return commandInvokeResult{Status: commandInvokeUnknown, Reason: "Command is unavailable"}
 	}
@@ -450,8 +479,12 @@ func (c *commandCatalog) Invoke(ctx commandContext, id commandID) commandInvokeR
 				current.commandLog.RecordPalette(string(spec.ID), tr(spec.Label))
 			}
 		}
-		spec.Run(ctx)
-		return commandInvokeResult{Status: commandInvokeAccepted, KeepOpen: spec.KeepOpen}
+		run := spec.Run
+		if action > 0 && action <= len(spec.Actions) {
+			run = spec.Actions[action-1].Run
+		}
+		run(ctx)
+		return commandInvokeResult{Status: commandInvokeAccepted, KeepOpen: spec.KeepOpen && action == 0}
 	}
 	return commandInvokeResult{Status: commandInvokeUnknown, Reason: "Command is unavailable"}
 }
@@ -526,6 +559,22 @@ func buildStaticCommandSpecs() []commandSpec {
 		state.ContextScore = 0
 		return state
 	}, Run: func(ctx commandContext) { ctx.App.openCommandPrompt() }})
+	specs = append(specs, commandSpec{ID: "commands/show-failure", Label: "Show the latest failed command", Detail: "Open the command log at the most recent failure", Keywords: []string{"error", "failed", "failure", "log"}, Group: commandGroupApplication, Glyph: conflictIcon, Resolve: failedCommandState, Run: func(ctx commandContext) { ctx.App.openCommandLog() }})
+	specs = append(specs, commandSpec{ID: "commands/retry-failed", Label: "Retry the latest failed command", Keywords: []string{"again", "rerun", "failed", "retry"}, Group: commandGroupApplication, Glyph: refreshIcon, Resolve: func(ctx commandContext) commandState {
+		state := failedCommandState(ctx)
+		if state.Enabled {
+			state = combineCommandState(state, localCommandState(ctx))
+			if state.Enabled && ctx.App.customCommandRunning {
+				state.Enabled = false
+				state.DisabledReason = "A command is already running"
+			}
+		}
+		return state
+	}, Run: func(ctx commandContext) {
+		if entry, ok := ctx.App.latestFailedUserCommand(); ok {
+			ctx.App.startCustomCommand(entry.Command, commandTitle(entry.Command))
+		}
+	}})
 	specs = append(specs, commandSpec{ID: "commands/customize", Label: "Customize commands…", Detail: "Add, edit or remove custom shell commands", Keywords: []string{"custom commands", "settings"}, Group: commandGroupApplication, Glyph: settingsIcon, Resolve: func(ctx commandContext) commandState {
 		state := appState(ctx)
 		state.ContextScore = 0
@@ -916,4 +965,40 @@ func keyboardCommandGlyph(command keyboardCommand) *ui.SVG {
 		return appIcon
 	}
 	return nil
+}
+
+// latestFailedUserCommand finds the newest failed command the user ran.
+func (a *app) latestFailedUserCommand() (repository.CommandEntry, bool) {
+	if a == nil || a.commandLog == nil {
+		return repository.CommandEntry{}, false
+	}
+	entries := a.commandLog.Entries()
+	for index := len(entries) - 1; index >= 0; index-- {
+		if entries[index].Origin == repository.CommandOriginUser && entries[index].Failed && !entries[index].Running {
+			return entries[index], true
+		}
+	}
+	return repository.CommandEntry{}, false
+}
+
+// failedCommandState shows the failure commands only while a user command has
+// failed in this workspace.
+func failedCommandState(ctx commandContext) commandState {
+	state := appState(ctx)
+	state.ContextScore = 0
+	if ctx.App == nil {
+		return state
+	}
+	if _, ok := ctx.App.latestFailedUserCommand(); !ok {
+		state.Visible = false
+	}
+	return state
+}
+
+func combineCommandState(a, b commandState) commandState {
+	if !b.Enabled {
+		a.Enabled = false
+		a.DisabledReason = b.DisabledReason
+	}
+	return a
 }
