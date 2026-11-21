@@ -65,7 +65,7 @@ func (s *shell) commandContext() commandContext {
 // openCommandPalette opens only over ordinary application content. Existing
 // safety forms and confirmations always keep the top-most interaction scope.
 func (s *shell) openCommandPalette(c *ui.Context) {
-	if s == nil || s.palette.open {
+	if s == nil || s.palette.open || s.activity.open {
 		return
 	}
 	a := s.activeApp()

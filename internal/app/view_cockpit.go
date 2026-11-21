@@ -385,6 +385,12 @@ func (a *app) cockpitRecentCard(c *ui.Context, summary cockpitSummary) {
 				}
 			}
 		}
+		if a.showActivityCenter != nil {
+			if ui.Button(c, tr("View all activity")).Label(tr("View all activity")).
+				Tooltip(tr("Open the Activity Center for every open repository")).Clicked() {
+				a.showActivityCenter()
+			}
+		}
 		a.cockpitCommandButton(c, commandOpenLog, "Open Command log", false)
 	})
 }

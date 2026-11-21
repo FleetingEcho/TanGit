@@ -38,6 +38,7 @@ func keyBindingGroups(customCommands ...customCommandSetting) []keyBindingGroup 
 				{"Ctrl+,", "Open settings"},
 				{":", "Run a one-off shell command"},
 				{"Cmd/Ctrl+Shift+P", "Open Command Palette"},
+				{"Cmd/Ctrl+Shift+A", "Open Activity Center"},
 				{"Ctrl+L", "Show the command log"},
 				{"Ctrl+` / Ctrl+~", "Toggle the terminal"},
 				{"Ctrl+F", "Search the active terminal"},

@@ -83,14 +83,6 @@ func (a *app) activityInput() (activityAppInput, bool) {
 	return input, true
 }
 
-func (s *shell) activityInputs() activityInputs {
-	input, ok := s.activeApp().activityInput()
-	if !ok {
-		return activityInputs{}
-	}
-	return activityInputs{Apps: []activityAppInput{input}}
-}
-
 func activitySourceLabel(source activitySource) string {
 	switch source {
 	case activitySourceCommand:

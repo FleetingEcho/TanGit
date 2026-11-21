@@ -128,6 +128,7 @@ type app struct {
 	// Shell-owned workflows are hooked rather than stored MyGo elements or
 	// contexts, keeping standalone app tests independent of window chrome.
 	shellOverlayOpen   func() bool
+	showActivityCenter func()
 	showCommandPalette func()
 	invokeCommand      func(commandID) commandInvokeResult
 	resolveCommand     func(commandID) commandState

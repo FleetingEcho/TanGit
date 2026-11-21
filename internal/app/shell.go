@@ -162,6 +162,8 @@ type shell struct {
 	// The shell-level palette overlays the active page without taking ownership
 	// of repository records or ordinary application safety forms.
 	palette commandPaletteState
+	// activity is the Activity Center overlay across every open repository.
+	activity activityCenterState
 	// pending are the changes a menu, a shortcut or a click asked for while a
 	// frame was reading the tabs; they run once the frame is built.
 	pending []func()
@@ -345,7 +347,8 @@ func (s *shell) newTab(path string) *tab {
 			t.app.resetCodeSearchIndex()
 		}
 	}
-	a.shellOverlayOpen = func() bool { return s.palette.open }
+	a.shellOverlayOpen = func() bool { return s.palette.open || s.activity.open }
+	a.showActivityCenter = func() { s.openActivityCenter() }
 	a.showCommandPalette = func() { s.openCommandPalette(nil) }
 	a.invokeCommand = func(id commandID) commandInvokeResult { return s.invokeCommand(id) }
 	a.resolveCommand = s.commandStateFor
@@ -434,6 +437,7 @@ func (s *shell) view(c *ui.Context) {
 	// Shell overlays are installed after page content, so they cover the full
 	// window while existing app safety modals retain opening priority.
 	s.commandPaletteView(c)
+	s.activityCenterView(c)
 
 	// The page settles its own theme through the shared context. Clear the
 	// root last so neither that call nor the shell's replaces the transparent
@@ -1161,13 +1165,14 @@ func (s *shell) notifyTabLimit(a *app) {
 // registerShortcuts installs the chrome's keys. They stand aside while a
 // page's dialog owns the keyboard, and while every shortcut is switched off.
 func (s *shell) registerShortcuts(c *ui.Context) {
-	if s.settings.DisableShortcuts || s.palette.open {
+	if s.settings.DisableShortcuts || s.palette.open || s.activity.open {
 		return
 	}
 	if a := s.activeApp(); a != nil && a.modalOpen() {
 		return
 	}
 	s.onShortcut(c, ui.Cmd|ui.Shift, ui.KeyP, shortcut("commands/palette", cmdShortcutChord()+"+Shift+P", tr("Open Command Palette")), func() { s.openCommandPalette(c) })
+	s.onShortcut(c, ui.Cmd|ui.Shift, ui.KeyA, shortcut("activity/open", cmdShortcutChord()+"+Shift+A", tr("Open Activity Center")), func() { s.openActivityCenter() })
 	s.onShortcut(c, ui.Cmd, ui.KeyT, shortcut("tabs/new-home", cmdShortcutChord()+"+T", tr("Open a new tab or the picker")), func() { s.request(s.showHome) })
 	s.onShortcut(c, ui.Cmd, ui.KeyW, shortcut("tabs/close-active", cmdShortcutChord()+"+W", tr("Close the active tab")), func() {
 		s.request(func() {
