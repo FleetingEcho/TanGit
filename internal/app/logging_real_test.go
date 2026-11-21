@@ -38,6 +38,11 @@ func realCommandHarness(t *testing.T) (*app, *ui.Tester, *updates) {
 	// newLiveShell assigns the queued update to every page it opens, so a
 	// background process cannot mutate app state while a frame builds.
 	s, tester, updated := newLiveShell(t, repository.Opener{})
+	// Real-session workflow fixtures predate Overview; keep their repository
+	// landing and numeric navigation stable just like migrated user settings.
+	s.settings.OpenRepositoriesOnOverview = false
+	s.settings.SectionOrder = append([]string(nil), workspaceSectionIDs...)
+	s.activeApp().settings = s.settings
 	a := openLiveRepo(t, s, updated, root)
 	for a.repositoryDetailsLoading {
 		updated.waitForUpdate(t)
@@ -88,6 +93,26 @@ func TestCustomCommandWritesRealSessionLog(t *testing.T) {
 	}
 }
 
+// commandLogRowShowsStatus checks one exact row, not unrelated fresh Git
+// commands that may also be running when an asynchronous completion repaints.
+func commandLogRowShowsStatus(tester *ui.Tester, command, status string) bool {
+	row, found := tester.AccessByRole(ui.RoleRegion, "$ "+command)
+	if !found {
+		return false
+	}
+	for _, node := range tester.AccessAll() {
+		if node.Role != ui.RoleText || node.Name != status {
+			continue
+		}
+		bounds := node.Bounds
+		if bounds.X >= row.Bounds.X && bounds.Y >= row.Bounds.Y &&
+			bounds.X+bounds.W <= row.Bounds.X+row.Bounds.W && bounds.Y+bounds.H <= row.Bounds.Y+row.Bounds.H {
+			return true
+		}
+	}
+	return false
+}
+
 // Opening the command log while a command is running must still show it.
 // A completed-only entry leaves the visible log looking stale throughout
 // long foreground and background commands.
@@ -119,15 +144,20 @@ func TestRunningCommandAppearsInOpenLogBeforeCompletion(t *testing.T) {
 	if !tester.HasText("$ " + command) {
 		t.Fatalf("running command is absent from the open log: %q", tester.Texts())
 	}
-	if !tester.HasText("running") {
-		t.Fatalf("command is not visibly marked as running: %q", tester.Texts())
+	if !commandLogRowShowsStatus(tester, command, "Running") {
+		t.Fatalf("exact command is not visibly marked as running: %q", tester.Texts())
 	}
 	if err := os.WriteFile(release, []byte("done"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	waitCommandComplete(t, a, tester, updated, command)
 	tester.Frame()
-	if tester.HasText("running") {
-		t.Fatalf("command is still marked running after completion: %q", tester.Texts())
+	if commandLogRowShowsStatus(tester, command, "Running") || !commandLogRowShowsStatus(tester, command, "Succeeded") {
+		t.Fatalf("exact command was not visibly marked successful after completion: %q", tester.Texts())
+	}
+	for _, entry := range a.commandLog.Entries() {
+		if entry.Command == command && (entry.Running || entry.Failed) {
+			t.Fatalf("completed command retained a nonterminal logger state: %+v", entry)
+		}
 	}
 }

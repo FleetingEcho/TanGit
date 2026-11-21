@@ -236,19 +236,7 @@ func navigateDiffHunk(state *editor.DiffState, direction int) {
 // diff. It shares conflictActionToolbar with conflict Hunk/Apply actions;
 // wrapping and narrow-window grouping keep labels reachable without squeezing text.
 func (a *app) hunkActionControls(c *ui.Context) {
-	status := a.currentHunkActionStatus()
-	mutationReason := status.reason
-	if mutationReason == "" && status.hunk < 0 {
-		mutationReason = "Move the caret into a diff hunk first."
-	}
-	if mutationReason == "" {
-		switch {
-		case a.actionBusy:
-			mutationReason = "Wait for the current Git action to finish."
-		case a.session == nil:
-			mutationReason = "Open a repository before changing hunks."
-		}
-	}
+	status, mutationReason := a.hunkMutationAvailability()
 	disabled := mutationReason != ""
 	theme := c.Theme()
 	row := ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(5)
@@ -277,27 +265,8 @@ func (a *app) hunkActionControls(c *ui.Context) {
 					disabled: disabled, disabledReason: mutationReason, run: a.confirmDiscardCurrentHunk},
 			)
 		}
-		navigationReason := ""
-		if a.actionBusy {
-			navigationReason = "Wait for the current Git action to finish."
-		}
-		previousReason, nextReason := navigationReason, navigationReason
-		if previousReason == "" {
-			switch {
-			case status.count == 0:
-				previousReason = "No diff hunk is available."
-			case status.hunk <= 0:
-				previousReason = "Already at the first diff hunk."
-			}
-		}
-		if nextReason == "" {
-			switch {
-			case status.count == 0:
-				nextReason = "No diff hunk is available."
-			case status.hunk >= status.count-1:
-				nextReason = "Already at the last diff hunk."
-			}
-		}
+		previousReason := a.hunkNavigationDisabledReason(-1)
+		nextReason := a.hunkNavigationDisabledReason(1)
 		actions = append(actions,
 			actionControl{label: "Previous hunk", shortcut: "[", description: "Go to the previous diff hunk", icon: chevronUpIcon,
 				disabled: previousReason != "", disabledReason: previousReason, run: func() { navigateDiffHunk(a.diffState, -1) }},

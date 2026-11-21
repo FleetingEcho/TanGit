@@ -22,6 +22,8 @@ type agentUIState struct {
 	list               ui.ListState
 	selectedRow        int
 	selectedTaskID     string
+	activityReveal     string
+	activityNotice     string
 	loadedRepo         string
 	loading            bool
 	loadToken          uint64
@@ -118,7 +120,7 @@ func (a *app) refreshAgentTasks() {
 			if a.agents.selectedTaskID == "" && len(tasks) > 0 {
 				a.agents.selectedTaskID = tasks[0].ID
 			}
-			return a.workspaceTab == sectionAgents
+			return a.workspaceTab == sectionAgents || a.workspaceTab == sectionOverview
 		})
 	}()
 }

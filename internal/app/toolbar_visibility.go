@@ -10,6 +10,7 @@ type toolbarAction struct {
 }
 
 var headerToolbarActions = []toolbarAction{
+	{id: "palette", label: "Command Palette"},
 	{id: "fetch", label: "Fetch"},
 	{id: "pull", label: "Pull"},
 	{id: "push", label: "Push"},

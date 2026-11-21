@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -193,13 +194,34 @@ func (a *app) agentsView(c *ui.Context) {
 					if task.LastTest != nil {
 						ui.Textf(c, tr("Last test: %s"), tr(agentTestStatusLabel(task.LastTest.Status))).Selectable()
 					}
+					if a.agents.activityNotice != "" {
+						ui.Text(c, a.agents.activityNotice).TextColor(theme.Warning).Selectable()
+					}
+					revealActivity := a.agents.activityReveal
+					a.agents.activityReveal = ""
 					if len(task.Activity) > 0 {
 						ui.Text(c, tr("Recent activity")).Bold()
-						for index := max(0, len(task.Activity)-3); index < len(task.Activity); index++ {
+						firstActivity := max(0, len(task.Activity)-3)
+						if revealActivity != "" {
+							firstActivity = 0
+						}
+						for index := firstActivity; index < len(task.Activity); index++ {
 							activity := task.Activity[index]
+							activityKey := activity.ID
+							if activityKey == "" {
+								// Legacy/synthetic records may lack the durable ID. Their
+								// append-sequence fallback prevents a crash without replacing
+								// source identity for every records that has one.
+								activityKey = "legacy:" + agentActivityTimestamp(activity) + ":" + strconv.Itoa(index)
+							}
+							c.Key("agent-activity:" + task.ID + ":" + activityKey)
 							row := ui.Row(c).Gap(8).AlignItems(ui.Center)
 							if tooltip := agentActivityTooltip(activity); tooltip != "" {
 								row.Tooltip(tooltip)
+							}
+							if revealActivity != "" && activity.ID == revealActivity {
+								row = row.Border(1, theme.Accent).Padding(3).
+									ScrollIntoView(ui.ScrollIntoViewOptions{Block: ui.ScrollCenter})
 							}
 							row.Children(func() {
 								ui.Text(c, agentActivityTimestamp(activity)).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted)

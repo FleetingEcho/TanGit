@@ -48,9 +48,7 @@ func keyboardCommands() []keyboardCommand {
 			a.beginRepositoryActionMessage(tr("Staged all changes"), "", func(ctx context.Context, s repository.Session) error { return requireChangesSession(s).StageAll(ctx) }, nil)
 		}},
 		{"Changes", "s", "Stash changes…", 0, ui.KeyS, (*app).openStashForm},
-		{"Changes", "f", "Fetch from the remotes", 0, ui.KeyF, func(a *app) {
-			a.beginRepositoryActionMessage(tr(a.fetchSuccessMessage()), "", func(ctx context.Context, s repository.Session) error { return a.fetchWithSetting(ctx, s) }, nil)
-		}},
+		{"Changes", "f", "Fetch from the remotes", 0, ui.KeyF, (*app).beginFetch},
 		{"Changes", "i", "Ignore file in .gitignore", 0, ui.KeyI, func(a *app) { a.ignoreSelectedFile(false) }},
 		{"Changes", "I", "Exclude file locally", ui.Shift, ui.KeyI, func(a *app) { a.ignoreSelectedFile(true) }},
 		{"Changes", "d", "Discard the chosen file's changes", 0, ui.KeyD, (*app).confirmDiscardSelected},

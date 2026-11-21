@@ -131,6 +131,11 @@ func operationScopeDetail(record repository.OperationRecord) string {
 
 func (a *app) safetyJournalBody(c *ui.Context) {
 	theme := c.Theme()
+	reveal := a.journalReveal
+	a.journalReveal = ""
+	if a.journalNotice != "" {
+		ui.Text(c, a.journalNotice).TextColor(theme.Warning).Selectable()
+	}
 	if len(a.snapshot.Operations) == 0 {
 		ui.Text(c, tr("Discards, resets, rebases, branch deletions, dropped stashes and patch applications appear here. Safe recovery is revalidated before every Undo.")).
 			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
@@ -138,12 +143,19 @@ func (a *app) safetyJournalBody(c *ui.Context) {
 	}
 	rows := min(len(a.snapshot.Operations), 5)
 	height := float32(rows*62 + max(0, rows-1)*5)
-	ui.Scroll(c).Height(height).FillWidth().Children(func() {
+	ui.Scroll(c).Height(height).FillWidth().TrackScroll(&a.journalScroll).Children(func() {
 		ui.Column(c).FillWidth().Gap(5).Children(func() {
 			for _, item := range a.snapshot.Operations {
 				record := item
-				ui.Row(c).FillWidth().MinHeight(62).AlignItems(ui.Center).Gap(9).Padding(7, 8).
-					Background(theme.Surface).Radius(theme.Radius).Children(func() {
+				c.Key("journal-entry:" + record.ID)
+				targeted := reveal != "" && record.ID == reveal
+				row := ui.Row(c).FillWidth().MinHeight(62).AlignItems(ui.Center).Gap(9).Padding(7, 8).
+					Background(theme.Surface).Radius(theme.Radius)
+				if targeted {
+					row = row.Border(2, theme.Accent).
+						ScrollIntoView(ui.ScrollIntoViewOptions{Block: ui.ScrollCenter})
+				}
+				row.Children(func() {
 					ui.Column(c).Gap(3).Grow(1).Children(func() {
 						ui.Text(c, record.Summary).SingleLine().Tooltip(record.Summary)
 						detail := time.Unix(record.CreatedAt, 0).Format("2006-01-02 15:04")

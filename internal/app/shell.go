@@ -158,6 +158,10 @@ type shell struct {
 
 	tabs   []*tab
 	active int
+
+	// The shell-level palette overlays the active page without taking ownership
+	// of repository records or ordinary application safety forms.
+	palette commandPaletteState
 	// pending are the changes a menu, a shortcut or a click asked for while a
 	// frame was reading the tabs; they run once the frame is built.
 	pending []func()
@@ -341,6 +345,13 @@ func (s *shell) newTab(path string) *tab {
 			t.app.resetCodeSearchIndex()
 		}
 	}
+	a.shellOverlayOpen = func() bool { return s.palette.open }
+	a.showCommandPalette = func() { s.openCommandPalette(nil) }
+	a.invokeCommand = func(id commandID) commandInvokeResult { return s.invokeCommand(id) }
+	a.resolveCommand = s.commandStateFor
+	a.openActivityTarget = func(target activityTarget) activityOpenResult {
+		return (activityFeed{}).Open(s.commandContext(), target)
+	}
 	a.externalRefresh = func() {
 		if s.windowVisible && s.windowFocused && s.activeApp() == a {
 			a.requestQuietRefresh()
@@ -420,6 +431,10 @@ func (s *shell) view(c *ui.Context) {
 			}
 		})
 	})
+	// Shell overlays are installed after page content, so they cover the full
+	// window while existing app safety modals retain opening priority.
+	s.commandPaletteView(c)
+
 	// The page settles its own theme through the shared context. Clear the
 	// root last so neither that call nor the shell's replaces the transparent
 	// corner cutouts with the palette's window-sized background.
@@ -1146,12 +1161,13 @@ func (s *shell) notifyTabLimit(a *app) {
 // registerShortcuts installs the chrome's keys. They stand aside while a
 // page's dialog owns the keyboard, and while every shortcut is switched off.
 func (s *shell) registerShortcuts(c *ui.Context) {
-	if s.settings.DisableShortcuts {
+	if s.settings.DisableShortcuts || s.palette.open {
 		return
 	}
 	if a := s.activeApp(); a != nil && a.modalOpen() {
 		return
 	}
+	s.onShortcut(c, ui.Cmd|ui.Shift, ui.KeyP, shortcut("commands/palette", cmdShortcutChord()+"+Shift+P", tr("Open Command Palette")), func() { s.openCommandPalette(c) })
 	s.onShortcut(c, ui.Cmd, ui.KeyT, shortcut("tabs/new-home", cmdShortcutChord()+"+T", tr("Open a new tab or the picker")), func() { s.request(s.showHome) })
 	s.onShortcut(c, ui.Cmd, ui.KeyW, shortcut("tabs/close-active", cmdShortcutChord()+"+W", tr("Close the active tab")), func() {
 		s.request(func() {

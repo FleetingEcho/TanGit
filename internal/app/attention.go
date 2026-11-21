@@ -8,6 +8,14 @@ import (
 	"lazygitapp/internal/repository"
 )
 
+// beginFetch is the single repository-fetch entry shared by toolbar,
+// keyboard and Command Catalog actions.
+func (a *app) beginFetch() {
+	a.beginRepositoryActionMessage(tr(a.fetchSuccessMessage()), "", func(ctx context.Context, session repository.Session) error {
+		return a.fetchWithSetting(ctx, session)
+	}, nil)
+}
+
 // confirmAttention is shared by every entry point for operations that need
 // review. Capture their targets before opening the modal, rather than reading
 // the current row or form again after the user confirms.

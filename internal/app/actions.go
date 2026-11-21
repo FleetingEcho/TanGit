@@ -276,6 +276,11 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 		a.syncNavSelection()
 		a.stopRepositoryWatch()
 	} else {
+		if a.repositoryStartsOnOverview() {
+			a.workspaceTab = sectionOverview
+			a.syncNavSelection()
+			a.prepareCockpit()
+		}
 		a.startRepositoryWatch(session)
 	}
 	if len(snapshot.Warnings) > 0 {
@@ -369,6 +374,8 @@ func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 	a.agents.loadedRepo = ""
 	a.agents.selectedTaskID = ""
 	a.agents.selectedRow = 0
+	a.agents.activityReveal = ""
+	a.agents.activityNotice = ""
 	a.agents.loading = false
 	a.agents.err = ""
 	a.agents.mutating = nil

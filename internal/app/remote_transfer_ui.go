@@ -46,6 +46,10 @@ var scheduleRemoteTransferProgress = func(delay time.Duration, run func()) func(
 }
 
 type remoteTransferJob struct {
+	// UI-owned timestamps are projection metadata, not transfer execution state.
+	// The canonical transfer.Result deliberately remains unchanged.
+	occurredAt          time.Time
+	updatedAt           time.Time
 	kind                string
 	localSources        []string
 	remoteDirectory     string
@@ -245,7 +249,7 @@ func (a *app) publishQueuedRemoteTransferSnapshot(manager *transfer.Manager, gen
 		state.snapshotMu.Lock()
 		current := state.snapshotActive && sequence == state.snapshotSeq
 		state.snapshotMu.Unlock()
-		return current && a.applyRemoteTransferSnapshot(manager, generation, snapshot)
+		return current && (a.applyRemoteTransferSnapshot(manager, generation, snapshot) || a.workspaceTab == sectionOverview)
 	})
 }
 
@@ -450,6 +454,7 @@ func (a *app) ensureRemoteTransferJob(id transfer.ID, kind string, localSources 
 		return job
 	}
 	job := &remoteTransferJob{
+		occurredAt:      time.Now(),
 		kind:            kind,
 		localSources:    append([]string(nil), localSources...),
 		remoteDirectory: remoteDirectory,
@@ -506,7 +511,7 @@ func (a *app) completeRemoteTransfer(manager *transfer.Manager, generation uint6
 			return false
 		}
 		job := a.ensureRemoteTransferJob(result.ID, kind, localSources, remoteDirectory, localOutputs)
-		return a.publishRemoteTransfer(manager, generation, job, result)
+		return a.publishRemoteTransfer(manager, generation, job, result) || a.workspaceTab == sectionOverview
 	})
 }
 
@@ -516,6 +521,12 @@ func (a *app) completeRemoteTransfer(manager *transfer.Manager, generation uint6
 func (a *app) publishRemoteTransfer(manager *transfer.Manager, generation uint64, job *remoteTransferJob, result transfer.Result) bool {
 	changed := !job.presented || job.presentedCancelling != job.cancelling || !sameRemoteTransferResult(job.result, result)
 	job.result = result
+	if job.occurredAt.IsZero() {
+		job.occurredAt = time.Now()
+	}
+	if changed {
+		job.updatedAt = time.Now()
+	}
 	terminal := result.Status.Terminal()
 	if terminal && job.terminalNotified {
 		return false

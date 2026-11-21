@@ -128,6 +128,11 @@ type appSettings struct {
 	VisibleSections []string `json:"visibleSections"`
 	// SectionOrder includes hidden pages so toggling a page retains its position.
 	SectionOrder []string `json:"sectionOrder"`
+	// OpenRepositoriesOnOverview controls the initial Git-repository landing
+	// page. OverviewStartConfigured distinguishes a fresh install from legacy
+	// settings whose false zero value must retain their original landing page.
+	OpenRepositoriesOnOverview bool `json:"openRepositoriesOnOverview"`
+	OverviewStartConfigured    bool `json:"overviewStartConfigured,omitempty"`
 	// TerminalDock is the default edge for a new terminal dock. Toolbar moves
 	// remain local to their repository tab and do not rewrite this preference.
 	TerminalDock string `json:"terminalDock"`
@@ -212,7 +217,9 @@ func defaultSettings() appSettings {
 		SearchExcludedDirectories:   defaultWorkspaceSearchExcludedDirectories(),
 		HomeBackgroundOpacity:       defaultHomeBackgroundOpacity,
 		VisibleSections:             slices.Clone(defaultVisibleSections),
-		SectionOrder:                slices.Clone(workspaceSectionIDs),
+		SectionOrder:                defaultSectionOrder(),
+		OpenRepositoriesOnOverview:  true,
+		OverviewStartConfigured:     true,
 		TerminalDock:                terminalDockBottom,
 		ConflictActionStyle:         conflictActionStyleIcons,
 	}
@@ -297,6 +304,12 @@ func normalizeSettings(s appSettings) appSettings {
 	s.HomeBackgroundOpacity = normalizeHomeBackgroundOpacity(s.HomeBackgroundOpacity)
 	s.VisibleSections = normalizeVisibleSections(s.VisibleSections)
 	s.SectionOrder = normalizeSectionOrder(s.SectionOrder)
+	if !s.OverviewStartConfigured {
+		// Legacy files had no Overview preference. Keep their existing landing
+		// page while writing an explicit migration marker on the next save.
+		s.OpenRepositoriesOnOverview = false
+		s.OverviewStartConfigured = true
+	}
 	s.TerminalDock = normalizeTerminalDock(s.TerminalDock)
 	s.ConflictActionStyle = normalizeConflictActionStyle(s.ConflictActionStyle)
 	s.HiddenHeaderActions = normalizeHiddenToolbarActions(s.HiddenHeaderActions, headerToolbarActions)
@@ -444,6 +457,9 @@ func normalizeVisibleSections(visible []string) []string {
 // normalizeSectionOrder preserves the user's order and appends missing pages,
 // including pages introduced by a newer app version.
 func normalizeSectionOrder(order []string) []string {
+	if len(order) == 0 {
+		return defaultSectionOrder()
+	}
 	kept := make([]string, 0, len(workspaceSectionIDs))
 	for _, id := range order {
 		if slices.Contains(workspaceSectionIDs, id) && !slices.Contains(kept, id) {

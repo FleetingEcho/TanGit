@@ -36,6 +36,11 @@ func (a *app) registerTerminalModalShortcuts(back ui.Element) {
 // text input and type-ahead receive those keys. The terminal toggle is the
 // exception: it is registered before every modal and preference early return.
 func (a *app) registerShortcuts(c *ui.Context) {
+	// A shell overlay owns every ordinary application binding, including the
+	// otherwise window-wide terminal toggle. The overlay installs its own keys.
+	if a.shellOverlayOpen != nil && a.shellOverlayOpen() {
+		return
+	}
 	if a.state == stateReady {
 		// Ctrl+` works regardless of focus, terminal ownership, open forms or
 		// the general shortcuts switch. Also accept the shifted physical key,

@@ -43,8 +43,7 @@ func TestCommandLogIncludesDatesAndHighlightsFailedRows(t *testing.T) {
 		a.commandLogBody(c, entries)
 	}, 1100, 640)
 	tester.Frame()
-
-	for _, want := range []string{"2026-11-20 14:03:02", "2026-11-20 13:03:02", "failed", "fatal: lease rejected"} {
+	for _, want := range []string{"2026-11-20 14:03:02", "2026-11-20 13:03:02", "Failed", "Succeeded", "fatal: lease rejected"} {
 		if !tester.HasText(want) {
 			t.Errorf("command log is missing %q: %q", want, tester.Texts())
 		}

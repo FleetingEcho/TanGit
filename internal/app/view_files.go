@@ -1019,15 +1019,8 @@ func (a *app) conflictToolbar(c *ui.Context, theme *ui.Theme) {
 	if a.actionBusy {
 		busyReason = "Wait for the current Git action to finish."
 	}
-	markResolved := actionControl{
-		label: "Mark resolved", description: "Stage the file as it is", primary: true, textOnly: true,
-		disabled: a.actionBusy, disabledReason: busyReason,
-		run: func() {
-			if change, ok := a.selectedChange(); ok {
-				a.beginStageFile(change.file, true)
-			}
-		},
-	}
+	markResolved := a.markResolvedAction()
+	markResolved.disabledReason = busyReason
 	statusBadge := func() {
 		if count == 0 {
 			ui.Row(c).Padding(0, theme.Space(1.5)).Radius(999).

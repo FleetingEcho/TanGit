@@ -125,6 +125,13 @@ type app struct {
 	openHomeTab     func()
 	claimOpen       func(path string) bool
 	closeTab        func()
+	// Shell-owned workflows are hooked rather than stored MyGo elements or
+	// contexts, keeping standalone app tests independent of window chrome.
+	shellOverlayOpen   func() bool
+	showCommandPalette func()
+	invokeCommand      func(commandID) commandInvokeResult
+	resolveCommand     func(commandID) commandState
+	openActivityTarget func(activityTarget) activityOpenResult
 	// onRecentRenamed carries a name given to one page's repository to the
 	// window's other pages, so a pill, a card, and the next opening agree.
 	onRecentRenamed func(path, name string)
@@ -236,10 +243,21 @@ type app struct {
 	// commands. Its source, cancellation and generation are repository-scoped.
 	continuePreflight  continuePreflightUIState
 	continueTestRunner continueTestRunner
-	// commandLogUser selects the user's commands instead of background Git
-	// commands; commandLogQuery filters the selected section, highlighted.
-	commandLogUser  bool
-	commandLogQuery string
+	// commandLogUser selects the user's commands instead of background Git.
+	// Query, status, source and time range narrow that section independently.
+	// The clock is replaceable only by deterministic real-geometry tests.
+	commandLogUser   bool
+	commandLogQuery  string
+	commandLogStatus string
+	commandLogSource string
+	commandLogRange  string
+	commandLogClock  func() time.Time
+	// Pagination controls only how many already-recorded matches are rendered.
+	// Expansion is user-scroll driven and never performs I/O in a frame.
+	commandLogLimit     int
+	commandLogList      ui.ListState
+	commandLogExpanded  map[uint64]bool
+	commandLogCollapsed map[uint64]bool
 	// commandLogScroll belongs to the document, not one command entry.
 	// commandLogReveal is a one-shot, identity-bound scroll request.
 	commandLogScroll ui.ScrollState
@@ -257,6 +275,10 @@ type app struct {
 	// next frame; toastSeq names each AddToast so two alike still stack.
 	pendingToasts []appToast
 	toastSeq      int
+	// activityNotices is an explicit, bounded session projection for important
+	// events with no canonical command/journal/agent/transfer record.
+	activityNotices   []activityNotice
+	activityNoticeSeq uint64
 	// pendingForget is a repository whose entry the picker's context menu
 	// removed, applied at the top of the next build pass: a menu must not
 	// rewrite the list a pass is reading.
@@ -341,6 +363,7 @@ type app struct {
 	// active section on screen and a narrow restore rail within reach.
 	navPaneCollapsed bool
 	workspaceTab     int
+	cockpit          cockpitUIState
 	// code owns the repository explorer, persistent editor documents and
 	// workspace search independently of the diff-specific file editor.
 	code codeState
@@ -466,6 +489,9 @@ type app struct {
 	selectedRemoteBranch       int
 	stashList                  ui.ListState
 	savedWorkPanel             int
+	journalScroll              ui.ScrollState
+	journalReveal              string
+	journalNotice              string
 	workSnapshotList           ui.ListState
 	selectedWorkSnapshotRow    int
 	fileRecoveryRows           ui.ListState

@@ -327,14 +327,15 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 		LanguageServers: map[string]languageServerSettings{
 			"go": {Path: "/tools/gopls", Arguments: []string{"-remote=auto"}},
 		},
-		HomeBackgroundPath:     "/Pictures/home.png",
-		HomeBackgroundDisabled: true,
-		HomeBackgroundOpacity:  0.42,
-		VisibleSections:        []string{"changes", "graph"},
-		SectionOrder:           normalizeSectionOrder([]string{"graph", "changes"}),
-		TerminalDock:           terminalDockRight,
-		HiddenHeaderActions:    []string{"pull", "theme"},
-		HiddenStatusActions:    []string{"commands", "command-log"},
+		HomeBackgroundPath:      "/Pictures/home.png",
+		HomeBackgroundDisabled:  true,
+		HomeBackgroundOpacity:   0.42,
+		VisibleSections:         []string{"changes", "graph"},
+		SectionOrder:            normalizeSectionOrder([]string{"graph", "changes"}),
+		OverviewStartConfigured: true,
+		TerminalDock:            terminalDockRight,
+		HiddenHeaderActions:     []string{"pull", "theme"},
+		HiddenStatusActions:     []string{"commands", "command-log"},
 		RemoteWebURLs: map[string]map[string]string{
 			"/work/project": {"origin": "https://example.com/team/project"},
 		},
@@ -462,6 +463,9 @@ func TestNormalizeSettingsRejectsUnknownValues(t *testing.T) {
 		Radius:           -3,
 	})
 	want := defaultSettings()
+	// This struct models a legacy file: other invalid values reset to fresh
+	// defaults, while the missing Overview sentinel preserves its old landing.
+	want.OpenRepositoriesOnOverview = false
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("invalid settings were not normalized: want %+v, got %+v", want, got)
 	}

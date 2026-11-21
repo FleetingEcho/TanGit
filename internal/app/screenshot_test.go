@@ -2282,7 +2282,7 @@ func TestScreenshot(t *testing.T) {
 func newShellShot(t *testing.T, dark bool, theme string) (*shell, *ui.Tester, *updates, *tab) {
 	t.Helper()
 	s := newShell(screenshotOpener{snapshot: screenshotSnapshot()})
-	s.settings = defaultSettings()
+	s.settings = legacyWorkflowPreferences(defaultSettings())
 	s.settings.Theme = theme
 	s.pathUserData = t.TempDir()
 	updated := newUpdates()

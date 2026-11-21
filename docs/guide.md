@@ -105,7 +105,7 @@ their package installer.
 | Recover work | Use Reflog to inspect earlier states and create a branch, check out, or reset after confirmation. In **Saved work → Safety Journal**, review supported local commits, merges, checkouts, discards, resets, rebases, branch operations, stash changes and patch applications. Recoverable operations offer immediate notification Undo and remain listed durably. Undo compares immutable before/after restore points across raw files, index, operation metadata, local refs and configuration, and refuses when newer content or Git state does not match. Interrupted restoration keeps both recovery points without pretending its rollback completed. |
 | Adjust the workspace | Drag dividers; use expand/shrink icons for full-window views. The folder button toggles directory grouping. |
 
-All workspace sections are visible by default; choose which ones to show in **Settings → Workspace sections**.
+All workspace sections are visible by default; choose which ones to show in **Settings → Workspace sections**. Fresh profiles can also choose whether repositories open on **Overview** under **Settings → Workspace → Repository start**; legacy profiles keep their previous landing page until explicitly changed.
 The Header and Status bar buttons are also all visible by default and can be hidden independently under
 **Settings → Workspace → Toolbar buttons**, including hiding every button in either group. The repository path
 and its copy button always remain in the Status bar. Hiding a button only removes that entry point; it does not
@@ -114,6 +114,73 @@ Use **Settings → Updates** to check the installed version and available update
 The Editor virtualizes large file trees, rebuilds them only when their contents or folding changes, and renders only the active editor tab.
 
 Author avatars load in the background from GitHub, GitLab.com, or self-managed GitLab, using the configured remote host (or its custom web URL). Public lookups work without a hosting CLI; restricted lookups can reuse an existing local `gh` or `glab` login. Images are cached locally. Missing accounts, unavailable images, network failures, and authentication failures silently keep the colored author initial. TanGit never starts a login flow for an avatar lookup. In SSH workspaces, avatar requests still run on the desktop; a company GitLab server must be reachable from that machine.
+
+## Workflow entry points
+
+### Command Palette
+
+Press **Ctrl/Cmd+Shift+P**, or use the **Command Palette** button in the
+repository toolbar. The palette is available on Home, in Git repositories and
+in Editor-only workspaces. Search indexes translated labels, canonical English
+commands, command IDs, aliases and chords. Empty search shows current context
+suggestions, recent process-local commands and navigation. Unavailable actions
+remain visible with an explanation; use Up/Down and Enter, or click a result.
+
+Commands execute by stable ID and are re-resolved immediately before running,
+after any tab switch or background refresh. Selecting a destructive action only
+opens its existing confirmation, preview or form—it never confirms the Git
+mutation itself. Hunk and conflict actions use the same canonical patch,
+selection and availability rules as their toolbars. While the palette is open,
+ordinary repository single-letter shortcuts stay out of its text field. Escape
+closes it and MyGo restores the previous control or the section's primary pane.
+
+### Overview
+
+**Overview** is a workspace section, not a replacement for Changes or History.
+It summarizes branch and divergence information, working-tree counts, current
+operations, cached pull-request checks, Agent state and the latest five activity
+items. Attention is ordered from actual failures and Git operations through
+conflicts, unsaved buffers, Agent/transfer issues and ordinary sync or review
+work. At most three primary items appear. Every action uses the shared Command
+Catalog and is checked again before execution.
+
+Fresh profiles can use **Settings → Workspace → Repository start → Open
+repositories on Overview**. Legacy settings without that configured preference
+keep their previous landing page; the migration writes an explicit configured
+sentinel on the next save. Overview remains hidden in Editor-only folders and
+can be hidden or reordered like every other Git section. Its two-column layout
+follows available content width, so sidebars and terminal docks produce a single
+column when necessary. Entering Overview conditionally reuses Agent loading;
+it never refreshes Git details redundantly or requests PR checks automatically.
+Its **Recent activity** links open the original command, Safety Journal, Agent,
+transfer or workspace viewer by stable identity; an evicted record falls back
+to that viewer with an explanation instead of selecting a similar text match.
+
+### Command Log filters and incremental history
+
+Open **Command Log** from the status bar, **Overview → Open Command log**, the
+palette or `Ctrl+L`. It retains the separate **Background Git commands** and
+**Your commands** tabs. Search covers command text and output. Independent
+menus select Succeeded, Failed or Running status, recorded invocation sources,
+and Last hour, Last 3 hours, Last 24 hours, Last 3 days, Last week or All time.
+The initial range is Last 24 hours. Choosing a palette/keyboard/direct source
+also selects the corresponding existing tab; choosing Background Git commands
+returns to that tab. **Clear filters** removes text/status/source/range limits.
+
+Rows are newest first. A successful command has a green circular-chevron icon
+and **Succeeded** badge, with a compact local time; its full timestamp is in
+the tooltip. Failed and running records use distinct status indicators. Use
+the row menu to show/hide output, copy the command or copy its output. Failures
+and filtered matches show output automatically. **Copy log** includes complete
+timestamps and all matching output regardless of the current rendered page.
+
+The existing session logger continues to own all command records: pagination
+does not repeatedly execute Git, read a new history file or create an activity
+database. At first only 20 matching records are displayed. Reaching the end of
+the virtualized list reveals the next 20 in memory, until there are no more.
+Changing a tab or filter starts a fresh page. Failure-to-log navigation still
+finds the exact stable command ID and expands the page sufficiently to reveal
+it; ordinary new entries do not unexpectedly reload pages or reset scrolling.
 
 ## Operation recovery, history, and assisted review
 
@@ -484,7 +551,7 @@ Commands follow the focused panel. Uppercase letters mean **Shift + letter**.
 | Diff display | `W` compares refs; `Alt+W` toggles whitespace; `Alt+U` cycles context |
 | Conflicts | `F7` / `Shift+F7` moves; `Alt+1`–`Alt+4` selects current/ancestor/incoming/both; `Alt+Z` undoes a choice |
 | Terminal | ``Ctrl+` `` or `Ctrl+~` shows or hides the dock from any workspace or form without changing sections; its position, tabs, splits, search and scrollback stay alive while hidden |
-| Tools | `Ctrl+L` command log with user/background sections and highlighted search; `:` one-off command, `Ctrl+,` Settings |
+| Tools | `Ctrl/Cmd+Shift+P` Command Palette; `Ctrl+L` command log with user/background sections and highlighted search; `:` one-off command, `Ctrl+,` Settings |
 
 **Background fetching:** **Settings → Behavior** controls how often every remote is
 fetched and whether stale remote-tracking branches are pruned. The Branches

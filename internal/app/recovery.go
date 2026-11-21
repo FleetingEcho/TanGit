@@ -16,6 +16,8 @@ import (
 func (a *app) openActivityRecovery() {
 	a.savedWorkPanel = 1
 	a.showRecoveryModal = true
+	a.journalReveal = ""
+	a.journalNotice = ""
 }
 
 func (a *app) recoveryModal(c *ui.Context) {

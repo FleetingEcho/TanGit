@@ -40,9 +40,8 @@ func (a *app) attachRepositoryCommandLog(log *repository.CommandLog) {
 	if log != a.commandLog {
 		a.actionFailure = nil
 		a.commandLogReveal = nil
-		a.commandLogScroll.X = 0
-		a.commandLogScroll.Y = 0
-		a.commandLogScroll.MaxY = 0
+		a.commandLogExpanded = nil
+		a.resetCommandLogPaging()
 	}
 	a.commandLog = log
 	if log == nil {
@@ -62,22 +61,21 @@ func (a *app) attachRepositoryCommandLog(log *repository.CommandLog) {
 	})
 }
 
-// openCommandLog shows background Git commands by default. User commands stay
-// one explicit tab away, and command errors land directly in that section.
+// openCommandLog shows a fresh, bounded page of background Git commands. User
+// commands stay one explicit tab away; no records are fetched during rendering.
 func (a *app) openCommandLog() {
 	a.commandLogOpen = true
 	a.commandLogVisible.Store(true)
 	a.commandLogReveal = nil
 	a.commandLogUser = false
 	a.commandLogQuery = ""
+	a.commandLogExpanded = nil
+	a.resetCommandLogFilters()
+	a.resetCommandLogPaging()
 }
 
 func (a *app) openGitCommandLog() {
-	a.commandLogOpen = true
-	a.commandLogVisible.Store(true)
-	a.commandLogReveal = nil
-	a.commandLogUser = false
-	a.commandLogQuery = ""
+	a.openCommandLog()
 }
 
 // clearCommandLog removes the records and every view that still presents
@@ -90,6 +88,8 @@ func (a *app) clearCommandLog() {
 	a.actionError = ""
 	a.actionFailure = nil
 	a.commandLogReveal = nil
+	a.commandLogExpanded = nil
+	a.resetCommandLogPaging()
 }
 
 func (a *app) closeCommandLog() {

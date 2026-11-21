@@ -32,8 +32,8 @@ func TestNormalizeSectionOrder(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("normalized order = %v, want %v", got, want)
 	}
-	if got := normalizeSectionOrder(nil); !slices.Equal(got, workspaceSectionIDs) {
-		t.Fatalf("default order = %v", got)
+	if got := normalizeSectionOrder(nil); !slices.Equal(got, defaultSectionOrder()) {
+		t.Fatalf("default order = %v, want Overview first without renumbering existing sections", got)
 	}
 }
 

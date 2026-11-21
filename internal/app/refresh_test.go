@@ -120,6 +120,7 @@ func (s *panickingSession) Snapshot(context.Context) (repository.Snapshot, error
 func newLiveShell(t *testing.T, opener repositoryOpener) (*shell, *ui.Tester, *updates) {
 	t.Helper()
 	s := newShell(opener)
+	s.settings = legacyWorkflowPreferences(s.settings)
 	s.pathUserData = t.TempDir()
 	updated := newUpdates()
 	s.update = updated.update

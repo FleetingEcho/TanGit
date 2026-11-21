@@ -59,6 +59,10 @@ func menuTestAppWithCalls(t *testing.T) (*harness, *callRecorder) {
 			{Name: "v1.0.0", Message: "Previous release"},
 		},
 	}}})
+	// Established interaction fixtures retain the pre-Overview landing and
+	// numeric section positions. Fresh-profile migration has dedicated tests.
+	a.settings.OpenRepositoriesOnOverview = false
+	a.settings.SectionOrder = slices.Clone(workspaceSectionIDs)
 	// Most navigation fixtures exercise Changes; app startup itself defaults to Code.
 	a.workspaceTab = sectionChanges
 	h := &harness{app: a, updates: newUpdates()}

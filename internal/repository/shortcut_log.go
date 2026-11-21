@@ -33,8 +33,30 @@ func (l *CommandLog) RecordShortcut(inv ShortcutInvocation) ShortcutInvocation {
 	inv.Sequence = l.nextID + 1
 	l.appendEntryLocked(CommandEntry{
 		At: time.Now(), Command: inv.Label, Origin: CommandOriginUser, Shortcut: &inv,
+		InvocationID: inv.ID, InvocationSource: "shortcut",
 	})
 	l.mu.Unlock()
 	l.notifyListener()
 	return inv
+}
+
+// RecordPalette records an accepted Command Catalog invocation in the user
+// command log. Unlike RecordShortcut it has no chord and emits no shortcut
+// acknowledgement toast; actual Git/custom commands keep their own entries.
+func (l *CommandLog) RecordPalette(id, label string) {
+	if l == nil {
+		return
+	}
+	id = strings.TrimSpace(RedactSecrets(id))
+	label = strings.TrimSpace(RedactSecrets(label))
+	if label == "" {
+		return
+	}
+	l.mu.Lock()
+	l.appendEntryLocked(CommandEntry{
+		At: time.Now(), Command: label, Origin: CommandOriginUser,
+		InvocationID: id, InvocationSource: "palette",
+	})
+	l.mu.Unlock()
+	l.notifyListener()
 }

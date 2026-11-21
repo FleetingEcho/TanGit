@@ -942,6 +942,8 @@ func (a *app) toolbarActionChoices(c *ui.Context, actions []toolbarAction, hidde
 
 func toolbarActionIcon(id string) *ui.SVG {
 	switch id {
+	case "palette":
+		return searchIcon
 	case "fetch":
 		return fetchIcon
 	case "pull":
@@ -1019,6 +1021,16 @@ func (a *app) workspaceSettings(c *ui.Context) {
 				}
 			}
 		})
+		ui.Divider(c)
+		settingsGroup(c, appIcon, "Repository start", "Choose the first page for newly opened repositories")
+		toggle := ui.Checkbox(c, &a.settings.OpenRepositoriesOnOverview,
+			tr("Open repositories on Overview")).
+			Label(tr("Open repositories on Overview")).
+			Tooltip(tr("Existing settings retain their previous landing page until this is enabled"))
+		if toggle.Changed() {
+			a.settings.OverviewStartConfigured = true
+			a.settingsChanged(c)
+		}
 	})
 }
 

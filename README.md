@@ -72,6 +72,7 @@ undo/redo operations, and reflog recovery help you manage changes deliberately.
 | **Assisted review** | Conflict Assistant proposes region substitutions on a cloned Result. Change Splitter groups original diff identities and previews TanGit-generated, index-only patches. Both use an optional, provider-neutral `AssistCommand`; neither suggestion preview stages or commits automatically. |
 | **Editor workspace** | Edit with syntax highlighting and language-server assistance; manage files and tabs; use fzf Quick Open, advanced content search, and Markdown preview. |
 | **Your workspace** | Repository tabs, directory trees, resizable panels, expanded branch/diff views, a terminal, and external editors. |
+| **Workflow entry points** | Search current navigation, Git, hunk, conflict, Agent, and custom actions in the **Command Palette** (`Ctrl/Cmd+Shift+P`). **Overview** summarizes working-tree, operation, collaboration, Agent, and recent-activity state. **Command Log** provides status/source/time-range filters, success badges, timestamps, expandable output, and scrolling that reveals 20 more records at a time. |
 | **Your preferences** | Themes, fonts, six interface languages, configurable visible sections, and signed in-app updates. |
 
 Commit actions live in detail panels and right-click menus. Click a diff line
@@ -210,6 +211,7 @@ quitting Neovim returns to the shell in the project or file's directory.
 | `b` | Start a bisect, or mark the current test as bad; `g` good, `k` skip, `R` reset |
 | `z` / `Z` | Undo / redo eligible operations |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Switch repository tabs |
+| `Ctrl/Cmd+Shift+P` | Search and run commands in the Command Palette |
 | `Ctrl+P` / `Ctrl+Shift+F` | Quick open / workspace content search in Editor |
 | ``Ctrl+` `` / `Ctrl+,` | Terminal / Settings |
 | `:` / `Ctrl+L` | Run a one-off shell command / command log |

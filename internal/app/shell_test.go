@@ -28,11 +28,20 @@ func (o pathOpener) Open(_ context.Context, path string) (repository.Session, er
 	return fakeSession{snapshot: snapshot}, nil
 }
 
+// legacyWorkflowPreferences documents the settings carried by interaction
+// fixtures written before Overview. Fresh-profile behavior is tested explicitly.
+func legacyWorkflowPreferences(settings appSettings) appSettings {
+	settings.OpenRepositoriesOnOverview = false
+	settings.SectionOrder = append([]string(nil), workspaceSectionIDs...)
+	return settings
+}
+
 // newShellTester builds a tabbed window on the picker, with its updates run on
 // the test goroutine as MyGo runs them on the UI loop.
 func newShellTester(t *testing.T, snapshot repository.Snapshot) (*shell, *ui.Tester, *updates) {
 	t.Helper()
 	s := newShell(pathOpener{snapshot: snapshot})
+	s.settings = legacyWorkflowPreferences(s.settings)
 	s.pathUserData = t.TempDir()
 	updated := newUpdates()
 	s.update = updated.update

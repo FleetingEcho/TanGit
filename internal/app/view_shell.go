@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -29,12 +28,13 @@ const (
 	sectionSubmodules
 	sectionReflog
 	sectionCompare
+	sectionOverview
 	workspaceSectionCount
 )
 
 var workspaceSections = []string{
 	"Editor", "Changes", "History", "Graph", "Branches", "Remotes", "Stash", "Tags",
-	"Worktrees", "Agent tasks", "Submodules", "Reflog", "Compare refs",
+	"Worktrees", "Agent tasks", "Submodules", "Reflog", "Compare refs", "Overview",
 }
 
 // workspaceSectionIDs are the stable names of the sections the settings
@@ -42,12 +42,20 @@ var workspaceSections = []string{
 // sections are ever reordered.
 var workspaceSectionIDs = []string{
 	"code", "changes", "history", "graph", "branches", "remotes", "stash", "tags",
-	"worktrees", "agents", "submodules", "reflog", "compare",
+	"worktrees", "agents", "submodules", "reflog", "compare", "overview",
 }
 
 // defaultVisibleSections shows every workspace section on a fresh install.
 // Users can still hide specialist sections in Settings.
 var defaultVisibleSections = slices.Clone(workspaceSectionIDs)
+
+// defaultSectionOrder places the new Overview first without renumbering or
+// rewriting any pre-existing section enum. Non-empty legacy orders append it
+// during migration instead of changing the user's established relative order.
+func defaultSectionOrder() []string {
+	return append([]string{"overview"}, slices.DeleteFunc(slices.Clone(workspaceSectionIDs),
+		func(id string) bool { return id == "overview" })...)
+}
 
 // navPaneDefault is the section sidebar's width, until its divider moves it.
 const navPaneDefault = 172
@@ -1057,15 +1065,11 @@ func (a *app) headerViewWithID(c *ui.Context, keyboardID string) {
 				(!a.location.IsRemote() || effectiveEditorCommand(a.settings.EditorCommand) == builtInEditorCommand)
 			refreshVisible := !editorOnly && a.headerActionVisible("refresh")
 			workspaceActions := refreshVisible || editorVisible
-			applicationActions := a.anyHeaderActionVisible("theme", "settings")
+			paletteVisible := a.showCommandPalette != nil && a.headerActionVisible("palette")
+			applicationActions := paletteVisible || a.anyHeaderActionVisible("theme", "settings")
 			if !editorOnly && a.headerActionVisible("fetch") {
 				iconButton(c, "Fetch", "Fetch from the remotes", fetchIcon,
-					a.actionBusy || len(a.snapshot.Remotes) == 0, func() {
-						a.beginRepositoryActionMessage(tr(a.fetchSuccessMessage()), "",
-							func(ctx context.Context, session repository.Session) error {
-								return a.fetchWithSetting(ctx, session)
-							}, nil)
-					})
+					a.actionBusy || len(a.snapshot.Remotes) == 0, a.beginFetch)
 			}
 			if !editorOnly && a.headerActionVisible("pull") {
 				iconButton(c, "Pull", "Pull from the upstream branch", pullIcon,
@@ -1090,6 +1094,9 @@ func (a *app) headerViewWithID(c *ui.Context, keyboardID string) {
 			}
 			if workspaceActions && applicationActions {
 				toolbarSeparator(c)
+			}
+			if paletteVisible {
+				iconButton(c, "Command Palette", "Search commands ("+cmdShortcutChord()+"+Shift+P)", searchIcon, false, a.showCommandPalette)
 			}
 			if a.headerActionVisible("theme") {
 				a.themeButton(c)
@@ -1258,6 +1265,9 @@ func (a *app) setWorkspaceTab(tab int) {
 	if tab == sectionAgents && a.agents.loadedRepo != a.agentRepositoryID() && !a.agents.loading {
 		a.refreshAgentTasks()
 	}
+	if tab == sectionOverview && previous != sectionOverview {
+		a.prepareCockpit()
+	}
 	a.syncNavSelection()
 	a.showCommitForm = false
 	if isCommitSection(previous) && isCommitSection(tab) {
@@ -1344,6 +1354,8 @@ func (a *app) workspaceContentView(c *ui.Context) {
 		a.codeView(c)
 	case sectionCompare:
 		a.comparePage(c)
+	case sectionOverview:
+		a.cockpitView(c)
 	}
 }
 

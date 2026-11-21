@@ -15,6 +15,16 @@ completion output retain their own entry and output ownership. A newer input
 must not be inferred from a mutable “last shortcut” variable inside an
 asynchronous worker.
 
+The modal Command Log presents the newest 20 matching records first and
+virtualizes their rows. Real user scrolling to the end reveals another 20;
+programmatic failure navigation instead finds the exact logger ID and expands
+only enough of the page to reveal it. Status, recorded source and time-range
+filters coexist with the existing origin tabs and command/output search.
+Invocation provenance is not guessed from executable text. Shortcut and
+palette rows describe accepted input; any process started subsequently keeps
+its own running, failed or successful result and output in the same canonical
+logger, rather than borrowing an earlier row's ID or status.
+
 ## lazygit-aligned additions
 
 | Workspace | Key | Behavior |
@@ -55,6 +65,22 @@ does not masquerade as a TanGit command or reveal the typed content.
 an invocation from framework-only navigation. It is also available to callers
 which have a manual invocation logger and want to avoid a duplicate native
 notification without suppressing real events.
+
+## Command Catalog and Palette invocation
+
+`Ctrl/Cmd+Shift+P` opens the shell-owned Command Palette. The shared catalog
+adapts the existing keyboard, hunk/conflict, navigation and custom-command
+methods instead of introducing a second Git execution path. Candidates contain
+no callback: `Invoke` resolves the stable command ID and availability again at
+execution time, after selection, refresh or tab changes. Unsupported actions
+remain searchable with a concrete disabled reason.
+
+Accepted palette commands use `CommandLog.RecordPalette`, retaining the stable
+command ID and `palette` provenance without a fabricated chord or shortcut
+toast. Shortcut commands continue to use `ShortcutInvocation`; palette entries
+are deliberately not relabeled as keyboard events. While a shell overlay is
+open, ordinary app and window terminal shortcuts are not registered, and MyGo
+restores the opener focus where it still exists.
 
 ## Native widgets and modal scopes
 

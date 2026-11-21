@@ -27,6 +27,11 @@ type CommandEntry struct {
 	// Origin distinguishes commands explicitly requested by the user from
 	// Git commands started by this repository session.
 	Origin CommandOrigin
+	// InvocationID and InvocationSource retain the stable command/provenance
+	// of accepted shortcut and palette entries. They are empty for ordinary
+	// process output.
+	InvocationID     string
+	InvocationSource string
 	// Running reports commands accepted but not yet completed.
 	Running bool
 	// id binds streams and completions to this particular entry even when
@@ -300,7 +305,7 @@ func (l *CommandLog) Note(text string) {
 	// another writer's pending secret fragments, so that stays in its stream.
 	l.flushPendingLocked()
 	index := len(l.entries) - 1
-	for index >= 0 && l.entries[index].Shortcut != nil {
+	for index >= 0 && l.entries[index].InvocationSource != "" {
 		index--
 	}
 	if index < 0 {

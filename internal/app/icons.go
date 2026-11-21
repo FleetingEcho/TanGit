@@ -12,6 +12,9 @@ var (
 	rebaseIcon          = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="3" r="1.5"/><circle cx="4" cy="13" r="1.5"/><circle cx="12" cy="13" r="1.5"/><path d="M4 4.5v7M5.5 3H9a3 3 0 0 1 3 3v3M10 7l2 2 2-2"/></svg>`))
 	mergeIcon           = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="3" r="1.5"/><circle cx="12" cy="3" r="1.5"/><circle cx="12" cy="13" r="1.5"/><path d="M12 4.5v7M4 4.5V6a4 4 0 0 0 4 4h4"/></svg>`))
 	commitIcon          = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5 6.5 12 13 4.5"/></svg>`))
+	// commandSuccessIcon is deliberately different from the ordinary commit
+	// check: this circle-and-chevron matches the command log success icon.
+	commandSuccessIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="m6.25 5.25 3 2.75-3 2.75"/></svg>`))
 	// Review is separate from Git state: eyes distinguish it from the checks
 	// that stage or resolve a file.
 	markReviewedIcon   = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8s2.4-4 6.5-4 6.5 4 6.5 4-2.4 4-6.5 4-6.5-4-6.5-4Z"/><circle cx="8" cy="8" r="2"/></svg>`))
@@ -209,4 +212,5 @@ var sectionIcons = []*ui.SVG{
 	submodulesIcon,
 	reflogIcon,
 	compareIcon,
+	appIcon,
 }
