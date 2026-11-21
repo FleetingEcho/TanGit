@@ -245,7 +245,18 @@ func (s *gitSession) beginOperation(kind, summary string, undoKind string, snaps
 	if err != nil {
 		return OperationRecord{}, err
 	}
-	state, err := s.patchRepositoryState()
+	scope, enabled, err := storedWorkspaceScope(s, snapshot)
+	if err != nil {
+		return OperationRecord{}, err
+	}
+	includeIgnored := true
+	if enabled && !scope.AllIgnored && len(scope.IgnoredPaths) == 0 {
+		// An explicitly empty capture scope proves ignored files are outside
+		// this action. Keep the fingerprint at the same scale rather than
+		// rejecting a legal filename that neither the action nor its Undo reads.
+		includeIgnored = false
+	}
+	state, err := s.patchRepositoryStateWithIgnored(includeIgnored)
 	if err != nil {
 		return OperationRecord{}, fmt.Errorf("record operation start: %w", err)
 	}
@@ -255,10 +266,6 @@ func (s *gitSession) beginOperation(kind, summary string, undoKind string, snaps
 		CreatedAt: time.Now().Unix(), Worktree: s.git.RepoPaths.WorktreePath(),
 		Branch: branch, HeadBefore: head, BeforeState: state,
 		UndoKind: undoKind, Snapshot: snapshot,
-	}
-	scope, enabled, err := storedWorkspaceScope(s, snapshot)
-	if err != nil {
-		return OperationRecord{}, err
 	}
 	if enabled {
 		current, err := s.currentWorkspaceScope(scope)

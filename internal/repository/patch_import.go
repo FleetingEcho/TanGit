@@ -620,12 +620,12 @@ func (s *gitSession) patchRepositoryStateWithIgnored(includeIgnored bool) (strin
 	if listing == "" {
 		paths = nil
 	}
-	ignored, err := s.ignoredWorkspacePaths()
-	if err != nil {
-		return "", err
-	}
-	if !includeIgnored {
-		ignored = nil
+	ignored := []string(nil)
+	if includeIgnored {
+		ignored, err = s.ignoredWorkspacePaths()
+		if err != nil {
+			return "", err
+		}
 	}
 	all := make(map[string]struct{}, len(ignored))
 	for _, name := range ignored {
