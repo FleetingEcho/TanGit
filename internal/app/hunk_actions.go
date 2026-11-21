@@ -47,11 +47,19 @@ func (a *app) changedFileNavigation(direction int) {
 // the existing conflict editor at narrow widths.
 func (a *app) changedFileAndHunkNavigationControls(c *ui.Context) {
 	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(4).Children(func() {
-		a.hunkModeButton(c)
 		if a.hunkMode {
-			a.hunkActionControls(c)
+			// The selection tools sit in one bordered group, so what belongs to
+			// choosing changes reads apart from the file navigation beside it.
+			selectionToolGroup(c).Grow(1).MinWidth(0).AlignItems(ui.Center).Gap(6).Children(func() {
+				a.hunkModeButton(c)
+				a.hunkActionControls(c)
+			})
 		} else {
+			a.hunkModeButton(c)
 			ui.Row(c).Grow(1).MinWidth(0)
+		}
+		if width, _ := c.Size(); width >= 1000 {
+			toolbarSeparator(c)
 		}
 		a.changedFileNavigationControls(c)
 	})
@@ -67,7 +75,13 @@ func (a *app) hunkModeButton(c *ui.Context) {
 	if active {
 		label, tooltip = "Stop selecting changes", "Stop selecting changes and hide the hunk and line actions"
 	}
-	button := ui.ButtonBase(c).Size(26, 26).Center().Radius(theme.Radius).
+	visible := "Select changes"
+	if active {
+		visible = "Done"
+	}
+	windowWidth, _ := c.Size()
+	narrow := windowWidth < 1000
+	button := ui.ButtonBase(c).Height(26).Padding(0, 8).AlignItems(ui.Center).Gap(6).Radius(theme.Radius).
 		Border(1, theme.Border).Label(tr(label)).Tooltip(tr(tooltip)).Selected(active)
 	switch {
 	case active:
@@ -81,6 +95,9 @@ func (a *app) hunkModeButton(c *ui.Context) {
 			color = theme.Accent
 		}
 		ui.Icon(c, hunkModeIcon).FontSize(15).TextColor(color)
+		if !narrow {
+			ui.Text(c, tr(visible)).FontSize(theme.FontSize - 1).TextColor(color).SingleLine()
+		}
 	})
 	if button.Clicked() {
 		if active {
@@ -96,7 +113,12 @@ func (a *app) hunkModeButton(c *ui.Context) {
 // changedFileNavigationControls stays available while the newly chosen diff
 // loads, so repeated next/previous actions never depend on network-speed work.
 func (a *app) changedFileNavigationControls(c *ui.Context) {
-	ui.Row(c).Justify(ui.End).Children(func() {
+	ui.Row(c).Justify(ui.End).AlignItems(ui.Center).Gap(2).Children(func() {
+		// The same chevrons move between hunks; this label says these move
+		// between files.
+		if width, _ := c.Size(); width >= 1000 {
+			ui.Text(c, tr("File")).TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize-2).Margin(0, 4, 0, 0)
+		}
 		flatIconButton(c, "Previous changed file", "Go to the previous changed file (Alt+K)", chevronUpIcon, 14, 4, false, func() {
 			a.changedFileNavigation(-1)
 		})
@@ -289,13 +311,20 @@ func (a *app) hunkActionControls(c *ui.Context) {
 	}
 	compactLabels := normalizeConflictActionStyle(a.settings.ConflictActionStyle) == conflictActionStyleIconsLabels &&
 		(paneWidth <= 0 || paneWidth < conflictCompactPaneWidth)
+	// A wide toolbar keeps the hunk position beside its previous/next buttons; a
+	// narrow one lets the position give way so the actions never clip.
+	windowWidth, _ := c.Size()
+	narrowToolbar := windowWidth < 1000
 	row.Children(func() {
 		if mutationReason != "" {
 			ui.Text(c, tr(mutationReason)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2).
 				SingleLine().Width(0).Grow(1).Tooltip(tr(mutationReason))
 		} else {
-			ui.Text(c, trf("Hunk %d/%d", status.hunk+1, status.count)).TextColor(theme.TextMuted).
-				FontSize(theme.FontSize - 2).SingleLine().Width(0).Grow(1)
+			position := ui.Text(c, trf("Hunk %d/%d", status.hunk+1, status.count)).TextColor(theme.TextMuted).
+				FontSize(theme.FontSize - 2).SingleLine()
+			if narrowToolbar {
+				position.Width(0).Grow(1)
+			}
 		}
 		actions := make([]actionControl, 0, 4)
 		if status.staged {
@@ -324,8 +353,25 @@ func (a *app) hunkActionControls(c *ui.Context) {
 				label: "Diff hunk actions", visibleLabel: "More", icon: moreIcon,
 				description: "Show this action group with labels and unavailable reasons", menu: actions,
 			}, true)
-		} else {
+		} else if narrowToolbar {
+			// One wrapping group keeps every action reachable in a narrow pane.
 			a.conflictActionToolbar(c, "Diff hunk actions", actions)
+		} else {
+			// Moving between hunks sits beside the "Hunk n/m" position it changes;
+			// the actions that change the hunk follow, set off by a divider.
+			split := len(actions) - 2
+			a.conflictActionToolbar(c, "Diff hunk navigation", actions[split:])
+			toolbarSeparator(c)
+			a.conflictActionToolbar(c, "Diff hunk actions", actions[:split])
+			ui.Spacer(c).Grow(1)
 		}
 	})
+}
+
+// selectionToolGroup is the bordered, softly tinted frame around the tools for
+// choosing changes: the hunk actions and the line-selection row.
+func selectionToolGroup(c *ui.Context) ui.Element {
+	theme := c.Theme()
+	return ui.Row(c).Padding(3, 6).Radius(theme.Radius+2).
+		Border(1, theme.Accent.Alpha(0.35)).Background(theme.Accent.Alpha(0.05))
 }

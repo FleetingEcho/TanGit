@@ -154,6 +154,9 @@ func (a *app) syncLineSelection() {
 	}
 	if !a.lineSelectMode || state == nil {
 		a.clearMultipleLineSelection()
+		if state != nil {
+			state.SetExtraSelectedLines(nil)
+		}
 		return
 	}
 	if len(a.lineSelectRanges) == 0 {
@@ -161,6 +164,13 @@ func (a *app) syncLineSelection() {
 			a.lineSelectRanges = []editor.DiffLineRange{selection}
 			a.lineSelectRange, a.lineSelectHas = selection, true
 		}
+	}
+	// The viewer extends one range; every independent selection is painted
+	// through the extra ranges so the lines counted are the lines shown.
+	if len(a.lineSelectRanges) > 1 {
+		state.SetExtraSelectedLines(a.lineSelectRanges)
+	} else {
+		state.SetExtraSelectedLines(nil)
 	}
 }
 
@@ -233,7 +243,8 @@ func (a *app) lineSelectionControls(c *ui.Context, withHint bool) {
 		ui.Column(c)
 		return
 	}
-	ui.Column(c).FillWidth().Gap(4).Children(func() {
+	ui.Column(c).FillWidth().Gap(4).Padding(3, 8).Radius(theme.Radius+2).
+		Border(1, theme.Accent.Alpha(0.35)).Background(theme.Accent.Alpha(0.05)).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 			ui.Row(c).Grow(1).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
 				label := "Select lines to stage"
@@ -247,13 +258,20 @@ func (a *app) lineSelectionControls(c *ui.Context, withHint bool) {
 						FontSize(theme.FontSize - 2).SingleLine().Shrink(0)
 					a.diffLineButton(c)
 				} else if withHint {
-					hint := "Click line numbers to select lines"
-					if a.lineSelectMode {
-						hint = "Click line numbers to choose changes; Shift-click to choose a range."
+					var hint string
+					switch {
+					case a.hunkMode && a.lineSelectMode:
+						hint = tr("Click line numbers to pick lines (Shift-click for a range), or use the hunk actions above.")
+					case a.hunkMode:
+						hint = tr("Click line numbers to pick lines, or use the hunk actions above.")
+					case a.lineSelectMode:
+						hint = tr("Click line numbers to pick lines (Shift-click for a range).")
+					default:
+						hint = tr("Click line numbers to pick lines.")
 					}
-					ui.Text(c, tr(hint)).
+					ui.Text(c, hint).
 						TextColor(theme.TextMuted).FontSize(theme.FontSize - 2).
-						SingleLine().Width(0).Grow(1).Tooltip(tr(hint))
+						SingleLine().Width(0).Grow(1).Tooltip(hint)
 				}
 			})
 			if a.lineSelectMode {

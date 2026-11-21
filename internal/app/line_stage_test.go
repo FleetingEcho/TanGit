@@ -34,21 +34,21 @@ func TestStageSelectedLinesSendsOnlyTheirPatch(t *testing.T) {
 	if !h.app.lineSelectionAvailable() {
 		t.Fatal("the unstaged diff does not offer line selection")
 	}
-	if h.tester.HasText("Click line numbers to select lines") {
+	if h.tester.HasText("Click line numbers to pick lines, or use the hunk actions above.") {
 		t.Fatal("the selection row is shown before selection mode is entered")
 	}
 	if err := h.tester.Click("Select changes"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if !h.tester.HasText("Click line numbers to choose changes; Shift-click to choose a range.") {
+	if !h.tester.HasText("Click line numbers to pick lines (Shift-click for a range), or use the hunk actions above.") {
 		t.Fatalf("the pane does not say how to select lines: %q", h.texts())
 	}
 	if h.tester.HasText("Unstaged changes") {
 		t.Fatal("the selection row repeats the unstaged-side caption")
 	}
 	selectionButton, _ := h.tester.Find("Select changes")
-	hint, _ := h.tester.Find("Click line numbers to choose changes; Shift-click to choose a range.")
+	hint, _ := h.tester.Find("Click line numbers to pick lines (Shift-click for a range), or use the hunk actions above.")
 	if selectionButton.X >= hint.X {
 		t.Fatalf("the selection icon starts at %.0f, to the right of its hint at %.0f", selectionButton.X, hint.X)
 	}
@@ -171,14 +171,14 @@ func TestUntrackedFileStagesOnlyThePickedLine(t *testing.T) {
 	if !h.app.lineSelectionAvailable() {
 		t.Fatal("a new file does not offer line selection")
 	}
-	if h.tester.HasText("Click line numbers to select lines") {
+	if h.tester.HasText("Click line numbers to pick lines, or use the hunk actions above.") {
 		t.Fatal("the selection row is shown before selection mode is entered")
 	}
 	if err := h.tester.Click("Select changes"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if !h.tester.HasText("Click line numbers to choose changes; Shift-click to choose a range.") {
+	if !h.tester.HasText("Click line numbers to pick lines (Shift-click for a range), or use the hunk actions above.") {
 		t.Fatalf("the pane does not say how to select lines: %q", h.texts())
 	}
 
@@ -283,7 +283,7 @@ func TestSelectMultipleLinesCoalescesAdjacentClicks(t *testing.T) {
 		t.Fatal("the button did not enter the multi-line mode")
 	}
 	for _, want := range []string{"Selecting multiple lines",
-		"Click line numbers to choose changes; Shift-click to choose a range.", "Cancel"} {
+		"Click line numbers to pick lines (Shift-click for a range), or use the hunk actions above.", "Cancel"} {
 		if !h.tester.HasText(want) {
 			t.Fatalf("the mode is missing %q: %q", want, h.texts())
 		}
@@ -383,7 +383,7 @@ func TestCancelLeavesTheLineSelectionMode(t *testing.T) {
 			if _, ok := h.app.diffState.SelectedLines(); ok {
 				t.Fatal("the selection was left behind")
 			}
-			if h.tester.HasText("Click line numbers to select lines") {
+			if h.tester.HasText("Click line numbers to pick lines, or use the hunk actions above.") {
 				t.Fatalf("the selection row stays after leaving the mode: %q", h.texts())
 			}
 			if _, ok := h.tester.Find("Select changes"); !ok {
@@ -415,7 +415,7 @@ func TestClickingLineNumbersAutomaticallyEntersMultipleSelection(t *testing.T) {
 	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
 	h.app.hunkMode = true
 	h.tester.Frame()
-	caption, ok := h.tester.Find("Click line numbers to select lines")
+	caption, ok := h.tester.Find("Click line numbers to pick lines, or use the hunk actions above.")
 	if !ok {
 		t.Fatalf("the line-selection hint is not on screen: %q", h.texts())
 	}
@@ -439,4 +439,24 @@ func TestClickingLineNumbersAutomaticallyEntersMultipleSelection(t *testing.T) {
 		got != (editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 2}) {
 		t.Fatalf("two clicks picked %+v, want new-side lines 1 to 2", got)
 	}
+}
+
+// Independent picks stay separate ranges (the viewer paints them through the
+// extra-range hook), not only the latest one.
+func TestMultipleLineSelectionKeepsEveryPickedRange(t *testing.T) {
+	h, _ := twoHunkChangesApp(t, unstagedTrackedFile())
+	h.app.startLineSelection()
+	h.tester.Frame()
+	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1})
+	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 5, End: 5})
+	h.tester.Frame()
+	if count, _ := h.app.selectedLineCount(); count != 2 {
+		t.Fatalf("selected %d lines, want 2", count)
+	}
+	selections := h.app.currentLineSelections()
+	if len(selections) != 2 {
+		t.Fatalf("independent ranges = %+v", selections)
+	}
+	h.app.stopLineSelection()
+	h.tester.Frame()
 }
