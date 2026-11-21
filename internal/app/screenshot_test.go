@@ -1104,7 +1104,7 @@ func TestScreenshot(t *testing.T) {
 		saveScreenshot(t, dir, "89-terminal-position-settings-light", tt)
 		a.closeSettings()
 		a.settings.HiddenHeaderActions = []string{"pull", "push", "theme"}
-		a.settings.HiddenStatusActions = []string{"commands", "pull-requests", "keyboard-shortcuts"}
+		a.settings.HiddenStatusActions = []string{"activity", "pull-requests", "keyboard-shortcuts"}
 		tt.Frame()
 		saveScreenshot(t, dir, "90-toolbar-visibility-light", tt)
 		for _, action := range headerToolbarActions {

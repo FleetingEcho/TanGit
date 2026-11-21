@@ -297,14 +297,13 @@ func TestNewFeatureSurfacesRenderInEveryLanguage(t *testing.T) {
 	}
 }
 
-// The command and pull-request menus belong to the bottom status island, at
-// the status bar's compact button height, not as oversized toolbar controls.
+// The pull-request menu belongs to the bottom status island, at the status
+// bar's compact button height. Shell commands live in the command palette.
 func TestCommandMenusShareTheBottomIsland(t *testing.T) {
 	h, _ := menuTestAppWithCalls(t)
 	h.tester.Frame()
-	commands, ok := h.tester.Find("Commands")
-	if !ok {
-		t.Fatal("commands menu is missing")
+	if _, ok := h.tester.Find("Commands"); ok {
+		t.Fatal("the bottom island still has a separate Commands menu")
 	}
 	pullRequests, ok := h.tester.Find("Pull requests")
 	if !ok {
@@ -314,26 +313,12 @@ func TestCommandMenusShareTheBottomIsland(t *testing.T) {
 	if !ok {
 		t.Fatal("bottom command log is missing")
 	}
-	if absFloat32(commands.Y+commands.H/2-commandLog.Y-commandLog.H/2) > 1 || absFloat32(pullRequests.Y+pullRequests.H/2-commandLog.Y-commandLog.H/2) > 1 {
-		t.Fatalf("commands are not on the bottom island: commands=%+v PR=%+v log=%+v", commands, pullRequests, commandLog)
+	if absFloat32(pullRequests.Y+pullRequests.H/2-commandLog.Y-commandLog.H/2) > 1 {
+		t.Fatalf("pull requests are not on the bottom island: PR=%+v log=%+v", pullRequests, commandLog)
 	}
-	if commands.H > 27 || pullRequests.H > 27 {
-		t.Fatalf("bottom menus do not use compact buttons: commands=%+v PR=%+v", commands, pullRequests)
+	if pullRequests.H > 27 {
+		t.Fatalf("bottom menus do not use compact buttons: PR=%+v", pullRequests)
 	}
-
-	if err := h.tester.Click("Commands"); err != nil {
-		t.Fatalf("open Commands: %v", err)
-	}
-	h.tester.Frame()
-	if err := h.tester.Click("Run command…"); err != nil {
-		t.Fatalf("choose Run command: %v", err)
-	}
-	h.tester.Frame()
-	if !h.app.commandPromptOpen {
-		t.Fatal("the command menu did not open its one-off prompt")
-	}
-	h.app.closeCommandPrompt()
-	h.tester.Frame()
 
 	if err := h.tester.Click("Pull requests"); err != nil {
 		t.Fatalf("open Pull requests: %v", err)

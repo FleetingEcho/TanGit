@@ -364,10 +364,21 @@ func (l *CommandLog) BeginUserCommand(command string) func(output string, failed
 	return l.BeginOrigin(command, CommandOriginUser)
 }
 
+// BeginUserCommandEntry is BeginUserCommand that also returns the record's
+// ID, so a caller can follow that one command's progress and output.
+func (l *CommandLog) BeginUserCommandEntry(command string) (uint64, func(output string, failed bool)) {
+	return l.beginOrigin(command, CommandOriginUser)
+}
+
 // BeginOrigin records an accepted command before it executes.
 func (l *CommandLog) BeginOrigin(command string, origin CommandOrigin) func(output string, failed bool) {
+	_, complete := l.beginOrigin(command, origin)
+	return complete
+}
+
+func (l *CommandLog) beginOrigin(command string, origin CommandOrigin) (uint64, func(output string, failed bool)) {
 	if l == nil {
-		return func(string, bool) {}
+		return 0, func(string, bool) {}
 	}
 	l.mu.Lock()
 	id := l.appendEntryLocked(CommandEntry{
@@ -375,7 +386,7 @@ func (l *CommandLog) BeginOrigin(command string, origin CommandOrigin) func(outp
 	})
 	l.mu.Unlock()
 	l.notifyListener()
-	return func(output string, failed bool) {
+	return id, func(output string, failed bool) {
 		l.mu.Lock()
 		index := l.entryIndexLocked(id)
 		if index >= 0 && l.entries[index].Running {

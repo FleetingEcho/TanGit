@@ -253,23 +253,29 @@ func runTrustedShellCommand(ctx context.Context, root, command string) (string, 
 // the repository root. Output goes to the command log; a toast reports the
 // outcome. Custom commands are unavailable in SSH workspaces.
 func (a *app) runCustomCommand(command, label string) {
+	a.startCustomCommand(command, label)
+}
+
+// startCustomCommand is runCustomCommand that reports the command-log record
+// it created, or 0 when nothing was started.
+func (a *app) startCustomCommand(command, label string) uint64 {
 	if strings.TrimSpace(command) == "" {
-		return
+		return 0
 	}
 	if a.actionBusy || a.customCommandRunning {
 		a.notify("warning", "A command is already running", tr("Wait for the current operation to finish, then try again."))
-		return
+		return 0
 	}
 	if a.location.IsRemote() {
 		a.notify("warning", "Commands run locally", tr("Custom commands run on this computer and cannot act on an SSH workspace yet."))
-		return
+		return 0
 	}
 	if a.snapshot.Root == "" {
-		return
+		return 0
 	}
 	root := a.snapshot.Root
 	expanded := customCommandPlaceholders(command, a.commandContextValues())
-	complete := a.commandLog.BeginUserCommand(expanded)
+	entryID, complete := a.commandLog.BeginUserCommandEntry(expanded)
 	commandLog := a.commandLog
 	generation := a.generation
 	a.customCommandSeq++
@@ -314,6 +320,15 @@ func (a *app) runCustomCommand(command, label string) {
 		output, err := runTrustedShellCommand(ctx, root, expanded)
 		done(output, err != nil)
 	}()
+	return entryID
+}
+
+// cancelCustomCommand stops the running custom command, if any. The command's
+// own completion records its result in the log.
+func (a *app) cancelCustomCommand() {
+	if a.customCommandCancel != nil {
+		a.customCommandCancel()
+	}
 }
 
 // runCustomCommandByMenu runs a stored command from the commands menu.
@@ -323,42 +338,6 @@ func (a *app) runCustomCommandByMenu(command customCommandSetting) {
 		label = "Custom command"
 	}
 	a.runCustomCommand(command.Command, label)
-}
-
-// commandsMenuButton is the header entry point for commands: the one-off
-// command prompt plus every configured custom command, so commands are
-// reachable with the mouse as well as their keys.
-func (a *app) commandsMenuButton(c *ui.Context) {
-	theme := c.Theme()
-	button := compactIconButton(ui.Button(c, "")).Center().Label(tr("Commands")).Tooltip(tr("Run a command (:)"))
-	button.Children(func() {
-		ui.Icon(c, commandIcon).FontSize(15).TextColor(theme.Text)
-	})
-	if button.Hovered() {
-		button.Background(theme.SurfaceHover)
-	}
-	button.PopoverMenuButton(func(m *ui.Menu) {
-		if m.Item(tr("Run command…")).Shortcut(ui.Shift, ui.KeySemicolon).Chosen() {
-			a.openCommandPrompt()
-		}
-		if len(a.settings.CustomCommands) > 0 {
-			m.Separator()
-			for _, command := range a.settings.CustomCommands {
-				command := command
-				label := command.Name
-				if keys := customCommandDisplayKey(command.Key); keys != "" {
-					label = command.Name + "  (" + keys + ")"
-				}
-				if m.Item(label).Chosen() {
-					a.runCustomCommandByMenu(command)
-				}
-			}
-		}
-		m.Separator()
-		if m.Item(tr("Customize commands…")).Chosen() {
-			a.openSettingsSection(settingsPageCommands)
-		}
-	})
 }
 
 // openCommandPrompt opens the one-off command line, the same as pressing :.

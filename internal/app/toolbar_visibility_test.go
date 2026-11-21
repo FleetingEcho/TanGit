@@ -76,12 +76,12 @@ func TestToolbarVisibilitySettingsToggleIndependently(t *testing.T) {
 	h.tester.Frame()
 	h.tester.Scroll(700, 480, 0, 500)
 	h.tester.Frame()
-	if err := h.tester.Click("Show Commands in status bar"); err != nil {
+	if err := h.tester.Click("Show Activity & recovery in status bar"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
 	if !slices.Equal(h.app.settings.HiddenHeaderActions, []string{"pull"}) ||
-		!slices.Equal(h.app.settings.HiddenStatusActions, []string{"commands"}) {
+		!slices.Equal(h.app.settings.HiddenStatusActions, []string{"activity"}) {
 		t.Fatalf("independent choices = header %v, status %v", h.app.settings.HiddenHeaderActions, h.app.settings.HiddenStatusActions)
 	}
 	h.app.closeSettings()
@@ -89,8 +89,8 @@ func TestToolbarVisibilitySettingsToggleIndependently(t *testing.T) {
 	if _, found := h.tester.AccessByRole(ui.RoleButton, "Pull"); found {
 		t.Fatal("hidden Pull remains in the header")
 	}
-	if _, found := h.tester.AccessByRole(ui.RoleButton, "Commands"); found {
-		t.Fatal("hidden Commands remains in the status bar")
+	if _, found := h.tester.AccessByRole(ui.RoleButton, "Activity & recovery"); found {
+		t.Fatal("hidden Activity remains in the status bar")
 	}
 	for _, label := range []string{"Push", "Refresh", "Pull requests", "Toggle terminal"} {
 		if _, found := h.tester.Find(label); !found {
@@ -99,7 +99,7 @@ func TestToolbarVisibilitySettingsToggleIndependently(t *testing.T) {
 	}
 	saved := loadAppSettings(h.app.pathUserData)
 	if !slices.Equal(saved.HiddenHeaderActions, []string{"pull"}) ||
-		!slices.Equal(saved.HiddenStatusActions, []string{"commands"}) {
+		!slices.Equal(saved.HiddenStatusActions, []string{"activity"}) {
 		t.Fatalf("visibility did not persist: header=%v status=%v", saved.HiddenHeaderActions, saved.HiddenStatusActions)
 	}
 }

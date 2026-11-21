@@ -21,7 +21,6 @@ var headerToolbarActions = []toolbarAction{
 }
 
 var statusToolbarActions = []toolbarAction{
-	{id: "commands", label: "Commands"},
 	{id: "pull-requests", label: "Pull requests"},
 	{id: "activity", label: "Activity & recovery"},
 	{id: "terminal", label: "Toggle terminal"},

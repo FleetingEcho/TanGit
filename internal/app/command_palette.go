@@ -3,8 +3,11 @@ package app
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
+
+	"lazygitapp/internal/repository"
 )
 
 // focusRestoreTarget stores logical UI identity only. MyGo's Modal restores
@@ -15,6 +18,30 @@ type focusRestoreTarget struct {
 	pane string
 }
 
+// paletteShellRun follows one command started with the ! mode. It outlives
+// the palette: closing the window never cancels the command, and reopening it
+// shows the command's progress or result until it is dismissed.
+type paletteShellRun struct {
+	app       *app
+	entryID   uint64
+	cancelled bool
+}
+
+func (r paletteShellRun) active() bool { return r.app != nil && r.entryID != 0 }
+
+// entry finds the run's command-log record; false once the log dropped it.
+func (r paletteShellRun) entry() (repository.CommandEntry, bool) {
+	if !r.active() {
+		return repository.CommandEntry{}, false
+	}
+	for _, entry := range r.app.commandLog.Entries() {
+		if entry.ID() == r.entryID {
+			return entry, true
+		}
+	}
+	return repository.CommandEntry{}, false
+}
+
 type commandPaletteState struct {
 	open            bool
 	query           string
@@ -23,6 +50,8 @@ type commandPaletteState struct {
 	search          ui.Handle
 	restore         focusRestoreTarget
 	recent          []commandID
+	pinned          []commandID
+	shellRun        paletteShellRun
 	notice          string
 	revealSelection bool
 }
@@ -42,6 +71,9 @@ func (s *shell) openCommandPalette(c *ui.Context) {
 		return
 	}
 	s.palette.open = true
+	if _, ok := s.palette.shellRun.entry(); !ok {
+		s.palette.shellRun = paletteShellRun{}
+	}
 	s.palette.query = ""
 	s.palette.selected = 0
 	s.palette.notice = ""
@@ -106,7 +138,7 @@ func (s *shell) invokeCommand(id commandID) commandInvokeResult {
 		return result
 	}
 	s.rememberCommand(id)
-	if s.palette.open {
+	if s.palette.open && !result.KeepOpen {
 		s.closeCommandPalette(true)
 	}
 	return result
@@ -114,7 +146,56 @@ func (s *shell) invokeCommand(id commandID) commandInvokeResult {
 
 func (s *shell) commandPaletteCandidates() []commandCandidate {
 	ctx := s.commandContext()
-	return s.catalogFor(ctx).Search(ctx, s.palette.query, s.palette.recent)
+	return s.catalogFor(ctx).SearchPinned(ctx, s.palette.query, s.palette.recent, s.palette.pinned)
+}
+
+// togglePinnedCommand pins or unpins a command for the rest of the session;
+// pinned commands lead the empty-query list.
+func (s *shell) togglePinnedCommand(id commandID) {
+	for index, existing := range s.palette.pinned {
+		if existing == id {
+			s.palette.pinned = append(s.palette.pinned[:index:index], s.palette.pinned[index+1:]...)
+			return
+		}
+	}
+	s.palette.pinned = append(s.palette.pinned, id)
+}
+
+// commandPaletteSection names the empty-query section a candidate belongs to.
+func commandPaletteSection(candidate commandCandidate) string {
+	switch candidate.emptyRank {
+	case -1:
+		return "Pinned"
+	case 0:
+		return "Suggested"
+	case 1:
+		return "Recent"
+	case 2:
+		return "Navigation"
+	}
+	return ""
+}
+
+// commandLabelSpans bolds the matched characters of a label. Offsets that do
+// not fall on rune boundaries are ignored rather than splitting a character.
+func commandLabelSpans(label string, ranges []textRange, color, matched ui.Color) []ui.Span {
+	spans := make([]ui.Span, 0, 2*len(ranges)+1)
+	position := 0
+	for _, r := range ranges {
+		if r.Start < position || r.End > len(label) || r.Start >= r.End ||
+			!utf8.RuneStart(label[r.Start]) || (r.End < len(label) && !utf8.RuneStart(label[r.End])) {
+			continue
+		}
+		if r.Start > position {
+			spans = append(spans, ui.Span{Text: label[position:r.Start], Color: color, Weight: 600})
+		}
+		spans = append(spans, ui.Span{Text: label[r.Start:r.End], Color: matched, Weight: 800})
+		position = r.End
+	}
+	if position < len(label) {
+		spans = append(spans, ui.Span{Text: label[position:], Color: color, Weight: 600})
+	}
+	return spans
 }
 
 func commandIconSVG(icon commandKind) *ui.SVG {
@@ -165,6 +246,26 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 	} else if s.palette.selected < 0 {
 		s.palette.selected = 0
 	}
+	total := s.catalogFor(s.commandContext()).Total(s.commandContext())
+	mode, _ := commandQueryMode(s.palette.query)
+	jump := func(delta int) {
+		if len(candidates) == 0 {
+			return
+		}
+		s.palette.selected = min(max(s.palette.selected+delta, 0), len(candidates)-1)
+		s.palette.revealSelection = true
+		s.palette.notice = ""
+	}
+	pinSelected := func() {
+		if len(candidates) == 0 {
+			return
+		}
+		s.togglePinnedCommand(candidates[s.palette.selected].ID)
+	}
+	scope := ""
+	if tab := s.activeTab(); tab != nil {
+		scope = tab.title()
+	}
 	move := func(delta int) {
 		if len(candidates) == 0 {
 			return
@@ -193,19 +294,25 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 					ui.Icon(c, searchIcon).FontSize(20).TextColor(theme.Accent)
 					ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
 						ui.Text(c, tr("Command Palette")).FontSize(19).Bold()
-						ui.Text(c, tr("Search navigation and actions for the current workspace")).
+						ui.Text(c, tr("Search navigation and actions for the current workspace")+" · "+cmdShortcutChord()+"+Shift+P").
 							TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).SingleLine()
 					})
+					if scope != "" {
+						ui.Badge(c, scope).Tooltip(tr("Commands run against this workspace"))
+					}
 					iconButton(c, "Close Command Palette", "Escape", closeIcon, false, func() { s.closeCommandPalette(true) })
 				})
 				search := ui.TextInput(c, &s.palette.query).Bind(&s.palette.search).
-					Label(tr("Search commands")).Placeholder(tr("Search commands")).Search().AutoFocus()
+					Label(tr("Search commands")).Placeholder(tr("Search commands — or type > @ # / !")).Search().AutoFocus()
 				// Text fields consume Enter for submission and may use Escape for
 				// editing. Scoped command handling makes the palette contract
 				// explicit instead of depending on leftover overlay keys.
 				s.palette.search.OnShortcut(c, 0, ui.KeyEscape, func() { s.closeCommandPalette(true) })
 				s.palette.search.OnShortcut(c, 0, ui.KeyUp, func() { move(-1) })
 				s.palette.search.OnShortcut(c, 0, ui.KeyDown, func() { move(1) })
+				s.palette.search.OnShortcut(c, 0, ui.KeyPageUp, func() { jump(-8) })
+				s.palette.search.OnShortcut(c, 0, ui.KeyPageDown, func() { jump(8) })
+				s.palette.search.OnShortcut(c, ui.Ctrl, ui.KeyB, pinSelected)
 				search.OnSubmit(invokeSelected)
 				if search.Changed() {
 					s.palette.selected = 0
@@ -215,9 +322,12 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 				ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 					ui.Text(c, tr("Commands")).Bold().Grow(1)
 					if query := strings.TrimSpace(s.palette.query); query != "" {
+						if label := commandModeLabel(mode); label != "" {
+							ui.Text(c, tr(label)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+						}
 						ui.Badge(c, fmt.Sprintf("%d", len(candidates)))
 					} else {
-						ui.Text(c, tr("Suggested · Recent · Navigation")).TextColor(theme.TextMuted).
+						ui.Text(c, tr("> commands · @ branches · # commits · / files · ! shell")).TextColor(theme.TextMuted).
 							FontSize(theme.FontSize - 1)
 					}
 				})
@@ -233,8 +343,15 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 						return
 					}
 					ui.Column(c).FillWidth().Gap(4).Role(ui.RoleListBox).Label(tr("Available commands")).Children(func() {
+						sectioned := mode == 0 && strings.TrimSpace(s.palette.query) == ""
+						previousSection := ""
 						for index, candidate := range candidates {
 							index, candidate := index, candidate
+							if section := commandPaletteSection(candidate); sectioned && section != "" && section != previousSection {
+								previousSection = section
+								c.Key("command-palette-section:" + section)
+								ui.Text(c, tr(section)).Bold().FontSize(theme.FontSize-2).TextColor(theme.TextMuted).Padding(6, 10, 0, 10)
+							}
 							c.Key("command-palette:" + string(candidate.ID))
 							s.commandPaletteRow(c, candidate, index == s.palette.selected, s.palette.revealSelection, func() {
 								s.palette.selected = index
@@ -244,16 +361,23 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 						s.palette.revealSelection = false
 					})
 				})
+				s.paletteShellOutput(c)
 				ui.Divider(c)
 				ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
-					ui.Text(c, tr("↑↓ Navigate · Enter Run · Escape Close")).TextColor(theme.TextMuted).
+					ui.Text(c, tr("↑↓ Navigate · PgUp/PgDn Jump · Enter Run · Ctrl+B Pin · Escape Close")).TextColor(theme.TextMuted).
 						FontSize(theme.FontSize - 1).Grow(1)
 					if s.palette.notice != "" {
 						ui.Text(c, s.palette.notice).TextColor(theme.Warning).FontSize(theme.FontSize - 1).
 							MaxWidth(360).SingleLine().Tooltip(s.palette.notice)
 					} else {
-						ui.Text(c, trf("%d commands", len(candidates))).TextColor(theme.TextMuted).
-							FontSize(theme.FontSize - 1)
+						count := trf("%d results", len(candidates))
+						if mode == 0 || mode == '>' {
+							count = trf("%d of %d commands", len(candidates), total)
+							if len(candidates) == total {
+								count = trf("%d commands", total)
+							}
+						}
+						ui.Text(c, count).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 					}
 				})
 			})
@@ -262,6 +386,15 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 			}
 			if back.OverlayShortcut(0, ui.KeyDown) {
 				move(1)
+			}
+			if back.OverlayShortcut(0, ui.KeyPageUp) {
+				jump(-8)
+			}
+			if back.OverlayShortcut(0, ui.KeyPageDown) {
+				jump(8)
+			}
+			if back.OverlayShortcut(ui.Ctrl, ui.KeyB) {
+				pinSelected()
 			}
 			if back.OverlayShortcut(0, ui.KeyEnter) {
 				invokeSelected()
@@ -295,9 +428,21 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 		if selected {
 			color = theme.Accent
 		}
-		ui.Icon(c, commandIconSVG(candidate.Icon)).FontSize(16).TextColor(color)
+		glyph := candidate.Glyph
+		if glyph == nil {
+			glyph = commandIconSVG(candidate.Icon)
+		}
+		ui.Icon(c, glyph).FontSize(16).TextColor(color)
 		ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
-			ui.Text(c, candidate.Label).Bold().SingleLine().TextColor(theme.Text)
+			labelColor := theme.Text
+			if !candidate.Enabled {
+				labelColor = theme.TextMuted
+			}
+			if spans := commandLabelSpans(candidate.Label, candidate.MatchRanges, labelColor, theme.Accent); len(candidate.MatchRanges) > 0 && len(spans) > 0 {
+				ui.RichText(c, spans...).SingleLine()
+			} else {
+				ui.Text(c, candidate.Label).Bold().SingleLine().TextColor(labelColor)
+			}
 			detail := candidate.Detail
 			if !candidate.Enabled && candidate.DisabledReason != "" {
 				detail = candidate.DisabledReason
@@ -312,7 +457,11 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 			}
 		})
 		ui.Column(c).Gap(2).Shrink(0).AlignItems(ui.End).Children(func() {
-			ui.Text(c, tr(candidate.Group.label())).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted).SingleLine()
+			groupLabel := tr(candidate.Group.label())
+			if candidate.Pinned {
+				groupLabel = "★ " + groupLabel
+			}
+			ui.Text(c, groupLabel).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted).SingleLine()
 			if candidate.Chord != "" {
 				ui.Text(c, candidate.Chord).FontSize(theme.FontSize - 2).TextColor(theme.Accent).SingleLine()
 			}
@@ -321,4 +470,71 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 	if row.Clicked() && candidate.Enabled {
 		invoke()
 	}
+}
+
+func commandModeLabel(mode byte) string {
+	switch mode {
+	case '>':
+		return "Commands"
+	case '@':
+		return "Branches"
+	case '#':
+		return "Commits"
+	case '/':
+		return "Changed files"
+	case '!':
+		return "Shell command"
+	}
+	return ""
+}
+
+// paletteShellOutput shows the ! command's progress and output under the
+// list. The command keeps running if the palette is closed; Cancel stops it.
+func (s *shell) paletteShellOutput(c *ui.Context) {
+	run := s.palette.shellRun
+	if !run.active() {
+		return
+	}
+	entry, ok := run.entry()
+	if !ok {
+		return
+	}
+	theme := c.Theme()
+	ui.Divider(c)
+	ui.Column(c).FillWidth().Gap(6).Height(210).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+			switch {
+			case entry.Running:
+				ui.Spinner(c).TextColor(theme.Warning).Label(tr("Working"))
+				ui.Text(c, tr("Running")).Bold().TextColor(theme.Warning)
+			case run.cancelled:
+				ui.Text(c, tr("Cancelled")).Bold().TextColor(theme.Warning)
+			case entry.Failed:
+				ui.Text(c, tr("Failed")).Bold().TextColor(theme.Danger)
+			default:
+				ui.Text(c, tr("Succeeded")).Bold().TextColor(theme.Success)
+			}
+			ui.Text(c, entry.Command).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).SingleLine().Grow(1).MinWidth(0)
+			if entry.Running {
+				if ui.Button(c, tr("Cancel command")).Clicked() {
+					s.palette.shellRun.cancelled = true
+					run.app.cancelCustomCommand()
+				}
+			} else if ui.Button(c, tr("Dismiss")).Clicked() {
+				s.palette.shellRun = paletteShellRun{}
+			}
+		})
+		ui.Scroll(c).Grow(1).Children(func() {
+			output := strings.TrimRight(entry.Output, "\n")
+			switch {
+			case output != "":
+				ui.Text(c, output).FontSize(theme.FontSize - 1).TextColor(theme.Text)
+			case entry.Running:
+				ui.Text(c, tr("Waiting for output… Output appears when the command finishes. You can close this window; the command keeps running until it ends or you cancel it.")).
+					TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+			default:
+				ui.Text(c, tr("The command printed nothing.")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+			}
+		})
+	})
 }

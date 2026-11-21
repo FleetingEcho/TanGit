@@ -7,6 +7,8 @@ import (
 	"sync"
 	"unicode"
 
+	"github.com/egoist/mygo/ui"
+
 	"lazygitapp/internal/repository"
 )
 
@@ -85,6 +87,14 @@ type commandSpec struct {
 	Group    commandGroup
 	Chord    string
 	Icon     commandKind
+	// Glyph overrides Icon with a specific drawing.
+	Glyph *ui.SVG
+	// Prefix is the palette mode character ('@', '#', '/', '!') that reveals
+	// this command. Zero means an ordinary command shown in the default mode
+	// and after '>'.
+	Prefix byte
+	// KeepOpen leaves the palette open after the command is accepted.
+	KeepOpen bool
 	Resolve  func(commandContext) commandState
 	Run      func(commandContext)
 }
@@ -101,9 +111,11 @@ type commandCandidate struct {
 	Group          commandGroup
 	Chord          string
 	Icon           commandKind
+	Glyph          *ui.SVG
 	Enabled        bool
 	DisabledReason string
 	MatchRanges    []textRange
+	Pinned         bool
 
 	matchRank   int
 	contextRank int
@@ -121,8 +133,9 @@ const (
 )
 
 type commandInvokeResult struct {
-	Status commandInvokeStatus
-	Reason string
+	Status   commandInvokeStatus
+	Reason   string
+	KeepOpen bool
 }
 
 func (r commandInvokeResult) Accepted() bool { return r.Status == commandInvokeAccepted }
@@ -260,21 +273,73 @@ func utf8DecodeRuneInString(value string) (rune, int) {
 	return 0, 1
 }
 
+// commandQueryMode splits a leading palette mode character from the query:
+// '>' commands only, '@' branches, '#' commits, '/' files and '!' a shell
+// command line. Everything else is the default mode.
+func commandQueryMode(query string) (byte, string) {
+	query = strings.TrimLeftFunc(query, unicode.IsSpace)
+	if query == "" {
+		return 0, ""
+	}
+	switch query[0] {
+	case '>', '@', '#', '/', '!':
+		rest := query[1:]
+		if query[0] != '!' {
+			rest = strings.TrimSpace(rest)
+		} else {
+			rest = strings.TrimLeftFunc(rest, unicode.IsSpace)
+		}
+		return query[0], rest
+	}
+	return 0, strings.TrimSpace(query)
+}
+
+// Total counts the ordinary commands visible in the current context.
+func (c *commandCatalog) Total(ctx commandContext) int {
+	if c == nil {
+		return 0
+	}
+	total := 0
+	for _, spec := range c.specs {
+		if spec.Prefix != 0 {
+			continue
+		}
+		if spec.Resolve != nil && spec.Resolve(ctx).Visible {
+			total++
+		}
+	}
+	return total
+}
+
 // Search resolves every candidate at read time. Resolve functions must only
 // inspect published UI state; they never execute Git, disk or network work.
 func (c *commandCatalog) Search(ctx commandContext, query string, recent []commandID) []commandCandidate {
+	return c.SearchPinned(ctx, query, recent, nil)
+}
+
+// SearchPinned is Search with the user's pinned commands shown first in the
+// empty-query list.
+func (c *commandCatalog) SearchPinned(ctx commandContext, query string, recent, pinned []commandID) []commandCandidate {
 	if c == nil {
 		return nil
 	}
-	query = strings.TrimSpace(query)
+	mode, query := commandQueryMode(query)
 	recentRanks := make(map[commandID]int, len(recent))
 	for index, id := range recent {
 		if _, ok := recentRanks[id]; !ok {
 			recentRanks[id] = index
 		}
 	}
+	pinnedSet := make(map[commandID]bool, len(pinned))
+	for _, id := range pinned {
+		pinnedSet[id] = true
+	}
+	plainMode := mode == 0 || mode == '>'
 	candidates := make([]commandCandidate, 0, len(c.specs))
 	for _, spec := range c.specs {
+		if plainMode && spec.Prefix != 0 || !plainMode && spec.Prefix != mode {
+			continue
+		}
 		state := commandState{}
 		if spec.Resolve != nil {
 			state = spec.Resolve(ctx)
@@ -283,7 +348,13 @@ func (c *commandCatalog) Search(ctx commandContext, query string, recent []comma
 			continue
 		}
 		label := tr(spec.Label)
-		match, matched := commandTextMatch(spec, label, query)
+		if spec.Prefix == '!' {
+			label = spec.Label
+		}
+		match, matched := commandMatch{}, true
+		if spec.Prefix != '!' {
+			match, matched = commandTextMatch(spec, label, query)
+		}
 		if !matched {
 			continue
 		}
@@ -292,8 +363,10 @@ func (c *commandCatalog) Search(ctx commandContext, query string, recent []comma
 			recentRank = len(recent) + 1
 		}
 		emptyRank := 3
-		if query == "" {
+		if mode == 0 && query == "" {
 			switch {
+			case pinnedSet[spec.ID]:
+				emptyRank = -1
 			case state.ContextScore >= 15:
 				emptyRank = 0
 			case isRecent:
@@ -304,10 +377,15 @@ func (c *commandCatalog) Search(ctx commandContext, query string, recent []comma
 				continue
 			}
 		}
+		detail := spec.Detail
+		if spec.Prefix == 0 {
+			detail = tr(detail)
+		}
 		candidates = append(candidates, commandCandidate{
-			ID: spec.ID, Label: label, Detail: tr(spec.Detail), Group: spec.Group,
-			Chord: spec.Chord, Icon: spec.Icon, Enabled: state.Enabled,
+			ID: spec.ID, Label: label, Detail: detail, Group: spec.Group,
+			Chord: spec.Chord, Icon: spec.Icon, Glyph: spec.Glyph, Enabled: state.Enabled,
 			DisabledReason: tr(state.DisabledReason), MatchRanges: match.ranges,
+			Pinned:    pinnedSet[spec.ID],
 			matchRank: match.rank, contextRank: state.ContextScore,
 			recentRank: recentRank, emptyRank: emptyRank,
 		})
@@ -328,8 +406,15 @@ func (c *commandCatalog) Search(ctx commandContext, query string, recent []comma
 		}
 		return 0
 	})
-	if query == "" && len(candidates) > 40 {
-		candidates = candidates[:40]
+	limit := 0
+	switch {
+	case mode == 0 && query == "":
+		limit = 40
+	case !plainMode:
+		limit = 100
+	}
+	if limit > 0 && len(candidates) > limit {
+		candidates = candidates[:limit]
 	}
 	return candidates
 }
@@ -366,7 +451,7 @@ func (c *commandCatalog) Invoke(ctx commandContext, id commandID) commandInvokeR
 			}
 		}
 		spec.Run(ctx)
-		return commandInvokeResult{Status: commandInvokeAccepted}
+		return commandInvokeResult{Status: commandInvokeAccepted, KeepOpen: spec.KeepOpen}
 	}
 	return commandInvokeResult{Status: commandInvokeUnknown, Reason: "Command is unavailable"}
 }
@@ -406,8 +491,8 @@ func staticCommandSpecs() []commandSpec {
 
 func buildStaticCommandSpecs() []commandSpec {
 	specs := []commandSpec{
-		{ID: "tabs/new-home", Label: "Open a new Home tab", Detail: "Open the repository picker in a new tab", Keywords: []string{"picker", "home", "new tab"}, Group: commandGroupApplication, Chord: cmdShortcutChord() + "+T", Icon: commandIconNavigation, Resolve: shellState, Run: func(ctx commandContext) { ctx.Shell.request(ctx.Shell.showHome) }},
-		{ID: "tabs/close-active", Label: "Close the active tab", Group: commandGroupApplication, Chord: cmdShortcutChord() + "+W", Icon: commandIconNavigation, Resolve: func(ctx commandContext) commandState {
+		{ID: "tabs/new-home", Label: "Open a new Home tab", Detail: "Open the repository picker in a new tab", Keywords: []string{"picker", "home", "new tab"}, Group: commandGroupApplication, Chord: cmdShortcutChord() + "+T", Icon: commandIconNavigation, Glyph: initRepoIcon, Resolve: shellState, Run: func(ctx commandContext) { ctx.Shell.request(ctx.Shell.showHome) }},
+		{ID: "tabs/close-active", Label: "Close the active tab", Group: commandGroupApplication, Chord: cmdShortcutChord() + "+W", Icon: commandIconNavigation, Glyph: closeIcon, Resolve: func(ctx commandContext) commandState {
 			state := shellState(ctx)
 			if ctx.Shell == nil || ctx.Shell.activeTab() == nil || !ctx.Shell.canClose(ctx.Shell.activeTab()) {
 				state.Enabled = false
@@ -421,8 +506,8 @@ func buildStaticCommandSpecs() []commandSpec {
 				}
 			})
 		}},
-		{ID: "tabs/cycle-next", Label: "Switch to the next tab", Group: commandGroupApplication, Chord: "Ctrl+Tab", Icon: commandIconNavigation, Resolve: shellState, Run: func(ctx commandContext) { ctx.Shell.request(func() { ctx.Shell.cycleTab(1) }) }},
-		{ID: "tabs/cycle-previous", Label: "Switch to the previous tab", Group: commandGroupApplication, Chord: "Ctrl+Shift+Tab", Icon: commandIconNavigation, Resolve: shellState, Run: func(ctx commandContext) { ctx.Shell.request(func() { ctx.Shell.cycleTab(-1) }) }},
+		{ID: "tabs/cycle-next", Label: "Switch to the next tab", Group: commandGroupApplication, Chord: "Ctrl+Tab", Icon: commandIconNavigation, Glyph: chevronRightIcon, Resolve: shellState, Run: func(ctx commandContext) { ctx.Shell.request(func() { ctx.Shell.cycleTab(1) }) }},
+		{ID: "tabs/cycle-previous", Label: "Switch to the previous tab", Group: commandGroupApplication, Chord: "Ctrl+Shift+Tab", Icon: commandIconNavigation, Glyph: backIcon, Resolve: shellState, Run: func(ctx commandContext) { ctx.Shell.request(func() { ctx.Shell.cycleTab(-1) }) }},
 		{ID: commandOpenSettings, Label: "Open Settings", Detail: "Preferences, workspace sections and custom commands", Keywords: []string{"preferences", "settings"}, Group: commandGroupApplication, Chord: "Ctrl+,", Icon: commandIconSettings, Resolve: appState, Run: func(ctx commandContext) { ctx.App.openSettings() }},
 		{ID: commandOpenHelp, Label: "Open Keyboard Shortcuts", Keywords: []string{"help", "keys", "shortcut help"}, Group: commandGroupApplication, Chord: "F1", Icon: commandIconHelp, Resolve: appState, Run: func(ctx commandContext) { ctx.App.openKeybindings() }},
 		{ID: commandOpenFetch, Label: "Fetch from the remotes", Keywords: []string{"fetch", "download", "sync"}, Group: commandGroupRepository, Chord: "f", Icon: commandIconFetch, Resolve: fetchState, Run: func(ctx commandContext) { ctx.App.beginFetch() }},
@@ -433,8 +518,34 @@ func buildStaticCommandSpecs() []commandSpec {
 		{ID: commandOpenLog, Label: "Open Command Log", Keywords: []string{"commands", "output", "errors", "git log"}, Group: commandGroupApplication, Chord: "Ctrl+L", Icon: commandIconLog, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openCommandLog() }},
 		{ID: commandCommitStaged, Label: "Commit staged changes", Detail: "Write a commit message for the current staged changes", Keywords: []string{"commit", "save", "staged"}, Group: commandGroupChanges, Chord: "c", Icon: commandIconCommit, Resolve: commitState, Run: func(ctx commandContext) { ctx.App.showCommitForm = true }},
 		{ID: commandContinue, Label: "Continue the interrupted operation", Keywords: []string{"continue", "merge", "rebase", "cherry-pick"}, Group: commandGroupRepository, Icon: commandIconContinue, Resolve: continueState, Run: func(ctx commandContext) { ctx.App.confirmContinueOperation() }},
-		{ID: commandOpenRecovery, Label: "Open Safety Journal", Keywords: []string{"recovery", "undo", "journal", "operations"}, Group: commandGroupRepository, Icon: commandIconActivity, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openActivityRecovery() }},
+		{ID: commandOpenRecovery, Label: "Open Safety Journal", Keywords: []string{"recovery", "undo", "journal", "operations"}, Group: commandGroupRepository, Icon: commandIconActivity, Glyph: reflogIcon, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openActivityRecovery() }},
 		{ID: commandOpenPRChecks, Label: "Open Pull Request Checks", Keywords: []string{"checks", "ci", "pull request", "github"}, Group: commandGroupBranches, Icon: commandIconActivity, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openPullRequestChecks() }},
+	}
+	specs = append(specs, commandSpec{ID: "commands/run", Label: "Run a shell command…", Detail: "Run a one-off command in the repository root; type ! in the palette to run one directly", Keywords: []string{"execute", "shell", "terminal", "command line", "run"}, Group: commandGroupApplication, Chord: ":", Glyph: terminalIcon, Resolve: func(ctx commandContext) commandState {
+		state := localCommandState(ctx)
+		state.ContextScore = 0
+		return state
+	}, Run: func(ctx commandContext) { ctx.App.openCommandPrompt() }})
+	specs = append(specs, commandSpec{ID: "commands/customize", Label: "Customize commands…", Detail: "Add, edit or remove custom shell commands", Keywords: []string{"custom commands", "settings"}, Group: commandGroupApplication, Glyph: settingsIcon, Resolve: func(ctx commandContext) commandState {
+		state := appState(ctx)
+		state.ContextScore = 0
+		return state
+	}, Run: func(ctx commandContext) { ctx.App.openSettingsSection(settingsPageCommands) }})
+	for _, name := range themeNames {
+		name := name
+		specs = append(specs, commandSpec{ID: commandID("theme/" + name), Label: "Switch theme: " + name, Keywords: []string{"theme", "appearance", "color", "dark", "light", name}, Group: commandGroupApplication, Glyph: themeIcon, Resolve: func(ctx commandContext) commandState {
+			state := appState(ctx)
+			state.ContextScore = 0
+			if state.Enabled && ctx.App.settings.Theme == name {
+				state.Enabled = false
+				state.DisabledReason = "This theme is already active"
+			}
+			return state
+		}, Run: func(ctx commandContext) {
+			ctx.App.settings.Theme = name
+			ctx.App.applySettingsChange()
+			ctx.Shell.invalidate()
+		}})
 	}
 	for section := 0; section < workspaceSectionCount; section++ {
 		section := section
@@ -453,7 +564,7 @@ func buildStaticCommandSpecs() []commandSpec {
 		id    commandID
 		index int
 	}{{commandOpenCockpit, sectionOverview}, {commandOpenChanges, sectionChanges}, {commandOpenAgents, sectionAgents}} {
-		specs = append(specs, commandSpec{ID: section.id, Label: "Open " + workspaceSections[section.index], Keywords: []string{workspaceSectionIDs[section.index], workspaceSections[section.index], "section", "navigate"}, Group: commandGroupNavigation, Icon: commandIconNavigation, Resolve: workspaceState(section.index), Run: func(ctx commandContext) { ctx.App.setWorkspaceTab(section.index) }})
+		specs = append(specs, commandSpec{ID: section.id, Label: "Open " + workspaceSections[section.index], Keywords: []string{workspaceSectionIDs[section.index], workspaceSections[section.index], "section", "navigate"}, Group: commandGroupNavigation, Icon: commandIconNavigation, Glyph: workspaceSectionGlyph(section.index), Resolve: workspaceState(section.index), Run: func(ctx commandContext) { ctx.App.setWorkspaceTab(section.index) }})
 	}
 	seenKeyboardIDs := map[commandID]int{}
 	for _, command := range keyboardCommands() {
@@ -471,7 +582,7 @@ func buildStaticCommandSpecs() []commandSpec {
 		}
 		specs = append(specs, commandSpec{
 			ID: id, Label: command.label,
-			Group: commandGroupForKeyboard(command.group), Chord: command.keys, Icon: commandIconDefault,
+			Group: commandGroupForKeyboard(command.group), Chord: keyboardChordLabel(command), Icon: commandIconDefault, Glyph: keyboardCommandGlyph(command),
 			Keywords: []string{command.group, command.label},
 			Resolve: func(ctx commandContext) commandState {
 				if id == commandNextUnreviewed && ctx.App != nil && ctx.App.workspaceTab == sectionOverview {
@@ -679,11 +790,13 @@ func keyboardState(ctx commandContext, command keyboardCommand) commandState {
 func (s *shell) catalogFor(ctx commandContext) *commandCatalog {
 	_ = staticCommandSpecs()
 	actions := workflowActionSpecs(ctx)
-	if ctx.App == nil || (len(ctx.App.settings.CustomCommands) == 0 && len(actions) == 0) {
+	dynamic := s.dynamicCommandSpecs(ctx)
+	if ctx.App == nil || (len(ctx.App.settings.CustomCommands) == 0 && len(actions) == 0 && len(dynamic) == 0) {
 		return staticCatalog
 	}
 	base := append([]commandSpec(nil), staticSpecs...)
 	base = append(base, actions...)
+	base = append(base, dynamic...)
 	used := make(map[commandID]bool, len(base)+len(ctx.App.settings.CustomCommands))
 	for _, spec := range base {
 		used[spec.ID] = true
@@ -718,4 +831,89 @@ func (s *shell) catalogFor(ctx commandContext) *commandCatalog {
 		}
 	}
 	return newCommandCatalog(base)
+}
+
+// keyboardChordLabel shows a shifted letter as Shift+letter: lazygit's z and
+// Z (undo and redo) otherwise differ only by letter case.
+func keyboardChordLabel(command keyboardCommand) string {
+	keys := command.keys
+	if command.mods&ui.Shift != 0 && len(keys) == 1 && keys[0] >= 'A' && keys[0] <= 'Z' {
+		return "Shift+" + keys
+	}
+	return keys
+}
+
+// localCommandState gates shell commands: they run on this computer, in a
+// ready local repository.
+func localCommandState(ctx commandContext) commandState {
+	state := repositoryStateAllowBusy(ctx)
+	if state.Enabled && ctx.App.location.IsRemote() {
+		state.Enabled = false
+		state.DisabledReason = "Custom shell commands are unavailable in SSH workspaces"
+	}
+	return state
+}
+
+func workspaceSectionGlyph(section int) *ui.SVG {
+	switch workspaceSectionIDs[section] {
+	case "code":
+		return editIcon
+	case "changes":
+		return stageIcon
+	case "history":
+		return historyIcon
+	case "graph":
+		return graphIcon
+	case "branches":
+		return branchesIcon
+	case "remotes":
+		return remotesIcon
+	case "stash":
+		return stashIcon
+	case "tags":
+		return tagsIcon
+	case "worktrees":
+		return worktreesIcon
+	case "agents":
+		return appIcon
+	case "submodules":
+		return submodulesIcon
+	case "reflog":
+		return reflogIcon
+	case "compare":
+		return compareIcon
+	}
+	return folderOpenIcon
+}
+
+// keyboardCommandGlyph gives the lazygit-derived commands the drawing of what
+// they act on: undo and redo get their own, the rest follow their group.
+func keyboardCommandGlyph(command keyboardCommand) *ui.SVG {
+	switch {
+	case strings.HasPrefix(command.label, "Undo"):
+		return revertIcon
+	case strings.HasPrefix(command.label, "Redo"):
+		return refreshIcon
+	}
+	switch commandGroupForKeyboard(command.group) {
+	case commandGroupChanges:
+		return stageIcon
+	case commandGroupHistory:
+		return graphIcon
+	case commandGroupBranches:
+		return branchesIcon
+	case commandGroupRemotes:
+		return remotesIcon
+	case commandGroupStash:
+		return stashIcon
+	case commandGroupTags:
+		return tagsIcon
+	case commandGroupWorktrees:
+		return worktreesIcon
+	case commandGroupSubmodules:
+		return submodulesIcon
+	case commandGroupAgents:
+		return appIcon
+	}
+	return nil
 }

@@ -1446,9 +1446,6 @@ func (a *app) statusBar(c *ui.Context) {
 					ui.Text(c, tr("Working…")).Bold().TextColor(theme.Warning)
 				})
 			}
-			if !a.editorOnlyWorkspace() && a.statusActionVisible("commands") {
-				a.commandsMenuButton(c)
-			}
 			if !a.editorOnlyWorkspace() && a.statusActionVisible("pull-requests") {
 				a.pullRequestMenuButton(c)
 			}

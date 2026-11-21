@@ -958,8 +958,6 @@ func toolbarActionIcon(id string) *ui.SVG {
 		return themeIcon
 	case "settings":
 		return settingsIcon
-	case "commands":
-		return commandIcon
 	case "pull-requests":
 		return externalLinkIcon
 	case "activity":
