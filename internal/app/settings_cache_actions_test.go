@@ -39,14 +39,23 @@ func TestCacheRefreshBelongsToGroupHeader(t *testing.T) {
 	if !found {
 		t.Fatal("Settings dialog is missing")
 	}
-	if refresh.Y >= manage.Y || refresh.Y+refresh.H > total.Y {
-		t.Fatalf("refresh is not in the group header: refresh=%+v total=%+v manage=%+v", refresh, total, manage)
+	if refresh.Y+refresh.H > total.Y || manage.Y+manage.H > total.Y {
+		t.Fatalf("cache actions are not in the group header: refresh=%+v total=%+v manage=%+v", refresh, total, manage)
 	}
 	if refresh.X+refresh.W < dialog.Bounds.X+dialog.Bounds.W-48 {
 		t.Fatalf("refresh is not aligned with the header's right edge: refresh=%+v dialog=%+v", refresh, dialog.Bounds)
 	}
+	if manage.X+manage.W > refresh.X+1 {
+		t.Fatalf("Manage and refresh overlap or are out of order: Manage=%v Refresh=%v", manage, refresh)
+	}
+	if _, found := h.tester.AccessByRole(ui.RoleText, "Manage repositories"); found {
+		t.Fatal("Manage repositories is visible as text instead of an icon-only button")
+	}
+	if _, found := h.tester.AccessByRole(ui.RoleButton, "Manage repositories"); !found {
+		t.Fatal("the repository-management icon button is missing")
+	}
 	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
-		saveScreenshot(t, dir, "cache-refresh-in-group-header", h.tester)
+		saveScreenshot(t, dir, "cache-actions-in-group-header", h.tester)
 	}
 
 	shard := filepath.Join(h.app.pathCache, codeSearchCacheDirName, "0123456789abcdef0123456789abcdef", "working.zoekt")
@@ -77,5 +86,20 @@ func TestCacheRefreshBelongsToGroupHeader(t *testing.T) {
 	h.tester.Frame()
 	if _, found := h.tester.Find("Refresh cache size"); !found {
 		t.Fatal("header refresh is clipped by the narrower settings layout")
+	}
+
+	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+		saveScreenshot(t, dir, "cache-actions-in-group-header-narrow", h.tester)
+	}
+	if err := h.tester.Click("Manage repositories"); err != nil {
+		t.Fatal(err)
+	}
+	if !h.app.cacheRepositories.open {
+		t.Fatal("the header icon does not open the repository cache manager")
+	}
+	h.tester.Key(0, ui.KeyEscape)
+	h.tester.Frame()
+	if h.app.cacheRepositories.open {
+		t.Fatal("closing the manager after a header-icon click failed")
 	}
 }

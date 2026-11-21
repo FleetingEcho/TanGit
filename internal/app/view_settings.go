@@ -317,6 +317,9 @@ func (a *app) cacheSettings(c *ui.Context) {
 	avatarDescription := "Commit-author images shown next to commits. Caching avoids repeated downloads from Git hosting services."
 	settingsSection(c, func() {
 		settingsGroup(c, trashIcon, "Cache", "Storage used by Zoekt code-search indexes and downloaded author avatars", func() {
+			iconButton(c, "Manage repositories", "Choose which recent repository's search index to clear",
+				searchIcon, a.cacheCleanupBusy, a.openRepositoryCaches)
+		}, func() {
 			iconButton(c, "Refresh cache size", "Remeasure the disk space used by Zoekt indexes and cached author avatars", refreshIcon,
 				a.cacheUsage.loading || a.cacheCleanupBusy, a.refreshCacheUsage)
 		})
@@ -341,8 +344,6 @@ func (a *app) cacheSettings(c *ui.Context) {
 		}
 		ui.Divider(c)
 		settingRow(c, "Cache", "", func() {
-			iconTextButton(c, "Manage repositories", "Choose which recent repository's search index to clear",
-				searchIcon, a.cacheCleanupBusy, a.openRepositoryCaches)
 			iconTextButtonState(c, "Clear cache", "Delete ALL Zoekt code-search indexes and cached author avatars across every project. They are recreated when needed.", trashIcon,
 				false, a.cacheCleanupBusy, a.openCacheCleaner)
 		})
