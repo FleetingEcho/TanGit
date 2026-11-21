@@ -15,6 +15,9 @@ const commandLogLimit = 400
 // bound applies to an incomplete, not-yet-redacted line.
 const commandOutputLimit = 16 * 1024
 
+// CommandOutputLimit is how much of one command's output a record keeps.
+const CommandOutputLimit = commandOutputLimit
+
 // CommandEntry is one Git or custom command and its output.
 type CommandEntry struct {
 	At      time.Time

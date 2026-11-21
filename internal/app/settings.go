@@ -146,6 +146,9 @@ type appSettings struct {
 	PinnedCommands []string `json:"pinnedCommands,omitempty"`
 	RecentCommands []string `json:"recentCommands,omitempty"`
 	ShellHistory   []string `json:"shellHistory,omitempty"`
+	// CommandUses counts how often each palette command ran, so the commands
+	// used most rise in the list.
+	CommandUses map[string]int `json:"commandUses,omitempty"`
 	// RemoteWebURLs stores browser-page overrides by repository root and then
 	// remote name, allowing origin, upstream, and arbitrary hosts to differ.
 	RemoteWebURLs map[string]map[string]string `json:"remoteWebUrls,omitempty"`

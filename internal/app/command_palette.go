@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -24,6 +25,7 @@ type focusRestoreTarget struct {
 type paletteShellRun struct {
 	app       *app
 	entryID   uint64
+	line      string
 	cancelled bool
 }
 
@@ -48,6 +50,7 @@ type commandPaletteState struct {
 	pinned          []commandID
 	shellRun        paletteShellRun
 	shellHistory    []string
+	uses            map[commandID]int
 	historyPos      int
 	historyDraft    string
 	actionIndex     int
@@ -126,6 +129,11 @@ func (s *shell) rememberCommand(id commandID) {
 		}
 	}
 	s.palette.recent = recent
+	if s.palette.uses == nil {
+		s.palette.uses = make(map[commandID]int)
+	}
+	s.palette.uses[id]++
+	s.trimCommandUses()
 	s.savePaletteState()
 }
 
@@ -154,6 +162,10 @@ func (s *shell) loadPaletteState() {
 	s.palette.pinned = toIDs(a.settings.PinnedCommands)
 	s.palette.recent = toIDs(a.settings.RecentCommands)
 	s.palette.shellHistory = append([]string(nil), a.settings.ShellHistory...)
+	s.palette.uses = make(map[commandID]int, len(a.settings.CommandUses))
+	for id, count := range a.settings.CommandUses {
+		s.palette.uses[commandID(id)] = count
+	}
 }
 
 // savePaletteState stores the pins, recents and shell history beside the
@@ -166,6 +178,13 @@ func (s *shell) savePaletteState() {
 	a.settings.PinnedCommands = normalizeCommandList(commandIDsToStrings(s.palette.pinned), 50)
 	a.settings.RecentCommands = normalizeCommandList(commandIDsToStrings(s.palette.recent), 20)
 	a.settings.ShellHistory = normalizeCommandList(s.palette.shellHistory, 50)
+	a.settings.CommandUses = nil
+	if len(s.palette.uses) > 0 {
+		a.settings.CommandUses = make(map[string]int, len(s.palette.uses))
+		for id, count := range s.palette.uses {
+			a.settings.CommandUses[string(id)] = count
+		}
+	}
 	if a.dataDir() != "" {
 		a.saveSettings()
 	}
@@ -236,7 +255,9 @@ func (s *shell) invokeCommandAction(id commandID, action int) commandInvokeResul
 
 func (s *shell) commandPaletteCandidates() []commandCandidate {
 	ctx := s.commandContext()
-	return s.catalogFor(ctx).SearchPinned(ctx, s.palette.query, s.palette.recent, s.palette.pinned)
+	return s.catalogFor(ctx).SearchWith(ctx, s.palette.query, commandSearchHints{
+		Recent: s.palette.recent, Pinned: s.palette.pinned, Uses: s.palette.uses,
+	})
 }
 
 // togglePinnedCommand pins or unpins a command for the rest of the session;
@@ -415,7 +436,7 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 					iconButton(c, "Close Command Palette", "Escape", closeIcon, false, func() { s.closeCommandPalette(true) })
 				})
 				search := ui.TextInput(c, &s.palette.query).Bind(&s.palette.search).
-					Label(tr("Search commands")).Placeholder(tr("Search commands — or type > @ # / !")).Search().AutoFocus()
+					Label(tr("Search commands")).Placeholder(tr("Search commands — or type > @ # / ~ !")).Search().AutoFocus()
 				// Text fields consume Enter for submission and may use Escape for
 				// editing. Scoped command handling makes the palette contract
 				// explicit instead of depending on leftover overlay keys.
@@ -442,7 +463,7 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 						}
 						ui.Badge(c, fmt.Sprintf("%d", len(candidates)))
 					} else {
-						ui.Text(c, tr("> commands · @ branches · # commits · / files · ! shell")).TextColor(theme.TextMuted).
+						ui.Text(c, tr("> commands · @ branches · # commits · / files · ~ repos · ! shell")).TextColor(theme.TextMuted).
 							FontSize(theme.FontSize - 1)
 					}
 				})
@@ -606,7 +627,9 @@ func commandModeLabel(mode byte) string {
 	case '#':
 		return "Commits"
 	case '/':
-		return "Changed files"
+		return "Files"
+	case '~':
+		return "Recent repositories"
 	case '!':
 		return "Shell command"
 	}
@@ -646,8 +669,24 @@ func (s *shell) paletteShellOutput(c *ui.Context) {
 					s.palette.shellRun.cancelled = true
 					run.app.cancelCustomCommand()
 				}
-			} else if ui.Button(c, tr("Dismiss")).Clicked() {
-				s.palette.shellRun = paletteShellRun{}
+			} else {
+				if ui.Button(c, tr("Copy output")).Tooltip(tr("Copy everything the command printed")).Clicked() {
+					c.WriteClipboard(entry.Output)
+					run.app.notify("success", tr("Copied output"), shorten(entry.Command, 80))
+				}
+				if run.line != "" {
+					if ui.Button(c, tr("Run again")).Tooltip(tr("Run this command line again")).Disabled(run.app.customCommandRunning || run.app.actionBusy).Clicked() {
+						if id := run.app.startCustomCommand(run.line, commandTitle(run.line)); id != 0 {
+							s.palette.shellRun = paletteShellRun{app: run.app, entryID: id, line: run.line}
+						}
+					}
+					if ui.Button(c, tr("Save as command")).Tooltip(tr("Keep this command line in your custom commands")).Clicked() {
+						run.app.saveShellLineAsCustomCommand(run.line)
+					}
+				}
+				if ui.Button(c, tr("Dismiss")).Clicked() {
+					s.palette.shellRun = paletteShellRun{}
+				}
 			}
 		})
 		ui.Scroll(c).Grow(1).Children(func() {
@@ -655,6 +694,9 @@ func (s *shell) paletteShellOutput(c *ui.Context) {
 			switch {
 			case output != "":
 				ui.Text(c, output).FontSize(theme.FontSize - 1).TextColor(theme.Text)
+				if len(entry.Output) >= repository.CommandOutputLimit {
+					ui.Text(c, tr("Output is cut off after 16 KB.")).FontSize(theme.FontSize - 2).TextColor(theme.Warning)
+				}
 			case entry.Running:
 				ui.Text(c, tr("Waiting for output… Output appears when the command finishes. You can close this window; the command keeps running until it ends or you cancel it.")).
 					TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
@@ -663,4 +705,42 @@ func (s *shell) paletteShellOutput(c *ui.Context) {
 			}
 		})
 	})
+}
+
+// trimCommandUses keeps the usage table small: past 200 commands the least
+// used half is forgotten.
+func (s *shell) trimCommandUses() {
+	if len(s.palette.uses) <= 200 {
+		return
+	}
+	counts := make([]int, 0, len(s.palette.uses))
+	for _, count := range s.palette.uses {
+		counts = append(counts, count)
+	}
+	slices.Sort(counts)
+	cutoff := counts[len(counts)/2]
+	for id, count := range s.palette.uses {
+		if count <= cutoff {
+			delete(s.palette.uses, id)
+		}
+	}
+}
+
+// saveShellLineAsCustomCommand adds a ! command line to the custom commands, so
+// it appears in the palette and the Commands settings from then on.
+func (a *app) saveShellLineAsCustomCommand(line string) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
+	}
+	for _, existing := range a.settings.CustomCommands {
+		if existing.Command == line {
+			a.notify("", tr("Already saved"), shorten(line, 80))
+			return
+		}
+	}
+	a.settings.CustomCommands = normalizeCustomCommands(append(slices.Clone(a.settings.CustomCommands),
+		customCommandSetting{Name: commandTitle(line), Command: line, Contexts: []string{"everywhere"}}))
+	a.saveSettings()
+	a.notify("success", tr("Saved as a custom command"), shorten(line, 80))
 }

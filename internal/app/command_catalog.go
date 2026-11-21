@@ -136,6 +136,7 @@ type commandCandidate struct {
 	FixID commandID
 
 	matchRank   int
+	uses        int
 	contextRank int
 	recentRank  int
 	emptyRank   int
@@ -300,7 +301,7 @@ func commandQueryMode(query string) (byte, string) {
 		return 0, ""
 	}
 	switch query[0] {
-	case '>', '@', '#', '/', '!':
+	case '>', '@', '#', '/', '!', '~':
 		rest := query[1:]
 		if query[0] != '!' {
 			rest = strings.TrimSpace(rest)
@@ -338,9 +339,22 @@ func (c *commandCatalog) Search(ctx commandContext, query string, recent []comma
 // SearchPinned is Search with the user's pinned commands shown first in the
 // empty-query list.
 func (c *commandCatalog) SearchPinned(ctx commandContext, query string, recent, pinned []commandID) []commandCandidate {
+	return c.SearchWith(ctx, query, commandSearchHints{Recent: recent, Pinned: pinned})
+}
+
+// commandSearchHints is what ordering learns from the user: recent and pinned
+// commands, and how often each command has been run.
+type commandSearchHints struct {
+	Recent, Pinned []commandID
+	Uses           map[commandID]int
+}
+
+// SearchWith is Search ordered with the user's own history.
+func (c *commandCatalog) SearchWith(ctx commandContext, query string, hints commandSearchHints) []commandCandidate {
 	if c == nil {
 		return nil
 	}
+	recent, pinned := hints.Recent, hints.Pinned
 	mode, query := commandQueryMode(query)
 	recentRanks := make(map[commandID]int, len(recent))
 	for index, id := range recent {
@@ -408,6 +422,7 @@ func (c *commandCatalog) SearchPinned(ctx commandContext, query string, recent, 
 			Chord: spec.Chord, Icon: spec.Icon, Glyph: spec.Glyph, Enabled: state.Enabled,
 			DisabledReason: tr(state.DisabledReason), MatchRanges: match.ranges,
 			Pinned:       pinnedSet[spec.ID],
+			uses:         hints.Uses[spec.ID],
 			ActionLabels: actionLabels,
 			FixID:        state.FixID,
 			matchRank:    match.rank, contextRank: state.ContextScore,
@@ -419,6 +434,7 @@ func (c *commandCatalog) SearchPinned(ctx commandContext, query string, recent, 
 			a.emptyRank - b.emptyRank,
 			a.matchRank - b.matchRank,
 			b.contextRank - a.contextRank,
+			b.uses - a.uses,
 			a.recentRank - b.recentRank,
 			int(a.Group) - int(b.Group),
 			strings.Compare(strings.ToLower(a.Label), strings.ToLower(b.Label)),
@@ -590,6 +606,24 @@ func buildStaticCommandSpecs() []commandSpec {
 			ctx.App.startCustomCommand(entry.Command, commandTitle(entry.Command))
 		}
 	}})
+	specs = append(specs,
+		commandSpec{ID: "settings/diff-split", Label: "Toggle side-by-side diff", Keywords: []string{"diff", "split", "layout", "unified"}, Group: commandGroupApplication, Glyph: diffSplitIcon, Resolve: quietAppState, Run: func(ctx commandContext) {
+			ctx.App.settings.DiffSplit = !ctx.App.settings.DiffSplit
+			ctx.App.applySettingsChange()
+		}},
+		commandSpec{ID: "settings/diff-wrap", Label: "Toggle diff line wrapping", Keywords: []string{"diff", "wrap", "long lines"}, Group: commandGroupApplication, Glyph: diffWrapIcon, Resolve: quietAppState, Run: func(ctx commandContext) {
+			ctx.App.settings.DiffWrap = !ctx.App.settings.DiffWrap
+			ctx.App.applySettingsChange()
+		}},
+		commandSpec{ID: "settings/diff-whitespace", Label: "Toggle whitespace-only diff changes", Keywords: []string{"diff", "whitespace", "ignore"}, Group: commandGroupApplication, Glyph: diffWhitespaceIcon, Resolve: func(ctx commandContext) commandState {
+			state := quietAppState(ctx)
+			if state.Enabled && ctx.App.state != stateReady {
+				state.Enabled = false
+				state.DisabledReason = "Open a workspace first"
+			}
+			return state
+		}, Run: func(ctx commandContext) { ctx.App.toggleDiffWhitespace() }},
+	)
 	specs = append(specs, commandSpec{ID: "commands/customize", Label: "Customize commands…", Detail: "Add, edit or remove custom shell commands", Keywords: []string{"custom commands", "settings"}, Group: commandGroupApplication, Glyph: settingsIcon, Resolve: func(ctx commandContext) commandState {
 		state := appState(ctx)
 		state.ContextScore = 0
@@ -1013,4 +1047,12 @@ func combineCommandState(a, b commandState) commandState {
 		a.DisabledReason = b.DisabledReason
 	}
 	return a
+}
+
+// quietAppState is appState for commands that should be found by searching but
+// never crowd the empty-query suggestions.
+func quietAppState(ctx commandContext) commandState {
+	state := appState(ctx)
+	state.ContextScore = 0
+	return state
 }

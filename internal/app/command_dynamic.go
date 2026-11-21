@@ -2,7 +2,10 @@ package app
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
+
+	"lazygitapp/internal/repository"
 )
 
 const (
@@ -42,7 +45,35 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 	mode, rest := commandQueryMode(s.palette.query)
 	a := ctx.App
 	switch mode {
+	case '~':
+		for _, recent := range a.recentRepositories {
+			recent := recent
+			name := recent.Name
+			if name == "" {
+				name = filepath.Base(recent.Path)
+			}
+			specs = append(specs, commandSpec{
+				ID: commandID("recent/open/" + recent.Path), Label: name, Detail: recent.Path,
+				Keywords: []string{recent.Path, recent.Branch}, Group: commandGroupNavigation, Prefix: '~', Glyph: folderOpenIcon,
+				Resolve: shellState,
+				Run: func(ctx commandContext) {
+					policy := openGitOnly
+					if recent.EditorOnly {
+						policy = openAllowPlainEditor
+					}
+					ctx.Shell.request(func() { ctx.Shell.openTabWithPolicy(recent.Path, policy) })
+				},
+			})
+		}
 	case '!':
+		if rest == "" {
+			specs = append(specs, commandSpec{
+				ID: "commands/run-hint", Label: "Type a shell command after !", Group: commandGroupApplication, Prefix: '!', Glyph: terminalIcon,
+				Resolve: func(commandContext) commandState {
+					return commandState{Visible: true, DisabledReason: "Placeholders: {{branch}} {{commit}} {{file}} {{root}} {{tag}} {{stash}} {{remote}}"}
+				},
+			})
+		}
 		if rest != "" {
 			specs = append(specs, commandSpec{
 				ID: "commands/run-line", Label: rest, Detail: "Run in the repository root; output goes to the command log",
@@ -57,7 +88,7 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 				},
 				Run: func(ctx commandContext) {
 					if id := ctx.App.startCustomCommand(rest, commandTitle(rest)); id != 0 {
-						ctx.Shell.palette.shellRun = paletteShellRun{app: ctx.App, entryID: id}
+						ctx.Shell.palette.shellRun = paletteShellRun{app: ctx.App, entryID: id, line: rest}
 						ctx.Shell.rememberShellLine(rest)
 					}
 				},
@@ -86,7 +117,7 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 					return state
 				},
 				Run:     func(ctx commandContext) { ctx.App.checkoutBranch(branch.Name) },
-				Actions: []commandAction{{Label: "Copy branch name", Run: func(ctx commandContext) { ctx.App.notifyCopied(ctx.App.services, "branch name", branch.Name) }}},
+				Actions: branchActions(branch),
 			})
 		}
 	case '#':
@@ -106,12 +137,8 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 					state.ContextScore = score
 					return state
 				},
-				Run: func(ctx commandContext) { ctx.App.revealCommit(commit.Hash) },
-				Actions: []commandAction{
-					{Label: "Check out this commit", Run: func(ctx commandContext) { ctx.App.confirmCheckoutCommit(commit) }},
-					{Label: "Copy commit hash", Run: func(ctx commandContext) { ctx.App.notifyCopied(ctx.App.services, "commit hash", commit.Hash) }},
-					{Label: "Copy commit subject", Run: func(ctx commandContext) { ctx.App.notifyCopied(ctx.App.services, "commit subject", commit.Subject) }},
-				},
+				Run:     func(ctx commandContext) { ctx.App.revealCommit(commit.Hash) },
+				Actions: commitActions(commit),
 			})
 		}
 	case '/':
@@ -232,4 +259,33 @@ func workspaceFileSpecs(a *app, query string) []commandSpec {
 		}
 	}
 	return specs
+}
+
+// branchActions are the alternatives to checking a branch out. Merging into,
+// rebasing onto or deleting the branch that is already checked out makes no
+// sense, so those are left out for it.
+func branchActions(branch repository.Branch) []commandAction {
+	actions := []commandAction{{Label: "Copy branch name", Run: func(ctx commandContext) {
+		ctx.App.notifyCopied(ctx.App.services, "branch name", branch.Name)
+	}}}
+	if branch.Head {
+		return actions
+	}
+	return append(actions,
+		commandAction{Label: "Merge into the current branch…", Run: func(ctx commandContext) { ctx.App.confirmMergeBranch(branch) }},
+		commandAction{Label: "Rebase the current branch onto this…", Run: func(ctx commandContext) { ctx.App.confirmRebaseOntoBranch(branch) }},
+		commandAction{Label: "Delete this branch…", Run: func(ctx commandContext) { ctx.App.confirmDeleteBranch(branch) }},
+	)
+}
+
+// commitActions are what a commit row can do besides revealing the commit.
+func commitActions(commit repository.Commit) []commandAction {
+	return []commandAction{
+		{Label: "Check out this commit", Run: func(ctx commandContext) { ctx.App.confirmCheckoutCommit(commit) }},
+		{Label: "Cherry-pick this commit…", Run: func(ctx commandContext) { ctx.App.confirmCommitActionFor(commit, false) }},
+		{Label: "Revert this commit…", Run: func(ctx commandContext) { ctx.App.confirmCommitActionFor(commit, true) }},
+		{Label: "Create a branch here…", Run: func(ctx commandContext) { ctx.App.openCommitBranchForm(commit) }},
+		{Label: "Copy commit hash", Run: func(ctx commandContext) { ctx.App.notifyCopied(ctx.App.services, "commit hash", commit.Hash) }},
+		{Label: "Copy commit subject", Run: func(ctx commandContext) { ctx.App.notifyCopied(ctx.App.services, "commit subject", commit.Subject) }},
+	}
 }

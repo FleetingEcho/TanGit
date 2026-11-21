@@ -106,3 +106,73 @@ func TestDisabledCommitOffersToStageEverything(t *testing.T) {
 		t.Fatal("a disabled command ran")
 	}
 }
+
+func TestRecentRepositoryModeAndRowActions(t *testing.T) {
+	h, _ := menuTestAppWithCalls(t)
+	s := newShell(nil)
+	s.tabs = []*tab{{app: h.app}}
+	s.active = 0
+	h.app.recentRepositories = []recentRepository{{Path: "/work/alpha", Name: "Alpha"}, {Path: "/work/beta"}}
+	h.app.snapshot.Branches = []repository.Branch{{Name: "main", Head: true}, {Name: "feature"}}
+	h.app.snapshot.Commits = []repository.Commit{{Hash: "abc123", ShortHash: "abc", Subject: "Fix it"}}
+	ctx := commandContext{Shell: s, App: h.app}
+	s.palette.open = true
+
+	s.palette.query = "~"
+	repos := s.catalogFor(ctx).Search(ctx, s.palette.query, nil)
+	if len(repos) != 2 || repos[0].Label == "" {
+		t.Fatalf("recent repositories = %+v", repos)
+	}
+	s.palette.query = "~bet"
+	if got := s.catalogFor(ctx).Search(ctx, s.palette.query, nil); len(got) != 1 || got[0].ID != "recent/open//work/beta" {
+		t.Fatalf("filtered repositories = %+v", got)
+	}
+
+	s.palette.query = "@"
+	for _, branch := range s.catalogFor(ctx).Search(ctx, s.palette.query, nil) {
+		want := 4
+		if branch.ID == "branches/checkout/main" {
+			want = 1
+		}
+		if len(branch.ActionLabels) != want {
+			t.Errorf("%s has %d actions, want %d", branch.ID, len(branch.ActionLabels), want)
+		}
+	}
+	s.palette.query = "#"
+	for _, commit := range s.catalogFor(ctx).Search(ctx, s.palette.query, nil) {
+		if len(commit.ActionLabels) != 6 {
+			t.Errorf("commit row actions = %v", commit.ActionLabels)
+		}
+	}
+	s.palette.query = "!"
+	if got := s.catalogFor(ctx).Search(ctx, s.palette.query, nil); len(got) != 1 || got[0].ID != "commands/run-hint" || got[0].Enabled {
+		t.Fatalf("empty shell mode should hint, not run: %+v", got)
+	}
+}
+
+func TestPaletteLearnsUsageAndOffersDisplayToggles(t *testing.T) {
+	h, _ := menuTestAppWithCalls(t)
+	s := newShell(nil)
+	ctx := commandContext{Shell: s, App: h.app}
+	for _, id := range []commandID{"settings/diff-split", "settings/diff-wrap", "settings/diff-whitespace"} {
+		if _, ok := catalogCandidate(s.catalogFor(ctx).Search(ctx, string(id), nil), id); !ok {
+			t.Errorf("%s is missing", id)
+		}
+	}
+	plain := s.catalogFor(ctx).SearchWith(ctx, "settings/diff-", commandSearchHints{})
+	used := s.catalogFor(ctx).SearchWith(ctx, "settings/diff-", commandSearchHints{Uses: map[commandID]int{"settings/diff-wrap": 9}})
+	if len(plain) < 2 || len(used) < 2 || used[0].ID != "settings/diff-wrap" {
+		t.Fatalf("most used command did not lead: %+v", used[:min(2, len(used))])
+	}
+}
+
+func TestSaveShellLineAsCustomCommand(t *testing.T) {
+	h, _ := menuTestAppWithCalls(t)
+	h.app.pathUserData = t.TempDir()
+	h.app.saveShellLineAsCustomCommand("git log --oneline -5")
+	h.app.saveShellLineAsCustomCommand("git log --oneline -5")
+	saved := loadAppSettings(h.app.pathUserData)
+	if len(saved.CustomCommands) != 1 || saved.CustomCommands[0].Command != "git log --oneline -5" {
+		t.Fatalf("custom commands = %+v", saved.CustomCommands)
+	}
+}

@@ -499,3 +499,34 @@ func TestSelectingModeKeyAndFileChange(t *testing.T) {
 		t.Fatal("m did not turn selecting off")
 	}
 }
+
+// Discard selected lines asks first, then reverses only the picked lines in
+// the working tree, leaving the index and the other lines alone.
+func TestDiscardSelectedLinesConfirmsThenReversesOnlyThem(t *testing.T) {
+	h, calls := twoHunkChangesApp(t, []repository.File{{Path: "app.go", Status: " M", Unstaged: true, Tracked: true}})
+	h.app.startLineSelection()
+	h.tester.Frame()
+	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1})
+	if err := h.tester.Click("Discard selected lines…"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.confirm == nil || h.app.confirm.title != "Discard Lines" {
+		t.Fatalf("discard did not ask first: %#v", h.app.confirm)
+	}
+	if findCall(calls, "apply-worktree:") != "" {
+		t.Fatal("discard ran before confirmation")
+	}
+	h.app.acceptConfirm()
+	h.tester.Frame()
+	h.waitFor(t, "worktree reverse patch", func() bool { return findCall(calls, "apply-worktree:true:") != "" })
+	sent := findCall(calls, "apply-worktree:true:")
+	// The unselected changes stay as unchanged context in the reverse patch.
+	if !strings.Contains(sent, "\n-two\n") || !strings.Contains(sent, "\n+TWO\n") ||
+		strings.Contains(sent, "\n+FOUR\n") || strings.Contains(sent, "\n-four\n") || strings.Contains(sent, "ten and a half") {
+		t.Fatalf("discard built the wrong patch:\n%s", sent)
+	}
+	if findCall(calls, "apply-patch:") != "" {
+		t.Fatal("discard used the index route")
+	}
+}

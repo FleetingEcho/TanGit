@@ -318,7 +318,75 @@ func (a *app) diffLineButton(c *ui.Context) {
 			Tooltip(tr("Save only the selected lines in a stash")).Disabled(a.actionBusy).Clicked() {
 			a.openLineStash()
 		}
+		if compact(ui.Button(c, tr("Discard")+"…")).Label(tr("Discard selected lines…")).
+			Tooltip(tr("Remove only the selected lines from the working tree after confirmation")).Disabled(a.actionBusy).Clicked() {
+			a.confirmDiscardSelectedLines()
+		}
 	}
+	if compact(ui.Button(c, tr("Copy"))).Label(tr("Copy selected lines")).
+		Tooltip(tr("Copy the selected lines as a patch")).Clicked() {
+		a.copySelectedLines()
+	}
+}
+
+// confirmDiscardSelectedLines removes just the selected lines' working-tree
+// changes after asking, the way Discard hunk does for a hunk: the index is left
+// alone and a recovery copy is kept.
+func (a *app) confirmDiscardSelectedLines() {
+	change, ok := a.selectedChange()
+	if a.actionBusy || a.session == nil || !ok || a.diffKind == "Staged" || !a.lineSelectionAvailable() {
+		return
+	}
+	file := change.diffFile()
+	count, _ := a.selectedLineCount()
+	patchText, wholeFile, err := partialPatchSelections(a.diffPatch, file, a.currentLineSelections(), true)
+	if err != nil {
+		a.notifyError(err)
+		return
+	}
+	if patchText == "" && !wholeFile {
+		a.notify("", tr("Nothing to discard"), tr("Select changed lines, not unchanged ones."))
+		return
+	}
+	if wholeFile {
+		// A whole-file selection keeps the original patch, so discard reverses
+		// only the working tree and never resets the index.
+		patchText = a.diffPatch
+	}
+	a.askConfirm(confirmRequest{
+		title:        "Discard Lines",
+		message:      trf("Discard the %d selected lines in %s?", count, file.Path),
+		detail:       "Only these lines' working-tree changes are removed; the index and staged changes stay untouched. A recovery copy is kept for 7 days in Saved work.",
+		confirmLabel: "Discard lines",
+		destructive:  true,
+		run: func() {
+			a.beginRepositoryActionMessage(trf("Discarded selected lines in %s", file.Path), file.Path,
+				func(ctx context.Context, session repository.Session) error {
+					return previewAndApplyPatch(ctx, session, repository.PatchRequest{
+						Text: patchText, Target: repository.PatchWorktree, Reverse: true,
+					})
+				}, a.stopLineSelection)
+		},
+	})
+}
+
+// copySelectedLines puts the selected lines on the clipboard as the patch that
+// would stage them.
+func (a *app) copySelectedLines() {
+	change, ok := a.selectedChange()
+	if !ok || !a.lineSelectionAvailable() {
+		return
+	}
+	patchText, _, ok := a.selectedLinePatch(change.diffFile(), a.diffKind == "Staged")
+	if !ok {
+		return
+	}
+	if patchText == "" {
+		patchText = a.diffPatch
+	}
+	count, _ := a.selectedLineCount()
+	a.services.WriteClipboard(patchText)
+	a.notify("success", tr("Copied selected lines"), selectedLinesLabel(count))
 }
 
 // selectedLinePatch builds the patch shared by selected-line stage and stash.

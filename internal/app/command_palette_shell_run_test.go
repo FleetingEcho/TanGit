@@ -120,7 +120,7 @@ func TestRowActionsAndFailureCommands(t *testing.T) {
 	s.palette.open = true
 	s.palette.query = "#"
 	for _, c := range s.catalogFor(ctx).Search(ctx, "#", nil) {
-		if len(c.ActionLabels) != 3 {
+		if len(c.ActionLabels) != 6 {
 			t.Fatalf("commit row actions = %v", c.ActionLabels)
 		}
 	}
