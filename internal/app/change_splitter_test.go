@@ -256,7 +256,9 @@ func TestChangeSplitterUIApplyStagesOnlyOneRealGitGroup(t *testing.T) {
 		t.Fatalf("click first split Apply: %v", err)
 	}
 	h.tester.Frame()
-	h.waitFor(t, "one real index-only split Apply", func() bool { return !a.actionBusy })
+	h.waitFor(t, "one real index-only split Apply and deferred metadata", func() bool {
+		return !a.actionBusy && !a.repositoryDetailsLoading
+	})
 	if a.assistance.splitter.open {
 		t.Fatal("successful explicit Apply left the reviewed modal open")
 	}
@@ -336,7 +338,9 @@ func TestChangeSplitterUIApplyUsesReviewedPreviewAfterPublicMutationAndExternalC
 		t.Fatalf("click stale split Apply: %v", err)
 	}
 	h.tester.Frame()
-	h.waitFor(t, "stale reviewed preview refusal", func() bool { return !a.actionBusy })
+	h.waitFor(t, "stale reviewed preview refusal and deferred metadata", func() bool {
+		return !a.actionBusy && !a.repositoryDetailsLoading
+	})
 
 	if !strings.Contains(a.actionError, "repository changed since patch preview") {
 		t.Errorf("stale Apply action error = %q", a.actionError)

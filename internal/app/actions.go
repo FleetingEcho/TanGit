@@ -672,6 +672,7 @@ func (a *app) beginRepositoryActionMessage(
 	commandLog := a.commandLog
 	repositoryGeneration := a.generation
 	actionStart := commandLog.Marker()
+	mutationSerial := a.fileMutation.serial
 	// The lists keep their place by what they show, not by index: an action
 	// or a refresh that moves a row must not move the user's choice with it.
 	selected := a.captureSelection(keepPath)
@@ -686,22 +687,29 @@ func (a *app) beginRepositoryActionMessage(
 	ctx := a.repositoryWork.Context()
 
 	go func() {
+		defer a.finishFileMutationAsync(mutationSerial, repositoryGeneration)
 		defer a.recoverBackground()
 		err := action(ctx, session)
 		actionEnd := commandLog.Marker()
 		snapshotFailed := false
 		var snapshot repository.Snapshot
 		read := false
+		readSnapshot := func(ctx context.Context) (repository.Snapshot, error) {
+			if progressive, ok := session.(repository.ProgressiveSession); ok {
+				return progressive.CoreSnapshot(ctx)
+			}
+			return session.Snapshot(ctx)
+		}
 		if err == nil {
 			var snapshotErr error
-			snapshot, snapshotErr = session.Snapshot(ctx)
+			snapshot, snapshotErr = readSnapshot(ctx)
 			if snapshotErr != nil {
 				err = snapshotErr
 				snapshotFailed = true
 			} else {
 				read = true
 			}
-		} else if left, snapshotErr := session.Snapshot(ctx); snapshotErr == nil {
+		} else if left, snapshotErr := readSnapshot(ctx); snapshotErr == nil {
 			// A command that stops on a conflict exits with an error while it
 			// leaves the working tree changed: a merge, rebase, cherry-pick or
 			// revert waiting to be resolved. Read what it left, so the Changes
@@ -716,7 +724,8 @@ func (a *app) beginRepositoryActionMessage(
 			}
 			a.actionBusy = false
 			defer func() {
-				if a.refreshPending {
+				a.finishFileMutation(mutationSerial)
+				if a.refreshPending && !a.repositoryDetailsLoading {
 					a.requestQuietRefresh()
 				}
 			}()
@@ -726,52 +735,124 @@ func (a *app) beginRepositoryActionMessage(
 					a.commitSelection = nil
 				}
 				oldSnapshot := a.snapshot
+				if _, ok := session.(repository.ProgressiveSession); ok {
+					snapshot = snapshot.WithDetails(oldSnapshot)
+				}
 				a.fileRecoveryRefreshSeq++
 				a.snapshot = snapshot
 				a.snapshotSeq++
-				a.refreshCodeAfterCheckout(oldSnapshot, snapshot)
+				checkout := a.refreshCodeAfterCheckout(oldSnapshot, snapshot)
 				a.refreshCodeBlameAfterRepositoryMutation()
 				a.resetCommitPaging(snapshot)
 				a.restoreSelection(selected)
-				// An action changed the commits, so the branch browse must read
-				// them again.
-				a.resetBranchCommits()
+				// Branch details are refreshed with the deferred snapshot below.
+				// Legacy full-snapshot implementations retain their reset.
+				if _, progressive := session.(repository.ProgressiveSession); !progressive {
+					a.resetBranchCommits()
+				}
 				a.resetCommitDetails()
 				// A narrowed commit list is a snapshot of Git's search, so each
 				// page that is filtered must be read again for the action's
 				// commits to show.
 				if a.historyFilter.narrows() {
-					a.runCommitFilter(sectionHistory, selectedCommitHash)
+					if checkout {
+						a.runCommitFilter(sectionHistory, selectedCommitHash)
+					} else {
+						a.runCommitFilterMode(sectionHistory, selectedCommitHash, false)
+					}
 				}
 				if a.graphFilter.narrows() {
-					a.runCommitFilter(sectionGraph, selectedCommitHash)
+					if checkout {
+						a.runCommitFilter(sectionGraph, selectedCommitHash)
+					} else {
+						a.runCommitFilterMode(sectionGraph, selectedCommitHash, false)
+					}
 				}
 				a.beginDiff()
 				a.resetStashDetails()
 			}
 			if err != nil {
 				a.actionError = safeError(err)
-				target := commandLogFailureTarget{log: commandLog}
-				if a.commandLog != nil {
-					if snapshotFailed {
-						target.id = commandLog.FailRange(actionEnd, commandLog.Marker(), safeError(err))
-					} else {
-						target.id = commandLog.FailRange(actionStart, actionEnd, safeError(err))
-					}
+				start, end := actionStart, actionEnd
+				if snapshotFailed {
+					start = actionEnd
+					end = commandLog.Marker()
 				}
-				if target.id != 0 {
-					selected := target
-					a.actionFailure = &selected
+				a.recordActionFailure(commandLog, start, end, err)
+			}
+			if err == nil {
+				if onSuccess != nil {
+					onSuccess()
 				}
-				a.notifyError(err, target)
-				return
+				a.notifyRepositorySuccess(message, previousOperations)
 			}
-			if onSuccess != nil {
-				onSuccess()
+			if read {
+				if progressive, ok := session.(repository.ProgressiveSession); ok {
+					a.refreshActionDetails(progressive)
+				}
 			}
-			a.notifyRepositorySuccess(message, previousOperations)
 		})
 	}()
+}
+
+// refreshActionDetails refreshes the ancillary information that is not needed
+// to show the accepted action's updated files. It can never replace the live
+// core. Sequence, repository generation, and a newer accepted action guard
+// against publishing an older workspace over the current one.
+func (a *app) refreshActionDetails(session repository.ProgressiveSession) {
+	generation := a.generation
+	sequence := a.snapshotSeq
+	a.repositoryDetailsLoading = true
+	ctx := a.repositoryWork.Context()
+	commandStart := a.commandLog.Marker()
+	go func() {
+		defer a.recoverBackground()
+		details, err := session.DetailsSnapshot(ctx)
+		a.updateChanged(func() bool {
+			if generation != a.generation || sequence != a.snapshotSeq {
+				return false
+			}
+			a.repositoryDetailsLoading = false
+			if a.actionBusy {
+				return false
+			}
+			if err != nil {
+				a.recordActionFailure(a.commandLog, commandStart, a.commandLog.Marker(), fmt.Errorf("load repository details: %w", err))
+				if a.refreshPending {
+					a.requestQuietRefresh()
+				}
+				return true
+			}
+			current := a.snapshot
+			next := current.WithDetails(details)
+			a.applyQuietSnapshot(next,
+				snapshotSigns{refs: refsSignature(current)},
+				snapshotSigns{refs: refsSignature(next)})
+			if a.refreshPending && !a.repositoryDetailsLoading {
+				a.requestQuietRefresh()
+			}
+			return true
+		})
+	}()
+}
+
+// recordActionFailure binds the error and its View log action to one command
+// ID. Even ancillary publication errors must not lead to an unrelated log row.
+func (a *app) recordActionFailure(log *repository.CommandLog, start, end uint64, err error) {
+	if err == nil {
+		return
+	}
+	a.actionError = safeError(err)
+	a.actionFailure = nil
+	target := commandLogFailureTarget{log: log}
+	if a.commandLog != nil {
+		target.id = log.FailRange(start, end, safeError(err))
+	}
+	if target.id != 0 {
+		selected := target
+		a.actionFailure = &selected
+	}
+	a.notifyError(err, target)
 }
 
 func (a *app) beginRefresh() {
@@ -1180,6 +1261,8 @@ func (a *app) shutdown() {
 	a.actionBusy = false
 	a.actionError = ""
 	a.actionFailure = nil
+	a.fileMutation.serial++
+	a.fileMutation.phase = fileMutationIdle
 	a.repositoryDetailsLoading = false
 	a.refreshToken++
 	a.refreshBusy = false
