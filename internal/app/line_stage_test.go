@@ -460,3 +460,42 @@ func TestMultipleLineSelectionKeepsEveryPickedRange(t *testing.T) {
 	h.app.stopLineSelection()
 	h.tester.Frame()
 }
+
+func TestSelectedLinesSummaryNamesTheLines(t *testing.T) {
+	got := selectedLinesSummary([]editor.DiffLineRange{
+		{Side: editor.DiffNew, Start: 1, End: 1},
+		{Side: editor.DiffNew, Start: 10, End: 11},
+		{Side: editor.DiffOld, Start: 3, End: 3},
+	})
+	if got != "2, 11–12, −4" {
+		t.Fatalf("summary = %q", got)
+	}
+}
+
+// The m key turns the whole selecting mode on and off, and the mode (unlike
+// the picked lines) outlives a change of file.
+func TestSelectingModeKeyAndFileChange(t *testing.T) {
+	h, _ := changesTestApp(t, unstagedTrackedFile())
+	h.waitFor(t, "the diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
+	h.tester.Key(0, ui.KeyEnter)
+	h.tester.Frame()
+	h.tester.Key(0, ui.KeyM)
+	h.tester.Frame()
+	if !h.app.hunkMode || !h.app.lineSelectMode {
+		t.Fatalf("m did not turn selecting on: hunk=%v lines=%v", h.app.hunkMode, h.app.lineSelectMode)
+	}
+	h.app.resetFileDiff()
+	if !h.app.hunkMode || h.app.lineSelectMode {
+		t.Fatalf("a new diff should keep hunk mode but drop line picking: hunk=%v lines=%v", h.app.hunkMode, h.app.lineSelectMode)
+	}
+	h.tester.Frame()
+	h.waitFor(t, "the diff again", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
+	h.tester.Frame()
+	h.tester.Key(0, ui.KeyEnter)
+	h.tester.Frame()
+	h.tester.Key(0, ui.KeyM)
+	h.tester.Frame()
+	if h.app.hunkMode {
+		t.Fatal("m did not turn selecting off")
+	}
+}

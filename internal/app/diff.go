@@ -695,6 +695,7 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 						})
 					}
 					if a.lineSelectionAvailable() {
+						a.syncLineSelection()
 						a.lineSelectionControls(c, false)
 					}
 				})

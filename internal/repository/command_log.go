@@ -340,6 +340,37 @@ func (l *CommandLog) Entries() []CommandEntry {
 	return append([]CommandEntry(nil), l.entries...)
 }
 
+// Entry returns one record by ID without copying the rest of the log, for a
+// view that follows a single command every frame.
+func (l *CommandLog) Entry(id uint64) (CommandEntry, bool) {
+	if l == nil || id == 0 {
+		return CommandEntry{}, false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if index := l.entryIndexLocked(id); index >= 0 {
+		return l.entries[index], true
+	}
+	return CommandEntry{}, false
+}
+
+// LatestFailedUserCommand returns the newest finished user command that
+// failed, scanning in place instead of copying the log.
+func (l *CommandLog) LatestFailedUserCommand() (CommandEntry, bool) {
+	if l == nil {
+		return CommandEntry{}, false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for index := len(l.entries) - 1; index >= 0; index-- {
+		entry := l.entries[index]
+		if entry.Origin == CommandOriginUser && entry.Failed && !entry.Running {
+			return entry, true
+		}
+	}
+	return CommandEntry{}, false
+}
+
 // Clear drops all recorded commands and stream ownership without causing an
 // already-running process to populate a later, different command's entry.
 func (l *CommandLog) Clear() {

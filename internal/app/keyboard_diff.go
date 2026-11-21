@@ -30,6 +30,11 @@ func diffKeyboardCommands() []diffKeyboardCommand {
 				s.Run(editor.MoveUp)
 			}
 		}},
+		{"m", "Turn selecting changes on or off: hunk actions and line picking", 0, ui.KeyM, false, true, func(a *app, s *editor.DiffState) {
+			if s == a.diffState {
+				a.toggleSelectionMode()
+			}
+		}},
 		{"v", "Start a diff-line selection", 0, ui.KeyV, true, false, func(a *app, s *editor.DiffState) { a.selectKeyboardDiffLines(s, 0, false) }},
 		{"Shift+Down", "Extend the diff-line selection down", ui.Shift, ui.KeyDown, true, false, func(a *app, s *editor.DiffState) { a.selectKeyboardDiffLines(s, 1, true) }},
 		{"Shift+Up", "Extend the diff-line selection up", ui.Shift, ui.KeyUp, true, false, func(a *app, s *editor.DiffState) { a.selectKeyboardDiffLines(s, -1, true) }},

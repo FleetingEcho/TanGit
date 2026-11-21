@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -122,6 +123,7 @@ func (a *app) startLineSelection() {
 	}
 	a.lineSelectMode = true
 	a.clearMultipleLineSelection()
+	a.clearExtraSelectedLines()
 	state := a.diffState
 	if a.customPatchLineSelectionAvailable() {
 		state = a.commitDiffState
@@ -136,6 +138,7 @@ func (a *app) startLineSelection() {
 func (a *app) stopLineSelection() {
 	a.lineSelectMode = false
 	a.clearMultipleLineSelection()
+	a.clearExtraSelectedLines()
 	state := a.diffState
 	if a.customPatchActive() && a.commitDiffState != nil {
 		state = a.commitDiffState
@@ -254,8 +257,13 @@ func (a *app) lineSelectionControls(c *ui.Context, withHint bool) {
 				ui.Icon(c, selectLinesIcon).FontSize(14).TextColor(theme.Accent).
 					Label(tr(label)).Tooltip(tr(label)).Shrink(0)
 				if selected {
+					summary := selectedLinesSummary(a.currentLineSelections())
 					ui.Text(c, selectedLinesLabel(count)).TextColor(theme.TextMuted).
-						FontSize(theme.FontSize - 2).SingleLine().Shrink(0)
+						FontSize(theme.FontSize - 2).SingleLine().Shrink(0).Tooltip(summary)
+					if summary != "" {
+						ui.Text(c, "("+summary+")").TextColor(theme.TextMuted).
+							FontSize(theme.FontSize - 2).SingleLine().Shrink(1).MinWidth(0).Tooltip(summary)
+					}
 					a.diffLineButton(c)
 				} else if withHint {
 					var hint string
@@ -1099,4 +1107,35 @@ func (a *app) conflictToolbar(c *ui.Context, theme *ui.Theme) {
 		conflictToolbarSeparator(c, theme, "Apply separator")
 		a.conflictActionButton(c, markResolved)
 	})
+}
+
+// selectedLinesSummary names the picked lines by number, 1-based, as
+// "2, 6, 11–12"; lines of the old side carry a minus sign. The tooltip always
+// holds the full text when the visible one is cut short by the pane's width.
+func selectedLinesSummary(ranges []editor.DiffLineRange) string {
+	parts := make([]string, 0, len(ranges))
+	for _, r := range ranges {
+		prefix := ""
+		if r.Side == editor.DiffOld {
+			prefix = "−"
+		}
+		if r.Start == r.End {
+			parts = append(parts, fmt.Sprintf("%s%d", prefix, r.Start+1))
+		} else {
+			parts = append(parts, fmt.Sprintf("%s%d–%d", prefix, r.Start+1, r.End+1))
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// clearExtraSelectedLines drops the viewer's extra highlighted ranges right
+// away, on both viewers, so ending a selection never leaves lines painted
+// until some later frame happens to rebuild the pane that syncs them.
+func (a *app) clearExtraSelectedLines() {
+	if a.diffState != nil {
+		a.diffState.SetExtraSelectedLines(nil)
+	}
+	if a.commitDiffState != nil {
+		a.commitDiffState.SetExtraSelectedLines(nil)
+	}
 }

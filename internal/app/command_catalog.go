@@ -77,6 +77,10 @@ type commandState struct {
 	Enabled        bool
 	DisabledReason string
 	ContextScore   int
+	// FixID names another command that removes the reason this one is
+	// disabled; FixLabel says what it does. The palette offers it with Tab.
+	FixID    commandID
+	FixLabel string
 }
 
 type commandSpec struct {
@@ -127,6 +131,9 @@ type commandCandidate struct {
 	Pinned         bool
 	// ActionLabels are the labels of the row's secondary actions.
 	ActionLabels []string
+	// FixID is a command offered, as the row's only Tab action, to remove the
+	// reason a disabled row cannot run.
+	FixID commandID
 
 	matchRank   int
 	contextRank int
@@ -388,6 +395,10 @@ func (c *commandCatalog) SearchPinned(ctx commandContext, query string, recent, 
 				continue
 			}
 		}
+		actionLabels := commandActionLabels(spec.Actions)
+		if !state.Enabled && state.FixID != "" {
+			actionLabels = []string{tr(state.FixLabel)}
+		}
 		detail := spec.Detail
 		if spec.Prefix == 0 {
 			detail = tr(detail)
@@ -397,7 +408,8 @@ func (c *commandCatalog) SearchPinned(ctx commandContext, query string, recent, 
 			Chord: spec.Chord, Icon: spec.Icon, Glyph: spec.Glyph, Enabled: state.Enabled,
 			DisabledReason: tr(state.DisabledReason), MatchRanges: match.ranges,
 			Pinned:       pinnedSet[spec.ID],
-			ActionLabels: commandActionLabels(spec.Actions),
+			ActionLabels: actionLabels,
+			FixID:        state.FixID,
 			matchRank:    match.rank, contextRank: state.ContextScore,
 			recentRank: recentRank, emptyRank: emptyRank,
 		})
@@ -469,6 +481,9 @@ func (c *commandCatalog) InvokeAction(ctx commandContext, id commandID, action i
 			reason := state.DisabledReason
 			if reason == "" {
 				reason = "Command is currently unavailable"
+			}
+			if action == 1 && state.FixID != "" && len(spec.Actions) == 0 {
+				return c.InvokeAction(ctx, state.FixID, 0)
 			}
 			return commandInvokeResult{Status: commandInvokeDisabled, Reason: reason}
 		}
@@ -675,6 +690,7 @@ func readyAppState(ctx commandContext) commandState {
 	if ctx.App == nil || ctx.App.state != stateReady {
 		state.Enabled = false
 		state.DisabledReason = "Open a workspace first"
+		state.FixID, state.FixLabel = "tabs/new-home", "Open a new Home tab"
 	}
 	return state
 }
@@ -719,6 +735,7 @@ func commitState(ctx commandContext) commandState {
 	if state.Enabled && !hasStagedFiles(ctx.App.snapshot.Files) {
 		state.Enabled = false
 		state.DisabledReason = "No staged changes to commit"
+		state.FixID, state.FixLabel = "git/Changes/Stage or unstage all changes", "Stage all changes"
 	}
 	return state
 }
@@ -735,6 +752,7 @@ func continueState(ctx commandContext) commandState {
 	} else if state.Enabled && hasConflictedFiles(ctx.App.snapshot.Files) {
 		state.Enabled = false
 		state.DisabledReason = "Resolve all conflicts before continuing"
+		state.FixID, state.FixLabel = commandOpenChanges, "Open Changes"
 	} else if state.Enabled && !ctx.App.operationCan(repository.OperationActionContinue) {
 		state.Enabled = false
 		state.DisabledReason = "The current operation cannot be continued"
@@ -969,16 +987,10 @@ func keyboardCommandGlyph(command keyboardCommand) *ui.SVG {
 
 // latestFailedUserCommand finds the newest failed command the user ran.
 func (a *app) latestFailedUserCommand() (repository.CommandEntry, bool) {
-	if a == nil || a.commandLog == nil {
+	if a == nil {
 		return repository.CommandEntry{}, false
 	}
-	entries := a.commandLog.Entries()
-	for index := len(entries) - 1; index >= 0; index-- {
-		if entries[index].Origin == repository.CommandOriginUser && entries[index].Failed && !entries[index].Running {
-			return entries[index], true
-		}
-	}
-	return repository.CommandEntry{}, false
+	return a.commandLog.LatestFailedUserCommand()
 }
 
 // failedCommandState shows the failure commands only while a user command has

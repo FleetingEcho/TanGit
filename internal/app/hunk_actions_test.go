@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -312,4 +314,46 @@ func TestHunkActionsAreHiddenUntilHunkMode(t *testing.T) {
 	if h.app.hunkMode || h.tester.HasText("Next hunk") {
 		t.Fatal("hunk actions remain after leaving hunk mode")
 	}
+}
+
+type failingApplySession struct{ fakeSession }
+
+func (failingApplySession) ApplyPatch(context.Context, repository.PatchPreview) error {
+	return errors.New("apply patch: error: patch failed: internal/app/i18n/i18n_palette_modes.go:3\nerror: internal/app/i18n/i18n_palette_modes.go: patch does not apply")
+}
+
+// A hunk patch that Git refuses (the file changed after its diff loaded) is
+// reported, the diff is read again, and the Changes page keeps working: a later
+// attempt against the fresh state goes through.
+func TestRejectedHunkPatchLeavesTheChangesPageUsable(t *testing.T) {
+	h, calls := twoHunkChangesApp(t, []repository.File{{Path: "app.go", Status: " M", Unstaged: true, Tracked: true}})
+	good := h.app.session.(fakeSession)
+	h.app.session = failingApplySession{fakeSession: good}
+	diffReads := func() int {
+		count := 0
+		for _, call := range calls.all() {
+			if strings.HasPrefix(call, "diff:") {
+				count++
+			}
+		}
+		return count
+	}
+	before := diffReads()
+	if err := h.tester.Click("Stage hunk"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor(t, "the rejected action to finish", func() bool { return !h.app.actionBusy && h.app.actionError != "" })
+	if !strings.Contains(h.app.actionError, "patch does not apply") {
+		t.Fatalf("error = %q", h.app.actionError)
+	}
+	h.waitFor(t, "the diff to be read again", func() bool { return diffReads() > before && h.app.diffState != nil && !h.app.diffLoading })
+	h.tester.Frame()
+	if _, ok := h.tester.Find("Stage hunk"); !ok {
+		t.Fatalf("the hunk toolbar is gone after the rejection: %q", h.texts())
+	}
+	h.app.session = good
+	if err := h.tester.Click("Stage hunk"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor(t, "a later attempt", func() bool { return findCall(calls, "apply-patch:false:") != "" })
 }

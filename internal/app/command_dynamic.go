@@ -33,6 +33,9 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 			})
 		}
 	}
+	if ctx.App != nil && ctx.App.state == stateReady && ctx.App.session != nil {
+		specs = append(specs, workspaceObjectSpecs(ctx.App)...)
+	}
 	if !s.palette.open || ctx.App == nil {
 		return specs
 	}
@@ -112,6 +115,7 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 			})
 		}
 	case '/':
+		specs = append(specs, workspaceFileSpecs(a, rest)...)
 		count := 0
 		for _, file := range a.snapshot.Files {
 			if count == dynamicFileLimit {
@@ -158,4 +162,74 @@ func (a *app) revealChangedFile(path string) {
 			return
 		}
 	}
+}
+
+// workspaceObjectSpecs offers the stashes and remotes of the repository as
+// commands: apply or pop a stash, fetch or browse a remote. They resolve like
+// any command, so a busy repository disables them with the usual reason.
+func workspaceObjectSpecs(a *app) []commandSpec {
+	var specs []commandSpec
+	stashes := a.snapshot.Stashes
+	if len(stashes) > 20 {
+		stashes = stashes[:20]
+	}
+	for _, stash := range stashes {
+		stash := stash
+		keywords := []string{"stash", stash.Name, stash.Recency}
+		specs = append(specs,
+			commandSpec{
+				ID: commandID(fmt.Sprintf("stash/apply/%d", stash.Index)), Label: "Apply stash: " + stash.Name, Detail: "Apply the saved changes and keep the stash",
+				Keywords: keywords, Group: commandGroupStash, Glyph: stashIcon, Resolve: repositoryState,
+				Run: func(ctx commandContext) { ctx.App.applyStash(stash) },
+			},
+			commandSpec{
+				ID: commandID(fmt.Sprintf("stash/pop/%d", stash.Index)), Label: "Pop stash: " + stash.Name, Detail: "Apply the saved changes and remove the stash",
+				Keywords: keywords, Group: commandGroupStash, Glyph: stashIcon, Resolve: repositoryState,
+				Run: func(ctx commandContext) { ctx.App.confirmStashMutationFor(stash, true) },
+			})
+	}
+	for _, remote := range a.snapshot.Remotes {
+		remote := remote
+		specs = append(specs, commandSpec{
+			ID: commandID("remotes/fetch/" + remote.Name), Label: "Fetch remote: " + remote.Name, Detail: "Download new commits from this remote only",
+			Keywords: []string{"fetch", "remote", remote.Name}, Group: commandGroupRemotes, Glyph: fetchIcon, Resolve: repositoryState,
+			Run: func(ctx commandContext) { ctx.App.beginFetchRemote(remote) },
+		})
+		if len(remote.URLs) > 0 {
+			specs = append(specs, commandSpec{
+				ID: commandID("remotes/open-web/" + remote.Name), Label: "Open remote in the browser: " + remote.Name, Detail: remote.URLs[0],
+				Keywords: []string{"browser", "web", "remote", remote.Name}, Group: commandGroupRemotes, Glyph: externalLinkIcon, Resolve: repositoryStateAllowBusy,
+				Run: func(ctx commandContext) { ctx.App.openRemoteWebURL(ctx.App.services, remote) },
+			})
+		}
+	}
+	return specs
+}
+
+const workspaceFileMatchLimit = 100
+
+// workspaceFileSpecs searches every file the Editor has indexed for the '/'
+// mode, so it reaches beyond the changed files. Matching happens here, before
+// any spec exists, to keep large workspaces from building a spec per file.
+func workspaceFileSpecs(a *app, query string) []commandSpec {
+	if query == "" || len(a.code.files) == 0 {
+		return nil
+	}
+	needle := strings.ToLower(query)
+	var specs []commandSpec
+	for _, path := range a.code.files {
+		if _, ok := subsequenceRanges(strings.ToLower(path), needle); !ok {
+			continue
+		}
+		path := path
+		specs = append(specs, commandSpec{
+			ID: commandID("files/open/" + path), Label: path, Detail: "Open in the Editor",
+			Group: commandGroupNavigation, Prefix: '/', Glyph: editIcon, Resolve: readyAppState,
+			Run: func(ctx commandContext) { ctx.App.openCodeFile(path, 0) },
+		})
+		if len(specs) == workspaceFileMatchLimit {
+			break
+		}
+	}
+	return specs
 }

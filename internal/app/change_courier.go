@@ -69,16 +69,6 @@ func (a *app) courierEligible() bool {
 	return a.session != nil && !a.actionBusy
 }
 
-func (a *app) courierButtonTooltip(tooltip string) string {
-	if a.actionBusy {
-		return tr("Wait for the current action to finish, then send these changes to another worktree.")
-	}
-	if len(courierDestinations(a.snapshot)) == 0 {
-		return tr("No other available worktrees. Create a worktree for the destination branch first.")
-	}
-	return tooltip
-}
-
 func (a *app) cancelChangeCourierOperations() {
 	if a.courier.previewCancel != nil {
 		a.courier.previewCancel()
@@ -367,45 +357,6 @@ func (a *app) beginWorkingTreeCourierAtDiff(file repository.File, lines []patch.
 			}
 		})
 	}()
-}
-
-func (a *app) beginSelectedLinesCourier() {
-	change, ok := a.selectedChange()
-	if !ok || !a.lineSelectionAvailable() || a.diffState == nil {
-		return
-	}
-	parsed, err := editor.ParsePatch(a.diffPatch)
-	if err != nil || len(parsed) != 1 {
-		a.notifyError(fmt.Errorf("read selected lines for Change Courier: %w", err))
-		return
-	}
-	lines := selectedLineIdentities(parsed[0], a.currentLineSelections()...)
-	if len(lines) == 0 {
-		a.notify("", tr("Nothing to send"), tr("Select changed lines, not unchanged ones."))
-		return
-	}
-	file := change.diffFile()
-	a.beginWorkingTreeCourierAtDiff(file, lines, a.diffPatch, trf("Selected lines · %s", file.Path))
-}
-
-func (a *app) beginCurrentHunkCourier() {
-	change, ok := a.selectedChange()
-	if !ok || a.diffState == nil || a.diffPatch == "" || a.customPatchActive() {
-		return
-	}
-	hunk, _ := a.diffState.CurrentHunk()
-	parsed, err := editor.ParsePatch(a.diffPatch)
-	if err != nil || len(parsed) != 1 {
-		a.notifyError(fmt.Errorf("read the current hunk for Change Courier: %w", err))
-		return
-	}
-	lines := customPatchHunkIdentities(parsed[0], hunk)
-	if len(lines) == 0 {
-		a.notify("", tr("Nothing to send"), tr("Move the caret into a diff hunk first."))
-		return
-	}
-	file := change.diffFile()
-	a.beginWorkingTreeCourierAtDiff(file, lines, a.diffPatch, trf("Current hunk · %s", file.Path))
 }
 
 func (a *app) beginCustomPatchCourier() {

@@ -230,6 +230,9 @@ type app struct {
 	commandLogOpen    bool
 	commandLog        *repository.CommandLog
 	commandLogVisible atomic.Bool
+	// paletteOutputVisible is set while the command palette shows this app's
+	// shell-command output, which then needs the same live repaints as the log.
+	paletteOutputVisible atomic.Bool
 	// commandLogFramePending coalesces output bursts into one queued UI
 	// publication, which checks tab and modal visibility when it runs.
 	commandLogFramePending atomic.Bool

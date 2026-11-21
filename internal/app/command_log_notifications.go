@@ -48,7 +48,7 @@ func (a *app) attachRepositoryCommandLog(log *repository.CommandLog) {
 		return
 	}
 	log.SetListener(func() {
-		if !a.commandLogVisible.Load() || !a.commandLogFramePending.CompareAndSwap(false, true) {
+		if !a.liveOutputVisible() || !a.commandLogFramePending.CompareAndSwap(false, true) {
 			return
 		}
 		// Queue one publication for a burst rather than allowing every output
@@ -56,9 +56,15 @@ func (a *app) attachRepositoryCommandLog(log *repository.CommandLog) {
 		// again on the UI thread so a closed log or background tab stays quiet.
 		a.updateChanged(func() bool {
 			a.commandLogFramePending.Store(false)
-			return a.commandLogVisible.Load()
+			return a.liveOutputVisible()
 		})
 	})
+}
+
+// liveOutputVisible reports whether anything on screen shows command output as
+// it arrives: the command log, or the palette's shell-command panel.
+func (a *app) liveOutputVisible() bool {
+	return a.commandLogVisible.Load() || a.paletteOutputVisible.Load()
 }
 
 // openCommandLog shows a fresh, bounded page of background Git commands. User

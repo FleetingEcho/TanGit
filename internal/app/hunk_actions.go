@@ -100,13 +100,7 @@ func (a *app) hunkModeButton(c *ui.Context) {
 		}
 	})
 	if button.Clicked() {
-		if active {
-			a.hunkMode = false
-			a.stopLineSelection()
-		} else {
-			a.hunkMode = true
-			a.startLineSelection()
-		}
+		a.toggleSelectionMode()
 	}
 }
 
@@ -374,4 +368,17 @@ func selectionToolGroup(c *ui.Context) ui.Element {
 	theme := c.Theme()
 	return ui.Row(c).Padding(3, 6).Radius(theme.Radius+2).
 		Border(1, theme.Accent.Alpha(0.35)).Background(theme.Accent.Alpha(0.05))
+}
+
+// toggleSelectionMode is the Select changes button and its keyboard shortcut:
+// on shows the hunk actions and starts picking lines; off hides both and drops
+// the selection.
+func (a *app) toggleSelectionMode() {
+	if a.hunkMode || a.lineSelectMode {
+		a.hunkMode = false
+		a.stopLineSelection()
+		return
+	}
+	a.hunkMode = true
+	a.startLineSelection()
 }

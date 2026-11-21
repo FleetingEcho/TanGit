@@ -3,11 +3,8 @@ package app
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync/atomic"
 	"testing"
-
-	"github.com/egoist/mygo/ui/editor"
 
 	"lazygitapp/internal/repository"
 	"lazygitapp/internal/workspace"
@@ -186,42 +183,6 @@ type courierSourceSession struct {
 func (s courierSourceSession) WorkingTreeFilePatch(_ context.Context, file repository.File) (string, error) {
 	s.calls.record("working-tree-file-patch:" + file.Path)
 	return s.patch, nil
-}
-
-func TestChangeCourierRejectsSelectionsReboundToNewerSource(t *testing.T) {
-	newerPatch := strings.Replace(fakeWorkingTreePatch, "+TWO", "+UPDATED", 1)
-	for _, test := range []struct {
-		name   string
-		action func(*app)
-	}{
-		{name: "selected lines", action: func(a *app) { a.beginSelectedLinesCourier() }},
-		{name: "current hunk", action: func(a *app) { a.beginCurrentHunkCourier() }},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			h, calls := changesTestApp(t, unstagedTrackedFile())
-			h.waitFor(t, "source diff", func() bool { return h.app.diffState != nil && h.app.diffPatch != "" })
-			h.app.diffState.SetSelectedLines(editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1}, true)
-			h.app.diffState.GoToHunk(0)
-			calls = h.app.session.(fakeSession).calls
-			targetCalls := &callRecorder{}
-			target := &courierTargetSession{fakeSession: fakeSession{calls: targetCalls}, preview: repository.PatchPreview{Clean: true}}
-			h.app.snapshot.Worktrees = []repository.Worktree{
-				{Path: "/work/project", Name: "project", Branch: "main", Current: true, Main: true},
-				{Path: "/work/feature", Name: "feature", Branch: "feature"},
-			}
-			h.app.opener = courierOpener{path: "/work/feature", target: target, calls: targetCalls}
-			h.app.session = courierSourceSession{fakeSession: fakeSession{calls: calls}, patch: newerPatch}
-
-			test.action(h.app)
-			h.waitFor(t, "source version check", func() bool { return !h.app.courier.sourceLoading })
-			if !strings.Contains(h.app.courier.previewError, "changed after this diff") {
-				t.Fatalf("newer source error = %q", h.app.courier.previewError)
-			}
-			if h.app.courier.patchText != "" || len(targetCalls.all()) != 0 {
-				t.Fatalf("rebound selection reached destination: patch %q, calls %v", h.app.courier.patchText, targetCalls.all())
-			}
-		})
-	}
 }
 
 func TestCustomPatchCourierHandoffUsesCompletePreviewBytes(t *testing.T) {

@@ -1669,3 +1669,48 @@ func TestTerminalFocusSuppressesAppShortcuts(t *testing.T) {
 		t.Fatal("Ctrl+L did not open the command log after the terminal was closed")
 	}
 }
+
+// An SSH workspace's terminal is a shell on the remote host, entered at the
+// remote repository root: the pane gets the SSH connection and no local
+// directory, so nothing starts on this computer.
+func TestSSHWorkspaceOpensARemoteTerminal(t *testing.T) {
+	originalConnect := connectRemoteTerminal
+	originalNewTerminal := newTerminal
+	t.Cleanup(func() {
+		connectRemoteTerminal = originalConnect
+		newTerminal = originalNewTerminal
+	})
+	terminalSide, peerSide := net.Pipe()
+	t.Cleanup(func() { _ = peerSide.Close() })
+	connection := &monitoredRemoteTerminalConn{monitoredTerminalConn: &monitoredTerminalConn{Conn: terminalSide, closed: make(chan struct{})}}
+	var connectedRoot string
+	connectRemoteTerminal = func(_ context.Context, _ remoteWorkspaceClient, root string) (remoteTerminalConnection, error) {
+		connectedRoot = root
+		return connection, nil
+	}
+	options := make(chan terminal.Options, 1)
+	newTerminal = func(o terminal.Options) (*terminal.Terminal, error) {
+		options <- o
+		return nil, errors.New("stop after recording the options")
+	}
+
+	h := menuTestApp(t)
+	h.app.location = workspace.Location{Kind: workspace.SSH, ProfileID: "test", Root: "/srv/repo"}
+	h.app.snapshot.Root = "/srv/repo"
+	h.app.session = sshProviderSession{Session: fakeSession{}, client: &sshworkspace.Client{}}
+	h.app.openTerminal()
+	select {
+	case got := <-options:
+		if connectedRoot != "/srv/repo" {
+			t.Fatalf("remote terminal root = %q", connectedRoot)
+		}
+		if got.Conn == nil || !got.ResizeByConn || got.Dir != "" || len(got.Command) != 0 {
+			t.Fatalf("terminal would start locally: %+v", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the terminal was never created")
+	}
+	if shell := h.app.activeTerminal().shell; shell != "SSH" {
+		t.Fatalf("terminal shell label = %q, want SSH", shell)
+	}
+}

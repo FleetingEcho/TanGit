@@ -34,12 +34,7 @@ func (r paletteShellRun) entry() (repository.CommandEntry, bool) {
 	if !r.active() {
 		return repository.CommandEntry{}, false
 	}
-	for _, entry := range r.app.commandLog.Entries() {
-		if entry.ID() == r.entryID {
-			return entry, true
-		}
-	}
-	return repository.CommandEntry{}, false
+	return r.app.commandLog.Entry(r.entryID)
 }
 
 type commandPaletteState struct {
@@ -103,6 +98,9 @@ func (s *shell) closeCommandPalette(restore bool) {
 		return
 	}
 	s.palette.open = false
+	if run := s.palette.shellRun; run.app != nil {
+		run.app.paletteOutputVisible.Store(false)
+	}
 	s.palette.query = ""
 	s.palette.selected = 0
 	s.palette.notice = ""
@@ -330,6 +328,10 @@ func commandIconSVG(icon commandKind) *ui.SVG {
 func (s *shell) commandPaletteView(c *ui.Context) {
 	if !s.palette.open {
 		return
+	}
+	if run := s.palette.shellRun; run.app != nil {
+		// The output panel marks itself visible again below if it is drawn.
+		run.app.paletteOutputVisible.Store(false)
 	}
 	theme := c.Theme()
 	candidates := s.commandPaletteCandidates()
@@ -622,6 +624,7 @@ func (s *shell) paletteShellOutput(c *ui.Context) {
 	if !ok {
 		return
 	}
+	run.app.paletteOutputVisible.Store(true)
 	theme := c.Theme()
 	ui.Divider(c)
 	ui.Column(c).FillWidth().Gap(6).Height(210).Children(func() {

@@ -125,3 +125,22 @@ func TestRowActionsAndFailureCommands(t *testing.T) {
 		}
 	}
 }
+
+// While the palette shows a ! command's output, its log listener repaints for
+// each burst of output even though the command-log modal is closed.
+func TestPaletteShellOutputRepaintsWithoutTheCommandLogOpen(t *testing.T) {
+	h, _ := menuTestAppWithCalls(t)
+	log := repository.NewCommandLog()
+	h.app.attachRepositoryCommandLog(log)
+	id, _ := log.BeginUserCommandEntry("echo hi")
+	if h.app.commandLogVisible.Load() {
+		t.Fatal("the command log should be closed in this test")
+	}
+	log.AppendOutput(id, "ignored while nothing shows it\n")
+	h.app.paletteOutputVisible.Store(true)
+	log.AppendOutput(id, "shown\n")
+	h.updates.waitForUpdate(t)
+	if h.app.paletteOutputVisible.Load() != true {
+		t.Fatal("visibility flag was cleared by the repaint")
+	}
+}
