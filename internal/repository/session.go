@@ -3042,6 +3042,9 @@ func (s *gitSession) ResolveCommit(ctx context.Context, ref string) (string, err
 	if ref == "" {
 		return "", fmt.Errorf("base ref is required")
 	}
+	if err := s.rejectAmbiguousRef(ref); err != nil {
+		return "", err
+	}
 	hash, err := s.cmd.New([]string{"git", "rev-parse", "--verify", "--end-of-options", ref + "^{commit}"}).DontLog().RunWithOutput()
 	if err != nil {
 		return "", fmt.Errorf("resolve base ref %s: %w", ref, err)
@@ -3565,6 +3568,12 @@ func (s *gitSession) compareArgs(from, to, outputMode string, options DiffOption
 	if from == "" || to == "" {
 		return nil, fmt.Errorf("choose both refs to compare")
 	}
+	if err := s.rejectAmbiguousRef(from); err != nil {
+		return nil, err
+	}
+	if err := s.rejectAmbiguousRef(to); err != nil {
+		return nil, err
+	}
 	optionArgs, err := diffOptionArgs(options)
 	if err != nil {
 		return nil, err
@@ -3677,6 +3686,21 @@ func (s *gitSession) BranchCommits(ctx context.Context, branch string, limit int
 // contains, so parsing stays unambiguous.
 const commitLogFormat = "--format=%H%x1f%h%x1f%an%x1f%ae%x1f%at%x1f%P%x1f%D%x1f%s"
 
+// qualifyCommitFilterBranch prevents an equally named tag from capturing a
+// short local branch name in git log and merge-base revision resolution.
+// Explicit refs and other commit-ish filters retain their existing meaning;
+// an unborn local branch has no ref to qualify and keeps its special handling.
+func (s *gitSession) qualifyCommitFilterBranch(branch string) string {
+	if branch == "" || branch == "HEAD" || strings.HasPrefix(branch, "refs/") {
+		return branch
+	}
+	qualified := "refs/heads/" + branch
+	if err := s.cmd.New([]string{"git", "show-ref", "--verify", "--quiet", qualified}).Run(); err == nil {
+		return qualified
+	}
+	return branch
+}
+
 // SearchCommits reads up to filter.Limit commits matching the filter with
 // `git log`, newest first. Filtering runs in Git rather than on the page the
 // snapshot carries, so a match older than that page is still found, and a
@@ -3693,6 +3717,7 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 	if strings.HasPrefix(branch, "-") {
 		return nil, fmt.Errorf("search commits: invalid branch %q", branch)
 	}
+	branch = s.qualifyCommitFilterBranch(branch)
 	if commits, hashQuery, err := s.searchCommitHash(filter, query, branch); hashQuery {
 		if err != nil && s.isUnbornBranch(branch) {
 			return nil, nil
