@@ -170,7 +170,7 @@ func (a *app) settingsHeader(c *ui.Context) {
 }
 
 // settingsGroup titles a block of related settings.
-func settingsGroup(c *ui.Context, icon *ui.SVG, title, hint string) {
+func settingsGroup(c *ui.Context, icon *ui.SVG, title, hint string, actions ...func()) {
 	theme := c.Theme()
 	ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(0, 0, 5).Children(func() {
 		ui.Box(c).Size(30, 30).Radius(theme.Radius + 2).Center().
@@ -183,6 +183,12 @@ func settingsGroup(c *ui.Context, icon *ui.SVG, title, hint string) {
 				ui.Text(c, tr(hint)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 			}
 		})
+		if len(actions) > 0 {
+			ui.Box(c).Grow(1)
+			for _, action := range actions {
+				action()
+			}
+		}
 	})
 }
 
@@ -310,7 +316,10 @@ func (a *app) cacheSettings(c *ui.Context) {
 	indexDescription := "Indexes built and queried by Zoekt. They speed up full-text Code Search across local repository files without rescanning every file for every query."
 	avatarDescription := "Commit-author images shown next to commits. Caching avoids repeated downloads from Git hosting services."
 	settingsSection(c, func() {
-		settingsGroup(c, trashIcon, "Cache", "Storage used by Zoekt code-search indexes and downloaded author avatars")
+		settingsGroup(c, trashIcon, "Cache", "Storage used by Zoekt code-search indexes and downloaded author avatars", func() {
+			iconButton(c, "Refresh cache size", "Remeasure the disk space used by Zoekt indexes and cached author avatars", refreshIcon,
+				a.cacheUsage.loading || a.cacheCleanupBusy, a.refreshCacheUsage)
+		})
 		switch {
 		case a.cacheCleanupBusy:
 			ui.Text(c, tr("Clearing cache…")).TextColor(theme.TextMuted)
@@ -334,8 +343,6 @@ func (a *app) cacheSettings(c *ui.Context) {
 		settingRow(c, "Cache", "", func() {
 			iconTextButton(c, "Manage repositories", "Choose which recent repository's search index to clear",
 				searchIcon, a.cacheCleanupBusy, a.openRepositoryCaches)
-			iconButton(c, "Refresh cache size", "Remeasure the disk space used by Zoekt indexes and cached author avatars", refreshIcon,
-				a.cacheUsage.loading || a.cacheCleanupBusy, a.refreshCacheUsage)
 			iconTextButtonState(c, "Clear cache", "Delete ALL Zoekt code-search indexes and cached author avatars across every project. They are recreated when needed.", trashIcon,
 				false, a.cacheCleanupBusy, a.openCacheCleaner)
 		})
