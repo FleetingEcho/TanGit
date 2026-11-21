@@ -15,14 +15,24 @@ import (
 func stubWorkingFile(t *testing.T, content string) *[]byte {
 	t.Helper()
 	originalRead, originalWrite := readWorkingFile, writeWorkingFile
+	originalCheckedWrite := writeWorkingFileChecked
 	t.Cleanup(func() {
 		readWorkingFile, writeWorkingFile = originalRead, originalWrite
+		writeWorkingFileChecked = originalCheckedWrite
 	})
 	readWorkingFile = func(string) ([]byte, error) { return []byte(content), nil }
 	written := new([]byte)
+	current := []byte(content)
 	writeWorkingFile = func(_ string, data []byte) error {
 		*written = append([]byte(nil), data...)
+		current = append(current[:0], data...)
 		return nil
+	}
+	writeWorkingFileChecked = func(path string, data []byte, expected localFileStamp, known bool) error {
+		if known && stampLocalFile(current) != expected {
+			return errLocalFileModified
+		}
+		return writeWorkingFile(path, data)
 	}
 	return written
 }

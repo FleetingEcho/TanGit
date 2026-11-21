@@ -84,6 +84,16 @@ type appSettings struct {
 	// ExternalEditors contains additional named commands offered by Settings
 	// and the Editor header's direct-launch menu.
 	ExternalEditors []editorPreset `json:"externalEditors,omitempty"`
+	// Built-in editor presentation and language intelligence preferences.
+	EditorPreferencesConfigured bool   `json:"editorPreferencesConfigured,omitempty"`
+	EditorWordWrap              bool   `json:"editorWordWrap"`
+	EditorLineNumbers           string `json:"editorLineNumbers,omitempty"`
+	EditorWhitespace            string `json:"editorWhitespace,omitempty"`
+	EditorAutoClose             bool   `json:"editorAutoClose"`
+	EditorInlayHints            bool   `json:"editorInlayHints"`
+	EditorSemanticHighlighting  bool   `json:"editorSemanticHighlighting"`
+	EditorMinimap               bool   `json:"editorMinimap"`
+	EditorStickyScroll          bool   `json:"editorStickyScroll"`
 	// SearchExcludedDirectories contains folder names skipped by workspace
 	// content search. Nil in an older settings file selects the
 	// defaults; a saved empty slice deliberately disables every exclusion.
@@ -164,25 +174,33 @@ const (
 func defaultSettings() appSettings {
 	base := themeChoices[defaultTheme].build()
 	return appSettings{
-		Theme:                     defaultTheme,
-		Accent:                    "",
-		FontSize:                  float64(base.FontSize),
-		Font:                      "System",
-		BufferFont:                "System",
-		BufferFontSize:            defaultBufferFontSize,
-		BufferLineHeight:          defaultBufferLineHeight,
-		Spacing:                   float64(base.Spacing),
-		Radius:                    float64(base.Radius),
-		Language:                  defaultLanguage,
-		EditorCommand:             defaultEditorCommand,
-		AutoFetchInterval:         5,
-		AutoFetchConfigured:       true,
-		SearchExcludedDirectories: defaultWorkspaceSearchExcludedDirectories(),
-		HomeBackgroundOpacity:     defaultHomeBackgroundOpacity,
-		VisibleSections:           slices.Clone(defaultVisibleSections),
-		SectionOrder:              slices.Clone(workspaceSectionIDs),
-		TerminalDock:              terminalDockBottom,
-		ConflictActionStyle:       conflictActionStyleIcons,
+		Theme:                       defaultTheme,
+		Accent:                      "",
+		FontSize:                    float64(base.FontSize),
+		Font:                        "System",
+		BufferFont:                  "System",
+		BufferFontSize:              defaultBufferFontSize,
+		BufferLineHeight:            defaultBufferLineHeight,
+		Spacing:                     float64(base.Spacing),
+		Radius:                      float64(base.Radius),
+		Language:                    defaultLanguage,
+		EditorCommand:               defaultEditorCommand,
+		EditorPreferencesConfigured: true,
+		EditorWordWrap:              true,
+		EditorLineNumbers:           "on",
+		EditorWhitespace:            "selection",
+		EditorAutoClose:             true,
+		EditorInlayHints:            true,
+		EditorSemanticHighlighting:  true,
+		EditorStickyScroll:          true,
+		AutoFetchInterval:           5,
+		AutoFetchConfigured:         true,
+		SearchExcludedDirectories:   defaultWorkspaceSearchExcludedDirectories(),
+		HomeBackgroundOpacity:       defaultHomeBackgroundOpacity,
+		VisibleSections:             slices.Clone(defaultVisibleSections),
+		SectionOrder:                slices.Clone(workspaceSectionIDs),
+		TerminalDock:                terminalDockBottom,
+		ConflictActionStyle:         conflictActionStyleIcons,
 	}
 }
 
@@ -225,6 +243,16 @@ func normalizeSettings(s appSettings) appSettings {
 	}
 	s.Language = normalizeLanguage(s.Language)
 	s.EditorCommand = effectiveEditorCommand(s.EditorCommand)
+	if !s.EditorPreferencesConfigured {
+		s = effectiveBuiltInEditorPreferences(s)
+		s.EditorPreferencesConfigured = true
+	}
+	if s.EditorLineNumbers != "on" && s.EditorLineNumbers != "relative" && s.EditorLineNumbers != "off" {
+		s.EditorLineNumbers = "on"
+	}
+	if s.EditorWhitespace != "selection" && s.EditorWhitespace != "none" && s.EditorWhitespace != "all" && s.EditorWhitespace != "trailing" && s.EditorWhitespace != "boundary" {
+		s.EditorWhitespace = "selection"
+	}
 	s.ExternalEditors = normalizeExternalEditors(s.ExternalEditors)
 	if s.SearchExcludedDirectories == nil {
 		s.SearchExcludedDirectories = defaultWorkspaceSearchExcludedDirectories()
