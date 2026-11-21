@@ -1410,8 +1410,18 @@ func (a *app) statusBar(c *ui.Context) {
 			// workspace off the top of the window. The whole message is
 			// in the command log, which the button beside it opens.
 			line := statusErrorLine(a.actionError)
-			ui.Text(c, line).TextColor(theme.Danger).
-				SingleLine().MaxWidth(520).Tooltip(shorten(a.actionError, 400))
+			errorButton := ui.ButtonBase(c).Padding(1, 3).Radius(theme.Radius).
+				Label(tr("Command log") + ": " + line).Tooltip(tr("Command log") + "\n" + shorten(a.actionError, 400))
+			errorButton.Children(func() {
+				ui.Text(c, line).TextColor(theme.Danger).
+					SingleLine().MaxWidth(520)
+			})
+			if errorButton.Hovered() {
+				errorButton.Background(theme.Danger.Alpha(0.08))
+			}
+			if errorButton.Clicked() {
+				a.openFailedCommand(a.actionFailure)
+			}
 		}
 		a.keyboardPane(c, "status", ui.Row(c).Grow(1).Justify(ui.End).Gap(8).Focusable()).Children(func() {
 			if a.actionBusy || a.customCommandRunning {

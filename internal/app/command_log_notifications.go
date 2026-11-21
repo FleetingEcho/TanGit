@@ -2,10 +2,48 @@ package app
 
 import "lazygitapp/internal/repository"
 
+type commandLogFailureTarget struct {
+	log *repository.CommandLog
+	id  uint64
+}
+
+// openFailedCommand follows an actual command identity, not a substring or
+// current index. A stale or evicted target falls back to the ordinary log.
+func (a *app) openFailedCommand(target *commandLogFailureTarget) {
+	a.openGitCommandLog()
+	if target == nil || target.log == nil || target.id == 0 || target.log != a.commandLog {
+		return
+	}
+	for _, entry := range target.log.Entries() {
+		if entry.ID() != target.id {
+			continue
+		}
+		a.commandLogUser = entry.Origin == repository.CommandOriginUser
+		selected := *target
+		a.commandLogReveal = &selected
+		return
+	}
+}
+
+func (a *app) openFailedCommandAction(target *commandLogFailureTarget) func() {
+	if target == nil {
+		return a.openGitCommandLog
+	}
+	selected := *target
+	return func() { a.openFailedCommand(&selected) }
+}
+
 // attachRepositoryCommandLog ties the logger for the newly opened repository
 // to the window. The listener never reads mutable app fields on its own thread;
 // atomic visibility selects whether a live command-log repaint is necessary.
 func (a *app) attachRepositoryCommandLog(log *repository.CommandLog) {
+	if log != a.commandLog {
+		a.actionFailure = nil
+		a.commandLogReveal = nil
+		a.commandLogScroll.X = 0
+		a.commandLogScroll.Y = 0
+		a.commandLogScroll.MaxY = 0
+	}
 	a.commandLog = log
 	if log == nil {
 		return
@@ -29,6 +67,7 @@ func (a *app) attachRepositoryCommandLog(log *repository.CommandLog) {
 func (a *app) openCommandLog() {
 	a.commandLogOpen = true
 	a.commandLogVisible.Store(true)
+	a.commandLogReveal = nil
 	a.commandLogUser = false
 	a.commandLogQuery = ""
 }
@@ -36,11 +75,13 @@ func (a *app) openCommandLog() {
 func (a *app) openGitCommandLog() {
 	a.commandLogOpen = true
 	a.commandLogVisible.Store(true)
+	a.commandLogReveal = nil
 	a.commandLogUser = false
 	a.commandLogQuery = ""
 }
 
 func (a *app) closeCommandLog() {
 	a.commandLogOpen = false
+	a.commandLogReveal = nil
 	a.commandLogVisible.Store(false)
 }

@@ -69,7 +69,7 @@ func (a *app) notifyTranslated(kind, title, description string) {
 // notifyError reports a failed action, with the way to the command log that
 // holds the command and the rest of its output. A known recovery becomes the
 // primary action instead of leaving the user to find it in Git's output.
-func (a *app) notifyError(err error) {
+func (a *app) notifyError(err error, targets ...commandLogFailureTarget) {
 	if err == nil {
 		return
 	}
@@ -119,12 +119,18 @@ func (a *app) notifyError(err error) {
 		})
 		return
 	}
+	openLog := a.openGitCommandLog
+	if len(targets) > 0 {
+		selected := targets[0]
+		target := &selected
+		openLog = a.openFailedCommandAction(target)
+	}
 	a.pendingToasts = append(a.pendingToasts, appToast{
 		kind:        "error",
 		title:       tr("Git action failed"),
 		description: shorten(safeError(err), 220),
 		action:      tr("View log"),
-		onAction:    a.openGitCommandLog,
+		onAction:    openLog,
 		timeout:     8 * time.Second,
 	})
 }
