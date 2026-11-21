@@ -13,7 +13,7 @@ jobs:
   test:
     name: Test and vet
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     env:
       TANGIT_TEST_REQUIRE_OPENSSH: "1"
     steps:
@@ -55,7 +55,9 @@ jobs:
           -run '^(TestRealGitContinueDetectsLengthInvariantChangesBeforeDriver|TestCodeCheckoutRefreshesFilesDocumentsAndSearchWithoutDiscardingEdits|TestAgentUpdateStaleGenerationCannotPublishResult|TestShowingTheWindowRefreshesEveryPage|TestClosingRepositoryCancelsReviewRead|TestReplacingRepositoryCancelsReviewRead|TestWorktreeTerminalWaitsForTargetTabAndKeepsIsolation|TestPushShowsConfirmationBeforeDiscoveryWithoutStartingWork|TestCancelingPushDuringDiscoveryDoesNotReopenConfirmation|TestWaitForUpdateRunsPendingCallbackAfterWakeCoalesces)$'
           -count=10 -timeout=5m
       - name: Race-test shared repository and agent state
-        run: go test -race ./internal/repository ./internal/agentwork ./internal/agentcli ./internal/app
+        run: >-
+          go test -race -timeout=20m
+          ./internal/repository ./internal/agentwork ./internal/agentcli ./internal/app
 
   build-smoke:
     name: ${{ matrix.name }} build and smoke

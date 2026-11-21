@@ -19,13 +19,19 @@ go.mod` and runs:
 ```sh
 go tool mygo vet .
 CGO_ENABLED=0 go test ./...
-go test -race ./internal/repository ./internal/agentwork ./internal/agentcli ./internal/app
+go test -race -timeout=20m ./internal/repository ./internal/agentwork ./internal/agentcli ./internal/app
 ```
 
 The full test command runs with `TANGIT_TEST_REQUIRE_OPENSSH=1`; the race
 command has the same required-OpenSSH setting at job scope. The job installs
 `build-essential`, `openssh-client`, and `openssh-server`, checks that it is not
-root, and prints the Go, MyGo, Git, and SSH versions in its log.
+root, and prints the Go, MyGo, Git, and SSH versions in its log. Repository
+fixtures use the runner-local `TanGit CI <ci@tangit.invalid>` Git identity,
+without relying on a developer's global Git configuration. The complete app race
+suite is CPU-sensitive on a shared runner: Test and vet has a 35-minute job
+limit, with a 20-minute limit for each Go race-test package. These outer time
+budgets do not remove test cases or relax their assertions; a race run still
+has to complete successfully.
 
 ### MyGo 0.10 verification and local extensions
 
