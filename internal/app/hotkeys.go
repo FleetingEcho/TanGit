@@ -11,7 +11,7 @@ func (a *app) hotkeysSwitch(c *ui.Context) {
 	changed, notificationsChanged := false, false
 	// Give each preference a full switch-then-label row. Sharing one wrapped
 	// row made the shortcut and notification toggles visually ambiguous.
-	ui.Column(c).FillWidth().Gap(12).Children(func() {
+	ui.Column(c).Gap(12).Children(func() {
 		changed = settingsSwitch(c, "Enable keyboard shortcuts", "Enable keyboard shortcuts", &enabled)
 		notificationsChanged = settingsSwitch(c, "Shortcut notifications",
 			"Show shortcut acknowledgements while keeping Command Log and operation notifications visible.", &notifications)

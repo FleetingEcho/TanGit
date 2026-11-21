@@ -438,11 +438,9 @@ func (a *app) keyBindingRow(c *ui.Context, binding keyBinding) {
 }
 
 func (a *app) keybindingsFooter(c *ui.Context) {
-	theme := c.Theme()
 	ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
 		a.hotkeysSwitch(c)
-		ui.Text(c, tr("The header icons keep every action reachable.")).
-			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1)
+		ui.Box(c).Grow(1)
 		if ui.PrimaryButton(c, tr("Done")).Clicked() {
 			a.closeKeybindings()
 		}
