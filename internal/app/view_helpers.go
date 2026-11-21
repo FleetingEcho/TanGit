@@ -334,8 +334,7 @@ func paneSplitVertical(c *ui.Context, size *float32, first, second func()) ui.El
 
 // paneSplitVerticalReserve keeps a structural minimum height for the second
 // pane while the user drags, independently of either pane's content.
-func paneSplitVerticalReserve(c *ui.Context, size *float32, secondMin float32, first, second func()) ui.Element {
-	inset := commitDetailsPaneGap / 2
+func paneSplitVerticalReserve(c *ui.Context, size *float32, secondMin, inset float32, first, second func()) ui.Element {
 	withSpace := func(before bool, content func()) func() {
 		return func() {
 			pane := ui.Box(c).Fill()

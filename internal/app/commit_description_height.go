@@ -57,7 +57,15 @@ func (a *app) preferredCommitDescriptionHeight(c *ui.Context, commit repository.
 		return measured
 	}
 	headerHeight, contentHeight, contentWidth := float32(0), float32(0), float32(0)
-	ui.Column(c).Fill().Gap(4).Children(func() {
+	fullscreen := scrollState == &a.diffFullscreenMessageScroll
+	bodyColumn := ui.Column(c).Fill().Gap(4)
+	if fullscreen && a.diffFullscreenMessageHeight > 0 {
+		// The outer metadata scroll does not give its children a height
+		// limit. Give the Markdown view its own measured viewport instead,
+		// so a long message keeps its established internal scrolling.
+		bodyColumn.Height(a.diffFullscreenMessageHeight)
+	}
+	bodyColumn.Children(func() {
 		header := ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 			ui.Text(c, tr("Description")).Bold().TextColor(c.Theme().TextMuted).Grow(1)
 			label, icon := "Show raw commit message", fileCodeIcon
@@ -98,6 +106,13 @@ func (a *app) preferredCommitDescriptionHeight(c *ui.Context, commit repository.
 		measured.height = headerHeight + 4 + contentHeight + commitDetailsPaneGap/2
 		measured.width = contentWidth
 	}
+	if fullscreen && measured.valid() {
+		desired := min(max(measured.height, commitMessageDefaultHeight), commitDescriptionMaxAutoHeight)
+		if a.diffFullscreenMessageHeight != desired {
+			a.diffFullscreenMessageHeight = desired
+			c.Invalidate()
+		}
+	}
 	return measured
 }
 
@@ -110,7 +125,7 @@ func (a *app) commitDescriptionSplit(c *ui.Context, commit repository.Commit, st
 	}
 	before := message.height
 	var measured commitDescriptionMeasurement
-	element := paneSplitVerticalReserve(c, &message.height, diffRegionMinHeight,
+	element := paneSplitVerticalReserve(c, &message.height, diffRegionMinHeight, commitDetailsPaneGap/2,
 		func() {
 			measured = a.preferredCommitDescriptionHeight(c, commit, state, &message.scroll)
 		}, filesAndDiff)

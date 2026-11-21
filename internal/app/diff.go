@@ -391,8 +391,9 @@ func (a *app) commitSubject(index int) string {
 }
 
 const (
-	diffFullscreenDetailsMinHeight = float32(60)
-	diffRegionMinHeight            = float32(200)
+	diffFullscreenDetailsMinHeight  = float32(60)
+	diffFullscreenDetailsSplitInset = float32(2)
+	diffRegionMinHeight             = float32(200)
 )
 
 // openDiffFullscreen shows the active diff over the whole window, for reading
@@ -402,7 +403,9 @@ func (a *app) openDiffFullscreen() {
 		return
 	}
 	a.diffFullscreenDetailsHeight = diffFullscreenDetailsMinHeight
+	a.diffFullscreenDetailsScroll = ui.ScrollState{}
 	a.diffFullscreenMessageScroll = ui.ScrollState{}
+	a.diffFullscreenMessageHeight = 0
 	a.diffFullscreen = true
 }
 
@@ -639,7 +642,12 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 						}
 					})
 					if details != nil {
-						ui.Box(c).Grow(1).MinHeight(0).Label(tr("Commit details")).Children(details)
+						detailsScroll := ui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Label(tr("Commit details"))
+						if a.diffFullscreenDetailsScroll.MaxY > 0 {
+							detailsScroll.KeepScrollbars(true)
+						}
+						detailsScroll.TrackScroll(&a.diffFullscreenDetailsScroll)
+						detailsScroll.Children(details)
 					}
 				})
 			}
@@ -659,7 +667,7 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 				a.diffFullscreenFilesView(c, theme, target, files)
 			}
 			if showCommitDetails {
-				paneSplitVerticalReserve(c, &a.diffFullscreenDetailsHeight, diffRegionMinHeight, func() {
+				paneSplitVerticalReserve(c, &a.diffFullscreenDetailsHeight, diffRegionMinHeight, diffFullscreenDetailsSplitInset, func() {
 					if a.diffFullscreenDetailsHeight <= diffFullscreenDetailsMinHeight+1 {
 						renderHeader(nil)
 						return
@@ -671,15 +679,17 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 				return
 			}
 			renderHeader(nil)
+			// The file actions sit in an island of their own rather than on
+			// the drawer's bare backdrop, matching the island language
+			// every other pane uses.
 			if a.workspaceTab == sectionChanges {
-				ui.Column(c).Padding(10, 14).Children(func() {
+				islandCard(c, ui.Column(c).Padding(8, 10).Gap(4)).Children(func() {
 					a.hunkActionControls(c)
 					if a.lineSelectionAvailable() {
 						a.lineSelectionControls(c, false)
 					}
 				})
 			}
-			ui.Divider(c)
 			renderDiff()
 		})
 		if panel.OverlayShortcut(0, ui.KeyEscape) {

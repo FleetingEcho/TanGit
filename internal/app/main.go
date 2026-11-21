@@ -564,9 +564,12 @@ type app struct {
 	// diffFullscreen shows the active diff over the whole window.
 	diffFullscreen bool
 	// diffFullscreenDetailsHeight starts at the title card's compact
-	// height and grows when its middle divider is dragged down.
+	// height and grows when its middle divider is dragged down. The details
+	// scroll keeps metadata reachable when that chosen height is short.
 	diffFullscreenDetailsHeight float32
+	diffFullscreenDetailsScroll ui.ScrollState
 	diffFullscreenMessageScroll ui.ScrollState
+	diffFullscreenMessageHeight float32
 	// The whole-window diff lists the files of the pane it reads, so another
 	// file can be read without leaving it. diffFullscreenFile is the row
 	// chosen, diffFullscreenRows the rows the frame built (the list's key and
