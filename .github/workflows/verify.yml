@@ -31,6 +31,10 @@ jobs:
           go tool mygo version
           git --version
           ssh -V
+      - name: Configure Git for repository fixtures
+        run: |
+          git config --global user.name "TanGit CI"
+          git config --global user.email "ci@tangit.invalid"
       - name: Check the required OpenSSH test environment
         run: |
           if [ "$(id -u)" -eq 0 ]; then
