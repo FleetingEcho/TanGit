@@ -237,3 +237,25 @@ func TestContributorsViewRendersAndIsInThePalette(t *testing.T) {
 		t.Fatalf("expanded = %q", s.activity.contributors.expanded)
 	}
 }
+
+// TestOverviewScreenshots is opt-in like the other screenshot harnesses.
+func TestOverviewScreenshots(t *testing.T) {
+	dir := os.Getenv("MYGO_SHOTS")
+	if dir == "" {
+		t.Skip("set MYGO_SHOTS to a directory to write screenshots")
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, size := range []struct {
+		name string
+		w, h int
+	}{{"wide", 1280, 900}, {"narrow", 720, 900}} {
+		s, tt, _ := activityCenterShell(t)
+		a := s.activeApp()
+		a.workspaceTab = sectionOverview
+		a.prepareCockpit()
+		tt.SetSize(size.w, size.h)
+		saveScreenshot(t, dir, "overview-"+size.name+"-dark", tt)
+	}
+}

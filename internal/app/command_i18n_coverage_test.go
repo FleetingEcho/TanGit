@@ -25,6 +25,12 @@ var paletteStringPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`return "((?:[^"\\]|\\.)+)"`),
 }
 
+// userTextSources are files whose multi-word string literals are all text the
+// user can see, so each one is checked, not only those a pattern recognizes.
+var userTextSources = []string{"cockpit_summary.go"}
+
+var stringLiteral = regexp.MustCompile(`"((?:[^"\\\n]|\\.)+)"`)
+
 // paletteStrings gathers every English string the palette can show.
 func paletteStrings(t *testing.T) map[string]bool {
 	t.Helper()
@@ -77,6 +83,18 @@ func paletteStrings(t *testing.T) map[string]bool {
 				if strings.HasPrefix(text, "git/") || strings.Contains(text, "/") && !strings.Contains(text, " ") {
 					continue
 				}
+				add(text)
+			}
+		}
+	}
+	for _, name := range userTextSources {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			continue
+		}
+		for _, match := range stringLiteral.FindAllStringSubmatch(string(data), -1) {
+			text := strings.ReplaceAll(match[1], `\"`, `"`)
+			if strings.Contains(text, " ") && strings.ContainsAny(text[:1], "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
 				add(text)
 			}
 		}

@@ -230,9 +230,13 @@ unavailable for non-Git folders.
 ### Overview
 
 **Overview** is a workspace section, not a replacement for Changes or History.
-It summarizes branch and divergence information, working-tree counts, current
-operations, cached pull-request checks, Agent state and the latest five activity
-items. Attention is ordered from actual failures and Git operations through
+A header shows the repository, its branch with ahead/behind counts and its
+state, with Fetch, Pull, Push and Refresh beside it. **Continue where you left
+off** lists what needs doing next, each row striped in its severity color with
+one action. Four tiles summarize the working tree (changed files, staged,
+modified, untracked and conflicts, with review progress), collaboration
+(ahead/behind, upstream and cached pull-request checks), the current
+operation and Agent state; below them are the latest five activity items. Attention is ordered from actual failures and Git operations through
 conflicts, unsaved buffers, Agent/transfer issues and ordinary sync or review
 work. At most three primary items appear. Every action uses the shared Command
 Catalog and is checked again before execution.

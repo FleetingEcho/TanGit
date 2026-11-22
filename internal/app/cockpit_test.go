@@ -174,6 +174,8 @@ func TestOverviewViewCommandsUseCatalogAndSurviveExtraFrames(t *testing.T) {
 		return commandInvokeResult{Status: commandInvokeAccepted}
 	}
 	h.app.resolveCommand = func(commandID) commandState { return commandState{Visible: true, Enabled: true} }
+	// Tall enough for the last card to be on screen.
+	h.tester.SetSize(1280, 1800)
 	h.tester.Frame()
 	h.tester.Frame()
 	texts := h.texts()
