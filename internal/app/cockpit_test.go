@@ -141,8 +141,10 @@ func TestOverviewStartPreferenceMigration(t *testing.T) {
 	if legacy.OpenRepositoriesOnOverview || !legacy.OverviewStartConfigured {
 		t.Fatalf("legacy zero value was misinterpreted as a new choice: %+v", legacy)
 	}
-	if !slices.Equal(legacy.SectionOrder[:2], []string{"code", "changes"}) || !slices.Contains(legacy.SectionOrder, "overview") {
-		t.Fatalf("legacy section order was not retained and extended: %v", legacy.SectionOrder)
+	// Existing profiles keep their own order and landing page, and get Overview
+	// shown and first once.
+	if !slices.Equal(legacy.SectionOrder[:3], []string{"overview", "code", "changes"}) || !slices.Contains(legacy.VisibleSections, "overview") {
+		t.Fatalf("legacy profile was not given Overview first: order=%v visible=%v", legacy.SectionOrder, legacy.VisibleSections)
 	}
 	a := newApp(nil)
 	a.state = stateReady

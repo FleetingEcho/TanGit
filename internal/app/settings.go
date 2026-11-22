@@ -133,6 +133,10 @@ type appSettings struct {
 	// settings whose false zero value must retain their original landing page.
 	OpenRepositoriesOnOverview bool `json:"openRepositoriesOnOverview"`
 	OverviewStartConfigured    bool `json:"overviewStartConfigured,omitempty"`
+	// OverviewPlacementMigrated marks that an existing profile has been given the
+	// Overview section once: shown, and first in the sidebar. After that the
+	// user's own choices to hide or move it are kept.
+	OverviewPlacementMigrated bool `json:"overviewPlacementMigrated,omitempty"`
 	// TerminalDock is the default edge for a new terminal dock. Toolbar moves
 	// remain local to their repository tab and do not rewrite this preference.
 	TerminalDock string `json:"terminalDock"`
@@ -229,6 +233,7 @@ func defaultSettings() appSettings {
 		SectionOrder:                defaultSectionOrder(),
 		OpenRepositoriesOnOverview:  true,
 		OverviewStartConfigured:     true,
+		OverviewPlacementMigrated:   true,
 		TerminalDock:                terminalDockBottom,
 		ConflictActionStyle:         conflictActionStyleIcons,
 	}
@@ -311,6 +316,18 @@ func normalizeSettings(s appSettings) appSettings {
 	s.ContinuePreflight.RequiredCommand = strings.TrimSpace(s.ContinuePreflight.RequiredCommand)
 	s.ContinuePreflight.OptionalCommand = strings.TrimSpace(s.ContinuePreflight.OptionalCommand)
 	s.HomeBackgroundOpacity = normalizeHomeBackgroundOpacity(s.HomeBackgroundOpacity)
+	if !s.OverviewPlacementMigrated {
+		// Profiles from before Overview existed list the sections they showed and
+		// their order, with Overview absent or last. Show it, first, once.
+		if len(s.VisibleSections) > 0 && !slices.Contains(s.VisibleSections, "overview") {
+			s.VisibleSections = append(slices.Clone(s.VisibleSections), "overview")
+		}
+		if len(s.SectionOrder) > 0 {
+			s.SectionOrder = append([]string{"overview"}, slices.DeleteFunc(slices.Clone(s.SectionOrder),
+				func(id string) bool { return id == "overview" })...)
+		}
+		s.OverviewPlacementMigrated = true
+	}
 	s.VisibleSections = normalizeVisibleSections(s.VisibleSections)
 	s.SectionOrder = normalizeSectionOrder(s.SectionOrder)
 	if !s.OverviewStartConfigured {

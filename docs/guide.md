@@ -240,8 +240,11 @@ Catalog and is checked again before execution.
 Fresh profiles can use **Settings → Workspace → Repository start → Open
 repositories on Overview**. Legacy settings without that configured preference
 keep their previous landing page; the migration writes an explicit configured
-sentinel on the next save. Overview remains hidden in Editor-only folders and
-can be hidden or reordered like every other Git section. Its two-column layout
+sentinel on the next save. Overview is the first sidebar section, above Editor, on
+fresh profiles; a profile saved before Overview existed is given it once, shown
+and first, and its landing page is left alone. Overview remains hidden in
+Editor-only folders and can be hidden or reordered like every other Git
+section; your choice is kept afterwards. Its two-column layout
 follows available content width, so sidebars and terminal docks produce a single
 column when necessary. Entering Overview conditionally reuses Agent loading;
 it never refreshes Git details redundantly or requests PR checks automatically.

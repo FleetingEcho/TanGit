@@ -327,15 +327,16 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 		LanguageServers: map[string]languageServerSettings{
 			"go": {Path: "/tools/gopls", Arguments: []string{"-remote=auto"}},
 		},
-		HomeBackgroundPath:      "/Pictures/home.png",
-		HomeBackgroundDisabled:  true,
-		HomeBackgroundOpacity:   0.42,
-		VisibleSections:         []string{"changes", "graph"},
-		SectionOrder:            normalizeSectionOrder([]string{"graph", "changes"}),
-		OverviewStartConfigured: true,
-		TerminalDock:            terminalDockRight,
-		HiddenHeaderActions:     []string{"pull", "theme"},
-		HiddenStatusActions:     []string{"activity", "command-log"},
+		HomeBackgroundPath:        "/Pictures/home.png",
+		HomeBackgroundDisabled:    true,
+		HomeBackgroundOpacity:     0.42,
+		VisibleSections:           []string{"changes", "graph"},
+		SectionOrder:              normalizeSectionOrder([]string{"graph", "changes"}),
+		OverviewStartConfigured:   true,
+		OverviewPlacementMigrated: true,
+		TerminalDock:              terminalDockRight,
+		HiddenHeaderActions:       []string{"pull", "theme"},
+		HiddenStatusActions:       []string{"activity", "command-log"},
 		RemoteWebURLs: map[string]map[string]string{
 			"/work/project": {"origin": "https://example.com/team/project"},
 		},
@@ -950,5 +951,37 @@ func TestShortcutNotificationDefaultAndConfigured(t *testing.T) {
 	userOn := normalizeSettings(appSettings{DisableShortcutToasts: false, ShortcutToastsConfigured: true})
 	if userOn.DisableShortcutToasts {
 		t.Fatal("an explicit opt-in must be preserved")
+	}
+}
+
+// A profile saved before Overview existed gets it once, visible and first;
+// after that the user's own choice to hide or move it is kept.
+func TestOverviewIsShownFirstForExistingProfilesOnce(t *testing.T) {
+	legacy := appSettings{
+		VisibleSections: []string{"code", "changes", "history"},
+		SectionOrder:    []string{"code", "changes", "history", "graph"},
+	}
+	migrated := normalizeSettings(legacy)
+	if !slices.Contains(migrated.VisibleSections, "overview") {
+		t.Fatalf("Overview is not shown: %v", migrated.VisibleSections)
+	}
+	if migrated.SectionOrder[0] != "overview" || migrated.SectionOrder[1] != "code" {
+		t.Fatalf("Overview is not first: %v", migrated.SectionOrder)
+	}
+	if !migrated.OverviewPlacementMigrated {
+		t.Fatal("the migration was not marked done")
+	}
+
+	// The user hides it and moves it last: that sticks.
+	migrated.VisibleSections = slices.DeleteFunc(slices.Clone(migrated.VisibleSections), func(id string) bool { return id == "overview" })
+	migrated.SectionOrder = append(slices.DeleteFunc(slices.Clone(migrated.SectionOrder), func(id string) bool { return id == "overview" }), "overview")
+	again := normalizeSettings(migrated)
+	if slices.Contains(again.VisibleSections, "overview") || again.SectionOrder[len(again.SectionOrder)-1] != "overview" {
+		t.Fatalf("a later choice was undone: visible=%v order=%v", again.VisibleSections, again.SectionOrder)
+	}
+
+	fresh := defaultSettings()
+	if !slices.Contains(fresh.VisibleSections, "overview") || fresh.SectionOrder[0] != "overview" {
+		t.Fatalf("a fresh profile does not start with Overview first: %v", fresh.SectionOrder)
 	}
 }
