@@ -3,6 +3,7 @@ package i18n
 // Command palette modes, sections and paging hints.
 var paletteModeTranslations = map[string]map[string]string{
 	"zh-Hans": {
+		"Search this author's commits":          "搜索此作者的提交",
 		"↑↓ Navigate · Enter Run · Escape Back": "↑↓ 导航 · Enter 运行 · Escape 返回",
 		"Actions":             "操作",
 		"Searching Git…":      "正在搜索 Git…",
@@ -135,6 +136,7 @@ var paletteModeTranslations = map[string]map[string]string{
 		"Commands":      "命令",
 	},
 	"zh-Hant": {
+		"Search this author's commits":          "搜尋此作者的提交",
 		"↑↓ Navigate · Enter Run · Escape Back": "↑↓ 導覽 · Enter 執行 · Escape 返回",
 		"Actions":             "操作",
 		"Searching Git…":      "正在搜尋 Git…",
@@ -267,6 +269,7 @@ var paletteModeTranslations = map[string]map[string]string{
 		"Commands":      "命令",
 	},
 	"ja": {
+		"Search this author's commits":          "この作者のコミットを検索",
 		"↑↓ Navigate · Enter Run · Escape Back": "↑↓ 移動 · Enter 実行 · Escape 戻る",
 		"Actions":             "操作",
 		"Searching Git…":      "Gitを検索中…",
@@ -399,6 +402,7 @@ var paletteModeTranslations = map[string]map[string]string{
 		"Commands":      "コマンド",
 	},
 	"es": {
+		"Search this author's commits":          "Buscar los commits de este autor",
 		"↑↓ Navigate · Enter Run · Escape Back": "↑↓ Navegar · Enter Ejecutar · Escape Volver",
 		"Actions":             "Acciones",
 		"Searching Git…":      "Buscando en Git…",
@@ -531,6 +535,7 @@ var paletteModeTranslations = map[string]map[string]string{
 		"Commands":      "Comandos",
 	},
 	"fr": {
+		"Search this author's commits":          "Rechercher les commits de cet auteur",
 		"↑↓ Navigate · Enter Run · Escape Back": "↑↓ Naviguer · Entrée Exécuter · Échap Retour",
 		"Actions":             "Actions",
 		"Searching Git…":      "Recherche dans Git…",

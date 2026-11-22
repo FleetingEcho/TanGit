@@ -176,3 +176,35 @@ func TestCommitActionsScreenshots(t *testing.T) {
 	s.openCommitActions(a, commit)
 	saveScreenshot(t, dir, "palette-commit-actions-dark", tt)
 }
+
+func TestAuthorSuggestionsCompleteAByWord(t *testing.T) {
+	s, h, filters := commitSearchShell(t)
+	h.app.authors = []string{"Alice Example", "Bob Builder"}
+	ctx := commandContext{Shell: s, App: h.app}
+
+	s.palette.query = "#by:ali"
+	got := s.catalogFor(ctx).Search(ctx, s.palette.query, nil)
+	if len(got) != 1 || got[0].ID != "authors/Alice Example" {
+		t.Fatalf("suggestions for by:ali = %+v", got)
+	}
+	if len(*filters) != 0 {
+		t.Fatalf("a half-typed author must not start a Git search: %+v", *filters)
+	}
+	s.palette.query = "#by:"
+	if got := s.catalogFor(ctx).Search(ctx, s.palette.query, nil); len(got) != 2 {
+		t.Fatalf("an empty by: should list every author: %+v", got)
+	}
+	s.palette.query = "#by:ali"
+	result := s.invokeCommand("authors/Alice Example")
+	if !result.Accepted() || !s.palette.open || s.palette.query != `#by:"Alice Example" ` {
+		t.Fatalf("choosing an author gave %q (open=%v)", s.palette.query, s.palette.open)
+	}
+	if filter, explicit := parseCommitSearch(strings.TrimSpace(s.palette.query[1:])); !explicit || filter.Author != "Alice Example" {
+		t.Fatalf("quoted author did not parse: %+v", filter)
+	}
+	waitForCommitSearch(t, s, h)
+	commits := s.catalogFor(ctx).Search(ctx, s.palette.query, nil)
+	if _, ok := catalogCandidate(commits, "history/commit/deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"); !ok {
+		t.Fatalf("the completed author did not find their commit: %+v", commits)
+	}
+}

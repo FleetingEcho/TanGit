@@ -63,7 +63,7 @@ func parseCommitSearch(text string) (repository.CommitFilter, bool) {
 	var filter repository.CommitFilter
 	var free []string
 	explicit := false
-	for _, word := range strings.Fields(text) {
+	for _, word := range splitSearchWords(text) {
 		lower := strings.ToLower(word)
 		switch {
 		case strings.HasPrefix(lower, "by:"):
@@ -82,6 +82,56 @@ func parseCommitSearch(text string) (repository.CommitFilter, bool) {
 	return filter, explicit
 }
 
+// splitSearchWords splits on spaces, keeping a double-quoted run together and
+// dropping its quotes, so by:"Jane Doe" names an author with a space.
+func splitSearchWords(text string) []string {
+	var words []string
+	var current strings.Builder
+	quoted := false
+	flush := func() {
+		if current.Len() > 0 {
+			words = append(words, current.String())
+			current.Reset()
+		}
+	}
+	for _, r := range text {
+		switch {
+		case r == '"':
+			quoted = !quoted
+		case (r == ' ' || r == '\t') && !quoted:
+			flush()
+		default:
+			current.WriteRune(r)
+		}
+	}
+	flush()
+	return words
+}
+
+// authorSuggestion is the by: word being typed at the end of the # query: the
+// text before it, and what has been typed of the name. ok is false when the
+// query is not ending in one.
+func authorSuggestion(query string) (before, typed string, ok bool) {
+	trimmed := strings.TrimRight(query, " \t")
+	if trimmed != query {
+		return "", "", false
+	}
+	for _, prefix := range []string{"by:", "author:"} {
+		index := strings.LastIndex(strings.ToLower(query), prefix)
+		if index < 0 || (index > 0 && query[index-1] != ' ') {
+			continue
+		}
+		value := query[index+len(prefix):]
+		if strings.Count(value, `"`)%2 == 1 {
+			value = strings.TrimPrefix(value, `"`)
+		}
+		if !strings.Contains(value, `"`) && (!strings.Contains(value, " ") || strings.HasPrefix(query[index+len(prefix):], `"`)) {
+			return query[:index], value, true
+		}
+	}
+	return "", "", false
+}
+
 // paletteCommitText is what the commit search runs on: the query after the #,
 // or a pasted hash in the default mode; "" when the palette is not searching
 // commits.
@@ -91,6 +141,9 @@ func (s *shell) paletteCommitText() string {
 	case s.palette.target != nil:
 		return ""
 	case mode == '#':
+		if _, _, typing := authorSuggestion(strings.TrimLeft(s.palette.query, " ")[1:]); typing {
+			return ""
+		}
 		return strings.TrimSpace(rest)
 	case mode == 0 && isCommitHash(rest):
 		return strings.TrimSpace(rest)
@@ -427,4 +480,48 @@ func commitActionGlyph(label string) *ui.SVG {
 		return editIcon
 	}
 	return historyIcon
+}
+
+const authorSuggestionLimit = 30
+
+// authorSuggestionSpecs list the repository's authors while a by: word is being
+// typed. Choosing one completes the word and goes on to the commits.
+func (s *shell) authorSuggestionSpecs(a *app, before, typed string) []commandSpec {
+	if len(a.authors) == 0 && !a.authorsLoading && a.session != nil {
+		a.loadCommitAuthors()
+	}
+	needle := strings.ToLower(strings.TrimSpace(typed))
+	var specs []commandSpec
+	for index, author := range a.authors {
+		author := author
+		if needle != "" && !strings.Contains(strings.ToLower(author), needle) {
+			continue
+		}
+		score := authorSuggestionLimit*10 - index
+		completed := strings.TrimLeft(before, " ") + "by:" + quoteSearchWord(author) + " "
+		specs = append(specs, commandSpec{
+			ID: commandID("authors/" + author), Label: author, Detail: "Search this author's commits",
+			Group: commandGroupHistory, Prefix: '#', Glyph: personIcon, NoFilter: true, KeepOpen: true,
+			Resolve: func(commandContext) commandState {
+				return commandState{Visible: true, Enabled: true, ContextScore: score}
+			},
+			Run: func(ctx commandContext) {
+				ctx.Shell.palette.query = "#" + completed
+				ctx.Shell.palette.selected = 0
+				ctx.Shell.palette.actionIndex = 0
+			},
+		})
+		if len(specs) == authorSuggestionLimit {
+			break
+		}
+	}
+	return specs
+}
+
+// quoteSearchWord quotes a value with a space so it stays one word.
+func quoteSearchWord(value string) string {
+	if strings.ContainsAny(value, " \t") {
+		return `"` + value + `"`
+	}
+	return value
 }

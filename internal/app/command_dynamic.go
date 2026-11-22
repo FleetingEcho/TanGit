@@ -149,6 +149,10 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 			}
 		}
 	case '#':
+		if before, typed, ok := authorSuggestion(strings.TrimLeft(s.palette.query, " ")[1:]); ok {
+			specs = append(specs, s.authorSuggestionSpecs(a, before, typed)...)
+			break
+		}
 		specs = append(specs, s.commitSearchSpecs(a, strings.TrimSpace(rest), '#')...)
 	case '/':
 		specs = append(specs, workspaceFileSpecs(a, rest)...)
