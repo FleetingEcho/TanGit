@@ -548,7 +548,7 @@ func (a *app) cockpitWorkingTreeCard(c *ui.Context, summary cockpitSummary) {
 		}
 		ui.Text(c, review).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		ui.Row(c).Gap(7).Wrap().Children(func() {
-			a.cockpitCommandButton(c, commandOpenChanges, "Open Changes", true)
+			a.cockpitCommandButton(c, commandOpenChanges, "Open Changes", false)
 			if work.Staged > 0 {
 				a.cockpitCommandButton(c, commandCommitStaged, "Commit staged", false)
 			}
@@ -599,7 +599,7 @@ func (a *app) cockpitCollaborationCard(c *ui.Context, summary cockpitSummary) {
 			ui.Text(c, tr(collaboration.ChecksSummary)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		})
 		ui.Row(c).Gap(7).Wrap().Children(func() {
-			a.cockpitCommandButton(c, commandOpenPRChecks, "Open PR checks", true)
+			a.cockpitCommandButton(c, commandOpenPRChecks, "Open PR checks", false)
 			a.cockpitCommandButton(c, commandOpenPull, "Pull", false)
 			a.cockpitCommandButton(c, commandOpenPush, "Push", false)
 		})
@@ -641,7 +641,7 @@ func (a *app) cockpitAgentsCard(c *ui.Context, summary cockpitSummary) {
 			}
 		}
 		ui.Row(c).Gap(7).Wrap().Children(func() {
-			a.cockpitCommandButton(c, commandOpenAgents, "Open Agent tasks", true)
+			a.cockpitCommandButton(c, commandOpenAgents, "Open Agent tasks", false)
 		})
 	})
 }
