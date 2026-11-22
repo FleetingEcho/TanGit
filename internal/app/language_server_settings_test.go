@@ -80,7 +80,7 @@ func TestLanguageServerFormatterSettingsPersistEnabledAndDisabled(t *testing.T) 
 		t.Run(test.name, func(t *testing.T) {
 			h := menuTestApp(t)
 			h.app.pathUserData = t.TempDir()
-			h.app.settingsPage = settingsPageEditor
+			h.app.settingsPage = settingsPageLSP
 			h.app.openSettings()
 			h.tester.Frame()
 			h.tester.Scroll(700, 480, 0, 1800)
@@ -169,7 +169,7 @@ func TestCustomLanguageServerEditPreservesFormatter(t *testing.T) {
 		Open: true, ID: "custom-example", Name: "Example edited", Path: "example-ls", Arguments: "server",
 		Extensions: ".example=example", Enabled: true, Description: "Updated definition",
 	}
-	h.app.settingsPage = settingsPageEditor
+	h.app.settingsPage = settingsPageLSP
 	h.app.openSettings()
 	h.tester.Frame()
 	scrollLanguageServerSettingIntoView(t, h, "Save custom language server")
@@ -204,12 +204,12 @@ func TestGoLanguageServerSettingsPersistAndTestWithoutAShell(t *testing.T) {
 	h := menuTestApp(t)
 	h.app.openSettings()
 	h.tester.Frame()
-	if err := h.tester.Click("Editor settings"); err != nil {
+	if err := h.tester.Click("LSP settings"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
 	if h.tester.HasText("gopls executable path") || h.tester.HasText("Test server") || !h.tester.HasText("Go (gopls)") {
-		t.Fatalf("Editor settings should have only the catalog's Go profile: %q", h.texts())
+		t.Fatalf("LSP settings should have only the catalog's Go profile: %q", h.texts())
 	}
 	for _, label := range []string{
 		"TypeScript Language Server", "VS Code HTML Language Server", "VS Code CSS Language Server",
@@ -219,7 +219,7 @@ func TestGoLanguageServerSettingsPersistAndTestWithoutAShell(t *testing.T) {
 		"Bash Language Server", "Dockerfile Language Server", "Marksman", "Oxc / Oxlint",
 	} {
 		if !h.tester.HasText(label) {
-			t.Fatalf("Editor settings have no %s profile: %q", label, h.texts())
+			t.Fatalf("LSP settings have no %s profile: %q", label, h.texts())
 		}
 	}
 
@@ -283,7 +283,7 @@ func TestGoLanguageServerSettingsPersistAndTestWithoutAShell(t *testing.T) {
 
 func TestLanguageServerCatalogConfiguresGoInline(t *testing.T) {
 	h := menuTestApp(t)
-	h.app.settingsPage = settingsPageEditor
+	h.app.settingsPage = settingsPageLSP
 	h.app.openSettings()
 	h.tester.Frame()
 	h.tester.Scroll(700, 480, 0, 1800)
