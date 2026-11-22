@@ -32,6 +32,9 @@ type activityCenterState struct {
 	attention bool
 	// repository limits the list to one open repository's location; "" is all.
 	repository string
+	// view is the feed of activity or the list of contributors.
+	view         int
+	contributors contributorsState
 }
 
 var activityCenterSources = []activitySource{
@@ -94,7 +97,11 @@ func (s *shell) activityRepositories() []struct{ location, title string } {
 	return repositories
 }
 
-func (s *shell) openActivityCenter() {
+func (s *shell) openActivityCenter() { s.openActivityCenterView(activityViewFeed) }
+
+// openActivityCenterView opens the center on its activity feed or its list of
+// contributors.
+func (s *shell) openActivityCenterView(view int) {
 	if s == nil || s.activity.open {
 		return
 	}
@@ -105,7 +112,7 @@ func (s *shell) openActivityCenter() {
 	if s.palette.open {
 		s.closeCommandPalette(false)
 	}
-	s.activity = activityCenterState{open: true, reveal: true}
+	s.activity = activityCenterState{open: true, reveal: true, view: view}
 	if a != nil {
 		s.activity.restore = focusRestoreTarget{app: a, pane: a.keyboardLastPane}
 	}
@@ -175,7 +182,13 @@ func (s *shell) activityCenterView(c *ui.Context) {
 		return
 	}
 	theme := c.Theme()
-	items := s.activityCenterItems()
+	contributorsView := s.activity.view == activityViewContributors
+	var items []activityItem
+	if contributorsView {
+		s.ensureContributors()
+	} else {
+		items = s.activityCenterItems()
+	}
 	switch {
 	case len(items) == 0:
 		s.activity.selected = 0
@@ -185,6 +198,10 @@ func (s *shell) activityCenterView(c *ui.Context) {
 		s.activity.selected = 0
 	}
 	move := func(delta int) {
+		if contributorsView {
+			s.moveContributor(delta)
+			return
+		}
 		if len(items) == 0 {
 			return
 		}
@@ -193,6 +210,10 @@ func (s *shell) activityCenterView(c *ui.Context) {
 		s.activity.notice = ""
 	}
 	openSelected := func() {
+		if contributorsView {
+			s.toggleSelectedContributor()
+			return
+		}
 		if len(items) > 0 {
 			s.openActivityItem(items[s.activity.selected])
 		}
@@ -243,13 +264,24 @@ func (s *shell) activityCenterView(c *ui.Context) {
 					ui.Icon(c, historyIcon).FontSize(20).TextColor(theme.Accent)
 					ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
 						ui.Text(c, tr("Activity Center")).FontSize(19).Bold()
-						ui.Text(c, tr("Commands, Safety Journal, Agent tasks, transfers and notices across open repositories")).
-							TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).SingleLine()
+						subtitle := tr("Commands, Safety Journal, Agent tasks, transfers and notices across open repositories")
+						if contributorsView {
+							subtitle = tr("Who contributed to the active repository, how much, and what they committed")
+						}
+						ui.Text(c, subtitle).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).SingleLine()
 					})
 					iconButton(c, "Close Activity Center", "Escape", closeIcon, false, func() { s.closeActivityCenter(true) })
 				})
+				ui.Row(c).AlignItems(ui.Center).Gap(6).Label(tr("Activity views")).Children(func() {
+					chip(tr("Activity"), !contributorsView, func() { s.activity.view = activityViewFeed })
+					chip(tr("Contributors"), contributorsView, func() { s.activity.view = activityViewContributors })
+				})
+				placeholder := tr("Search activity by title, repository or state")
+				if contributorsView {
+					placeholder = tr("Search contributors by name or email")
+				}
 				search := ui.TextInput(c, &s.activity.query).Bind(&s.activity.search).
-					Label(tr("Search activity")).Placeholder(tr("Search activity by title, repository or state")).Search().AutoFocus()
+					Label(tr("Search activity")).Placeholder(placeholder).Search().AutoFocus()
 				s.activity.search.OnShortcut(c, 0, ui.KeyEscape, func() { s.closeActivityCenter(true) })
 				s.activity.search.OnShortcut(c, 0, ui.KeyUp, func() { move(-1) })
 				s.activity.search.OnShortcut(c, 0, ui.KeyDown, func() { move(1) })
@@ -259,23 +291,25 @@ func (s *shell) activityCenterView(c *ui.Context) {
 					s.activity.reveal = true
 					s.activity.notice = ""
 				}
-				ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Label(tr("Activity filters")).Children(func() {
-					chip(tr("Needs attention"), s.activity.attention, func() { s.activity.attention = !s.activity.attention })
-					for _, source := range activityCenterSources {
-						source := source
-						chip(activitySourceLabel(source), s.activity.sources[source], func() {
-							if s.activity.sources == nil {
-								s.activity.sources = map[activitySource]bool{}
-							}
-							if s.activity.sources[source] {
-								delete(s.activity.sources, source)
-							} else {
-								s.activity.sources[source] = true
-							}
-						})
-					}
-				})
-				if len(repositories) > 1 {
+				if !contributorsView {
+					ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Label(tr("Activity filters")).Children(func() {
+						chip(tr("Needs attention"), s.activity.attention, func() { s.activity.attention = !s.activity.attention })
+						for _, source := range activityCenterSources {
+							source := source
+							chip(activitySourceLabel(source), s.activity.sources[source], func() {
+								if s.activity.sources == nil {
+									s.activity.sources = map[activitySource]bool{}
+								}
+								if s.activity.sources[source] {
+									delete(s.activity.sources, source)
+								} else {
+									s.activity.sources[source] = true
+								}
+							})
+						}
+					})
+				}
+				if !contributorsView && len(repositories) > 1 {
 					ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Label(tr("Repository filter")).Children(func() {
 						chip(tr("All repositories"), s.activity.repository == "", func() { s.activity.repository = "" })
 						for _, repository := range repositories {
@@ -292,6 +326,10 @@ func (s *shell) activityCenterView(c *ui.Context) {
 				}
 				ui.Divider(c)
 				ui.Scroll(c).Grow(1).TrackScroll(&s.activity.scroll).Children(func() {
+					if contributorsView {
+						s.contributorsList(c, theme)
+						return
+					}
 					if len(items) == 0 {
 						ui.Column(c).Grow(1).Center().Gap(8).Padding(24).Children(func() {
 							ui.Icon(c, historyIcon).FontSize(25).TextColor(theme.TextMuted)
@@ -323,7 +361,11 @@ func (s *shell) activityCenterView(c *ui.Context) {
 						ui.Text(c, s.activity.notice).TextColor(theme.Warning).FontSize(theme.FontSize - 1).
 							MaxWidth(420).SingleLine().Tooltip(s.activity.notice)
 					} else {
-						ui.Text(c, activityCountLabel(len(items))).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+						count := activityCountLabel(len(items))
+						if contributorsView {
+							count = contributorsCountLabel(len(s.visibleContributors()))
+						}
+						ui.Text(c, count).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 					}
 				})
 			})
@@ -392,4 +434,11 @@ func (s *shell) activityCenterRow(c *ui.Context, item activityItem, repositoryTi
 	if row.Clicked() {
 		open()
 	}
+}
+
+func contributorsCountLabel(count int) string {
+	if count == 1 {
+		return tr("1 contributor")
+	}
+	return trf("%d contributors", count)
 }

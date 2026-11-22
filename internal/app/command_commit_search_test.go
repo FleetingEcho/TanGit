@@ -31,7 +31,7 @@ func (s searchSession) SearchCommits(_ context.Context, filter repository.Commit
 		if query != "" && !strings.Contains(strings.ToLower(commit.Subject), query) && !strings.HasPrefix(commit.Hash, query) {
 			continue
 		}
-		if author != "" && !strings.Contains(strings.ToLower(commit.AuthorName), author) {
+		if author != "" && !strings.Contains(strings.ToLower(commit.AuthorName), author) && !strings.Contains(strings.ToLower(commit.AuthorEmail), author) {
 			continue
 		}
 		out = append(out, commit)
@@ -49,7 +49,7 @@ func commitSearchShell(t *testing.T) (*shell, *harness, *[]repository.CommitFilt
 	filters := &[]repository.CommitFilter{}
 	old := repository.Commit{
 		Hash: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", ShortHash: "deadbee", Subject: "Fix the ancient parser",
-		AuthorName: "Alice Example", Parents: []string{"abc"},
+		AuthorName: "Alice Example", AuthorEmail: "alice@example.com", Parents: []string{"abc"},
 	}
 	h.app.session = searchSession{fakeSession: h.app.session.(fakeSession), commits: []repository.Commit{old}, mu: &mu, filters: filters}
 	h.app.snapshot.Commits = []repository.Commit{{Hash: "1111111111111111111111111111111111111111", ShortHash: "1111111", Subject: "Recent work"}}

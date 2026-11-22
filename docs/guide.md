@@ -216,6 +216,17 @@ transfer) and closes the center; an evicted record is reported instead of
 matching similar text. Session items disappear when the session ends; Safety
 Journal records are durable.
 
+The **Contributors** view (or **Show contributors** in the palette) lists who
+authored the active repository's commits, across every branch: name, email,
+commit count with a bar against the top contributor, and the date of their last
+commit, most commits first. People who commit under several names but one email
+are one contributor, shown under their newest name. Search by name or email.
+Choosing a contributor shows their 20 most recent commits; **Show in History**
+narrows the History list to them, **Search in palette** opens the palette on
+`#by:"name"`, and a commit opens its full action list in the palette. The list
+is read from Git once per opening (at most the newest 200,000 commits) and is
+unavailable for non-Git folders.
+
 ### Overview
 
 **Overview** is a workspace section, not a replacement for Changes or History.

@@ -611,6 +611,11 @@ func buildStaticCommandSpecs() []commandSpec {
 		{ID: commandOpenPRChecks, Label: "Open Pull Request Checks", Keywords: []string{"checks", "ci", "pull request", "github"}, Group: commandGroupBranches, Icon: commandIconActivity, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openPullRequestChecks() }},
 	}
 	specs = append(specs, commandSpec{ID: "activity/open", Label: "Open Activity Center", Detail: "Commands, Safety Journal, Agent tasks, transfers and notices across open repositories", Keywords: []string{"activity", "history", "notifications", "log", "recent", "journal"}, Group: commandGroupApplication, Chord: cmdShortcutChord() + "+Shift+A", Glyph: historyIcon, Resolve: shellState, Run: func(ctx commandContext) { ctx.Shell.openActivityCenter() }})
+	specs = append(specs, commandSpec{ID: "activity/contributors", Label: "Show contributors", Detail: "Who contributed to this repository, how much, and what they committed", Keywords: []string{"contributors", "authors", "people", "who", "committers", "team"}, Group: commandGroupApplication, Glyph: personIcon, Resolve: func(ctx commandContext) commandState {
+		state := shellState(ctx)
+		state.ContextScore = 0
+		return state
+	}, Run: func(ctx commandContext) { ctx.Shell.openActivityCenterView(activityViewContributors) }})
 	specs = append(specs, commandSpec{ID: "commands/run", Label: "Run a shell command…", Detail: "Run a one-off command in the repository root; type ! in the palette to run one directly", Keywords: []string{"execute", "shell", "terminal", "command line", "run"}, Group: commandGroupApplication, Chord: ":", Glyph: terminalIcon, Resolve: func(ctx commandContext) commandState {
 		state := localCommandState(ctx)
 		state.ContextScore = 0

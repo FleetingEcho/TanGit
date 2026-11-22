@@ -1,8 +1,10 @@
 package app
 
 import (
+	"context"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -10,9 +12,9 @@ import (
 	"lazygitapp/internal/repository"
 )
 
-func activityCenterShell(t *testing.T) (*shell, *ui.Tester) {
+func activityCenterShell(t *testing.T) (*shell, *ui.Tester, *updates) {
 	t.Helper()
-	s, tt, _, _ := newShellShot(t, true, defaultTheme)
+	s, tt, updated, _ := newShellShot(t, true, defaultTheme)
 	a := s.activeApp()
 	// Not the Overview: its recent-activity card would print the same rows.
 	a.workspaceTab = sectionHistory
@@ -25,7 +27,7 @@ func activityCenterShell(t *testing.T) (*shell, *ui.Tester) {
 	tt.SetSize(1280, 800)
 	tt.SetPreferences(ui.Preferences{ReduceMotion: true})
 	tt.Frame()
-	return s, tt
+	return s, tt, updated
 }
 
 // hasRow reports whether the list has a row labelled with the given prefix. The
@@ -40,7 +42,7 @@ func hasRow(tt *ui.Tester, prefix string) bool {
 }
 
 func TestActivityCenterListsFiltersAndOpens(t *testing.T) {
-	s, tt := activityCenterShell(t)
+	s, tt, _ := activityCenterShell(t)
 	s.openActivityCenter()
 	tt.Frame()
 	if !tt.HasText("Activity Center") {
@@ -93,7 +95,7 @@ func TestActivityCenterListsFiltersAndOpens(t *testing.T) {
 }
 
 func TestActivityCenterKeyboardAndShortcutGuards(t *testing.T) {
-	s, tt := activityCenterShell(t)
+	s, tt, _ := activityCenterShell(t)
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyA)
 	tt.Frame()
 	if !s.activity.open {
@@ -112,7 +114,7 @@ func TestActivityCenterKeyboardAndShortcutGuards(t *testing.T) {
 }
 
 func TestActivityCenterIsInTheCommandPalette(t *testing.T) {
-	s, _ := activityCenterShell(t)
+	s, _, _ := activityCenterShell(t)
 	ctx := s.commandContext()
 	candidate, ok := catalogCandidate(s.catalogFor(ctx).Search(ctx, "activity center", nil), "activity/open")
 	if !ok || !candidate.Enabled {
@@ -132,9 +134,106 @@ func TestActivityCenterScreenshots(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	s, tt := activityCenterShell(t)
+	s, tt, updated := activityCenterShell(t)
 	s.openActivityCenter()
 	saveScreenshot(t, dir, "activity-center-dark", tt)
 	s.activity.attention = true
 	saveScreenshot(t, dir, "activity-center-attention-dark", tt)
+	s.activity.attention = false
+	a := s.activeApp()
+	a.session = contributorTestSession{
+		searchSession: searchSession{fakeSession: fakeSession{}, mu: &sync.Mutex{}, filters: &[]repository.CommitFilter{}},
+		contributors: []repository.Contributor{
+			{Name: "Alice Example", Email: "alice@example.com", Commits: 128, LastCommit: 1_700_000_000},
+			{Name: "Bob Builder", Email: "bob@example.com", Commits: 64, LastCommit: 1_690_000_000},
+			{Name: "Chen Wei", Email: "chen@example.com", Commits: 9, LastCommit: 1_650_000_000},
+		},
+	}
+	s.activity.view = activityViewContributors
+	settleShot(t, tt, updated, func() bool { return s.activity.contributors.list != nil })
+	saveScreenshot(t, dir, "contributors-dark", tt)
+	s.toggleContributor(s.visibleContributors()[0])
+	settleShot(t, tt, updated, func() bool { return !s.activity.contributors.commitsLoading })
+	saveScreenshot(t, dir, "contributors-expanded-dark", tt)
+}
+
+// contributorTestSession adds the contributor list to a session that already
+// answers commit searches.
+type contributorTestSession struct {
+	searchSession
+	contributors []repository.Contributor
+}
+
+func (s contributorTestSession) Contributors(context.Context) ([]repository.Contributor, error) {
+	return s.contributors, nil
+}
+
+func TestContributorsListLoadsExpandsAndFiltersHistory(t *testing.T) {
+	s, h, filters := commitSearchShell(t)
+	h.app.session = contributorTestSession{
+		searchSession: h.app.session.(searchSession),
+		contributors: []repository.Contributor{
+			{Name: "Alice Example", Email: "alice@example.com", Commits: 12, FirstCommit: 1_600_000_000, LastCommit: 1_700_000_000},
+			{Name: "Bob Builder", Email: "bob@example.com", Commits: 3, LastCommit: 1_690_000_000},
+		},
+	}
+	s.openActivityCenterView(activityViewContributors)
+	s.ensureContributors()
+	h.waitFor(t, "the contributor list", func() bool { return !s.activity.contributors.loading && s.activity.contributors.list != nil })
+	if got := s.visibleContributors(); len(got) != 2 || got[0].Name != "Alice Example" {
+		t.Fatalf("contributors = %+v", got)
+	}
+	s.activity.query = "bob@"
+	if got := s.visibleContributors(); len(got) != 1 || got[0].Name != "Bob Builder" {
+		t.Fatalf("search by email = %+v", got)
+	}
+	s.activity.query = ""
+
+	// Choosing a contributor reads their recent commits by author.
+	s.toggleContributor(s.visibleContributors()[0])
+	h.waitFor(t, "their commits", func() bool {
+		return !s.activity.contributors.commitsLoading && len(s.activity.contributors.commits) > 0
+	})
+	if last := (*filters)[len(*filters)-1]; last.Author != "alice@example.com" || last.Limit != contributorRecentLimit {
+		t.Fatalf("recent commits were read with %+v", last)
+	}
+	if len(s.activity.contributors.commits) != 1 || s.activity.contributors.commits[0].Subject != "Fix the ancient parser" {
+		t.Fatalf("recent commits = %+v", s.activity.contributors.commits)
+	}
+	// A commit opens its actions in the palette.
+	s.openContributorCommit(s.activity.contributors.commits[0])
+	if s.activity.open || !s.palette.open || s.palette.target == nil || s.palette.target.commit.ShortHash != "deadbee" {
+		t.Fatalf("commit did not open its palette actions: activity=%v palette=%v target=%+v", s.activity.open, s.palette.open, s.palette.target)
+	}
+	// Show in History narrows the list to the author.
+	s.closeCommandPalette(false)
+	h.app.filterHistoryByAuthor("alice@example.com")
+	if h.app.workspaceTab != sectionHistory || h.app.historyFilter.applied.Author != "alice@example.com" {
+		t.Fatalf("history was not narrowed: tab=%d filter=%+v", h.app.workspaceTab, h.app.historyFilter.applied)
+	}
+}
+
+func TestContributorsViewRendersAndIsInThePalette(t *testing.T) {
+	s, tt, updated := activityCenterShell(t)
+	a := s.activeApp()
+	a.session = contributorTestSession{
+		searchSession: searchSession{fakeSession: fakeSession{}, mu: &sync.Mutex{}, filters: &[]repository.CommitFilter{}},
+		contributors:  []repository.Contributor{{Name: "Alice Example", Email: "alice@example.com", Commits: 12, LastCommit: 1_700_000_000}},
+	}
+	ctx := s.commandContext()
+	if candidate, ok := catalogCandidate(s.catalogFor(ctx).Search(ctx, "contributors", nil), "activity/contributors"); !ok || !candidate.Enabled {
+		t.Fatalf("palette has no contributors command: %+v", candidate)
+	}
+	s.invokeCommand("activity/contributors")
+	settleShot(t, tt, updated, func() bool { return s.activity.contributors.list != nil })
+	if !hasRow(tt, "Alice Example") {
+		t.Fatalf("the contributor is not listed: %q", tt.Texts())
+	}
+	if err := tt.Click("Alice Example — 12 commits"); err != nil {
+		t.Fatalf("expand the contributor: %v", err)
+	}
+	tt.Frame()
+	if s.activity.contributors.expanded != "alice@example.com" {
+		t.Fatalf("expanded = %q", s.activity.contributors.expanded)
+	}
 }
