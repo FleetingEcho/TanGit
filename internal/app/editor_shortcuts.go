@@ -45,7 +45,8 @@ func editorShortcutActionForID(id string) (editorShortcutAction, bool) {
 // own fallback here. The returned slice is safe to change during resolution.
 func editorShortcutBaseDefaults(action editorShortcutAction) []editor.Binding {
 	if action.id == editorShortcutOutlineID {
-		return []editor.Binding{{Mods: ui.Ctrl | ui.Shift, Key: ui.KeyO}}
+		// Outline yields Ctrl+Shift+O to the editor's own go to symbol.
+		return []editor.Binding{{Mods: ui.Ctrl | ui.Shift, Key: ui.KeyE}}
 	}
 	var bindings []editor.Binding
 	for _, binding := range editor.DefaultBindings() {
