@@ -105,7 +105,7 @@ their package installer.
 | Recover work | Use Reflog to inspect earlier states and create a branch, check out, or reset after confirmation. In **Saved work → Safety Journal**, review supported local commits, merges, checkouts, discards, resets, rebases, branch operations, stash changes and patch applications. Recoverable operations offer immediate notification Undo and remain listed durably. Undo compares immutable before/after restore points across raw files, index, operation metadata, local refs and configuration, and refuses when newer content or Git state does not match. Interrupted restoration keeps both recovery points without pretending its rollback completed. |
 | Adjust the workspace | Drag dividers; use expand/shrink icons for full-window views. The folder button toggles directory grouping. |
 
-All workspace sections are visible by default; choose which ones to show in **Settings → Workspace sections**. Fresh profiles can also choose whether repositories open on **Overview** under **Settings → Workspace → Repository start**; legacy profiles keep their previous landing page until explicitly changed.
+All workspace sections are visible by default; choose which ones to show in **Settings → Workspace sections**. Fresh profiles can also choose whether repositories open on **Overview** under **Settings → Workspace → Repository start**; profiles saved before Overview existed are moved onto Overview once, and you can change the choice back.
 The Header and Status bar buttons are also all visible by default and can be hidden independently under
 **Settings → Workspace → Toolbar buttons**, including hiding every button in either group. The repository path
 and its copy button always remain in the Status bar. Hiding a button only removes that entry point; it does not
@@ -241,12 +241,12 @@ conflicts, unsaved buffers, Agent/transfer issues and ordinary sync or review
 work. At most three primary items appear. Every action uses the shared Command
 Catalog and is checked again before execution.
 
-Fresh profiles can use **Settings → Workspace → Repository start → Open
-repositories on Overview**. Legacy settings without that configured preference
-keep their previous landing page; the migration writes an explicit configured
-sentinel on the next save. Overview is the first sidebar section, above Editor, on
+Repositories open on Overview by default (**Settings → Workspace → Repository
+start → Open repositories on Overview**). Profiles saved before Overview existed
+are moved onto it once, and the next save writes an explicit marker so a later
+choice of another landing page is kept. Overview is the first sidebar section, above Editor, on
 fresh profiles; a profile saved before Overview existed is given it once, shown
-and first, and its landing page is left alone. Overview remains hidden in
+and first, and made its landing page. Overview remains hidden in
 Editor-only folders and can be hidden or reordered like every other Git
 section; your choice is kept afterwards. Its two-column layout
 follows available content width, so sidebars and terminal docks produce a single

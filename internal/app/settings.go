@@ -316,6 +316,14 @@ func normalizeSettings(s appSettings) appSettings {
 	s.ContinuePreflight.RequiredCommand = strings.TrimSpace(s.ContinuePreflight.RequiredCommand)
 	s.ContinuePreflight.OptionalCommand = strings.TrimSpace(s.ContinuePreflight.OptionalCommand)
 	s.HomeBackgroundOpacity = normalizeHomeBackgroundOpacity(s.HomeBackgroundOpacity)
+	s.VisibleSections = normalizeVisibleSections(s.VisibleSections)
+	s.SectionOrder = normalizeSectionOrder(s.SectionOrder)
+	if !s.OverviewStartConfigured {
+		// Legacy files had no Overview preference. Keep their existing landing
+		// page while writing an explicit migration marker on the next save.
+		s.OpenRepositoriesOnOverview = false
+		s.OverviewStartConfigured = true
+	}
 	if !s.OverviewPlacementMigrated {
 		// Profiles from before Overview existed list the sections they showed and
 		// their order, with Overview absent or last. Show it, first, once.
@@ -326,15 +334,9 @@ func normalizeSettings(s appSettings) appSettings {
 			s.SectionOrder = append([]string{"overview"}, slices.DeleteFunc(slices.Clone(s.SectionOrder),
 				func(id string) bool { return id == "overview" })...)
 		}
+		// Existing profiles also land on Overview, once; they can change it back.
+		s.OpenRepositoriesOnOverview = true
 		s.OverviewPlacementMigrated = true
-	}
-	s.VisibleSections = normalizeVisibleSections(s.VisibleSections)
-	s.SectionOrder = normalizeSectionOrder(s.SectionOrder)
-	if !s.OverviewStartConfigured {
-		// Legacy files had no Overview preference. Keep their existing landing
-		// page while writing an explicit migration marker on the next save.
-		s.OpenRepositoriesOnOverview = false
-		s.OverviewStartConfigured = true
 	}
 	s.TerminalDock = normalizeTerminalDock(s.TerminalDock)
 	s.ConflictActionStyle = normalizeConflictActionStyle(s.ConflictActionStyle)

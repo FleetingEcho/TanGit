@@ -138,8 +138,9 @@ func TestOverviewStartPreferenceMigration(t *testing.T) {
 	legacy := normalizeSettings(appSettings{
 		Theme: defaultTheme, VisibleSections: []string{"code", "changes"}, SectionOrder: []string{"code", "changes"},
 	})
-	if legacy.OpenRepositoriesOnOverview || !legacy.OverviewStartConfigured {
-		t.Fatalf("legacy zero value was misinterpreted as a new choice: %+v", legacy)
+	// Existing profiles are moved onto Overview once, as the landing page too.
+	if !legacy.OpenRepositoriesOnOverview || !legacy.OverviewStartConfigured || !legacy.OverviewPlacementMigrated {
+		t.Fatalf("legacy profile was not given Overview as its landing page: %+v", legacy)
 	}
 	// Existing profiles keep their own order and landing page, and get Overview
 	// shown and first once.
@@ -151,9 +152,12 @@ func TestOverviewStartPreferenceMigration(t *testing.T) {
 	a.session = fakeSession{}
 	a.settings = legacy
 	a.settingsLoaded = true
-	landing := a.workspaceTab
-	if a.repositoryStartsOnOverview() || a.workspaceTab != landing {
-		t.Fatal("legacy profile changed its repository landing page")
+	if !a.repositoryStartsOnOverview() {
+		t.Fatal("migrated legacy profile does not start on Overview")
+	}
+	a.settings.OpenRepositoriesOnOverview = false
+	if a.repositoryStartsOnOverview() {
+		t.Fatal("a later choice of another landing page was ignored")
 	}
 	a.settings = fresh
 	if !a.repositoryStartsOnOverview() {

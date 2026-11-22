@@ -216,7 +216,7 @@ func (a *app) cockpitView(c *ui.Context) {
 	width := a.measuredActionGroupWidth(c, root)
 	root.Children(func() {
 		ui.Scroll(c).Grow(1).TrackScroll(&a.cockpit.scroll).Children(func() {
-			ui.Column(c).FillWidth().MinWidth(0).Gap(3).Padding(0, 2, 8, 2).Children(func() {
+			ui.Column(c).FillWidth().MinWidth(0).Gap(0).Padding(0, 2, 6, 2).Children(func() {
 				a.cockpitRepositoryHeader(c, summary)
 				a.cockpitAttentionCard(c, theme, summary)
 				// Four status tiles: two across when there is room, one otherwise.
@@ -249,12 +249,12 @@ func (a *app) cockpitView(c *ui.Context) {
 
 func (a *app) cockpitRepositoryHeader(c *ui.Context, summary cockpitSummary) {
 	theme := c.Theme()
-	islandCard(c, ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(12).Padding(9, 12)).Children(func() {
-		ui.Box(c).Size(38, 38).Radius(10).Center().Shrink(0).Background(theme.Accent.Alpha(0.14)).Children(func() {
-			ui.Icon(c, appIcon).FontSize(20).TextColor(theme.Accent)
+	islandCard(c, ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(10).Padding(6, 10)).Children(func() {
+		ui.Box(c).Size(34, 34).Radius(9).Center().Shrink(0).Background(theme.Accent.Alpha(0.14)).Children(func() {
+			ui.Icon(c, appIcon).FontSize(18).TextColor(theme.Accent)
 		})
-		ui.Column(c).Gap(4).Grow(1).MinWidth(0).Children(func() {
-			ui.Text(c, summary.Repository.Name).FontSize(20).Bold().SingleLine().MinWidth(0)
+		ui.Column(c).Gap(3).Grow(1).MinWidth(0).Children(func() {
+			ui.Text(c, summary.Repository.Name).FontSize(18).Bold().SingleLine().MinWidth(0)
 			ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
 				branch := summary.Repository.Branch
 				if branch == "" {
@@ -292,7 +292,7 @@ func (a *app) cockpitRepositoryHeader(c *ui.Context, summary cockpitSummary) {
 // with a stripe in its severity color and one action.
 func (a *app) cockpitAttentionCard(c *ui.Context, theme *ui.Theme, summary cockpitSummary) {
 	c.Key("cockpit-attention")
-	islandCard(c, ui.Column(c).FillWidth().Gap(6).Padding(9, 12)).Label(tr("Continue where you left off")).Children(func() {
+	islandCard(c, ui.Column(c).FillWidth().Gap(4).Padding(7, 10)).Label(tr("Continue where you left off")).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 			ui.Text(c, tr("Continue where you left off")).Bold().FontSize(16).Grow(1)
 			ui.Text(c, trf("%d items", len(summary.Attention))).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
@@ -301,9 +301,9 @@ func (a *app) cockpitAttentionCard(c *ui.Context, theme *ui.Theme, summary cockp
 			attention, index := attention, index
 			c.Key("cockpit-attention:" + attention.ID)
 			color := cockpitSeverityColor(theme, attention.Severity)
-			ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(10).Padding(6, 10, 6, 0).
+			ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(8).Padding(4, 8, 4, 0).
 				Background(theme.Surface).Radius(theme.Radius).Clip().Children(func() {
-				ui.Box(c).Width(3).Height(28).Radius(2).Background(color).Shrink(0)
+				ui.Box(c).Width(3).Height(24).Radius(2).Background(color).Shrink(0)
 				ui.Icon(c, cockpitSeverityGlyph(attention.Severity)).FontSize(16).TextColor(color).Shrink(0)
 				ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
 					ui.Text(c, tr(attention.Title)).Bold().SingleLine().MinWidth(0)
@@ -321,16 +321,16 @@ func (a *app) cockpitAttentionCard(c *ui.Context, theme *ui.Theme, summary cockp
 func (a *app) cockpitCard(c *ui.Context, id, title string, icon *ui.SVG, body func()) {
 	theme := c.Theme()
 	c.Key("cockpit-card:" + id)
-	card := ui.Column(c).MinWidth(0).Gap(6).Padding(10, 12)
+	card := ui.Column(c).MinWidth(0).Gap(4).Padding(7, 10)
 	if a.cockpit.tileInRow {
 		card = card.Width(0).Grow(1)
 	} else {
 		card = card.FillWidth()
 	}
 	islandCard(c, card).Label(tr(title)).Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Box(c).Size(22, 22).Radius(7).Center().Shrink(0).Background(theme.Accent.Alpha(0.14)).Children(func() {
-				ui.Icon(c, icon).FontSize(13).TextColor(theme.Accent)
+		ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
+			ui.Box(c).Size(20, 20).Radius(6).Center().Shrink(0).Background(theme.Accent.Alpha(0.14)).Children(func() {
+				ui.Icon(c, icon).FontSize(12).TextColor(theme.Accent)
 			})
 			ui.Text(c, tr(title)).Bold().FontSize(14).Grow(1)
 		})
@@ -342,7 +342,7 @@ func (a *app) cockpitCard(c *ui.Context, id, title string, icon *ui.SVG, body fu
 func cockpitMetric(c *ui.Context, value, caption string, color ui.Color) {
 	theme := c.Theme()
 	ui.Row(c).AlignItems(ui.End).Gap(8).Children(func() {
-		ui.Text(c, value).FontSize(24).Bold().TextColor(color).SingleLine()
+		ui.Text(c, value).FontSize(22).Bold().TextColor(color).SingleLine()
 		ui.Text(c, caption).FontSize(theme.FontSize-1).TextColor(theme.TextMuted).SingleLine().Margin(0, 0, 3, 0)
 	})
 }
@@ -483,7 +483,7 @@ func (a *app) cockpitRecentCard(c *ui.Context, summary cockpitSummary) {
 		for _, item := range summary.Recent {
 			item := item
 			c.Key("cockpit-activity:" + item.ID.String())
-			row := ui.ButtonBase(c).FillWidth().MinWidth(0).Gap(10).Padding(4, 8).
+			row := ui.ButtonBase(c).FillWidth().MinWidth(0).Gap(8).Padding(2, 8).
 				AlignItems(ui.Center).Radius(theme.Radius).Role(ui.RoleOption).
 				Label(item.Title + " — " + activityStateLabel(item.State))
 			if row.Hovered() {

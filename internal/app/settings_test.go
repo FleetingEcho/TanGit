@@ -465,8 +465,7 @@ func TestNormalizeSettingsRejectsUnknownValues(t *testing.T) {
 	})
 	want := defaultSettings()
 	// This struct models a legacy file: other invalid values reset to fresh
-	// defaults, while the missing Overview sentinel preserves its old landing.
-	want.OpenRepositoriesOnOverview = false
+	// defaults, and the one-time Overview migration lands it on Overview.
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("invalid settings were not normalized: want %+v, got %+v", want, got)
 	}
@@ -968,8 +967,8 @@ func TestOverviewIsShownFirstForExistingProfilesOnce(t *testing.T) {
 	if migrated.SectionOrder[0] != "overview" || migrated.SectionOrder[1] != "code" {
 		t.Fatalf("Overview is not first: %v", migrated.SectionOrder)
 	}
-	if !migrated.OverviewPlacementMigrated {
-		t.Fatal("the migration was not marked done")
+	if !migrated.OverviewPlacementMigrated || !migrated.OpenRepositoriesOnOverview {
+		t.Fatalf("the migration was not completed (landing on Overview too): %+v", migrated)
 	}
 
 	// The user hides it and moves it last: that sticks.
