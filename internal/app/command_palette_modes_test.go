@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 
 	"lazygitapp/internal/repository"
@@ -130,9 +131,9 @@ func TestRecentRepositoryModeAndRowActions(t *testing.T) {
 
 	s.palette.query = "@"
 	for _, branch := range s.catalogFor(ctx).Search(ctx, s.palette.query, nil) {
-		want := 4
-		if branch.ID == "branches/checkout/main" {
-			want = 1
+		want := 5
+		if branch.ID == "branches/checkout/main" || strings.HasPrefix(string(branch.ID), "branches/remote/") {
+			want = 2
 		}
 		if len(branch.ActionLabels) != want {
 			t.Errorf("%s has %d actions, want %d", branch.ID, len(branch.ActionLabels), want)
@@ -140,7 +141,7 @@ func TestRecentRepositoryModeAndRowActions(t *testing.T) {
 	}
 	s.palette.query = "#"
 	for _, commit := range s.catalogFor(ctx).Search(ctx, s.palette.query, nil) {
-		if len(commit.ActionLabels) != 6 {
+		if len(commit.ActionLabels) != 2 {
 			t.Errorf("commit row actions = %v", commit.ActionLabels)
 		}
 	}

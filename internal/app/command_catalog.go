@@ -99,6 +99,9 @@ type commandSpec struct {
 	Prefix byte
 	// KeepOpen leaves the palette open after the command is accepted.
 	KeepOpen bool
+	// NoFilter skips the text match: the rows already answer the query, as the
+	// results of a Git search do.
+	NoFilter bool
 	// Actions are alternatives to Run, reached with Tab in the palette.
 	Actions []commandAction
 	Resolve func(commandContext) commandState
@@ -110,6 +113,8 @@ type commandSpec struct {
 type commandAction struct {
 	Label string
 	Run   func(commandContext)
+	// KeepOpen leaves the palette open after this action, to show more.
+	KeepOpen bool
 }
 
 type textRange struct {
@@ -347,6 +352,9 @@ func (c *commandCatalog) SearchPinned(ctx commandContext, query string, recent, 
 type commandSearchHints struct {
 	Recent, Pinned []commandID
 	Uses           map[commandID]int
+	// Mode, when set, replaces the mode the query's first character picks and
+	// takes the whole query as text; 'a' lists one commit's actions.
+	Mode byte
 }
 
 // SearchWith is Search ordered with the user's own history.
@@ -355,7 +363,12 @@ func (c *commandCatalog) SearchWith(ctx commandContext, query string, hints comm
 		return nil
 	}
 	recent, pinned := hints.Recent, hints.Pinned
-	mode, query := commandQueryMode(query)
+	var mode byte
+	if hints.Mode != 0 {
+		mode, query = hints.Mode, strings.TrimSpace(query)
+	} else {
+		mode, query = commandQueryMode(query)
+	}
 	recentRanks := make(map[commandID]int, len(recent))
 	for index, id := range recent {
 		if _, ok := recentRanks[id]; !ok {
@@ -384,7 +397,7 @@ func (c *commandCatalog) SearchWith(ctx commandContext, query string, hints comm
 			label = spec.Label
 		}
 		match, matched := commandMatch{}, true
-		if spec.Prefix != '!' {
+		if spec.Prefix != '!' && !spec.NoFilter {
 			match, matched = commandTextMatch(spec, label, query)
 		}
 		if !matched {
@@ -510,12 +523,14 @@ func (c *commandCatalog) InvokeAction(ctx commandContext, id commandID, action i
 				current.commandLog.RecordPalette(string(spec.ID), tr(spec.Label))
 			}
 		}
-		run := spec.Run
+		run, keepOpen := spec.Run, spec.KeepOpen
 		if action > 0 && action <= len(spec.Actions) {
-			run = spec.Actions[action-1].Run
+			run, keepOpen = spec.Actions[action-1].Run, spec.Actions[action-1].KeepOpen
+		} else if action > 0 {
+			keepOpen = false
 		}
 		run(ctx)
-		return commandInvokeResult{Status: commandInvokeAccepted, KeepOpen: spec.KeepOpen && action == 0}
+		return commandInvokeResult{Status: commandInvokeAccepted, KeepOpen: keepOpen}
 	}
 	return commandInvokeResult{Status: commandInvokeUnknown, Reason: "Command is unavailable"}
 }

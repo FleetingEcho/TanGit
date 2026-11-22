@@ -40,17 +40,21 @@ func (r paletteShellRun) entry() (repository.CommandEntry, bool) {
 }
 
 type commandPaletteState struct {
-	open            bool
-	query           string
-	selected        int
-	scroll          ui.ScrollState
-	search          ui.Handle
-	restore         focusRestoreTarget
-	recent          []commandID
-	pinned          []commandID
-	shellRun        paletteShellRun
-	shellHistory    []string
-	uses            map[commandID]int
+	open         bool
+	query        string
+	selected     int
+	scroll       ui.ScrollState
+	search       ui.Handle
+	restore      focusRestoreTarget
+	recent       []commandID
+	pinned       []commandID
+	shellRun     paletteShellRun
+	shellHistory []string
+	uses         map[commandID]int
+	// target is the commit whose actions the palette lists; commitSearch is the
+	// Git search behind the # mode and a pasted hash.
+	target          *paletteCommitTarget
+	commitSearch    paletteCommitSearch
 	historyPos      int
 	historyDraft    string
 	actionIndex     int
@@ -74,6 +78,7 @@ func (s *shell) openCommandPalette(c *ui.Context) {
 	}
 	s.palette.open = true
 	s.loadPaletteState()
+	s.palette.target = nil
 	s.palette.historyPos = -1
 	s.palette.actionIndex = 0
 	if _, ok := s.palette.shellRun.entry(); !ok {
@@ -101,6 +106,11 @@ func (s *shell) closeCommandPalette(restore bool) {
 		return
 	}
 	s.palette.open = false
+	s.palette.target = nil
+	if search := &s.palette.commitSearch; search.cancel != nil {
+		search.cancel()
+		*search = paletteCommitSearch{token: search.token}
+	}
 	if run := s.palette.shellRun; run.app != nil {
 		run.app.paletteOutputVisible.Store(false)
 	}
@@ -255,9 +265,11 @@ func (s *shell) invokeCommandAction(id commandID, action int) commandInvokeResul
 
 func (s *shell) commandPaletteCandidates() []commandCandidate {
 	ctx := s.commandContext()
-	return s.catalogFor(ctx).SearchWith(ctx, s.palette.query, commandSearchHints{
-		Recent: s.palette.recent, Pinned: s.palette.pinned, Uses: s.palette.uses,
-	})
+	hints := commandSearchHints{Recent: s.palette.recent, Pinned: s.palette.pinned, Uses: s.palette.uses}
+	if s.palette.target != nil {
+		hints.Mode = 'a'
+	}
+	return s.catalogFor(ctx).SearchWith(ctx, s.palette.query, hints)
 }
 
 // togglePinnedCommand pins or unpins a command for the rest of the session;
@@ -355,6 +367,7 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 		run.app.paletteOutputVisible.Store(false)
 	}
 	theme := c.Theme()
+	s.ensureCommitSearch(s.activeApp())
 	candidates := s.commandPaletteCandidates()
 	if len(candidates) == 0 {
 		s.palette.selected = 0
@@ -365,6 +378,26 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 	}
 	total := s.catalogFor(s.commandContext()).Total(s.commandContext())
 	mode, _ := commandQueryMode(s.palette.query)
+	if s.palette.target != nil {
+		mode = 'a'
+	}
+	// Escape steps back out of a commit's actions before it closes the palette.
+	backOut := func() {
+		if s.palette.target != nil {
+			s.closeCommitActions()
+			return
+		}
+		s.closeCommandPalette(true)
+	}
+	commitSearchStatus := ""
+	if search := s.palette.commitSearch; s.paletteCommitText() != "" {
+		switch {
+		case search.loading:
+			commitSearchStatus = tr("Searching Git…")
+		case search.err != "":
+			commitSearchStatus = search.err
+		}
+	}
 	jump := func(delta int) {
 		if len(candidates) == 0 {
 			return
@@ -427,8 +460,11 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 					ui.Icon(c, searchIcon).FontSize(20).TextColor(theme.Accent)
 					ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
 						ui.Text(c, tr("Command Palette")).FontSize(19).Bold()
-						ui.Text(c, tr("Search navigation and actions for the current workspace")+" · "+cmdShortcutChord()+"+Shift+P").
-							TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).SingleLine()
+						subtitle := tr("Search navigation and actions for the current workspace") + " · " + cmdShortcutChord() + "+Shift+P"
+						if target := s.palette.target; target != nil {
+							subtitle = trf("Actions for %s — %s", target.commit.ShortHash, target.commit.Subject)
+						}
+						ui.Text(c, subtitle).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).SingleLine()
 					})
 					if scope != "" {
 						ui.Badge(c, scope).Tooltip(tr("Commands run against this workspace"))
@@ -436,11 +472,11 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 					iconButton(c, "Close Command Palette", "Escape", closeIcon, false, func() { s.closeCommandPalette(true) })
 				})
 				search := ui.TextInput(c, &s.palette.query).Bind(&s.palette.search).
-					Label(tr("Search commands")).Placeholder(tr("Search commands — or type > @ # / ~ !")).Search().AutoFocus()
+					Label(tr("Search commands")).Placeholder(searchPlaceholder(s.palette.target != nil)).Search().AutoFocus()
 				// Text fields consume Enter for submission and may use Escape for
 				// editing. Scoped command handling makes the palette contract
 				// explicit instead of depending on leftover overlay keys.
-				s.palette.search.OnShortcut(c, 0, ui.KeyEscape, func() { s.closeCommandPalette(true) })
+				s.palette.search.OnShortcut(c, 0, ui.KeyEscape, backOut)
 				s.palette.search.OnShortcut(c, 0, ui.KeyUp, func() { move(-1) })
 				s.palette.search.OnShortcut(c, 0, ui.KeyDown, func() { move(1) })
 				s.palette.search.OnShortcut(c, 0, ui.KeyPageUp, func() { jump(-8) })
@@ -456,13 +492,17 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 					s.palette.notice = ""
 				}
 				ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-					ui.Text(c, tr("Commands")).Bold().Grow(1)
+					headerLabel := "Commands"
+					if mode == 'a' {
+						headerLabel = "Actions"
+					}
+					ui.Text(c, tr(headerLabel)).Bold().Grow(1)
 					if query := strings.TrimSpace(s.palette.query); query != "" {
 						if label := commandModeLabel(mode); label != "" {
 							ui.Text(c, tr(label)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 						}
 						ui.Badge(c, fmt.Sprintf("%d", len(candidates)))
-					} else {
+					} else if mode != 'a' {
 						ui.Text(c, tr("> commands · @ branches · # commits · / files · ~ repos · ! shell")).TextColor(theme.TextMuted).
 							FontSize(theme.FontSize - 1)
 					}
@@ -500,11 +540,17 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 				s.paletteShellOutput(c)
 				ui.Divider(c)
 				ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
-					ui.Text(c, tr("↑↓ Navigate · PgUp/PgDn Jump · Tab Actions · Enter Run · Ctrl+B Pin · Escape Close")).TextColor(theme.TextMuted).
+					footerHint := tr("↑↓ Navigate · PgUp/PgDn Jump · Tab Actions · Enter Run · Ctrl+B Pin · Escape Close")
+					if mode == 'a' {
+						footerHint = tr("↑↓ Navigate · Enter Run · Escape Back")
+					}
+					ui.Text(c, footerHint).TextColor(theme.TextMuted).
 						FontSize(theme.FontSize - 1).Grow(1)
 					if s.palette.notice != "" {
 						ui.Text(c, s.palette.notice).TextColor(theme.Warning).FontSize(theme.FontSize - 1).
 							MaxWidth(360).SingleLine().Tooltip(s.palette.notice)
+					} else if commitSearchStatus != "" {
+						ui.Text(c, commitSearchStatus).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).SingleLine()
 					} else {
 						count := trf("%d results", len(candidates))
 						if mode == 0 || mode == '>' {
@@ -538,8 +584,11 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 			if back.OverlayShortcut(0, ui.KeyEnter) {
 				invokeSelected()
 			}
-			if panel.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
+			if panel.PressedOutside() {
 				s.closeCommandPalette(true)
+			}
+			if back.OverlayShortcut(0, ui.KeyEscape) {
+				backOut()
 			}
 		})
 	})
@@ -604,6 +653,9 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 				ui.Text(c, hint).FontSize(theme.FontSize - 2).TextColor(theme.Warning).SingleLine()
 			}
 			groupLabel := tr(candidate.Group.label())
+			if s.palette.target != nil {
+				groupLabel = ""
+			}
 			if candidate.Pinned {
 				groupLabel = "★ " + groupLabel
 			}
@@ -630,6 +682,8 @@ func commandModeLabel(mode byte) string {
 		return "Files"
 	case '~':
 		return "Recent repositories"
+	case 'a':
+		return "Commit actions"
 	case '!':
 		return "Shell command"
 	}
@@ -743,4 +797,11 @@ func (a *app) saveShellLineAsCustomCommand(line string) {
 		customCommandSetting{Name: commandTitle(line), Command: line, Contexts: []string{"everywhere"}}))
 	a.saveSettings()
 	a.notify("success", tr("Saved as a custom command"), shorten(line, 80))
+}
+
+func searchPlaceholder(actions bool) string {
+	if actions {
+		return tr("Filter the actions")
+	}
+	return tr("Search commands — paste a commit hash, or type > @ # / ~ !")
 }

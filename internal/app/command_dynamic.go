@@ -42,8 +42,15 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 	if !s.palette.open || ctx.App == nil {
 		return specs
 	}
+	if s.palette.target != nil {
+		return commitTargetSpecs(s.palette.target)
+	}
 	mode, rest := commandQueryMode(s.palette.query)
 	a := ctx.App
+	if mode == 0 && isCommitHash(rest) {
+		// A pasted hash finds its commit without a prefix.
+		specs = append(specs, s.commitSearchSpecs(a, strings.TrimSpace(rest), 0)...)
+	}
 	switch mode {
 	case '~':
 		for _, recent := range a.recentRepositories {
@@ -120,27 +127,29 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 				Actions: branchActions(branch),
 			})
 		}
+		for _, remote := range a.snapshot.Remotes {
+			remote := remote
+			for _, remoteBranch := range remote.Branches {
+				remoteBranch := remoteBranch
+				qualified := remote.Name + "/" + remoteBranch.Name
+				specs = append(specs, commandSpec{
+					ID: commandID("branches/remote/" + qualified), Label: qualified, Detail: "Remote branch: check out a local branch that tracks it",
+					Keywords: []string{remote.Name, remoteBranch.Name}, Group: commandGroupRemotes, Prefix: '@', Glyph: remotesIcon,
+					Resolve: repositoryState,
+					Run:     func(ctx commandContext) { ctx.App.confirmCheckoutRemoteBranch(remote, remoteBranch) },
+					Actions: []commandAction{
+						{Label: "List this branch's commits", KeepOpen: true, Run: func(ctx commandContext) {
+							ctx.Shell.palette.query = "#branch:" + qualified + " "
+							ctx.Shell.palette.selected = 0
+							ctx.Shell.palette.actionIndex = 0
+						}},
+						{Label: "Copy branch name", Run: func(ctx commandContext) { ctx.App.notifyCopied(ctx.App.services, "branch name", qualified) }},
+					},
+				})
+			}
+		}
 	case '#':
-		commits := a.visibleCommits()
-		if len(commits) > dynamicCommitLimit {
-			commits = commits[:dynamicCommitLimit]
-		}
-		for index, commit := range commits {
-			commit := commit
-			score := dynamicCommitLimit - index
-			specs = append(specs, commandSpec{
-				ID: commandID("history/commit/" + commit.Hash), Label: commit.Subject,
-				Detail:   strings.TrimSpace(commit.ShortHash + " · " + commit.AuthorName),
-				Keywords: []string{commit.Hash, commit.ShortHash, commit.AuthorName}, Group: commandGroupHistory, Prefix: '#', Glyph: historyIcon,
-				Resolve: func(ctx commandContext) commandState {
-					state := repositoryStateAllowBusy(ctx)
-					state.ContextScore = score
-					return state
-				},
-				Run:     func(ctx commandContext) { ctx.App.revealCommit(commit.Hash) },
-				Actions: commitActions(commit),
-			})
-		}
+		specs = append(specs, s.commitSearchSpecs(a, strings.TrimSpace(rest), '#')...)
 	case '/':
 		specs = append(specs, workspaceFileSpecs(a, rest)...)
 		count := 0
@@ -265,9 +274,16 @@ func workspaceFileSpecs(a *app, query string) []commandSpec {
 // rebasing onto or deleting the branch that is already checked out makes no
 // sense, so those are left out for it.
 func branchActions(branch repository.Branch) []commandAction {
-	actions := []commandAction{{Label: "Copy branch name", Run: func(ctx commandContext) {
-		ctx.App.notifyCopied(ctx.App.services, "branch name", branch.Name)
-	}}}
+	actions := []commandAction{
+		{Label: "List this branch's commits", KeepOpen: true, Run: func(ctx commandContext) {
+			ctx.Shell.palette.query = "#branch:" + branch.Name + " "
+			ctx.Shell.palette.selected = 0
+			ctx.Shell.palette.actionIndex = 0
+		}},
+		{Label: "Copy branch name", Run: func(ctx commandContext) {
+			ctx.App.notifyCopied(ctx.App.services, "branch name", branch.Name)
+		}},
+	}
 	if branch.Head {
 		return actions
 	}
