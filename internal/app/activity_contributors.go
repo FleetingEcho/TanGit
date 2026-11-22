@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"time"
 
@@ -20,6 +21,17 @@ const (
 	activityViewContributors
 
 	contributorRecentLimit = 20
+
+	// contributorPageSize is how many contributors are drawn at first and how
+	// many each "show more" adds.
+	contributorPageSize = 50
+)
+
+// How the contributor list is ordered.
+const (
+	contributorSortCommits = 0
+	contributorSortRecent  = 1
+	contributorSortName    = 2
 )
 
 // contributorSession is the optional capability behind the contributor list;
@@ -37,6 +49,16 @@ type contributorsState struct {
 	token       uint64
 
 	selected int
+	// sortBy orders the list; limit is how many rows are drawn (0 is one page),
+	// so a repository with hundreds of contributors stays quick to draw.
+	sortBy int
+	limit  int
+	// The filtered, sorted list is kept until the search, order or data change.
+	cache      []repository.Contributor
+	cacheQuery string
+	cacheSort  int
+	cacheToken uint64
+	cacheValid bool
 	// expanded is the key of the contributor whose recent commits are shown.
 	expanded       string
 	commits        []repository.Commit
@@ -100,24 +122,50 @@ func (s *shell) ensureContributors() {
 				list = []repository.Contributor{}
 			}
 			current.list = list
+			current.cacheValid = false
 		})
 	}()
 }
 
+// visibleContributors is the whole list matching the search, in the chosen
+// order. It is computed once and reused until the search, order or data change.
 func (s *shell) visibleContributors() []repository.Contributor {
-	state := s.activity.contributors
+	state := &s.activity.contributors
 	needle := strings.ToLower(strings.TrimSpace(s.activity.query))
-	if needle == "" {
-		return state.list
+	if state.cacheValid && state.cacheQuery == needle && state.cacheSort == state.sortBy && state.cacheToken == state.token {
+		return state.cache
 	}
-	var matched []repository.Contributor
+	matched := make([]repository.Contributor, 0, len(state.list))
 	for _, contributor := range state.list {
-		if strings.Contains(strings.ToLower(contributor.Name), needle) ||
+		if needle == "" || strings.Contains(strings.ToLower(contributor.Name), needle) ||
 			strings.Contains(strings.ToLower(contributor.Email), needle) {
 			matched = append(matched, contributor)
 		}
 	}
+	switch state.sortBy {
+	case contributorSortRecent:
+		sort.SliceStable(matched, func(i, j int) bool { return matched[i].LastCommit > matched[j].LastCommit })
+	case contributorSortName:
+		sort.SliceStable(matched, func(i, j int) bool {
+			return strings.ToLower(authorLabel(matched[i].Name, matched[i].Email)) < strings.ToLower(authorLabel(matched[j].Name, matched[j].Email))
+		})
+	}
+	state.cache, state.cacheQuery, state.cacheSort, state.cacheToken, state.cacheValid = matched, needle, state.sortBy, state.token, true
 	return matched
+}
+
+// shownContributors is the part of the list that is drawn: one page, and as
+// many more as "show more" has added.
+func (s *shell) shownContributors() []repository.Contributor {
+	list := s.visibleContributors()
+	limit := s.activity.contributors.limit
+	if limit <= 0 {
+		limit = contributorPageSize
+	}
+	if len(list) > limit {
+		return list[:limit]
+	}
+	return list
 }
 
 // toggleContributor shows or hides a contributor's recent commits, reading
@@ -160,7 +208,7 @@ func (s *shell) toggleContributor(contributor repository.Contributor) {
 }
 
 func (s *shell) moveContributor(delta int) {
-	list := s.visibleContributors()
+	list := s.shownContributors()
 	if len(list) == 0 {
 		return
 	}
@@ -170,7 +218,7 @@ func (s *shell) moveContributor(delta int) {
 }
 
 func (s *shell) toggleSelectedContributor() {
-	list := s.visibleContributors()
+	list := s.shownContributors()
 	state := &s.activity.contributors
 	if state.selected >= 0 && state.selected < len(list) {
 		s.toggleContributor(list[state.selected])
@@ -222,7 +270,8 @@ func contributorCountLabel(count int) string {
 // contributorsList draws the contributor view inside the center's scroll area.
 func (s *shell) contributorsList(c *ui.Context, theme *ui.Theme) {
 	state := &s.activity.contributors
-	list := s.visibleContributors()
+	all := s.visibleContributors()
+	list := s.shownContributors()
 	if state.selected >= len(list) {
 		state.selected = max(len(list)-1, 0)
 	}
@@ -265,6 +314,12 @@ func (s *shell) contributorsList(c *ui.Context, theme *ui.Theme) {
 			})
 			if expanded {
 				s.contributorCommits(c, theme, contributor)
+			}
+		}
+		if len(all) > len(list) {
+			if ui.Button(c, trf("Show %d more", min(contributorPageSize, len(all)-len(list)))).
+				Tooltip(trf("%d of %d contributors are shown", len(list), len(all))).Clicked() {
+				state.limit = len(list) + contributorPageSize
 			}
 		}
 		s.activity.reveal = false

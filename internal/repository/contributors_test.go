@@ -1,10 +1,6 @@
 package repository
 
-import (
-	"strconv"
-	"testing"
-	"time"
-)
+import "testing"
 
 func TestParseContributorsGroupsByEmailAndSortsByCommits(t *testing.T) {
 	output := "Alice\x1falice@example.com\x1f300\n" +
@@ -28,29 +24,16 @@ func TestParseContributorsGroupsByEmailAndSortsByCommits(t *testing.T) {
 	}
 }
 
-func TestSummarizeContributorsCountsRecentActivityAndWeeks(t *testing.T) {
-	now := time.Unix(10_000_000, 0)
-	day := int64(24 * 3600)
-	output := "Alice\x1falice@example.com\x1f" + strconv.FormatInt(now.Unix()-2*day, 10) + "\n" + // this week
-		"Alice\x1falice@example.com\x1f" + strconv.FormatInt(now.Unix()-9*day, 10) + "\n" + // last week
-		"Bob\x1fbob@example.com\x1f" + strconv.FormatInt(now.Unix()-100*day, 10) + "\n" + // long ago
-		"Bob\x1fbob@example.com\x1f" + strconv.FormatInt(now.Unix()-20*day, 10) + "\n"
-	summary := summarizeContributors(output, now)
-	if summary.TotalCommits != 4 || len(summary.Contributors) != 2 {
-		t.Fatalf("totals = %d commits, %d contributors", summary.TotalCommits, len(summary.Contributors))
+func TestSummarizeContributorsKeepsCommitTimesAndTotals(t *testing.T) {
+	output := "Alice\x1falice@example.com\x1f300\n" +
+		"Alice\x1falice@example.com\x1f100\n" +
+		"Bob\x1fbob@example.com\x1f200\n"
+	summary := summarizeContributors(output)
+	if summary.TotalCommits != 3 || len(summary.Contributors) != 2 || summary.FirstCommit != 100 || summary.LastCommit != 300 {
+		t.Fatalf("summary = %+v", summary)
 	}
-	if summary.ActiveRecent != 2 {
-		t.Fatalf("active in the last 30 days = %d, want 2", summary.ActiveRecent)
-	}
-	weeks := summary.WeeklyCommits
-	if len(weeks) != ContributorWeeks || weeks[ContributorWeeks-1] != 1 || weeks[ContributorWeeks-2] != 1 || weeks[ContributorWeeks-3] != 1 {
-		t.Fatalf("weekly commits = %v", weeks)
-	}
-	total := 0
-	for _, count := range weeks {
-		total += count
-	}
-	if total != 3 {
-		t.Fatalf("the commit 100 days ago must fall outside the series: %v", weeks)
+	alice := summary.Contributors[0]
+	if len(alice.CommitTimes) != 2 || alice.CommitTimes[0] != 100 || alice.CommitTimes[1] != 300 {
+		t.Fatalf("alice's commit times must be oldest first: %v", alice.CommitTimes)
 	}
 }

@@ -225,7 +225,9 @@ Choosing a contributor shows their 20 most recent commits; **Show in History**
 narrows the History list to them, **Search in palette** opens the palette on
 `#by:"name"`, and a commit opens its full action list in the palette. The list
 is read from Git once per opening (at most the newest 200,000 commits) and is
-unavailable for non-Git folders.
+unavailable for non-Git folders. A repository with hundreds of contributors
+draws 50 at a time (**Show 50 more** adds the next page); search covers the whole
+list, and the list can be ordered by most commits, most recent or name.
 
 ### Overview
 
@@ -237,14 +239,19 @@ off** lists what needs doing next, each row striped in its severity color with
 one action. Four tiles summarize the working tree (changed files, staged,
 modified, untracked and conflicts, with review progress), collaboration
 (ahead/behind, upstream and cached pull-request checks), the current
-operation and Agent state. A **Contributors** card follows with the number of
-contributors, how many were active in the last 30 days, the total commits and
-the date of the first, a chart of commits per week for the last 12 weeks, and
-the five contributors with the most commits; choosing one, or **View all
-contributors**, opens the full list in the Activity Center. The statistics are
-read from Git in the background when the Overview is entered and reused for two
-minutes; sessions that cannot read them leave the card out. The latest five
-activity items come last. Attention is ordered from actual failures and Git operations through
+operation and Agent state. A **Contributors** card sits directly under the
+header and answers who has been working lately for a period you pick: **Last
+week** (the default), **Last month**, **Last 3 months**, **Last 6 months**,
+**Last year** or **All time**. It shows how many of the repository's
+contributors committed in the period, the period's commit count with the change
+against the period before it, a chart of commits over the period, and the five
+most active contributors; in a large project it also says how many contributors
+were active and what share of the commits the top five made. Choosing a
+contributor, or **View all contributors**, opens the full list in the Activity
+Center. The history is read from Git once in the background when the Overview
+is entered, with every contributor's commit times, and reused for two minutes;
+switching the period recounts it instantly. Sessions that cannot read the
+history leave the card out. The latest five activity items come last. Attention is ordered from actual failures and Git operations through
 conflicts, unsaved buffers, Agent/transfer issues and ordinary sync or review
 work. At most three primary items appear. Every action uses the shared Command
 Catalog and is checked again before execution.

@@ -2,10 +2,13 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -260,13 +263,69 @@ func TestOverviewScreenshots(t *testing.T) {
 				{Name: "Chen Wei", Email: "chen@example.com", Commits: 31},
 				{Name: "Dana Okoye", Email: "dana@example.com", Commits: 9},
 			},
-			TotalCommits: 232, ActiveRecent: 3, FirstCommit: 1_600_000_000,
-			WeeklyCommits: []int{3, 5, 0, 8, 12, 6, 2, 0, 9, 14, 7, 11},
+			TotalCommits: 232, FirstCommit: 1_600_000_000,
 		}}
+		now := time.Now().Unix()
+		for index := range a.session.(summarySession).summary.Contributors {
+			contributor := &a.session.(summarySession).summary.Contributors[index]
+			for i := 0; i < contributor.Commits; i++ {
+				contributor.CommitTimes = append(contributor.CommitTimes, now-int64(i*((index+2)*7))*3600)
+			}
+			slices.Sort(contributor.CommitTimes)
+		}
 		a.workspaceTab = sectionOverview
 		a.prepareCockpit()
 		tt.SetSize(size.w, size.h)
 		settleShot(t, tt, updated, func() bool { return a.cockpit.contributors.loaded })
 		saveScreenshot(t, dir, "overview-"+size.name+"-dark", tt)
+	}
+}
+
+// Hundreds of contributors stay quick to draw: one page at first, more on
+// request, sortable, and searchable across the whole list.
+func TestContributorsScaleToHundredsOfPeople(t *testing.T) {
+	s, h, _ := commitSearchShell(t)
+	var people []repository.Contributor
+	for i := 0; i < 320; i++ {
+		people = append(people, repository.Contributor{
+			Name: fmt.Sprintf("Person %03d", i), Email: fmt.Sprintf("p%03d@example.com", i),
+			Commits: 1000 - i, LastCommit: int64(1_600_000_000 + i*100),
+		})
+	}
+	h.app.session = contributorTestSession{searchSession: h.app.session.(searchSession), contributors: people}
+	s.openActivityCenterView(activityViewContributors)
+	s.ensureContributors()
+	h.waitFor(t, "the contributor list", func() bool { return s.activity.contributors.list != nil })
+
+	if got := len(s.shownContributors()); got != contributorPageSize {
+		t.Fatalf("first page = %d rows, want %d", got, contributorPageSize)
+	}
+	if got := len(s.visibleContributors()); got != 320 {
+		t.Fatalf("the whole list = %d, want 320", got)
+	}
+	s.activity.contributors.limit = 120
+	if got := len(s.shownContributors()); got != 120 {
+		t.Fatalf("after show more = %d, want 120", got)
+	}
+
+	// Search reaches people beyond the page.
+	s.activity.query = "p319@"
+	if got := s.visibleContributors(); len(got) != 1 || got[0].Name != "Person 319" {
+		t.Fatalf("search across the full list = %+v", got)
+	}
+	s.activity.query = ""
+
+	// Sorting by recency puts the newest first; by name, alphabetical.
+	s.activity.contributors.sortBy = contributorSortRecent
+	if first := s.visibleContributors()[0]; first.Name != "Person 319" {
+		t.Fatalf("most recent first = %q", first.Name)
+	}
+	s.activity.contributors.sortBy = contributorSortName
+	if first := s.visibleContributors()[0]; first.Name != "Person 000" {
+		t.Fatalf("by name first = %q", first.Name)
+	}
+	s.activity.contributors.sortBy = contributorSortCommits
+	if first := s.visibleContributors()[0]; first.Name != "Person 000" {
+		t.Fatalf("most commits first = %q", first.Name)
 	}
 }

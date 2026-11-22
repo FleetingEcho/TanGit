@@ -275,6 +275,19 @@ func (s *shell) activityCenterView(c *ui.Context) {
 				ui.Row(c).AlignItems(ui.Center).Gap(6).Label(tr("Activity views")).Children(func() {
 					chip(tr("Activity"), !contributorsView, func() { s.activity.view = activityViewFeed })
 					chip(tr("Contributors"), contributorsView, func() { s.activity.view = activityViewContributors })
+					if contributorsView {
+						ui.Text(c, "·").TextColor(theme.TextMuted)
+						for _, order := range []struct {
+							label string
+							sort  int
+						}{{tr("Most commits"), contributorSortCommits}, {tr("Most recent"), contributorSortRecent}, {tr("Name"), contributorSortName}} {
+							order := order
+							chip(order.label, s.activity.contributors.sortBy == order.sort, func() {
+								s.activity.contributors.sortBy = order.sort
+								s.activity.contributors.limit = 0
+							})
+						}
+					}
 				})
 				placeholder := tr("Search activity by title, repository or state")
 				if contributorsView {
@@ -287,6 +300,8 @@ func (s *shell) activityCenterView(c *ui.Context) {
 				s.activity.search.OnShortcut(c, 0, ui.KeyDown, func() { move(1) })
 				search.OnSubmit(openSelected)
 				if search.Changed() {
+					s.activity.contributors.limit = 0
+					s.activity.contributors.selected = 0
 					s.activity.selected = 0
 					s.activity.reveal = true
 					s.activity.notice = ""
@@ -364,6 +379,9 @@ func (s *shell) activityCenterView(c *ui.Context) {
 						count := activityCountLabel(len(items))
 						if contributorsView {
 							count = contributorsCountLabel(len(s.visibleContributors()))
+							if shown := len(s.shownContributors()); shown < len(s.visibleContributors()) {
+								count = trf("Showing %d of %d contributors", shown, len(s.visibleContributors()))
+							}
 						}
 						ui.Text(c, count).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 					}

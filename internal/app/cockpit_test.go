@@ -255,16 +255,17 @@ func (s summarySession) ContributorSummary(context.Context) (repository.Contribu
 }
 
 // Entering the Overview reads the contributor statistics once and shows them;
-// a session without the capability simply has no Contributors card.
+// switching the period recounts them without reading Git again.
 func TestOverviewShowsContributorStatistics(t *testing.T) {
 	h, _ := menuTestAppWithCalls(t)
+	now := time.Now().Unix()
+	day := int64(24 * 3600)
 	h.app.session = summarySession{fakeSession: h.app.session.(fakeSession), summary: repository.ContributorSummary{
 		Contributors: []repository.Contributor{
-			{Name: "Alice Example", Email: "alice@example.com", Commits: 12, LastCommit: 1_700_000_000},
-			{Name: "Bob Builder", Email: "bob@example.com", Commits: 3},
+			{Name: "Alice Example", Email: "alice@example.com", Commits: 4, CommitTimes: []int64{now - 200*day, now - 40*day, now - 2*day, now - day}},
+			{Name: "Bob Builder", Email: "bob@example.com", Commits: 2, CommitTimes: []int64{now - 300*day, now - 3*day}},
 		},
-		TotalCommits: 15, ActiveRecent: 1, FirstCommit: 1_600_000_000,
-		WeeklyCommits: []int{0, 1, 0, 2, 3, 0, 0, 4, 1, 0, 2, 2},
+		TotalCommits: 6, FirstCommit: now - 300*day, LastCommit: now - day,
 	}}
 	h.app.setWorkspaceTab(sectionOverview)
 	h.tester.SetSize(1280, 1800)
@@ -272,13 +273,21 @@ func TestOverviewShowsContributorStatistics(t *testing.T) {
 	h.waitFor(t, "the contributor statistics", func() bool { return h.app.cockpit.contributors.loaded })
 	h.tester.Frame()
 	texts := h.texts()
-	for _, want := range []string{"Contributors", "Top contributors", "1 active in the last 30 days", "15 commits"} {
+	for _, want := range []string{"Contributors", "Most active", "3 commits", "Last week"} {
 		if !slices.Contains(texts, want) {
 			t.Errorf("Overview is missing %q: %q", want, texts)
 		}
 	}
-	if _, ok := h.tester.Find("Alice Example — 12 commits"); !ok {
-		t.Fatalf("top contributor row is missing: %q", texts)
+	// The default period is the last week: Alice has 2 commits, Bob 1.
+	if _, ok := h.tester.Find("Alice Example — 2 commits"); !ok {
+		t.Fatalf("top contributor for the week is missing: %q", texts)
+	}
+	if err := h.tester.Click("Last year"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if _, ok := h.tester.Find("Alice Example — 4 commits"); !ok {
+		t.Fatalf("switching to a year did not recount: %q", h.texts())
 	}
 
 	// A session that cannot read contributors leaves the card out.
@@ -289,5 +298,55 @@ func TestOverviewShowsContributorStatistics(t *testing.T) {
 	plain.tester.Frame()
 	if slices.Contains(plain.texts(), "Top contributors") || !plain.app.cockpit.contributors.unavailable {
 		t.Fatal("an unsupported session should have no Contributors card")
+	}
+}
+
+func TestContributorRangeCountsPeriodsAndTrend(t *testing.T) {
+	now := time.Unix(100_000_000, 0)
+	day := int64(24 * 3600)
+	at := func(daysAgo int64) int64 { return now.Unix() - daysAgo*day }
+	summary := repository.ContributorSummary{
+		Contributors: []repository.Contributor{
+			{Name: "A", Email: "a@x", Commits: 5, CommitTimes: []int64{at(400), at(20), at(12), at(2), at(1)}},
+			{Name: "B", Email: "b@x", Commits: 2, CommitTimes: []int64{at(10), at(3)}},
+			{Name: "C", Email: "c@x", Commits: 1, CommitTimes: []int64{at(500)}},
+		},
+		TotalCommits: 8, FirstCommit: at(500), LastCommit: at(1),
+	}
+	week := computeContributorRange(summary, contributorRangeWeek, now)
+	if week.Commits != 3 || week.Active != 2 || week.Total != 3 {
+		t.Fatalf("week = %+v", week)
+	}
+	// The week before had A's commit 12 days ago and B's 10 days ago.
+	if week.PreviousCommits != 2 {
+		t.Fatalf("previous week = %d, want 2", week.PreviousCommits)
+	}
+	if len(week.Top) != 2 || week.Top[0].Contributor.Name != "A" || week.Top[0].Commits != 2 {
+		t.Fatalf("top of the week = %+v", week.Top)
+	}
+	sum := 0
+	for _, count := range week.Buckets {
+		sum += count
+	}
+	if len(week.Buckets) != 7 || sum != 3 || week.Buckets[5] != 1 {
+		t.Fatalf("week chart = %v", week.Buckets)
+	}
+	month := computeContributorRange(summary, contributorRangeMonth, now)
+	if month.Commits != 6 || month.Active != 2 {
+		t.Fatalf("month = %+v", month)
+	}
+	all := computeContributorRange(summary, contributorRangeAll, now)
+	if all.Commits != 8 || all.Active != 3 || all.PreviousCommits != 0 || len(all.Buckets) != 24 {
+		t.Fatalf("all time = %+v", all)
+	}
+	total := 0
+	for _, count := range all.Buckets {
+		total += count
+	}
+	if total != 8 {
+		t.Fatalf("all-time chart lost commits: %v", all.Buckets)
+	}
+	if all.TopFiveShare != 100 {
+		t.Fatalf("top five share = %d", all.TopFiveShare)
 	}
 }
