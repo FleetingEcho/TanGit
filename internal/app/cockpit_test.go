@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -248,9 +249,22 @@ func BenchmarkCockpitSummaryLargeRepository(b *testing.B) {
 type summarySession struct {
 	fakeSession
 	summary repository.ContributorSummary
+	// byBranch answers a branch's read with its own summary; reads records the
+	// branches that were read.
+	byBranch map[string]repository.ContributorSummary
+	reads    *[]string
+	mu       *sync.Mutex
 }
 
-func (s summarySession) ContributorSummary(context.Context) (repository.ContributorSummary, error) {
+func (s summarySession) ContributorSummary(_ context.Context, branch string) (repository.ContributorSummary, error) {
+	if s.reads != nil {
+		s.mu.Lock()
+		*s.reads = append(*s.reads, branch)
+		s.mu.Unlock()
+	}
+	if summary, ok := s.byBranch[branch]; ok {
+		return summary, nil
+	}
 	return s.summary, nil
 }
 
@@ -348,5 +362,57 @@ func TestContributorRangeCountsPeriodsAndTrend(t *testing.T) {
 	}
 	if all.TopFiveShare != 100 {
 		t.Fatalf("top five share = %d", all.TopFiveShare)
+	}
+}
+
+// The branch picker counts another branch's history, and a branch read earlier
+// is reused instead of read again.
+func TestOverviewContributorsFollowTheChosenBranch(t *testing.T) {
+	h, _ := menuTestAppWithCalls(t)
+	now := time.Now().Unix()
+	day := int64(24 * 3600)
+	var reads []string
+	mu := &sync.Mutex{}
+	h.app.session = summarySession{
+		fakeSession: h.app.session.(fakeSession), reads: &reads, mu: mu,
+		summary: repository.ContributorSummary{
+			Contributors: []repository.Contributor{{Name: "Alice", Email: "a@x", Commits: 2, CommitTimes: []int64{now - day, now - 2*day}}},
+			TotalCommits: 2,
+		},
+		byBranch: map[string]repository.ContributorSummary{
+			"feature": {
+				Contributors: []repository.Contributor{{Name: "Zoe", Email: "z@x", Commits: 1, CommitTimes: []int64{now - day}}},
+				TotalCommits: 1,
+			},
+		},
+	}
+	h.app.snapshot.Branches = []repository.Branch{{Name: "main", Head: true}, {Name: "feature"}}
+	h.app.setWorkspaceTab(sectionOverview)
+	h.tester.SetSize(1280, 1800)
+	h.tester.Frame()
+	h.waitFor(t, "all branches", func() bool { return h.app.cockpit.contributors.loaded })
+	if got := h.app.cockpit.contributors.stats.Top; len(got) != 1 || got[0].Contributor.Name != "Alice" {
+		t.Fatalf("all-branches top = %+v", got)
+	}
+
+	h.app.selectContributorBranch("feature", "feature")
+	h.waitFor(t, "the feature branch", func() bool { return h.app.cockpit.contributors.loaded })
+	if got := h.app.cockpit.contributors.stats.Top; len(got) != 1 || got[0].Contributor.Name != "Zoe" {
+		t.Fatalf("feature top = %+v", got)
+	}
+
+	// Back to every branch: from the cache, with no further read.
+	h.app.selectContributorBranch("", "")
+	if !h.app.cockpit.contributors.loaded || h.app.cockpit.contributors.stats.Top[0].Contributor.Name != "Alice" {
+		t.Fatalf("a branch read earlier was not reused: %+v", h.app.cockpit.contributors.stats.Top)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(reads) != 2 || reads[0] != "" || reads[1] != "feature" {
+		t.Fatalf("branches read = %q, want [\"\" feature]", reads)
+	}
+	choices := h.app.contributorBranchChoices()
+	if len(choices) < 3 || choices[0].branch != "" || choices[1].branch != "main" {
+		t.Fatalf("branch choices = %+v", choices)
 	}
 }

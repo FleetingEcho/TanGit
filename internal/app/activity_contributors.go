@@ -41,7 +41,9 @@ type contributorSession interface {
 }
 
 type contributorsState struct {
-	app         *app
+	app *app
+	// branch is the branch the list was read for, "" for every branch.
+	branch      string
 	loading     bool
 	err         string
 	unavailable bool
@@ -92,13 +94,26 @@ func (s *shell) ensureContributors() {
 		*state = contributorsState{token: state.token, unavailable: true}
 		return
 	}
-	if state.app == a && (state.loading || state.list != nil || state.err != "" || state.unavailable) {
+	// The list follows the branch chosen on the Overview's card.
+	branch := a.cockpit.contributors.branch
+	if state.app == a && state.branch == branch && (state.loading || state.list != nil || state.err != "" || state.unavailable) {
 		return
 	}
 	token := state.token + 1
-	*state = contributorsState{app: a, token: token}
-	session, ok := a.session.(contributorSession)
-	if !ok {
+	*state = contributorsState{app: a, token: token, branch: branch}
+	var read func(context.Context) ([]repository.Contributor, error)
+	switch session := a.session.(type) {
+	case contributorSummarySession:
+		read = func(ctx context.Context) ([]repository.Contributor, error) {
+			summary, err := session.ContributorSummary(ctx, branch)
+			return summary.Contributors, err
+		}
+	case contributorSession:
+		if branch == "" {
+			read = session.Contributors
+		}
+	}
+	if read == nil {
 		state.unavailable = true
 		return
 	}
@@ -107,7 +122,7 @@ func (s *shell) ensureContributors() {
 	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		list, err := session.Contributors(ctx)
+		list, err := read(ctx)
 		a.update(func() {
 			current := &s.activity.contributors
 			if generation != a.generation || current.token != token {

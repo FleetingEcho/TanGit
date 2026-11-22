@@ -276,6 +276,9 @@ func (s *shell) activityCenterView(c *ui.Context) {
 					chip(tr("Activity"), !contributorsView, func() { s.activity.view = activityViewFeed })
 					chip(tr("Contributors"), contributorsView, func() { s.activity.view = activityViewContributors })
 					if contributorsView {
+						if a := s.activeApp(); a != nil {
+							a.contributorBranchPicker(c, 190)
+						}
 						ui.Text(c, "·").TextColor(theme.TextMuted)
 						for _, order := range []struct {
 							label string

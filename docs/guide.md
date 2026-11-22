@@ -242,7 +242,11 @@ modified, untracked and conflicts, with review progress), collaboration
 operation and Agent state. A **Contributors** card sits directly under the
 header and answers who has been working lately for a period you pick: **Last
 week** (the default), **Last month**, **Last 3 months**, **Last 6 months**,
-**Last year** or **All time**. It shows how many of the repository's
+**Last year** or **All time**, counted for every branch or for one branch you
+choose in the searchable branch picker beside the periods (local and remote
+branches; type to narrow a long list). The Activity Center's contributor list
+follows the same branch, and each branch's read is kept for two minutes so
+switching back is instant. It shows how many of the repository's
 contributors committed in the period, the period's commit count with the change
 against the period before it, a chart of commits over the period, and the five
 most active contributors; in a large project it also says how many contributors

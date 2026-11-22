@@ -38,23 +38,33 @@ type ContributorSummary struct {
 // cannot make the contributor list a long scan.
 const contributorCommitLimit = 200000
 
-// Contributors lists everyone who authored commits, most commits first. Several
-// names under one email are one contributor, shown under their newest name.
+// Contributors lists everyone who authored commits on any branch, most commits
+// first. Several names under one email are one contributor, shown under their
+// newest name.
 func (s *gitSession) Contributors(ctx context.Context) ([]Contributor, error) {
-	summary, err := s.ContributorSummary(ctx)
+	summary, err := s.ContributorSummary(ctx, "")
 	return summary.Contributors, err
 }
 
-// ContributorSummary reads the contributors and their statistics in one pass
-// over the history.
-func (s *gitSession) ContributorSummary(ctx context.Context) (ContributorSummary, error) {
+// ContributorSummary reads the contributors and their commit times in one pass
+// over the history of branch, or of every branch when branch is empty. A
+// branch's history can be read without checking it out.
+func (s *gitSession) ContributorSummary(ctx context.Context, branch string) (ContributorSummary, error) {
 	if err := ctx.Err(); err != nil {
 		return ContributorSummary{}, err
 	}
-	output, err := s.cmd.New([]string{
-		"git", "log", "--all", fmt.Sprintf("--max-count=%d", contributorCommitLimit),
-		"--format=%aN%x1f%aE%x1f%at",
-	}).RunWithOutput()
+	branch = strings.TrimSpace(branch)
+	if strings.HasPrefix(branch, "-") {
+		return ContributorSummary{}, fmt.Errorf("read contributors: invalid branch %q", branch)
+	}
+	args := []string{"git", "log", fmt.Sprintf("--max-count=%d", contributorCommitLimit), "--format=%aN%x1f%aE%x1f%at"}
+	if branch == "" {
+		args = append(args, "--all")
+	} else {
+		args = append(args, s.qualifyCommitFilterBranch(branch))
+	}
+	args = append(args, "--")
+	output, err := s.cmd.New(args).RunWithOutput()
 	if err != nil {
 		return ContributorSummary{}, fmt.Errorf("read contributors: %w", err)
 	}

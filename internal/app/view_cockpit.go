@@ -22,9 +22,15 @@ type cockpitUIState struct {
 }
 
 // contributorSummarySession is the optional capability behind the card;
-// sessions without it leave the card out.
+// sessions without it leave the card out. An empty branch is every branch.
 type contributorSummarySession interface {
-	ContributorSummary(context.Context) (repository.ContributorSummary, error)
+	ContributorSummary(ctx context.Context, branch string) (repository.ContributorSummary, error)
+}
+
+type contributorCacheEntry struct {
+	summary    repository.ContributorSummary
+	generation uint64
+	loadedAt   time.Time
 }
 
 type cockpitContributors struct {
@@ -34,8 +40,15 @@ type cockpitContributors struct {
 	err         string
 	summary     repository.ContributorSummary
 	// period is the chosen range and stats the history counted for it.
-	period     int
-	stats      contributorRangeStats
+	period int
+	stats  contributorRangeStats
+	// branch is the branch whose history is counted, "" for every branch;
+	// branchInput is the text of the branch picker.
+	branch      string
+	branchInput string
+	// cache keeps each branch's read for a while, so going back to a branch is
+	// instant.
+	cache      map[string]contributorCacheEntry
 	generation uint64
 	loadedAt   time.Time
 	token      uint64
@@ -45,8 +58,8 @@ type cockpitContributors struct {
 // the Overview is entered again.
 const cockpitContributorsMaxAge = 2 * time.Minute
 
-// loadCockpitContributors reads the contributor statistics in the background,
-// unless a recent read of this repository is already held.
+// loadCockpitContributors counts the contributors of the chosen branch: from
+// the cache when a recent read is held, otherwise from Git in the background.
 func (a *app) loadCockpitContributors() {
 	state := &a.cockpit.contributors
 	if state.loading || a.session == nil {
@@ -58,17 +71,23 @@ func (a *app) loadCockpitContributors() {
 		return
 	}
 	state.unavailable = false
-	if state.loaded && state.generation == a.generation && time.Since(state.loadedAt) < cockpitContributorsMaxAge {
+	branch := state.branch
+	if entry, ok := state.cache[branch]; ok && entry.generation == a.generation && time.Since(entry.loadedAt) < cockpitContributorsMaxAge {
+		if !state.loaded || state.summary.TotalCommits != entry.summary.TotalCommits || state.generation != entry.generation {
+			state.summary, state.loaded, state.generation, state.loadedAt = entry.summary, true, entry.generation, entry.loadedAt
+		}
+		state.err = ""
+		a.recomputeContributorStats()
 		return
 	}
-	state.loading = true
+	state.loading, state.loaded = true, false
 	state.token++
 	token := state.token
 	generation := a.generation
 	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		summary, err := session.ContributorSummary(ctx)
+		summary, err := session.ContributorSummary(ctx, branch)
 		a.update(func() {
 			current := &a.cockpit.contributors
 			if generation != a.generation || current.token != token {
@@ -80,11 +99,121 @@ func (a *app) loadCockpitContributors() {
 				return
 			}
 			current.err = ""
+			if current.cache == nil {
+				current.cache = map[string]contributorCacheEntry{}
+			}
+			now := time.Now()
+			current.cache[branch] = contributorCacheEntry{summary: summary, generation: generation, loadedAt: now}
 			current.summary, current.loaded = summary, true
-			current.generation, current.loadedAt = generation, time.Now()
+			current.generation, current.loadedAt = generation, now
 			a.recomputeContributorStats()
 		})
 	}()
+}
+
+// selectContributorBranch counts another branch's history ("" is every
+// branch). A read of the previous branch still in flight is dropped.
+func (a *app) selectContributorBranch(branch, label string) {
+	state := &a.cockpit.contributors
+	if state.branch == branch && state.branchInput == label {
+		return
+	}
+	state.branch, state.branchInput = branch, label
+	state.loading = false
+	state.token++
+	state.loaded = false
+	a.loadCockpitContributors()
+}
+
+// contributorBranchChoices are the branches the picker offers: every branch,
+// the current one, then the other local branches and the remote ones.
+func (a *app) contributorBranchChoices() []contributorBranchChoice {
+	choices := []contributorBranchChoice{{label: tr("All branches")}}
+	current := a.currentBranchName()
+	if current != "" {
+		choices = append(choices, contributorBranchChoice{branch: current, label: current + " (" + tr("current") + ")"})
+	}
+	for _, branch := range a.snapshot.Branches {
+		if branch.Name == current {
+			continue
+		}
+		choices = append(choices, contributorBranchChoice{branch: branch.Name, label: branchDisplay(branch)})
+	}
+	for _, remote := range a.snapshot.Remotes {
+		for _, branch := range remote.Branches {
+			name := remote.Name + "/" + branch.Name
+			choices = append(choices, contributorBranchChoice{branch: name, label: name})
+		}
+	}
+	return choices
+}
+
+type contributorBranchChoice struct {
+	branch string
+	label  string
+}
+
+const contributorBranchChoiceLimit = 60
+
+// contributorBranchPicker is the searchable branch menu of the contributor
+// views. A repository with hundreds of branches shows the first matches and
+// says how many more there are.
+func (a *app) contributorBranchPicker(c *ui.Context, width float32) {
+	theme := c.Theme()
+	state := &a.cockpit.contributors
+	ui.Row(c).AlignItems(ui.Center).Gap(6).Shrink(0).Children(func() {
+		ui.Icon(c, branchIcon).FontSize(13).TextColor(theme.TextMuted)
+		combo := ui.ComboboxBase(c, &state.branchInput)
+		combo.Input.Width(width).Padding(3, 10).Background(theme.Surface).Border(1, theme.Border).
+			Radius(999).Label(tr("Branch for contributors")).Placeholder(tr("All branches"))
+		combo.Popup(func(panel ui.Element) {
+			panel.Padding(4).Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius)
+			needle := ""
+			if combo.Filtering() {
+				needle = strings.ToLower(strings.TrimSpace(state.branchInput))
+			}
+			var matches []contributorBranchChoice
+			for _, choice := range a.contributorBranchChoices() {
+				if needle == "" || strings.Contains(strings.ToLower(choice.label), needle) {
+					matches = append(matches, choice)
+				}
+			}
+			shown := matches
+			if len(shown) > contributorBranchChoiceLimit {
+				shown = shown[:contributorBranchChoiceLimit]
+			}
+			filterPopupList(c, theme, func() {
+				if len(matches) == 0 {
+					ui.Row(c).Padding(7, 10).Children(func() {
+						ui.Text(c, tr("No branches match")).TextColor(theme.TextMuted)
+					})
+					return
+				}
+				for _, choice := range shown {
+					item := combo.Item(choice.branch+"\x00"+choice.label).Padding(7, 10)
+					if item.Highlighted() {
+						item.Background(theme.SurfaceHover)
+					}
+					item.Children(func() {
+						ui.Text(c, choice.label).SingleLine().Tooltip(choice.label)
+					})
+				}
+				if len(matches) > len(shown) {
+					ui.Row(c).Padding(7, 10).Children(func() {
+						ui.Text(c, trf("%d more — type to narrow the list", len(matches)-len(shown))).
+							TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+					})
+				}
+			})
+		})
+		if value, ok := combo.Chosen(); ok {
+			branch, label, _ := strings.Cut(value, "\x00")
+			if branch == "" {
+				label = ""
+			}
+			a.selectContributorBranch(branch, label)
+		}
+	})
 }
 
 func (a *app) cockpitInput() cockpitInput {
@@ -575,6 +704,35 @@ func (a *app) cockpitContributorsCard(c *ui.Context, wide bool) {
 	}
 	a.cockpitCard(c, "contributors", "Contributors", personIcon, func() {
 		theme := c.Theme()
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
+			a.contributorBranchPicker(c, 190)
+			ui.Row(c).AlignItems(ui.Center).Gap(4).Wrap().Label(tr("Contributor period")).Children(func() {
+				for index, period := range contributorRanges {
+					index := index
+					active := state.period == index
+					label := tr(period.label)
+					c.Key(fmt.Sprintf("cockpit-period:%d", index))
+					button := ui.ButtonBase(c).Padding(2, 9).Radius(999).Border(1, theme.Border).Label(label).Selected(active)
+					switch {
+					case active:
+						button.Background(theme.Accent.Alpha(0.18)).Border(1, theme.Accent.Alpha(0.6))
+					case button.Hovered():
+						button.Background(theme.SurfaceHover)
+					}
+					button.Children(func() {
+						color := theme.TextMuted
+						if active {
+							color = theme.Accent
+						}
+						ui.Text(c, label).FontSize(theme.FontSize - 1).TextColor(color).SingleLine()
+					})
+					if button.Clicked() {
+						a.cockpit.contributors.period = index
+						a.recomputeContributorStats()
+					}
+				}
+			})
+		})
 		switch {
 		case state.err != "":
 			ui.Text(c, tr("Could not read the contributors")).Bold().FontSize(theme.FontSize - 1)
@@ -587,32 +745,6 @@ func (a *app) cockpitContributorsCard(c *ui.Context, wide bool) {
 			ui.Text(c, tr("No commits yet")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 			return
 		}
-		ui.Row(c).AlignItems(ui.Center).Gap(4).Wrap().Label(tr("Contributor period")).Children(func() {
-			for index, period := range contributorRanges {
-				index := index
-				active := state.period == index
-				label := tr(period.label)
-				c.Key(fmt.Sprintf("cockpit-period:%d", index))
-				button := ui.ButtonBase(c).Padding(2, 9).Radius(999).Border(1, theme.Border).Label(label).Selected(active)
-				switch {
-				case active:
-					button.Background(theme.Accent.Alpha(0.18)).Border(1, theme.Accent.Alpha(0.6))
-				case button.Hovered():
-					button.Background(theme.SurfaceHover)
-				}
-				button.Children(func() {
-					color := theme.TextMuted
-					if active {
-						color = theme.Accent
-					}
-					ui.Text(c, label).FontSize(theme.FontSize - 1).TextColor(color).SingleLine()
-				})
-				if button.Clicked() {
-					a.cockpit.contributors.period = index
-					a.recomputeContributorStats()
-				}
-			}
-		})
 		stats := state.stats
 		period := contributorRanges[stats.Range]
 		summary := state.summary
