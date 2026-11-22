@@ -64,7 +64,7 @@ undo/redo operations, and reflog recovery help you manage changes deliberately.
 
 | | What you can do |
 | --- | --- |
-| **Changes & diffs** | Stage files or selected lines; review unified, side-by-side, image, and media diffs; export patches. Stage, unstage, or discard the current textual hunk from its Changes toolbar using a repository-state-checked patch. Use Change Courier to preview and copy files, hunks, or lines to another worktree as unstaged changes. |
+| **Changes & diffs** | Stage files or selected lines; review unified, side-by-side, image, and media diffs; export patches. **Select changes** (`m`) combines hunk and line selection: stage, unstage, or discard the current hunk or the lines you pick, using a repository-state-checked patch. Use Change Courier to preview and copy files to another worktree as unstaged changes. |
 | **History & graph** | Filter commits, inspect file history, cherry-pick batches, reword, squash, and reorder commits. Preview Git's real interactive **Rebase TODO**, edit it with compare-and-swap checks, or mark a full-SHA base for a targeted `--onto` rebase. Collect a Custom Patch to apply or export, or use its single-source history actions to remove changes, move them to the index or another commit, or create a commit before/after the source. |
 | **Branches & recovery** | Manage remotes, tags, stashes, worktrees, and submodules; inspect the reflog and undo eligible operations. **Sync stack…** previews frozen per-branch merge/rebase/update-ref plans, validates the plan before applying it, and optionally publishes each branch with its preview-OID lease. Safety Journal and per-file conflict recovery retain durable, revalidated recovery state. |
 | **Collaboration & automation** | Create pull requests and view checks with **GitHub CLI** (`gh`) or **GitLab CLI** (`glab`); export `format-patch` series and apply mailbox patches. Use durable Agent tasks and local CLI/RPC automation, or add custom shell commands. Background fetching and pruning are configurable. |
@@ -72,7 +72,7 @@ undo/redo operations, and reflog recovery help you manage changes deliberately.
 | **Assisted review** | Conflict Assistant proposes region substitutions on a cloned Result. Change Splitter groups original diff identities and previews TanGit-generated, index-only patches. Both use an optional, provider-neutral `AssistCommand`; neither suggestion preview stages or commits automatically. |
 | **Editor workspace** | Edit with syntax highlighting and language-server assistance; manage files and tabs; use fzf Quick Open, advanced content search, and Markdown preview. |
 | **Your workspace** | Repository tabs, directory trees, resizable panels, expanded branch/diff views, a terminal, and external editors. |
-| **Workflow entry points** | Search current navigation, Git, hunk, conflict, Agent, and custom actions in the **Command Palette** (`Ctrl/Cmd+Shift+P`). **Overview** summarizes working-tree, operation, collaboration, Agent, and recent-activity state. **Command Log** provides status/source/time-range filters, success badges, timestamps, expandable output, and scrolling that reveals 20 more records at a time. |
+| **Workflow entry points** | Search current navigation, Git, hunk, conflict, Agent, and custom actions in the **Command Palette** (`Ctrl/Cmd+Shift+P`), or switch modes: `@` branches, `#` commits (paste a hash, or search by message, `by:author` and `branch:`), `/` files, `~` recent repositories, and `!` to run a shell command with live output. Choosing a commit lists every action from its context menu. The **Activity Center** (`Ctrl/Cmd+Shift+A`) gathers commands, journal records, Agent tasks, transfers, and notices across open repositories. **Overview** summarizes working-tree, operation, collaboration, Agent, and recent-activity state. **Command Log** provides status/source/time-range filters, success badges, timestamps, expandable output, and scrolling that reveals 20 more records at a time. |
 | **Your preferences** | Themes, fonts, six interface languages, configurable visible sections, and signed in-app updates. |
 
 Commit actions live in detail panels and right-click menus. Click a diff line
@@ -211,7 +211,9 @@ quitting Neovim returns to the shell in the project or file's directory.
 | `b` | Start a bisect, or mark the current test as bad; `g` good, `k` skip, `R` reset |
 | `z` / `Z` | Undo / redo eligible operations |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Switch repository tabs |
-| `Ctrl/Cmd+Shift+P` | Search and run commands in the Command Palette |
+| `Ctrl/Cmd+Shift+P` | Search and run commands in the Command Palette (`@` branches, `#` commits, `/` files, `~` repositories, `!` shell) |
+| `Ctrl/Cmd+Shift+A` | Open the Activity Center |
+| `m` in a Changes diff | Turn on Select changes: hunk and line actions |
 | `Ctrl+P` / `Ctrl+Shift+F` | Quick open / workspace content search in Editor |
 | ``Ctrl+` `` / `Ctrl+,` | Terminal / Settings |
 | `:` / `Ctrl+L` | Run a one-off shell command / command log |

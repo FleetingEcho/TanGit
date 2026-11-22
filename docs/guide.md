@@ -82,9 +82,9 @@ their package installer.
 | Clone and open a repository | On Home, choose **Clone** or press `C`. Enter an HTTPS, SSH, or scp-like URL, optionally choose a branch, and select a native destination parent. **Clone and open** shows Git's real progress and opens the completed repository. Escape cancels Git without deleting the destination. Credential-bearing URLs are rejected; authentication uses your configured Git credential helpers or SSH agent. |
 | Open a plain folder | At the top of Home, switch **Open mode** to **Editor**, then enter or browse to a folder. The workspace shows only **Editor**, with the file tree, content search and replace, editing and saving, structural file operations, and the local terminal. TanGit does not initialize Git or change your saved section visibility. **Recent folders** is independent of **Recent repositories**, including when the same path appears in both; Editor recents persist across restarts. If the selected folder already belongs to a Git repository, it opens the full Git workspace instead. |
 | Open an SSH workspace | On Home, choose **Open SSH**, then select or edit a profile. Agent, private-key, and password authentication are supported; secrets use the OS keychain when available and otherwise remain session-only. Unknown host keys require confirmation and changed keys are rejected. Git, files, search, terminals, and transfers execute directly on the remote Linux host without a local mirror or server agent. |
-| Stage selected lines | Click diff line numbers, then **Stage**. Shift-click selects a range; Escape clears the selection. |
+| Stage selected lines | Click diff line numbers, then **Stage**. Shift-click selects a range; Escape clears the selection. **Select changes** (or `m` in the diff) shows the hunk actions and the line row together; the selected lines are listed by number, highlighted all at once, and can also be discarded (after confirmation) or copied as a patch. |
 | Build a Custom Patch | In History or Graph, use `Ctrl+B` on a commit or historical file to add canonical whole-file patches. In its diff, select changed lines and press `Space`, or press `A` for the current hunk. Press `B` to review the basket, preview the combined patch, then export it, apply it atomically to the working tree without staging, or send it to another worktree. This never rewrites history. Different commits cannot contribute changes to the same old/new path; additions, deletions, renames, binary files, and mode-only changes require whole-file selection. |
-| Copy changes to another worktree | Open a changed file's menu and choose **Send file to worktree…**, use the diff's **Send current hunk** or **Send selected lines** action, or choose **Send to worktree…** in Custom Patch Builder. Change Courier freezes the selected patch, previews it against an existing destination worktree, and reports conflicts without writing. A clean delivery applies atomically as unstaged destination changes; the source and all commit history remain unchanged. To target an unchecked-out branch, create a worktree for it first. |
+| Copy changes to another worktree | Open a changed file's menu and choose **Send file to worktree…**, or choose **Send to worktree…** in Custom Patch Builder. Change Courier freezes the selected patch, previews it against an existing destination worktree, and reports conflicts without writing. A clean delivery applies atomically as unstaged destination changes; the source and all commit history remain unchanged. To target an unchecked-out branch, create a worktree for it first. |
 | Maintain linked worktrees | Open **Worktrees** to create, search, open, lock, unlock, or remove linked checkouts. Locked and stale records are marked in both the list and details. **Repair metadata** fixes worktree links after repositories or checkouts move; **Prune stale records…** removes only administrative records whose directories are gone. **Force remove…** is separately confirmed and can delete a dirty or locked checkout, so review its path and changes first. |
 | Apply an external patch | In **Changes**, choose **Apply patch…** or press `Ctrl+I`, then select a `.patch` or `.diff` file. Review its files, diagnostics and text before applying. Clean patches apply atomically to the working tree and stay unstaged; conflicted patches cannot be applied. Cancel or Discard Patch changes neither the repository nor the source file. |
 | Exchange mailbox patches | Export selected commits from their History context menu or the batch-actions menu into a local folder as `format-patch` files. Import a patch series with **Changes → Apply mailbox patch…**. The import runs like `git am --3way`: authors and messages are preserved, context drift gets a three-way fallback, and conflicts use the normal Continue/Abort controls. |
@@ -119,12 +119,16 @@ Author avatars load in the background from GitHub, GitLab.com, or self-managed G
 
 ### Command Palette
 
-Press **Ctrl/Cmd+Shift+P**, or use the **Command Palette** button in the
-repository toolbar. The palette is available on Home, in Git repositories and
-in Editor-only workspaces. Search indexes translated labels, canonical English
-commands, command IDs, aliases and chords. Empty search shows current context
-suggestions, recent process-local commands and navigation. Unavailable actions
-remain visible with an explanation; use Up/Down and Enter, or click a result.
+Press **Ctrl/Cmd+Shift+P**, or use the **Command Palette** button, the first
+button in the repository toolbar. The palette is available on Home, in Git
+repositories and in Editor-only workspaces. Search indexes translated labels,
+canonical English commands, command IDs, aliases and chords. Empty search shows
+sections for pinned commands, current-context suggestions, recent commands and
+navigation; commands you run often rise in the list. Unavailable actions remain
+visible, dimmed, with the reason; when a reason has an obvious fix (for example
+"No staged changes to commit"), **Tab** offers it. Use Up/Down, PageUp/PageDown
+and Enter, or click a result. **Ctrl+B** pins the selected command. Pins,
+recents, usage counts and shell history are stored with your settings.
 
 Commands execute by stable ID and are re-resolved immediately before running,
 after any tab switch or background refresh. Selecting a destructive action only
@@ -133,6 +137,79 @@ mutation itself. Hunk and conflict actions use the same canonical patch,
 selection and availability rules as their toolbars. While the palette is open,
 ordinary repository single-letter shortcuts stay out of its text field. Escape
 closes it and MyGo restores the previous control or the section's primary pane.
+
+#### Search modes
+
+Start the query with a character to search something other than commands:
+
+| Type | Searches | Enter | **Tab** actions |
+| --- | --- | --- | --- |
+| `>` | Commands only | Runs the command | — |
+| `@` | Local and remote branches | Checks the branch out | List its commits, copy the name, merge into the current branch, rebase onto it, delete it |
+| `#` | Commits, by message, hash, author and branch | Lists every action for the commit | Show in History, copy the hash |
+| `/` | Changed files, and every file the Editor has indexed | Selects or opens the file | Stage or unstage, copy the path |
+| `~` | Recent repositories | Opens the repository in a tab | — |
+| `!` | A shell command line | Runs it in the repository root | — |
+
+Pasting a commit hash (4–40 hexadecimal digits) in the default mode finds that
+commit without a prefix. The search runs in Git across every branch, so it
+reaches commits that are not in the loaded history list.
+
+**Searching commits.** `#` takes the same fields as the History filter. Plain
+words match the message or hash and are also tried as an author name, so `#alice`
+finds Alice's commits. Name a field to be exact: `by:` or `author:` for the
+author and `branch:` or `on:` for the branch, for example
+`#fix by:alice branch:main`. Quote a value that contains a space:
+`by:"Jane Doe"`.
+
+**Author suggestions.** In the `#` mode, type `by:` or `author:` and the palette
+lists the repository's authors. Keep typing to narrow the list by substring,
+for example `#by:ali`. Choosing an author completes the word, for example
+`#by:"Alice Example" `, and goes on to show that author's commits. The list
+holds up to 30 names.
+
+**Commit actions.** Choosing a commit row lists everything that can be done with
+that commit, the same set as its context menu: copy the hash or subject, mark it
+as the rebase base, edit, reword, amend, create or apply fixups, squash, fixup,
+move, drop, check it out, undo the latest commit, soft/mixed/hard reset, export
+a mailbox patch, create a tag or branch, bisect, cherry-pick, revert, add it to
+Custom Patch, and compare it with HEAD or its parent. Type to filter the list;
+**Escape** steps back to the commits before it closes the palette. Actions that
+rewrite the checked-out branch (rebase, reset, drop, undo) are offered only for
+commits in that branch's loaded history, as the context menu does for another
+branch's commits. Each action opens its usual confirmation or form.
+
+**Shell commands.** Type `!` and a command line, for example
+`!git log --oneline -5`, and press Enter. The palette stays open and shows the
+command's progress and output below the list; output streams in as it is
+printed. **Cancel command** stops the whole process tree. Closing the palette
+does not cancel the command: it keeps running and finishes in the command log,
+and reopening the palette shows its state again. When it finishes, **Copy
+output**, **Run again** and **Save as command** (adds it to your custom commands)
+are available; output beyond 16 KB is cut off. Up and Down recall earlier lines.
+`{{branch}}`, `{{commit}}`, `{{file}}`, `{{root}}`, `{{tag}}`, `{{stash}}` and
+`{{remote}}` expand to the current selection, shell-quoted. Shell commands run
+locally and are unavailable in SSH workspaces. The older `:` prompt is still
+available.
+
+Other palette commands include switching themes, toggling side-by-side diffs,
+line wrapping and whitespace changes, switching to another open tab, applying or
+popping a stash, fetching or browsing a remote, retrying or showing the latest
+failed command, customizing commands and opening the Activity Center.
+
+### Activity Center
+
+Press **Ctrl/Cmd+Shift+A**, choose **Open Activity Center** in the palette, or
+use **View all activity** on Overview. It lists commands, Safety Journal
+records, Agent task activity, transfers and notices across every open
+repository, newest first, with their state and time. Search by title,
+repository or state; filter by **Needs attention** (warnings and errors), by
+source, and—when several repositories are open—by repository. Up/Down and
+Enter open a row, and Escape closes the center. A row opens its original viewer
+by stable identity (the command log, Safety Journal record, Agent task or
+transfer) and closes the center; an evicted record is reported instead of
+matching similar text. Session items disappear when the session ends; Safety
+Journal records are durable.
 
 ### Overview
 
@@ -345,8 +422,12 @@ is listed under [verification evidence](verification.md#feature-specific-evidenc
 
 ### Changes hunks and Custom Patch history
 
-In an ordinary textual **Changes** diff, move the caret into a hunk and use
-**Stage hunk**, **Unstage hunk**, or **Discard hunk**. The toolbar derives a
+In an ordinary textual **Changes** diff, press **Select changes** (or `m` while
+the diff is focused) to show the hunk actions, then move the caret into a hunk
+and use **Stage hunk**, **Unstage hunk**, or **Discard hunk**. The tools sit in a
+bordered group, apart from the previous/next file buttons; `[` and `]` move
+between hunks and `s`/`d` stage or discard the current hunk with or without the
+mode on. The toolbar derives a
 canonical patch from that hunk—not rendered row positions—and previews the
 exact patch against the source state before applying it. Staging affects the
 index only; unstaging leaves the edit in the working tree; discarding asks for
