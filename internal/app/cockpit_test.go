@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -240,5 +241,53 @@ func BenchmarkCockpitSummaryLargeRepository(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		_ = buildCockpitSummary(input)
+	}
+}
+
+// summarySession adds the contributor statistics to a fake session.
+type summarySession struct {
+	fakeSession
+	summary repository.ContributorSummary
+}
+
+func (s summarySession) ContributorSummary(context.Context) (repository.ContributorSummary, error) {
+	return s.summary, nil
+}
+
+// Entering the Overview reads the contributor statistics once and shows them;
+// a session without the capability simply has no Contributors card.
+func TestOverviewShowsContributorStatistics(t *testing.T) {
+	h, _ := menuTestAppWithCalls(t)
+	h.app.session = summarySession{fakeSession: h.app.session.(fakeSession), summary: repository.ContributorSummary{
+		Contributors: []repository.Contributor{
+			{Name: "Alice Example", Email: "alice@example.com", Commits: 12, LastCommit: 1_700_000_000},
+			{Name: "Bob Builder", Email: "bob@example.com", Commits: 3},
+		},
+		TotalCommits: 15, ActiveRecent: 1, FirstCommit: 1_600_000_000,
+		WeeklyCommits: []int{0, 1, 0, 2, 3, 0, 0, 4, 1, 0, 2, 2},
+	}}
+	h.app.setWorkspaceTab(sectionOverview)
+	h.tester.SetSize(1280, 1800)
+	h.tester.Frame()
+	h.waitFor(t, "the contributor statistics", func() bool { return h.app.cockpit.contributors.loaded })
+	h.tester.Frame()
+	texts := h.texts()
+	for _, want := range []string{"Contributors", "Top contributors", "1 active in the last 30 days", "15 commits"} {
+		if !slices.Contains(texts, want) {
+			t.Errorf("Overview is missing %q: %q", want, texts)
+		}
+	}
+	if _, ok := h.tester.Find("Alice Example — 12 commits"); !ok {
+		t.Fatalf("top contributor row is missing: %q", texts)
+	}
+
+	// A session that cannot read contributors leaves the card out.
+	plain, _ := menuTestAppWithCalls(t)
+	plain.app.setWorkspaceTab(sectionOverview)
+	plain.tester.SetSize(1280, 1800)
+	plain.tester.Frame()
+	plain.tester.Frame()
+	if slices.Contains(plain.texts(), "Top contributors") || !plain.app.cockpit.contributors.unavailable {
+		t.Fatal("an unsupported session should have no Contributors card")
 	}
 }

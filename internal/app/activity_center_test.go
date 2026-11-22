@@ -251,11 +251,22 @@ func TestOverviewScreenshots(t *testing.T) {
 		name string
 		w, h int
 	}{{"wide", 1280, 900}, {"narrow", 720, 900}} {
-		s, tt, _ := activityCenterShell(t)
+		s, tt, updated := activityCenterShell(t)
 		a := s.activeApp()
+		a.session = summarySession{fakeSession: fakeSession{}, summary: repository.ContributorSummary{
+			Contributors: []repository.Contributor{
+				{Name: "Alice Example", Email: "alice@example.com", Commits: 128},
+				{Name: "Bob Builder", Email: "bob@example.com", Commits: 64},
+				{Name: "Chen Wei", Email: "chen@example.com", Commits: 31},
+				{Name: "Dana Okoye", Email: "dana@example.com", Commits: 9},
+			},
+			TotalCommits: 232, ActiveRecent: 3, FirstCommit: 1_600_000_000,
+			WeeklyCommits: []int{3, 5, 0, 8, 12, 6, 2, 0, 9, 14, 7, 11},
+		}}
 		a.workspaceTab = sectionOverview
 		a.prepareCockpit()
 		tt.SetSize(size.w, size.h)
+		settleShot(t, tt, updated, func() bool { return a.cockpit.contributors.loaded })
 		saveScreenshot(t, dir, "overview-"+size.name+"-dark", tt)
 	}
 }

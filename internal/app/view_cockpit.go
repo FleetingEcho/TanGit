@@ -1,11 +1,14 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"lazygitapp/internal/repository"
 )
 
 type cockpitUIState struct {
@@ -13,6 +16,71 @@ type cockpitUIState struct {
 	// tileInRow says the card being built shares a row with another, so it takes
 	// an equal share of the width; otherwise it fills the width of its column.
 	tileInRow bool
+	// contributors is the history statistics the Overview's Contributors card
+	// shows, read in the background when the Overview is entered.
+	contributors cockpitContributors
+}
+
+// contributorSummarySession is the optional capability behind the card;
+// sessions without it leave the card out.
+type contributorSummarySession interface {
+	ContributorSummary(context.Context) (repository.ContributorSummary, error)
+}
+
+type cockpitContributors struct {
+	loading     bool
+	loaded      bool
+	unavailable bool
+	err         string
+	summary     repository.ContributorSummary
+	generation  uint64
+	loadedAt    time.Time
+	token       uint64
+}
+
+// cockpitContributorsMaxAge is how long a read of the history is reused when
+// the Overview is entered again.
+const cockpitContributorsMaxAge = 2 * time.Minute
+
+// loadCockpitContributors reads the contributor statistics in the background,
+// unless a recent read of this repository is already held.
+func (a *app) loadCockpitContributors() {
+	state := &a.cockpit.contributors
+	if state.loading || a.session == nil {
+		return
+	}
+	session, ok := a.session.(contributorSummarySession)
+	if !ok {
+		state.unavailable = true
+		return
+	}
+	state.unavailable = false
+	if state.loaded && state.generation == a.generation && time.Since(state.loadedAt) < cockpitContributorsMaxAge {
+		return
+	}
+	state.loading = true
+	state.token++
+	token := state.token
+	generation := a.generation
+	ctx := a.repositoryWork.Context()
+	go func() {
+		defer a.recoverBackground()
+		summary, err := session.ContributorSummary(ctx)
+		a.update(func() {
+			current := &a.cockpit.contributors
+			if generation != a.generation || current.token != token {
+				return
+			}
+			current.loading = false
+			if err != nil {
+				current.err = safeError(err)
+				return
+			}
+			current.err = ""
+			current.summary, current.loaded = summary, true
+			current.generation, current.loadedAt = generation, time.Now()
+		})
+	}()
 }
 
 func (a *app) cockpitInput() cockpitInput {
@@ -183,29 +251,6 @@ func cockpitChip(c *ui.Context, text string, color ui.Color, icon *ui.SVG) {
 	})
 }
 
-// cockpitIconCommand is a compact icon button for a catalog command, with the
-// same availability reason in its tooltip as the palette gives.
-func (a *app) cockpitIconCommand(c *ui.Context, id commandID, label string) {
-	state := commandState{Visible: true, Enabled: true}
-	if a.resolveCommand != nil {
-		state = a.resolveCommand(id)
-	}
-	if !state.Visible {
-		return
-	}
-	tooltip := tr(label)
-	if state.DisabledReason != "" {
-		tooltip += " · " + state.DisabledReason
-	}
-	button := compactIconButton(ui.Button(c, "")).Center().Label(tr(label)).Tooltip(tooltip).Disabled(!state.Enabled)
-	button.Children(func() {
-		ui.Icon(c, cockpitCommandIcon(id)).FontSize(15)
-	})
-	if button.Clicked() && state.Enabled {
-		a.runCockpitCommand(id)
-	}
-}
-
 func (a *app) cockpitView(c *ui.Context) {
 	if a.editorOnlyWorkspace() {
 		return
@@ -241,6 +286,7 @@ func (a *app) cockpitView(c *ui.Context) {
 					}
 				}
 				a.cockpit.tileInRow = false
+				a.cockpitContributorsCard(c, width >= 760)
 				a.cockpitRecentCard(c, summary)
 			})
 		})
@@ -278,12 +324,6 @@ func (a *app) cockpitRepositoryHeader(c *ui.Context, summary cockpitSummary) {
 					cockpitChip(c, tr("loading details"), theme.TextMuted, nil)
 				}
 			})
-		})
-		ui.Row(c).AlignItems(ui.Center).Gap(6).Shrink(0).Children(func() {
-			a.cockpitIconCommand(c, commandOpenFetch, "Fetch")
-			a.cockpitIconCommand(c, commandOpenPull, "Pull")
-			a.cockpitIconCommand(c, commandOpenPush, "Push")
-			a.cockpitIconCommand(c, commandOpenRefresh, "Refresh")
 		})
 	})
 }
@@ -517,5 +557,117 @@ func (a *app) cockpitRecentCard(c *ui.Context, summary cockpitSummary) {
 			}
 			a.cockpitCommandButton(c, commandOpenLog, "Open Command log", false)
 		})
+	})
+}
+
+// cockpitContributorsCard shows who has contributed and how the history has
+// moved lately: totals, recent activity, a weekly commit chart and the top
+// contributors. It is left out when the session cannot read contributors.
+func (a *app) cockpitContributorsCard(c *ui.Context, wide bool) {
+	state := a.cockpit.contributors
+	if state.unavailable {
+		return
+	}
+	a.cockpitCard(c, "contributors", "Contributors", personIcon, func() {
+		theme := c.Theme()
+		switch {
+		case state.err != "":
+			ui.Text(c, tr("Could not read the contributors")).Bold().FontSize(theme.FontSize - 1)
+			ui.Text(c, state.err).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
+			return
+		case !state.loaded:
+			ui.Text(c, tr("Reading the history…")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+			return
+		case state.summary.TotalCommits == 0:
+			ui.Text(c, tr("No commits yet")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+			return
+		}
+		summary := state.summary
+		stats := func() {
+			cockpitMetric(c, fmt.Sprintf("%d", len(summary.Contributors)), tr("contributors"), theme.Text)
+			ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
+				cockpitChip(c, trf("%d active in the last 30 days", summary.ActiveRecent), theme.Success, nil)
+				cockpitChip(c, contributorCountLabel(summary.TotalCommits), theme.TextMuted, nil)
+				if first := contributorDate(summary.FirstCommit); first != "" {
+					cockpitChip(c, trf("since %s", first), theme.TextMuted, nil)
+				}
+			})
+			cockpitWeeklyChart(c, summary.WeeklyCommits)
+		}
+		top := func() {
+			ui.Text(c, tr("Top contributors")).Bold().FontSize(theme.FontSize - 1)
+			most := 1
+			for _, contributor := range summary.Contributors {
+				most = max(most, contributor.Commits)
+			}
+			for index, contributor := range summary.Contributors {
+				if index == 5 {
+					break
+				}
+				contributor := contributor
+				c.Key("cockpit-contributor:" + contributorKey(contributor))
+				row := ui.ButtonBase(c).FillWidth().MinWidth(0).Gap(8).Padding(2, 4).AlignItems(ui.Center).
+					Radius(theme.Radius).Role(ui.RoleOption).
+					Label(authorLabel(contributor.Name, contributor.Email) + " — " + contributorCountLabel(contributor.Commits))
+				if row.Hovered() {
+					row.Background(theme.SurfaceHover)
+				}
+				row.Children(func() {
+					drawAuthorAvatar(c, contributor.Name, contributor.Email, 20, nil)
+					ui.Text(c, authorLabel(contributor.Name, contributor.Email)).SingleLine().Width(0).Grow(1).MinWidth(0)
+					ui.Box(c).Height(4).Width(float32(max(4, 90*contributor.Commits/most))).Radius(2).
+						Background(theme.Accent.Alpha(0.6)).Shrink(0)
+					ui.Text(c, fmt.Sprintf("%d", contributor.Commits)).FontSize(theme.FontSize - 1).
+						TextColor(theme.TextMuted).SingleLine().Width(34).TextAlign(ui.End).Shrink(0)
+				})
+				if row.Clicked() && a.showContributors != nil {
+					a.showContributors()
+				}
+			}
+		}
+		if wide {
+			ui.Row(c).FillWidth().MinWidth(0).Gap(16).AlignItems(ui.Start).Children(func() {
+				ui.Column(c).Width(0).Grow(1).MinWidth(0).Gap(6).Children(stats)
+				ui.Column(c).Width(0).Grow(1).MinWidth(0).Gap(2).Children(top)
+			})
+		} else {
+			stats()
+			top()
+		}
+		if a.showContributors != nil {
+			ui.Row(c).Gap(7).Wrap().Children(func() {
+				if ui.Button(c, tr("View all contributors")).Label(tr("View all contributors")).
+					Tooltip(tr("Open the Activity Center's contributor list")).Clicked() {
+					a.showContributors()
+				}
+			})
+		}
+	})
+}
+
+// cockpitWeeklyChart draws commits per week as small bars, newest last.
+func cockpitWeeklyChart(c *ui.Context, weeks []int) {
+	theme := c.Theme()
+	most := 1
+	for _, count := range weeks {
+		most = max(most, count)
+	}
+	ui.Column(c).Gap(3).Children(func() {
+		ui.Row(c).AlignItems(ui.End).Gap(3).Height(34).Label(tr("Commits per week, last 12 weeks")).Children(func() {
+			for index, count := range weeks {
+				count := count
+				c.Key(fmt.Sprintf("cockpit-week:%d", index))
+				height := float32(3)
+				if count > 0 {
+					height = float32(max(5, 34*count/most))
+				}
+				color := theme.Accent.Alpha(0.45)
+				if index == len(weeks)-1 {
+					color = theme.Accent
+				}
+				ui.Box(c).Width(12).Height(height).Radius(2).Background(color).Tooltip(contributorCountLabel(count))
+			}
+		})
+		ui.Text(c, tr("Commits per week, last 12 weeks")).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted)
 	})
 }

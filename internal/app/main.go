@@ -129,6 +129,7 @@ type app struct {
 	// contexts, keeping standalone app tests independent of window chrome.
 	shellOverlayOpen   func() bool
 	showActivityCenter func()
+	showContributors   func()
 	showCommandPalette func()
 	invokeCommand      func(commandID) commandInvokeResult
 	resolveCommand     func(commandID) commandState

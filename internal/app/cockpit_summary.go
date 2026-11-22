@@ -323,4 +323,5 @@ func (a *app) prepareCockpit() {
 	if a.agents.loadedRepo != repositoryID && !a.agents.loading {
 		a.refreshAgentTasks()
 	}
+	a.loadCockpitContributors()
 }

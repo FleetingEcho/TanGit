@@ -349,6 +349,7 @@ func (s *shell) newTab(path string) *tab {
 	}
 	a.shellOverlayOpen = func() bool { return s.palette.open || s.activity.open }
 	a.showActivityCenter = func() { s.openActivityCenter() }
+	a.showContributors = func() { s.openActivityCenterView(activityViewContributors) }
 	a.showCommandPalette = func() { s.openCommandPalette(nil) }
 	a.invokeCommand = func(id commandID) commandInvokeResult { return s.invokeCommand(id) }
 	a.resolveCommand = s.commandStateFor
