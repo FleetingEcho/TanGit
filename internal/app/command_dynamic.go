@@ -29,7 +29,7 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 				continue
 			}
 			specs = append(specs, commandSpec{
-				ID: commandID(fmt.Sprintf("tabs/switch/%d", index)), Label: "Switch to tab: " + tab.title(), Detail: tab.path(),
+				ID: commandID(fmt.Sprintf("tabs/switch/%d", index)), Label: "Switch to tab: " + tab.title(), Format: "Switch to tab: %s", FormatArgs: []string{tab.title()}, Detail: tab.path(),
 				Keywords: []string{"tab", "switch", "repository", tab.path()}, Group: commandGroupApplication, Glyph: folderOpenIcon,
 				Resolve: shellState,
 				Run:     func(ctx commandContext) { ctx.Shell.request(func() { ctx.Shell.activate(index) }) },
@@ -222,12 +222,12 @@ func workspaceObjectSpecs(a *app) []commandSpec {
 		keywords := []string{"stash", stash.Name, stash.Recency}
 		specs = append(specs,
 			commandSpec{
-				ID: commandID(fmt.Sprintf("stash/apply/%d", stash.Index)), Label: "Apply stash: " + stash.Name, Detail: "Apply the saved changes and keep the stash",
+				ID: commandID(fmt.Sprintf("stash/apply/%d", stash.Index)), Label: "Apply stash: " + stash.Name, Format: "Apply stash: %s", FormatArgs: []string{stash.Name}, Detail: "Apply the saved changes and keep the stash",
 				Keywords: keywords, Group: commandGroupStash, Glyph: stashIcon, Resolve: repositoryState,
 				Run: func(ctx commandContext) { ctx.App.applyStash(stash) },
 			},
 			commandSpec{
-				ID: commandID(fmt.Sprintf("stash/pop/%d", stash.Index)), Label: "Pop stash: " + stash.Name, Detail: "Apply the saved changes and remove the stash",
+				ID: commandID(fmt.Sprintf("stash/pop/%d", stash.Index)), Label: "Pop stash: " + stash.Name, Format: "Pop stash: %s", FormatArgs: []string{stash.Name}, Detail: "Apply the saved changes and remove the stash",
 				Keywords: keywords, Group: commandGroupStash, Glyph: stashIcon, Resolve: repositoryState,
 				Run: func(ctx commandContext) { ctx.App.confirmStashMutationFor(stash, true) },
 			})
@@ -235,13 +235,13 @@ func workspaceObjectSpecs(a *app) []commandSpec {
 	for _, remote := range a.snapshot.Remotes {
 		remote := remote
 		specs = append(specs, commandSpec{
-			ID: commandID("remotes/fetch/" + remote.Name), Label: "Fetch remote: " + remote.Name, Detail: "Download new commits from this remote only",
+			ID: commandID("remotes/fetch/" + remote.Name), Label: "Fetch remote: " + remote.Name, Format: "Fetch remote: %s", FormatArgs: []string{remote.Name}, Detail: "Download new commits from this remote only",
 			Keywords: []string{"fetch", "remote", remote.Name}, Group: commandGroupRemotes, Glyph: fetchIcon, Resolve: repositoryState,
 			Run: func(ctx commandContext) { ctx.App.beginFetchRemote(remote) },
 		})
 		if len(remote.URLs) > 0 {
 			specs = append(specs, commandSpec{
-				ID: commandID("remotes/open-web/" + remote.Name), Label: "Open remote in the browser: " + remote.Name, Detail: remote.URLs[0],
+				ID: commandID("remotes/open-web/" + remote.Name), Label: "Open remote in the browser: " + remote.Name, Format: "Open remote in the browser: %s", FormatArgs: []string{remote.Name}, Detail: remote.URLs[0],
 				Keywords: []string{"browser", "web", "remote", remote.Name}, Group: commandGroupRemotes, Glyph: externalLinkIcon, Resolve: repositoryStateAllowBusy,
 				Run: func(ctx commandContext) { ctx.App.openRemoteWebURL(ctx.App.services, remote) },
 			})

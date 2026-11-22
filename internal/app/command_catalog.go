@@ -102,6 +102,13 @@ type commandSpec struct {
 	// NoFilter skips the text match: the rows already answer the query, as the
 	// results of a Git search do.
 	NoFilter bool
+	// Format, when set, builds the shown label from a translatable template and
+	// FormatArgs, so "Apply stash: %s" is translated as a whole. Label stays the
+	// English result, which search also matches. TranslateArgs translates the
+	// arguments too (workspace section names).
+	Format        string
+	FormatArgs    []string
+	TranslateArgs bool
 	// Actions are alternatives to Run, reached with Tab in the palette.
 	Actions []commandAction
 	Resolve func(commandContext) commandState
@@ -393,6 +400,9 @@ func (c *commandCatalog) SearchWith(ctx commandContext, query string, hints comm
 			continue
 		}
 		label := tr(spec.Label)
+		if spec.Format != "" {
+			label = spec.formattedLabel()
+		}
 		if spec.Prefix == '!' {
 			label = spec.Label
 		}
@@ -647,7 +657,7 @@ func buildStaticCommandSpecs() []commandSpec {
 	}, Run: func(ctx commandContext) { ctx.App.openSettingsSection(settingsPageCommands) }})
 	for _, name := range themeNames {
 		name := name
-		specs = append(specs, commandSpec{ID: commandID("theme/" + name), Label: "Switch theme: " + name, Keywords: []string{"theme", "appearance", "color", "dark", "light", name}, Group: commandGroupApplication, Glyph: themeIcon, Resolve: func(ctx commandContext) commandState {
+		specs = append(specs, commandSpec{ID: commandID("theme/" + name), Label: "Switch theme: " + name, Format: "Switch theme: %s", FormatArgs: []string{name}, Keywords: []string{"theme", "appearance", "color", "dark", "light", name}, Group: commandGroupApplication, Glyph: themeIcon, Resolve: func(ctx commandContext) commandState {
 			state := appState(ctx)
 			state.ContextScore = 0
 			if state.Enabled && ctx.App.settings.Theme == name {
@@ -670,7 +680,7 @@ func buildStaticCommandSpecs() []commandSpec {
 			continue
 		}
 		specs = append(specs, commandSpec{
-			ID: id, Label: "Open " + workspaceSections[section], Keywords: []string{workspaceSectionIDs[section], workspaceSections[section], "section", "navigate"}, Group: commandGroupNavigation, Icon: commandIconNavigation,
+			ID: id, Label: "Open " + workspaceSections[section], Format: "Open %s", FormatArgs: []string{workspaceSections[section]}, TranslateArgs: true, Keywords: []string{workspaceSectionIDs[section], workspaceSections[section], "section", "navigate"}, Group: commandGroupNavigation, Icon: commandIconNavigation,
 			Resolve: workspaceState(section), Run: func(ctx commandContext) { ctx.App.setWorkspaceTab(section) },
 		})
 	}
@@ -678,7 +688,7 @@ func buildStaticCommandSpecs() []commandSpec {
 		id    commandID
 		index int
 	}{{commandOpenCockpit, sectionOverview}, {commandOpenChanges, sectionChanges}, {commandOpenAgents, sectionAgents}} {
-		specs = append(specs, commandSpec{ID: section.id, Label: "Open " + workspaceSections[section.index], Keywords: []string{workspaceSectionIDs[section.index], workspaceSections[section.index], "section", "navigate"}, Group: commandGroupNavigation, Icon: commandIconNavigation, Glyph: workspaceSectionGlyph(section.index), Resolve: workspaceState(section.index), Run: func(ctx commandContext) { ctx.App.setWorkspaceTab(section.index) }})
+		specs = append(specs, commandSpec{ID: section.id, Label: "Open " + workspaceSections[section.index], Format: "Open %s", FormatArgs: []string{workspaceSections[section.index]}, TranslateArgs: true, Keywords: []string{workspaceSectionIDs[section.index], workspaceSections[section.index], "section", "navigate"}, Group: commandGroupNavigation, Icon: commandIconNavigation, Glyph: workspaceSectionGlyph(section.index), Resolve: workspaceState(section.index), Run: func(ctx commandContext) { ctx.App.setWorkspaceTab(section.index) }})
 	}
 	seenKeyboardIDs := map[commandID]int{}
 	for _, command := range keyboardCommands() {
@@ -1071,4 +1081,16 @@ func quietAppState(ctx commandContext) commandState {
 	state := appState(ctx)
 	state.ContextScore = 0
 	return state
+}
+
+// formattedLabel is the label of a spec built from a translatable template.
+func (spec commandSpec) formattedLabel() string {
+	args := make([]any, len(spec.FormatArgs))
+	for index, arg := range spec.FormatArgs {
+		if spec.TranslateArgs {
+			arg = tr(arg)
+		}
+		args[index] = arg
+	}
+	return fmt.Sprintf(tr(spec.Format), args...)
 }
