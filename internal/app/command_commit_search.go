@@ -108,28 +108,37 @@ func splitSearchWords(text string) []string {
 	return words
 }
 
-// authorSuggestion is the by: word being typed at the end of the # query: the
-// text before it, and what has been typed of the name. ok is false when the
-// query is not ending in one.
-func authorSuggestion(query string) (before, typed string, ok bool) {
-	trimmed := strings.TrimRight(query, " \t")
-	if trimmed != query {
+// typedWord is the field word being typed at the end of the # query, for the
+// given prefixes (by: or branch:): the text before it and what has been typed
+// of the value. ok is false when the query does not end in one, which includes
+// a query that ends in a space (the word is finished).
+func typedWord(query string, prefixes ...string) (before, typed string, ok bool) {
+	if strings.TrimRight(query, " \t") != query {
 		return "", "", false
 	}
-	for _, prefix := range []string{"by:", "author:"} {
+	for _, prefix := range prefixes {
 		index := strings.LastIndex(strings.ToLower(query), prefix)
 		if index < 0 || (index > 0 && query[index-1] != ' ') {
 			continue
 		}
-		value := query[index+len(prefix):]
+		raw := query[index+len(prefix):]
+		value := raw
 		if strings.Count(value, `"`)%2 == 1 {
 			value = strings.TrimPrefix(value, `"`)
 		}
-		if !strings.Contains(value, `"`) && (!strings.Contains(value, " ") || strings.HasPrefix(query[index+len(prefix):], `"`)) {
+		if !strings.Contains(value, `"`) && (!strings.Contains(value, " ") || strings.HasPrefix(raw, `"`)) {
 			return query[:index], value, true
 		}
 	}
 	return "", "", false
+}
+
+func authorSuggestion(query string) (before, typed string, ok bool) {
+	return typedWord(query, "by:", "author:")
+}
+
+func branchSuggestion(query string) (before, typed string, ok bool) {
+	return typedWord(query, "branch:", "on:")
 }
 
 // paletteCommitText is what the commit search runs on: the query after the #,
@@ -141,7 +150,11 @@ func (s *shell) paletteCommitText() string {
 	case s.palette.target != nil:
 		return ""
 	case mode == '#':
-		if _, _, typing := authorSuggestion(strings.TrimLeft(s.palette.query, " ")[1:]); typing {
+		text := strings.TrimLeft(s.palette.query, " ")[1:]
+		if _, _, typing := authorSuggestion(text); typing {
+			return ""
+		}
+		if _, _, typing := branchSuggestion(text); typing {
 			return ""
 		}
 		return strings.TrimSpace(rest)
@@ -524,4 +537,45 @@ func quoteSearchWord(value string) string {
 		return `"` + value + `"`
 	}
 	return value
+}
+
+// branchSuggestionSpecs list the branches, local and remote, while a branch:
+// word is being typed. Choosing one completes the word and goes on to that
+// branch's commits.
+func (s *shell) branchSuggestionSpecs(a *app, before, typed string) []commandSpec {
+	needle := strings.ToLower(strings.TrimSpace(typed))
+	var names []string
+	for _, branch := range a.snapshot.Branches {
+		names = append(names, branch.Name)
+	}
+	for _, remote := range a.snapshot.Remotes {
+		for _, branch := range remote.Branches {
+			names = append(names, remote.Name+"/"+branch.Name)
+		}
+	}
+	var specs []commandSpec
+	for index, name := range names {
+		name := name
+		if needle != "" && !strings.Contains(strings.ToLower(name), needle) {
+			continue
+		}
+		score := authorSuggestionLimit*10 - index
+		completed := strings.TrimLeft(before, " ") + "branch:" + quoteSearchWord(name) + " "
+		specs = append(specs, commandSpec{
+			ID: commandID("branch-suggestions/" + name), Label: name, Detail: "Search this branch's commits",
+			Group: commandGroupBranches, Prefix: '#', Glyph: branchIcon, NoFilter: true, KeepOpen: true,
+			Resolve: func(commandContext) commandState {
+				return commandState{Visible: true, Enabled: true, ContextScore: score}
+			},
+			Run: func(ctx commandContext) {
+				ctx.Shell.palette.query = "#" + completed
+				ctx.Shell.palette.selected = 0
+				ctx.Shell.palette.actionIndex = 0
+			},
+		})
+		if len(specs) == authorSuggestionLimit {
+			break
+		}
+	}
+	return specs
 }

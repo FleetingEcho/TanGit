@@ -168,6 +168,11 @@ for example `#by:ali`. Choosing an author completes the word, for example
 `#by:"Alice Example" `, and goes on to show that author's commits. The list
 holds up to 30 names.
 
+**Branch suggestions.** `branch:` (or `on:`) works the same way with branches:
+the palette lists local and remote branches, narrowed by what you type, and
+choosing one completes the word, for example `#fix branch:origin/release/1.0 `.
+A half-typed `by:` or `branch:` word never starts a Git search.
+
 **Commit actions.** Choosing a commit row lists everything that can be done with
 that commit, the same set as its context menu: copy the hash or subject, mark it
 as the rebase base, edit, reword, amend, create or apply fixups, squash, fixup,

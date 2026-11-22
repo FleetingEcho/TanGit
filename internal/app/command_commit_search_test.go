@@ -208,3 +208,31 @@ func TestAuthorSuggestionsCompleteAByWord(t *testing.T) {
 		t.Fatalf("the completed author did not find their commit: %+v", commits)
 	}
 }
+
+func TestBranchSuggestionsCompleteABranchWord(t *testing.T) {
+	s, h, filters := commitSearchShell(t)
+	h.app.snapshot.Branches = []repository.Branch{{Name: "main", Head: true}, {Name: "feature/login"}}
+	h.app.snapshot.Remotes = []repository.Remote{{Name: "origin", Branches: []repository.RemoteBranch{{Name: "release/1.0", RemoteName: "origin"}}}}
+	ctx := commandContext{Shell: s, App: h.app}
+
+	s.palette.query = "#fix branch:fea"
+	got := s.catalogFor(ctx).Search(ctx, s.palette.query, nil)
+	if len(got) != 1 || got[0].ID != "branch-suggestions/feature/login" {
+		t.Fatalf("suggestions for branch:fea = %+v", got)
+	}
+	if len(*filters) != 0 {
+		t.Fatalf("a half-typed branch must not start a Git search: %+v", *filters)
+	}
+	s.palette.query = "#on:"
+	if got := s.catalogFor(ctx).Search(ctx, s.palette.query, nil); len(got) != 3 {
+		t.Fatalf("an empty on: should list every branch, local and remote: %+v", got)
+	}
+	s.palette.query = "#fix branch:rel"
+	result := s.invokeCommand("branch-suggestions/origin/release/1.0")
+	if !result.Accepted() || !s.palette.open || s.palette.query != "#fix branch:origin/release/1.0 " {
+		t.Fatalf("choosing a branch gave %q (open=%v)", s.palette.query, s.palette.open)
+	}
+	if filter, _ := parseCommitSearch(strings.TrimSpace(s.palette.query[1:])); filter.Branch != "origin/release/1.0" || filter.Query != "fix" {
+		t.Fatalf("completed branch did not parse: %+v", filter)
+	}
+}
