@@ -3,3 +3,4 @@
 mygo_windows_*.syso
 /.codegraph/
 /internal/sshworkspace/.openssh-state-*/
+/.claude/

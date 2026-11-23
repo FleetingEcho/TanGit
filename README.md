@@ -1,19 +1,26 @@
 <p align="center">
-  <img src="docs/icon.png" width="88" alt="lazygitGo icon">
+  <img src="docs/icon.png" width="96" alt="lazygitGo icon">
 </p>
 
 <h1 align="center">lazygitGo</h1>
 
-<p align="center"><strong>Precise commits. Visual history. A native Git workspace.</strong></p>
-<p align="center">Built with Go and MyGo · macOS · Windows · Linux</p>
+<p align="center">
+  <strong>A native desktop Git client with Lazygit's engine, a visual history, and a built-in code editor.</strong>
+</p>
 
 <p align="center">
-  <a href="https://github.com/FleetingEcho/lazygitGo/releases">Download</a> ·
-  <a href="#features">Features</a> ·
-  <a href="docs/guide.md#operation-recovery-history-and-assisted-review">Workflow guide</a> ·
-  <a href="#get-started">Get started</a> ·
-  <a href="#keyboard-shortcuts">Shortcuts</a> ·
-  <a href="#architecture">Architecture</a> ·
+  <a href="https://github.com/FleetingEcho/lazygitGo/releases"><img alt="Release" src="https://img.shields.io/github/v/release/FleetingEcho/lazygitGo?display_name=tag&color=2f81f7"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-3fb950"></a>
+  <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-8957e5">
+  <img alt="Go" src="https://img.shields.io/badge/built%20with-Go-00add8">
+</p>
+
+<p align="center">
+  <a href="https://github.com/FleetingEcho/lazygitGo/releases"><b>Download</b></a> ·
+  <a href="#install">Install</a> ·
+  <a href="#what-you-can-do">Features</a> ·
+  <a href="#keyboard-first">Shortcuts</a> ·
+  <a href="docs/guide.md">Guide</a> ·
   <a href="README-CN.md">简体中文</a>
 </p>
 
@@ -25,16 +32,80 @@
   </picture>
 </p>
 
-<p><strong>Screenshot gallery · 8 views</strong></p>
+## Why lazygitGo?
+
+[Lazygit](https://github.com/jesseduffield/lazygit) is fast because you never
+leave the keyboard. A graphical client is easier when you need to *see* a
+history, a conflict, or a diff. lazygitGo gives you both: Lazygit's Git
+command layer, wrapped in a native window with visual tools where they help.
+
+|  |  |
+| --- | --- |
+| 🎯 **Precise commits** | Stage, unstage, discard or stash individual lines across hunks. The rest of your changes stay untouched. |
+| 🌳 **Visual history** | Follow the commit graph and file history. Cherry-pick, squash, fix up, drop and reorder commits in batches. |
+| 🧩 **Safer conflicts** | Compare Base, Current, Incoming and Result side by side, pick hunks, edit the result, and undo a choice before staging. |
+| 🛟 **Recovery built in** | Reflog, a durable Safety Journal and per-file conflict recovery. Risky actions explain themselves and ask first. |
+| 💻 **One workspace** | A code editor, search, terminal and SSH workspaces sit beside your repository tabs. |
+
+## What you can do
+
+### Commit exactly what you mean
+
+- **Line-level staging.** Click a diff line number to start a selection and Shift-click for a range. Press `m` for **Select changes**: stage, unstage or discard the current hunk or the lines you picked.
+- **Unified, side-by-side, image and media diffs**, patch export, and **Apply patch…** for external `.patch` / `.diff` files (`Ctrl+I`).
+- **Custom Patch.** Collect changes from commits and historical files, then export them, apply them to the working tree, or move them to another commit or the index.
+- **Change Courier** previews a patch and copies it to another worktree as unstaged changes, with no history rewrite.
+
+### Understand and reshape history
+
+- **Commit graph and file history** with filtering, blame, and bisect (`b`, `g`, `k`, `R`).
+- **Batch rewrites:** reword, squash, fixup, drop, reorder, edit an older commit (`e`), or rebase `--onto` a marked base.
+- **Rebase TODO** shows Git's real interactive todo list and lets you edit it with compare-and-swap checks.
+- **Sync stack…** previews per-branch merge, rebase and update-ref plans, validates them, then optionally publishes each branch with a lease.
+- Manage remotes, tags, stashes, worktrees and submodules. Export or import `format-patch` series.
+
+### Resolve conflicts where you review diffs
+
+- Four-pane **Base / Current / Incoming / Result** view with hunk, side and Result controls that adapt to narrow windows.
+- An operation card that reads Git's real state (merge, rebase, `am`, cherry-pick, revert) and offers only the valid **Continue**, **Skip** and **Abort**.
+- **Guided mode** shows a live checklist: read the conflict, choose or edit Result, mark resolved, review staged, continue.
+- **Continue preflight** can run your own required and optional checks (for example `go test ./...`) before an operation continues.
+- **Durable recovery** keeps each file's original unresolved bytes and index stages, and refuses to overwrite newer work.
+- Optional **Conflict Assistant** and **Change Splitter** call a helper command you configure. They only suggest, and nothing is staged or committed for you.
+
+### See the state of the repository at a glance
+
+- **Overview** is the landing page: what needs attention next, working tree and operation state, pull request checks, Agent tasks, and recent activity.
+- **Contributors** (by period and branch), a **commit heat map**, **code changes** (lines added and removed) and **branch health** (merged, stale and far-behind branches).
+- **Command Palette** (`Ctrl/Cmd+Shift+P`) runs any action. Prefix it to switch modes: `@` branches, `#` commits, `/` files, `~` recent repositories, `!` shell.
+- **Activity Center** (`Ctrl/Cmd+Shift+A`) gathers commands, Safety Journal records, Agent tasks, transfers and notices across open repositories.
+- A filterable **Command Log** shows every Git command that ran, with its output.
+
+### Code without leaving Git
+
+- **Editor** with syntax highlighting, tabs, Markdown preview, image viewing, rename-aware buffers and optional **language servers** (completion, hover, diagnostics, go-to-definition, formatting).
+- **Search.** `Ctrl+P` quick-opens files with fzf matching. `Ctrl+Shift+F` searches contents by case, whole word or regex, with include/exclude globs and folder scoping. It uses ripgrep when available, a built-in scanner otherwise, and an optional local [Zoekt](https://github.com/sourcegraph/zoekt) index on macOS and Linux for very large trees. Settings has configurable search exclusions.
+- **Files.** Create, rename, delete, drag and drop, and open any repository subfolder as the workspace root.
+- **Built-in terminal** that can dock on any edge, plus one-click launch of your external editor.
+- **SSH workspaces.** Git, editing, search, terminals and SFTP transfers run directly on a remote Linux host, with no mirror and no server agent.
+
+### Automate and collaborate
+
+- Create pull requests and read checks with the GitHub CLI (`gh`) or GitLab CLI (`glab`).
+- **Agent tasks** give each task an isolated branch and worktree, with durable state and review. Drive them from a local `lazygitGo agent …` CLI or RPC. See [Agent workspaces](docs/agent-workspaces.md) and [automation](docs/agent-automation.md).
+- Add **custom commands** with placeholders such as `{{branch}}` and `{{file}}`, and optional shortcuts.
+- Configurable background fetch and prune, 20 colour palettes, custom fonts, six interface languages, and signed in-app updates.
+
+## Screenshots
 
 <table>
   <tr>
-    <td width="50%"><a href="docs/screenshots/workspace.png"><img src="docs/screenshots/workspace.png" alt="Workspace · Dark"></a><br><sub>Workspace · Dark</sub></td>
-    <td width="50%"><a href="docs/screenshots/workspace_light.png"><img src="docs/screenshots/workspace_light.png" alt="Workspace · Light"></a><br><sub>Workspace · Light</sub></td>
+    <td width="50%"><a href="docs/screenshots/workspace.png"><img src="docs/screenshots/workspace.png" alt="Workspace, dark"></a><br><sub>Workspace · Dark</sub></td>
+    <td width="50%"><a href="docs/screenshots/workspace_light.png"><img src="docs/screenshots/workspace_light.png" alt="Workspace, light"></a><br><sub>Workspace · Light</sub></td>
   </tr>
   <tr>
-    <td width="50%"><a href="docs/screenshots/graph_dark.png"><img src="docs/screenshots/graph_dark.png" alt="Commit graph · Dark"></a><br><sub>Commit graph · Dark</sub></td>
-    <td width="50%"><a href="docs/screenshots/graph_light.png"><img src="docs/screenshots/graph_light.png" alt="Commit graph · Light"></a><br><sub>Commit graph · Light</sub></td>
+    <td width="50%"><a href="docs/screenshots/graph_dark.png"><img src="docs/screenshots/graph_dark.png" alt="Commit graph, dark"></a><br><sub>Commit graph · Dark</sub></td>
+    <td width="50%"><a href="docs/screenshots/graph_light.png"><img src="docs/screenshots/graph_light.png" alt="Commit graph, light"></a><br><sub>Commit graph · Light</sub></td>
   </tr>
   <tr>
     <td width="50%"><a href="docs/screenshots/picker.png"><img src="docs/screenshots/picker.png" alt="Repository picker"></a><br><sub>Repository picker</sub></td>
@@ -42,218 +113,117 @@
   </tr>
   <tr>
     <td width="50%"><a href="docs/screenshots/editor.png"><img src="docs/screenshots/editor.png" alt="Code editor"></a><br><sub>Code editor</sub></td>
-    <td width="50%"><a href="docs/screenshots/i18n.png"><img src="docs/screenshots/i18n.png" alt="Multiple Languages"></a><br><sub>Multiple Languages</sub></td>
+    <td width="50%"><a href="docs/screenshots/i18n.png"><img src="docs/screenshots/i18n.png" alt="Interface languages"></a><br><sub>Interface languages</sub></td>
   </tr>
 </table>
 
-## What is lazygitGo?
+## Install
 
-lazygitGo brings Lazygit's Git engine into a native desktop interface, with
-keyboard navigation and visual tools for the work that needs a closer look.
+1. Install [Git](https://git-scm.com/).
+2. Download the package for your system from the [releases page](https://github.com/FleetingEcho/lazygitGo/releases).
 
-- **Turn mixed edits into clean commits.** Stage, unstage, or stash selected lines across separate hunks, keeping the rest of your changes untouched.
-- **Shape history visually.** Follow the commit graph and file history, then batch cherry-pick, squash, fix up, drop, or reorder commits.
-- **Resolve conflicts in place.** Compare Base, Current, Incoming, and Result views; choose individual hunks, edit the result, and undo a choice before staging. Enable **Guided** for a live resolution checklist and stage-specific help. Durable per-file recovery preserves the original unresolved file and index stages.
-- **Keep your development tools together.** Switch repository tabs, edit code with syntax highlighting and language-server assistance, run a shell in the built-in terminal, and open your configured editor with one click.
-- **Make the workspace yours.** Resize and expand panels, browse directory trees, and choose from 20 palettes, custom fonts, and six interface languages.
-
-Confirmations explain consequential actions. Force push with lease, eligible
-undo/redo operations, and reflog recovery help you manage changes deliberately.
-
-## Features
-
-| | What you can do |
+| System | Package |
 | --- | --- |
-| **Changes & diffs** | Stage files or selected lines; review unified, side-by-side, image, and media diffs; export patches. **Select changes** (`m`) combines hunk and line selection: stage, unstage, or discard the current hunk or the lines you pick, using a repository-state-checked patch. Use Change Courier to preview and copy files to another worktree as unstaged changes. |
-| **History & graph** | Filter commits, inspect file history, cherry-pick batches, reword, squash, and reorder commits. Preview Git's real interactive **Rebase TODO**, edit it with compare-and-swap checks, or mark a full-SHA base for a targeted `--onto` rebase. Collect a Custom Patch to apply or export, or use its single-source history actions to remove changes, move them to the index or another commit, or create a commit before/after the source. |
-| **Branches & recovery** | Manage remotes, tags, stashes, worktrees, and submodules; inspect the reflog and undo eligible operations. **Sync stack…** previews frozen per-branch merge/rebase/update-ref plans, validates the plan before applying it, and optionally publishes each branch with its preview-OID lease. Safety Journal and per-file conflict recovery retain durable, revalidated recovery state. |
-| **Collaboration & automation** | Create pull requests and view checks with **GitHub CLI** (`gh`) or **GitLab CLI** (`glab`); export `format-patch` series and apply mailbox patches. Use durable Agent tasks and local CLI/RPC automation, or add custom shell commands. Background fetching and pruning are configurable. |
-| **Conflict resolution** | Read Git's live operation type, refs, SHAs, and progress; use the supported **Continue**, **Skip**, and **Abort** actions. Grouped **Hunk**, **View**, and **Apply** controls keep conflict navigation, stage views, side choices, and assistant access reachable in wide or compact layouts. **Mark resolved** stages only when you choose it. |
-| **Assisted review** | Conflict Assistant proposes region substitutions on a cloned Result. Change Splitter groups original diff identities and previews lazygitGo-generated, index-only patches. Both use an optional, provider-neutral `AssistCommand`; neither suggestion preview stages or commits automatically. |
-| **Editor workspace** | Edit with syntax highlighting and language-server assistance; manage files and tabs; use fzf Quick Open, advanced content search, and Markdown preview. |
-| **Your workspace** | Repository tabs, directory trees, resizable panels, expanded branch/diff views, a terminal, and external editors. |
-| **Workflow entry points** | Search current navigation, Git, hunk, conflict, Agent, and custom actions in the **Command Palette** (`Ctrl/Cmd+Shift+P`), or switch modes: `@` branches, `#` commits (paste a hash, or search by message, `by:author` and `branch:`), `/` files, `~` recent repositories, and `!` to run a shell command with live output. Choosing a commit lists every action from its context menu. The **Activity Center** (`Ctrl/Cmd+Shift+A`) gathers commands, journal records, Agent tasks, transfers, and notices across open repositories, and its **Contributors** view shows who committed how much and what they last committed. **Overview** summarizes working-tree, operation, collaboration, Agent, contributor (who was active over a week, month, 3 or 6 months, year or all time, with a commit chart and top contributors), commit activity heat map, code changes (lines added and deleted), branch health (merged, stale and far-behind branches), and recent-activity state. **Command Log** provides status/source/time-range filters, success badges, timestamps, expandable output, and scrolling that reveals 20 more records at a time. |
-| **Your preferences** | Themes, fonts, six interface languages, configurable visible sections, and signed in-app updates. |
+| macOS (universal) | `.dmg` |
+| Windows (AMD64, ARM64) | setup executable |
+| Linux (AMD64, ARM64) | `.deb` or archive. Debian: `sudo apt install ./lazygitgo_*.deb` |
 
-Commit actions live in detail panels and right-click menus. Click a diff line
-number to start multiple-line selection; Shift-click selects a range.
+3. Open a local repository, choose **Open SSH** for a remote Linux repository, or choose **Clone** on Home to clone an HTTPS or SSH URL with real progress. Cloning uses your existing Git credential helpers or SSH agent.
 
-[Common workflows →](docs/guide.md#common-workflows)
+**Upgrading from TanGit?** Open **Settings → Updates → Check for updates**. Your
+settings, recent repositories and workspaces carry over. Debian users install the
+new `.deb`, which replaces `tangit`. [Upgrade details](docs/guide.md#upgrade-from-tangit)
 
-### A code editor inside your Git workspace
+**Optional:** install [ripgrep](https://github.com/BurntSushi/ripgrep) for faster
+content search in large repositories.
 
-- **Write and review code.** Use syntax highlighting, undo/redo, temporary previews and persistent tabs, back/forward navigation, and unsaved-change prompts. Save with `Ctrl/Cmd+S`, save all with `Ctrl/Cmd+Shift+S`, preview Markdown beside its source, and inspect images without another app.
-- **Find and understand code.** Open paths with fuzzy fzf matching. Search by case, whole word, or regular expression; add include/exclude globs; see the complete grouped results after a responsive first page; and jump directly to a match. Optional language servers add completion, hover documentation, diagnostics, go-to-definition, and right-click document or selection formatting.
-- **Use your existing tools.** Install a supported language server through lazygitGo, configure a custom one, or switch the search backend between ripgrep and the built-in Go scanner. Configure user-installed formatter commands per language in **Settings → Editor**; external commands such as `gofmt` and `prettier --stdin-filepath {{file}}` read source from stdin and replace it with stdout.
-- **Manage files without leaving Editor.** Create files and folders, rename or delete them, and drag items between folders. Drop native files and folders anywhere in the Explorer to copy them into a local workspace or upload them over SFTP, with byte/item progress and cancellation. Open tabs and unsaved buffers follow renames and moves, and a repository subfolder can become the workspace root.
-- **Work directly over SSH.** Configure Linux SSH workspaces from Home or Settings with agent, private-key, or password authentication. Git, editing, search, terminals, and recursive transfers run remotely without a mirror or server agent. Local items open in the host file manager; remote **Open in explorer** launches `Narwhal` on the remote desktop (`DISPLAY=:0`).
-
-## Recovery and assisted workflows
-
-The operation card above **Changes** describes the actual interrupted merge,
-rebase, pull-with-rebase, `am`, cherry-pick, or revert—not an operation guessed
-from the visible branch. The operation type and Git state determine which of
-**Continue**, **Skip**, and **Abort** is available. Any conflicts must be
-resolved and staged before Continue, which revalidates the reviewed operation
-fingerprint and unmerged index instead of acting on a stale card.
-
-For guided resolution, choose **Settings → Behavior → Conflict and hunk
-buttons → Guided**, the third saved presentation alongside **Icons** and
-**Icons + labels**. The operation area lists **Read conflict**, **Choose or
-edit Result**, **Mark resolved**, **Review staged**, and **Continue** with
-live **Earlier / Current / Next** (or **Available**) positions. Those labels
-come from the current Git state, selected file, and Result; they are not saved
-completion ticks and do not resolve, stage, or continue automatically. If the
-selected file has no durable recovery record, the panel says so and does not
-offer a fictitious **Restore unresolved…** or **Retry…** action. See the
-[guided workflow](docs/guide.md#guided-conflict-mode).
-
-On a local repository, **Continue** opens **Continue preflight**. Configure a
-**Required check command** such as `go test ./...` and, optionally, an
-**Optional check command** such as `golangci-lint run` under **Settings →
-Behavior**. A blank Required command blocks Continue and Optional does not
-run; Required must pass before Optional runs. A blank Optional command is
-skipped. Only an Optional **failed** result can be explicitly overridden with
-**Override optional failure and continue**, after every other gate passes.
-Cancellation, stale or unreadable source state, and checkpoint failure have no
-override. These are fully trusted local shell commands with your permissions,
-network access, and filesystem access—**not a sandbox**. Continue is disabled
-in SSH workspaces rather than running local commands against a remote
-checkout.
-
-After the commands, lazygitGo compares the operation fingerprint, canonical index
-records, and tracked plus ordinary non-ignored untracked file content. It
-shows changed paths and requires a checkpoint for detected content changes.
-Ignored files, writes outside the checkout, and network effects are outside
-that comparison. Both ordinary approval and an Optional override perform a
-fresh comparison before the operation driver's expected-fingerprint CAS.
-[Preflight rules and an example →](docs/guide.md#continue-preflight-and-trusted-checks)
-
-**Recovery & checkpoints → Recovery** stores one file's original unresolved
-worktree bytes and index stages separately from its later state. Restore uses
-per-path before/after compare-and-swap checks and resumes its durable worktree
-and index steps. Newer work on that path stops restoration and is preserved;
-unrelated files are not part of the check.
-
-Conflict Assistant and Change Splitter run only after an explicit suggestion
-request. An empty `AssistCommand` means no external helper runs. The command is
-a user-trusted local helper launched through the platform shell, **not a
-sandbox** and not a built-in model service. Accepting conflict advice writes
-only the reviewed Result; applying a split group is a separate action that
-stages that group without changing the working tree or creating a commit.
-Late previews are invalidated when their source or owning dialog changes.
-
-History edits require one source commit, an immutable patch, and the expected
-HEAD. They can resume through the operation driver, but do not support merge
-sources/destinations, **New commit before original** on a root commit, or
-`commit.gpgsign=true`. Stack Sync publishes branches independently: one failed
-push does not roll back local updates or other remote branches, and there is no
-remote stack transaction.
-
-### Example: finish an interrupted rebase
-
-1. Read the operation type and current step, then open a conflict in **Changes**.
-2. Compare **Base**, **Current**, and **Incoming**; edit **Result** directly or use the grouped side/hunk actions. Optionally preview Conflict Assistant suggestions before accepting Result only.
-3. Choose **Mark resolved**, review the staged diff, and repeat for every conflicted file. Use durable conflict recovery if you need the original unresolved file and stages.
-4. In **Rebase TODO**, check the current and pending steps, then choose **Continue**. Review Required/Optional output, source changes, and the checkpoint result before **Continue operation**; use the explicit Optional override only when appropriate. Choose **Skip** only if that operation offers it and you intend to discard the stopped step; **Abort** is the separate abandon path.
-5. Review the resulting history and ordinary Changes before committing anything else. A CAS mismatch means refresh and review again, not that newer work was overwritten.
-
-[Detailed workflows, constraints, and assistant protocol →](docs/guide.md#operation-recovery-history-and-assisted-review) ·
-[Large-repository refresh behavior and measurements →](docs/guide.md#large-repositories-and-refresh)
-
-## Get started
-
-**Upgrading from TanGit?** Open **Settings → Updates → Check for updates** to
-install the renamed build on macOS, Windows, or a user-installed Linux archive.
-For Debian installs, download the matching `lazygitgo_*.deb` and install it with
-`sudo apt install ./<downloaded-file>.deb`. Your settings carry over. The
-new terminal command is `lazygitGo`. [Upgrade details](docs/guide.md#upgrade-from-tangit)
-
-1. Install [Git](https://git-scm.com/) and download a [lazygitGo release](https://github.com/FleetingEcho/lazygitGo/releases).
-2. Use the **DMG** on macOS, the **setup executable** on Windows, or the matching **`.deb` / archive** on Linux.
-3. Open a local repository, choose **Open SSH** to work directly in a remote Linux repository, or choose **Clone** on Home to clone an HTTPS or SSH URL with real progress, optional branch selection, and automatic opening. Cloning uses your existing Git credential helpers or SSH agent; direct SSH profiles keep secrets in the OS keychain when available, with session-only fallback.
-
-Verification is tied to the tool versions and environments recorded in its logs;
-it is not evidence for every Git release or SSH deployment. **Git 2.32 has not
-been verified.** See [version and capability evidence](docs/verification.md#version-and-capability-evidence).
-
-Install [ripgrep](https://github.com/BurntSushi/ripgrep) for faster Editor content searches in large repositories. lazygitGo uses its built-in search when `rg` is unavailable and ranks Quick Open paths and content results with [fzf](https://github.com/junegunn/fzf).
-
-Edit **Workspace folder** and press Enter, or use its folder button, to open a repository subfolder as the Editor root. The Explorer then lists only that folder and its descendants (without ancestor or outside rows), Quick Open and content search use the same scope, root-level file creation or drops target the opened folder, and the external-editor menu opens that folder too. Unsubmitted text remains a draft and does not change the workspace; the clear button restores the entire repository. Optional include/exclude globs stay collapsed under **File filters**. Common generated and dependency folders are excluded before searching. In **Settings → Editor → Search exclusions**, add folder names, remove any default, clear the list, or restore the defaults. Exclusions match at any depth; source folders such as `vendor` remain searchable unless you add them.
-
-Changing branches refreshes the Explorer, reloads clean open documents, and reruns active searches against the new tree. Unsaved editor buffers remain open with a previous-branch warning until you explicitly save them.
-
-**From the terminal**, after [setting up the command for your platform](docs/guide.md#open-a-repository-from-the-terminal):
+### Open a repository from the terminal
 
 ```sh
 lazygitGo .
 lazygitGo "./repository with spaces"
 ```
 
-The command returns immediately and reuses a running lazygitGo window, selecting
-an existing repository tab or opening a new one. The macOS launcher and Windows
-PATH need one-time setup. The guide includes instructions for existing
-installations and custom app locations.
+The command returns immediately and reuses a running window, selecting an
+existing tab or opening a new one. macOS and Windows need
+[one-time setup](docs/guide.md#open-a-repository-from-the-terminal).
 
-**From your editor workflow:** choose a preset or command in **Settings → Editor**.
-Editor buttons launch it directly. Neovim opens in a terminal; on macOS,
-quitting Neovim returns to the shell in the project or file's directory.
+> **Compatibility note.** Verification is tied to the Git and SSH versions
+> recorded in its logs. **Git 2.32 has not been verified.** See
+> [version and capability evidence](docs/verification.md#version-and-capability-evidence).
 
-## Keyboard shortcuts
+## Keyboard first
+
+Press `?` for help on the current panel and `F1` for the searchable shortcut
+reference. Uppercase means **Shift + letter**. Git keys follow the focused
+panel, and text fields keep normal typing.
 
 | Keys | Action |
 | --- | --- |
-| `?` / `F1` | Current-context help / complete shortcut reference |
-| `Tab` / `Shift+Tab`, `F6` / `Shift+F6` | Move between controls and panels |
-| Arrows, `j` / `k` | Navigate the focused list |
-| `Space` | Stage or unstage in Changes, including selected diff lines |
+| `Ctrl/Cmd+Shift+P` | Command Palette (`@` `#` `/` `~` `!` modes) |
+| `Ctrl/Cmd+Shift+A` | Activity Center |
+| `Space` | Stage or unstage, including selected diff lines |
 | `c` / `Ctrl+Enter` | Compose / submit a commit |
-| `Ctrl+I` | Preview and apply a patch or diff in Changes |
-| `C` | Clone a remote repository on Home |
-| `Ctrl+B` / `B` | Add the chosen commit or historical file / review Custom Patch |
-| `A` / `Space` in a historical diff | Add the current hunk / selected changed lines to Custom Patch |
 | `p` / `P` | Pull / push |
-| `r` / `e` | Reword / pause a rebase to edit a commit |
-| `b` | Start a bisect, or mark the current test as bad; `g` good, `k` skip, `R` reset |
 | `z` / `Z` | Undo / redo eligible operations |
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Switch repository tabs |
-| `Ctrl/Cmd+Shift+P` | Search and run commands in the Command Palette (`@` branches, `#` commits, `/` files, `~` repositories, `!` shell) |
-| `Ctrl/Cmd+Shift+A` | Open the Activity Center |
-| `m` in a Changes diff | Turn on Select changes: hunk and line actions |
-| `Ctrl+P` / `Ctrl+Shift+F` | Quick open / workspace content search in Editor |
+| `r` / `e` | Reword / pause a rebase to edit a commit |
+| `m` | Select changes in a Changes diff |
+| `Ctrl+B` / `B` | Add to / review Custom Patch |
+| `Ctrl+P` / `Ctrl+Shift+F` | Quick open / search contents in Editor |
+| `Ctrl+Tab` | Next repository tab |
 | ``Ctrl+` `` / `Ctrl+,` | Terminal / Settings |
-| `:` / `Ctrl+L` | Run a one-off shell command / command log |
+| `:` / `Ctrl+L` | One-off shell command / command log |
 
-Uppercase letters mean **Shift + letter**. Git shortcuts follow the focused
-panel; text fields retain normal typing. Attention-requiring actions ask for
-confirmation. [More shortcuts →](docs/guide.md#keyboard)
+[All shortcuts →](docs/guide.md#keyboard)
 
-## Architecture
+## Safety by design
 
-lazygitGo is a Go application. **MyGo** renders the native UI, and **Lazygit**
-provides the Git command layer. Repository sessions keep Git operations and
-repository data separate from the views.
+- Consequential actions explain themselves and ask first. Force push uses a lease.
+- History edits and recovery use **compare-and-swap** checks, so a stale view is refused instead of overwriting newer work.
+- Check commands and `AssistCommand` helpers are **trusted local commands, not a sandbox**. Nothing runs unless you configure it.
 
-Views schedule work and display refreshed repository snapshots. MyGo's
-headless tester exercises clicks, typing, keyboard focus, and rendered layouts.
+Details: [operation recovery, history and assisted review](docs/guide.md#operation-recovery-history-and-assisted-review).
 
-## Build & contribute
+## Documentation
 
-Requires Go **1.27.3** and Git. Dependencies are declared in `go.mod`.
+| | |
+| --- | --- |
+| [Guide](docs/guide.md) | Common workflows, Command Palette, Overview, recovery, shortcuts, development |
+| [Agent workspaces](docs/agent-workspaces.md) · [Automation](docs/agent-automation.md) | Isolated task worktrees and the local CLI/RPC |
+| [Verification](docs/verification.md) | CI matrix, tested Git versions and their limits |
+| [Performance](docs/performance.md) | Large-repository refresh behaviour and measurements |
+| [Release notes](docs/releases/) | What changed in each version |
+
+## Build from source
+
+Requires Go **1.27.3** and Git. On Linux, packages use GTK 3 and AppIndicator.
 
 ```sh
 git clone https://github.com/FleetingEcho/lazygitGo.git
 cd lazygitGo
-go tool mygo dev      # develop
+go tool mygo dev      # run in development mode
 go tool mygo build    # build on macOS or Linux
-bash scripts/build-windows.sh windows/amd64  # build the Windows installer
+bash scripts/build-windows.sh windows/amd64   # build the Windows installer
 ```
 
-[Development & checks](docs/guide.md#development) ·
-[Release builds & signed updates](docs/guide.md#publishing-signed-updates) ·
-[Issues](https://github.com/FleetingEcho/lazygitGo/issues)
+Before opening a pull request:
+
+```sh
+gofmt -l . && go vet ./... && go tool mygo vet . && CGO_ENABLED=0 go test ./...
+```
+
+New UI strings go through `tr(...)` and need a translation in every catalog under
+`internal/app/i18n*.go`. See [Development](docs/guide.md#development) and
+[Publishing signed updates](docs/guide.md#publishing-signed-updates).
+
+**Architecture in brief:** the app is written in Go. [MyGo](https://github.com/egoist/mygo)
+renders the native UI, and Lazygit provides the Git command layer. Views schedule
+work and display repository snapshots, and MyGo's headless tester drives clicks,
+typing, focus and layout in tests.
 
 ---
 
-[MIT License](LICENSE) · Built with [MyGo](https://github.com/egoist/mygo) and
-[Lazygit](https://github.com/jesseduffield/lazygit).
+<p align="center">
+  <a href="LICENSE">MIT License</a> · Built with <a href="https://github.com/egoist/mygo">MyGo</a> and <a href="https://github.com/jesseduffield/lazygit">Lazygit</a> ·
+  <a href="https://github.com/FleetingEcho/lazygitGo/issues">Report an issue</a>
+</p>
