@@ -204,6 +204,9 @@ func TestChangesHunkActionStyleAcrossViewportsAndThemes(t *testing.T) {
 					if !disabled.Disabled || !strings.Contains(disabled.Description, "Already at the first diff hunk.") {
 						t.Fatalf("Previous hunk disabled explanation = %+v", disabled)
 					}
+					if viewport.width == 720 && style == conflictActionStyleGuided && (actionVisible || disabledVisible) {
+						t.Fatal("guided hunk actions must use the narrow-window Popover instead of clipping visible labels")
+					}
 					if viewport.width == 960 && actionVisible {
 						hoverAction(t, h, action, "leaving other hunks unstaged")
 						if disabledVisible {

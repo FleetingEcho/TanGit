@@ -303,7 +303,8 @@ func (a *app) hunkActionControls(c *ui.Context) {
 	if paneWidth > 0 {
 		paneWidth += 30
 	}
-	compactLabels := normalizeConflictActionStyle(a.settings.ConflictActionStyle) == conflictActionStyleIconsLabels &&
+	actionStyle := normalizeConflictActionStyle(a.settings.ConflictActionStyle)
+	compactLabels := actionStyle != conflictActionStyleIcons &&
 		(paneWidth <= 0 || paneWidth < conflictCompactPaneWidth)
 	// A wide toolbar keeps the hunk position beside its previous/next buttons; a
 	// narrow one lets the position give way so the actions never clip.
