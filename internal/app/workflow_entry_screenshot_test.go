@@ -14,7 +14,7 @@ import (
 
 // TestWorkflowEntryScreenshots is opt-in like the other screenshot harnesses:
 //
-//	MYGO_SHOTS=/home/zteng/work/Tools/tmp/tangit-workflow-shots go test ./internal/app -run TestWorkflowEntryScreenshots
+//	MYGO_SHOTS=/path/to/shots go test ./internal/app -run TestWorkflowEntryScreenshots
 //
 // Tester images are for visual review; they are not native-window acceptance.
 func TestWorkflowEntryScreenshots(t *testing.T) {

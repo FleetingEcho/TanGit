@@ -14,7 +14,7 @@ import (
 // TestSelectionAndPaletteScreenshots is opt-in like the other screenshot
 // harnesses:
 //
-//	MYGO_SHOTS=/home/zteng/work/Tools/tmp/tangit-shots go test ./internal/app -run TestSelectionAndPaletteScreenshots
+//	MYGO_SHOTS=/path/to/shots go test ./internal/app -run TestSelectionAndPaletteScreenshots
 func TestSelectionAndPaletteScreenshots(t *testing.T) {
 	dir := os.Getenv("MYGO_SHOTS")
 	if dir == "" {
