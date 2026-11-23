@@ -175,7 +175,7 @@ func (a *app) syncGoLanguageServer() {
 	}
 	ready := false
 	for _, document := range documents {
-		if document.state != nil && document.state.Buffer != nil {
+		if document.loaded && document.state != nil && document.state.Buffer != nil {
 			ready = true
 			break
 		}
@@ -197,7 +197,7 @@ func (a *app) syncGoLanguageServer() {
 }
 
 func (a *app) syncGoLanguageServerDocument(path string, document *codeDocument) {
-	if a.goLanguageServer == nil || document == nil || document.state == nil || document.state.Buffer == nil {
+	if a.goLanguageServer == nil || document == nil || !document.loaded || document.state == nil || document.state.Buffer == nil {
 		return
 	}
 	version := document.state.Buffer.Version()

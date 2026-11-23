@@ -86,6 +86,37 @@ func waitForCodeDocument(t *testing.T, h *harness, path string) *codeDocument {
 	return h.app.code.documents[path]
 }
 
+// Opening a file puts its editor in the pane before the asynchronous read.
+// Filling that same State when the read finishes never replaces the pane.
+func TestCodeDocumentKeepsItsEditorWhileLoading(t *testing.T) {
+	stubCodeWorkspace(t, map[string]string{"main.go": "package main\n"})
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	readWorkingFile = func(string) ([]byte, error) {
+		started <- struct{}{}
+		<-release
+		return []byte("package main\n"), nil
+	}
+	h := menuTestApp(t)
+	openCodePageForTest(t, h, 1)
+	h.app.openCodeFile("main.go", 0)
+	document := h.app.activeCodeDocument()
+	if document == nil || document.state == nil || document.state.Buffer == nil {
+		t.Fatal("opening a file did not create its editor synchronously")
+	}
+	h.tester.Frame()
+	if _, ok := h.tester.Find(tr("Code editor")); !ok || h.tester.HasText(tr("Loading file…")) {
+		t.Fatalf("the file read replaced the editor with a loading pane: %q", h.texts())
+	}
+	<-started
+	close(release)
+	h.waitFor(t, "the file contents", func() bool { return !document.loading })
+	h.tester.Frame()
+	if h.app.activeCodeDocument().state != document.state || document.state.Buffer.String() != "package main\n" {
+		t.Fatalf("the read did not fill the same editor: state=%p text=%q", document.state, document.state.Buffer.String())
+	}
+}
+
 func TestCodePageInitiallyHasNoSelectedFile(t *testing.T) {
 	stubCodeWorkspace(t, map[string]string{
 		".editorconfig":  "root = true\n",
@@ -170,13 +201,21 @@ func TestCodePreviewTabIsReusedUntilDoubleClicked(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForCodeDocument(t, h, "first.go")
+	first := h.app.code.documents["first.go"]
 	if err := h.tester.Click("Open second.go"); err != nil {
 		t.Fatal(err)
 	}
 	waitForCodeDocument(t, h, "second.go")
-	if len(h.app.code.tabs) != 1 || h.app.code.tabs[0] != "second.go" || h.app.code.documents["first.go"] != nil {
+	if len(h.app.code.tabs) != 1 || h.app.code.tabs[0] != "second.go" || h.app.code.documents["first.go"] != first {
 		t.Fatalf("second preview did not replace the first: tabs=%q documents=%v", h.app.code.tabs, h.app.code.documents)
 	}
+	h.app.openCodeFile("first.go", 0)
+	h.tester.Frame()
+	if current := h.app.activeCodeDocument(); current != first || current.state != first.state || first.loading {
+		t.Fatalf("revisit root=%q path=%q current=%p first=%p cached=%p loading=%v loaded=%v tab=%q", h.app.snapshot.Root, current.path, current, first, h.app.code.documents["first.go"], first.loading, first.loaded, h.app.code.tabs)
+	}
+	h.app.openCodeFile("second.go", 0)
+	waitForCodeDocument(t, h, "second.go")
 
 	// A second quick click on the same row is its double-click and pins it.
 	if err := h.tester.Click("Open second.go"); err != nil {

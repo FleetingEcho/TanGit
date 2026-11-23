@@ -147,7 +147,7 @@ func TestCodeBlameAnnotationsOpenCommitAndJumpToHistory(t *testing.T) {
 		t.Fatalf("blame hover delay = %v", document.state.HoverDelay)
 	}
 	if len(document.blameInlays) != 1 || !strings.Contains(document.blameInlays[0].Text, "You, 2 months ago • Explain the blame model") {
-		t.Fatalf("active-line blame annotation = %#v", document.blameInlays)
+		t.Fatalf("active-line blame annotation = %#v (active %d caret %+v lines %#v versions %d/%d modified %v)", document.blameInlays, document.blameActiveLine, document.state.CursorPos(), document.blameLines, document.blameVersion, document.state.Buffer.Version(), document.state.Buffer.Modified())
 	}
 	if !document.blameInlays[0].Trailing {
 		t.Fatal("blame annotation must keep the caret and line-end selection before its decoration")

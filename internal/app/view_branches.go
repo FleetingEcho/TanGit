@@ -836,16 +836,10 @@ func (a *app) requestBranchCommitFiles(commit repository.Commit) {
 	a.branchCommitToken++
 	token := a.branchCommitToken
 	a.branchCommitFilesHash = commit.Hash
-	a.branchCommitFiles = nil
-	a.selectedBranchCommitFileRow = -1
-	a.selectedBranchCommitFile = -1
 	a.branchCommitFilesLoading = true
 	a.branchCommitFilesError = ""
-	a.branchCommitDiffState = nil
-	a.branchCommitDiffMedia = nil
-	a.branchCommitDiffHash = ""
-	a.branchCommitDiffPath = ""
-	a.branchCommitDiffPatch = ""
+	// Keep the last painted files and diff while this branch's next commit
+	// loads. The shared detail renderer shows progress beside that content.
 	a.branchCommitDiffLoading = false
 	a.branchCommitDiffError = ""
 
@@ -900,9 +894,6 @@ func (a *app) requestBranchCommitFileDiff(commit repository.Commit, file reposit
 	token := a.branchCommitToken
 	a.branchCommitDiffHash = commit.Hash
 	a.branchCommitDiffPath = file.Path
-	a.branchCommitDiffState = nil
-	a.branchCommitDiffMedia = nil
-	a.branchCommitDiffPatch = ""
 	a.branchCommitDiffLoading = true
 	a.branchCommitDiffError = ""
 

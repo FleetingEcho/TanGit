@@ -806,10 +806,6 @@ func (a *app) codeEmptyEditor(c *ui.Context) {
 
 func (a *app) codeDocumentView(c *ui.Context, document *codeDocument) {
 	theme := c.Theme()
-	if document.loading {
-		loadingPane(c, "Loading file", "Loading file…")
-		return
-	}
 	if document.binary {
 		binaryFileView(c, document.path, document.imagePreview, nil)
 		return
@@ -825,6 +821,9 @@ func (a *app) codeDocumentView(c *ui.Context, document *codeDocument) {
 		return
 	}
 	if document.state == nil {
+		if document.loading {
+			loadingPane(c, "Loading file", "Loading file…")
+		}
 		return
 	}
 	a.applyCodeEditorPreferences(document.state)
@@ -833,12 +832,12 @@ func (a *app) codeDocumentView(c *ui.Context, document *codeDocument) {
 	settings := effectiveBuiltInEditorPreferences(a.settings)
 	source := func() {
 		if !settings.EditorMinimap {
-			editorView := editor.View(c, document.state).Grow(1).FillWidth().ReadOnly(document.readOnly)
+			editorView := editor.View(c, document.state).Grow(1).FillWidth().ReadOnly(document.readOnly || document.loading)
 			a.keyboardPane(c, "code-editor", editorView).Label(tr("Code editor")).MinWidth(0)
 			return
 		}
 		ui.Row(c).Grow(1).FillWidth().MinWidth(0).Children(func() {
-			editorView := editor.View(c, document.state).Grow(1).FillWidth().FillHeight().ReadOnly(document.readOnly)
+			editorView := editor.View(c, document.state).Grow(1).FillWidth().FillHeight().ReadOnly(document.readOnly || document.loading)
 			a.keyboardPane(c, "code-editor", editorView).Label(tr("Code editor")).MinWidth(0)
 			a.codeMinimap(c, document)
 		})

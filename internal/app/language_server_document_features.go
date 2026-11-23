@@ -37,7 +37,7 @@ type languageServerSemanticTokens struct {
 }
 
 func (a *app) syncLanguageDocumentFeatures(document *codeDocument) {
-	if document == nil || document.state == nil || document.state.Buffer == nil {
+	if document == nil || !document.loaded || document.state == nil || document.state.Buffer == nil {
 		return
 	}
 	version := document.state.Buffer.Version()

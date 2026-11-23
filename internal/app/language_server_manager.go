@@ -105,7 +105,7 @@ func (a *app) syncAdditionalLanguageServers() {
 		}
 		ready := false
 		for _, document := range documents {
-			if document != nil && document.state != nil && document.state.Buffer != nil {
+			if document != nil && document.loaded && document.state != nil && document.state.Buffer != nil {
 				ready = true
 				break
 			}
@@ -322,7 +322,7 @@ func (a *app) stopAdditionalLanguageServers() {
 }
 
 func (a *app) syncManagedLanguageServerDocument(server *managedLanguageServer, path string, document *codeDocument) {
-	if server == nil || server.connection == nil || document == nil || document.state == nil || document.state.Buffer == nil {
+	if server == nil || server.connection == nil || document == nil || !document.loaded || document.state == nil || document.state.Buffer == nil {
 		return
 	}
 	language, matches := languageServerProfileForPath(server.profile, path)
