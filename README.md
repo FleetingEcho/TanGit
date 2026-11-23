@@ -84,7 +84,7 @@ command layer, wrapped in a native window with visual tools where they help.
 ### Code without leaving Git
 
 - **Editor** with syntax highlighting, tabs, Markdown preview, image viewing, rename-aware buffers and optional **language servers** (completion, hover, diagnostics, go-to-definition, formatting).
-- **Search.** `Ctrl+P` quick-opens files with fzf matching. `Ctrl+Shift+F` searches contents by case, whole word or regex, with include/exclude globs and folder scoping. It uses ripgrep when available, a built-in scanner otherwise, and an optional local [Zoekt](https://github.com/sourcegraph/zoekt) index on macOS and Linux for very large trees. Settings has configurable search exclusions.
+- **Search.** `Ctrl+P` quick-opens files with fzf matching. `Ctrl+Shift+F` searches contents by case, whole word or regex, with include/exclude globs and folder scoping. On macOS and Linux a local [Zoekt](https://github.com/sourcegraph/zoekt) index is built in the background, so searches in large repositories stay fast. Without it, lazygitGo falls back to ripgrep, then to a built-in scanner. Search exclusions and the index are configurable in Settings. [Details →](docs/guide.md#code-search-backends-index-and-exclusions)
 - **Files.** Create, rename, delete, drag and drop, and open any repository subfolder as the workspace root.
 - **Built-in terminal** that can dock on any edge, plus one-click launch of your external editor.
 - **SSH workspaces.** Git, editing, search, terminals and SFTP transfers run directly on a remote Linux host, with no mirror and no server agent.

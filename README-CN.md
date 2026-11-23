@@ -83,7 +83,7 @@ lazygitGo 两者兼顾：沿用 Lazygit 的 Git 命令层，放进原生窗口�
 ### 不离开 Git，也能写代码
 
 - **编辑器**支持语法高亮、标签页、Markdown 预览、图片查看、随重命名更新的缓冲区，以及可选的**语言服务器**（补全、悬停文档、诊断、跳转到定义、格式化）。
-- **搜索。** `Ctrl+P` 通过 fzf 快速打开文件；`Ctrl+Shift+F` 搜索内容，支持区分大小写、全词、正则、包含／排除 glob 和文件夹范围。有 ripgrep 时使用 ripgrep，否则使用内置扫描器；在 macOS 和 Linux 上，超大目录还可使用可选的本地 [Zoekt](https://github.com/sourcegraph/zoekt) 索引。设置中可配置搜索排除项。
+- **搜索。** `Ctrl+P` 通过 fzf 快速打开文件；`Ctrl+Shift+F` 搜索内容，支持区分大小写、全词、正则、包含／排除 glob 和文件夹范围。在 macOS 和 Linux 上，会在后台为仓库建立本地 [Zoekt](https://github.com/sourcegraph/zoekt) 索引，大型仓库中的搜索依然很快；没有索引时依次回退到 ripgrep 和内置扫描器。搜索排除项和索引可在设置中调整。[详情（英文）→](docs/guide.md#code-search-backends-index-and-exclusions)
 - **文件管理。** 新建、重命名、删除、拖放，并可把仓库的任意子文件夹打开为工作区根目录。
 - **内置终端**可停靠在任意一侧，也可一键启动外部编辑器。
 - **SSH 工作区。** Git、编辑、搜索、终端和 SFTP 传输直接在远程 Linux 主机上执行，无需本地镜像，也无需服务器代理。

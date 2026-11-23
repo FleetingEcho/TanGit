@@ -110,7 +110,7 @@ their package installer.
 | Stage selected lines | Click diff line numbers, then **Stage**. Shift-click selects a range; Escape clears the selection. **Select changes** (or `m` in the diff) shows the hunk actions and the line row together; the selected lines are listed by number, highlighted all at once, and can also be discarded (after confirmation) or copied as a patch. |
 | Build a Custom Patch | In History or Graph, use `Ctrl+B` on a commit or historical file to add canonical whole-file patches. In its diff, select changed lines and press `Space`, or press `A` for the current hunk. Press `B` to review the basket, preview the combined patch, then export it, apply it atomically to the working tree without staging, or send it to another worktree. This never rewrites history. Different commits cannot contribute changes to the same old/new path; additions, deletions, renames, binary files, and mode-only changes require whole-file selection. |
 | Copy changes to another worktree | Open a changed file's menu and choose **Send file to worktree…**, or choose **Send to worktree…** in Custom Patch Builder. Change Courier freezes the selected patch, previews it against an existing destination worktree, and reports conflicts without writing. A clean delivery applies atomically as unstaged destination changes; the source and all commit history remain unchanged. To target an unchecked-out branch, create a worktree for it first. |
-| Maintain linked worktrees | Open **Worktrees** to create, search, open, lock, unlock, or remove linked checkouts. Locked and stale records are marked in both the list and details. **Repair metadata** fixes worktree links after repositories or checkouts move; **Prune stale records…** removes only administrative records whose directories are gone. **Force remove…** is separately confirmed and can delete a dirty or locked checkout, so review its path and changes first. |
+| Maintain linked worktrees | Open **Worktrees** to create, search, open, lock, unlock, move, or remove linked checkouts. Right-click a worktree to open it in the current window or a new tab, open it in your editor, open a worktree terminal or system terminal there, show it in the file manager, or copy its path. **Compare with current worktree** diffs the two HEADs; **Fetch worktree** and **Pull worktree…** update a checkout without switching to it. Locked and stale records are marked in both the list and details. **Repair metadata** fixes worktree links after repositories or checkouts move; **Prune stale records…** removes only administrative records whose directories are gone. **Force remove…** is separately confirmed and can delete a dirty or locked checkout, so review its path and changes first. Over SSH, a worktree opens on the same remote host, and the local-only actions (system terminal, file manager) are hidden. |
 | Apply an external patch | In **Changes**, choose **Apply patch…** or press `Ctrl+I`, then select a `.patch` or `.diff` file. Review its files, diagnostics and text before applying. Clean patches apply atomically to the working tree and stay unstaged; conflicted patches cannot be applied. Cancel or Discard Patch changes neither the repository nor the source file. |
 | Exchange mailbox patches | Export selected commits from their History context menu or the batch-actions menu into a local folder as `format-patch` files. Import a patch series with **Changes → Apply mailbox patch…**. The import runs like `git am --3way`: authors and messages are preserved, context drift gets a three-way fallback, and conflicts use the normal Continue/Abort controls. |
 | Pause and edit an older commit | Select the commit in History or Graph, press `e`, and confirm **Edit commit**. The later commits are replayed up to that point, and the rebase pauses with the chosen commit checked out. Edit or amend it, then press **Continue**; **Abort** restores the original history. |
@@ -119,7 +119,7 @@ their package installer.
 | Create a pull request and read checks | Authenticate `gh` for GitHub or `glab` for GitLab, then open the hosting menu in the toolbar or the current branch's menu. Choose **Create pull request**, **Open pull request in browser**, or **View pull request checks**. The CLIs run in the repository, including over SSH; authentication and other CLI output appear in the command log. |
 | Add custom commands | Use **Settings → Commands**. Each command runs in the repository root and can have an optional shortcut and workspace scopes. Placeholders such as `{{branch}}`, `{{commit}}`, `{{file}}`, `{{tag}}`, `{{stash}}`, `{{remote}}`, and `{{root}}` expand to shell-quoted values. Press `:` for a one-off command (locally, not for an SSH workspace); output is recorded in the command log. |
 | Edit files in lazygitGo | Open **Editor**, select or quick-open a file, and edit its persistent tab. Use Ctrl/Cmd+S to save; a dot marks unsaved tabs. Closing asks whether to save or discard changes. Right-click the code editor and choose **Format Document**, or select one non-empty range and choose **Format Selection**. Configure an optional **Formatter command** for the file's language in **Settings → Editor**—for example, `gofmt` or `prettier --stdin-filepath {{file}}`. Install the formatter yourself; lazygitGo never downloads it implicitly. The command is parsed without a shell, receives the document or selection on stdin, and replaces that range with stdout. `{{file}}` expands to the current absolute path for parser and configuration discovery. Formatter settings remain available when the language server is disabled. An external command takes precedence; otherwise lazygitGo uses an enabled language server advertising document or range formatting. Formatting runs asynchronously with a 10-second timeout. Errors, unexpected empty output, and further edits leave the buffer unchanged; successful formatting is one undoable edit. External commands run only in local workspaces. |
-| Search the workspace | Press `Ctrl+Shift+F` in **Editor**. Results appear after the first scan page, then continue loading in the background until all matching files and occurrences are included. Partial counts carry `+`; completed counts are exact. Use case, whole-word, regular-expression, folder, and include/exclude filters to narrow the search. |
+| Search the workspace | Press `Ctrl+Shift+F` in **Editor**. Results appear after the first scan page, then continue loading in the background until all matching files and occurrences are included. Partial counts carry `+`; completed counts are exact. Use case, whole-word, regular-expression, folder, and include/exclude filters to narrow the search. Right-click a folder and choose **Search in folder** to scope the search to it. See [Code search backends, index and exclusions](#code-search-backends-index-and-exclusions). |
 | Manage editor tabs | Right-click a file tab to close it, other tabs, tabs to the right, or all tabs, or to copy its absolute or repository-relative path. |
 | Manage files and folders | Use **Editor → New File / New Folder**, or right-click an explorer row to create, rename, delete, view Git file history, or copy paths. Creation starts in the selected folder; deleting asks for confirmation. **Open in explorer** uses the host file manager locally and launches `Narwhal` with `DISPLAY=:0` on an SSH host. |
 | Move, copy, and transfer files and folders | Drag an explorer file or folder onto another folder to move it. Drop native files or folders anywhere in the Explorer: local workspaces copy sources recursively without overwriting; SSH workspaces upload through SFTP. Both show aggregate byte/item progress and **Cancel**. Cancelling a local import stops between I/O chunks and removes only incomplete outputs owned by that import; closing the workspace also cancels its imports. Remote files and folders can be downloaded from their context menus, with progress, collision choices, cancellation, and retries. Open editor tabs and unsaved buffers follow renamed or moved files. |
@@ -663,6 +663,53 @@ A typical interrupted-rebase workflow is:
 
 [Verification scope and current limits →](verification.md#feature-specific-evidence-and-limits)
 
+## Code search backends, index and exclusions
+
+Editor content search (`Ctrl+Shift+F`) picks the fastest backend that can answer
+completely, and always falls back to a slower one rather than returning
+partial results:
+
+| Backend | When it is used |
+| --- | --- |
+| **Zoekt index** | Local repositories on macOS and Linux, once the repository's index is ready. Zoekt keeps a local full-text index, so queries do not rescan every file. |
+| **ripgrep** | `rg` is installed and no index is ready, or the repository is over the index size limit. |
+| **Built-in Go scanner** | `rg` is unavailable. Always works, including on Windows and over SSH. |
+
+SSH workspaces never use the index; their searches run on the remote host.
+
+**Indexing is on by default** for each local repository and is built in the
+background after you open it. Under **Settings → Editor → Use Zoekt code
+search**, turn it off for the current repository to save disk space. Disabling
+asks first because it also deletes that repository's index; Git history and
+unsaved editor recovery are unaffected.
+
+**Settings → Cache** shows how much disk the indexes and cached author avatars
+use, and offers:
+
+- **Index size limit**: the most source one repository may put into its index
+  (default 10 GiB; choices from 1 to 50 GiB). The index on disk is several
+  times larger than the source it covers. A repository over the limit uses
+  ripgrep instead; choosing a limit again lets it try the index again.
+- **Manage repositories**: clear the index of one recent repository, or an
+  unlisted one, without forgetting the project.
+- **Clear cache**: delete every index and cached avatar. They are recreated
+  when needed.
+
+**Search exclusions** (**Settings → Editor → Search exclusions**) list folder
+names that both content search and the index skip. A name matches at any depth;
+a path such as `docs/archive` matches one folder. Common generated and
+dependency folders are listed by default. Add or remove entries, clear the list,
+or **Restore defaults**. Changing the list takes effect for the open editor
+without a restart, and the index is rebuilt to match.
+
+**Skip dependencies and generated folders automatically** (on by default) also
+leaves out folders recognized by name (such as `third_party` and `generated`),
+folders marked `linguist-vendored` or `linguist-generated` in `.gitattributes`,
+and whole upstream projects copied into the repository (a folder with its own
+license and a configure or Kconfig step, for example a Linux kernel tree). The
+folders skipped in the open repository are listed under the switch. Turn it off
+to search them.
+
 ## Large repositories and refresh
 
 No separate mode or setting is required. Open **History**, **Graph**, and
@@ -714,11 +761,11 @@ Commands follow the focused panel. Uppercase letters mean **Shift + letter**.
 | Cherry-pick | `C` copies selected commits; `V` confirms applying them |
 | Branches | `Space` checkout, `n` create, `M` merge, `r` rebase, `u` unset upstream, `d` delete; `Shift+O` / `Shift+G` / `Shift+K` create / open / check a pull request |
 | Stash / tags | Stash: `Space` apply, `g` pop, `d` drop. Tags: `n` create, `P` push, `Shift+A` push all, `d` delete |
-| Diff review | `[` / `]` changes hunk; `v` starts line selection; `Shift+Up/Down` extends it; `Space` stages/unstages in Changes or adds selected lines to a historical Custom Patch; `A` adds the current historical hunk |
+| Diff review | `m` turns on Select changes in a Changes diff; `[` / `]` changes hunk; `v` starts line selection; `Shift+Up/Down` extends it; `Space` stages/unstages in Changes or adds selected lines to a historical Custom Patch; `A` adds the current historical hunk |
 | Diff display | `W` compares refs; `Alt+W` toggles whitespace; `Alt+U` cycles context |
 | Conflicts | `F7` / `Shift+F7` moves; `Alt+1`–`Alt+4` selects current/ancestor/incoming/both; `Alt+Z` undoes a choice |
 | Terminal | ``Ctrl+` `` or `Ctrl+~` shows or hides the dock from any workspace or form without changing sections; its position, tabs, splits, search and scrollback stay alive while hidden |
-| Tools | `Ctrl/Cmd+Shift+P` Command Palette; `Ctrl+L` command log with user/background sections and highlighted search; `:` one-off command, `Ctrl+,` Settings |
+| Tools | `Ctrl/Cmd+Shift+P` Command Palette; `Ctrl/Cmd+Shift+A` Activity Center; `Ctrl+L` command log with user/background sections and highlighted search; `:` one-off command, `Ctrl+,` Settings |
 
 **Background fetching:** **Settings → Behavior** controls how often every remote is
 fetched and whether stale remote-tracking branches are pruned. The Branches
