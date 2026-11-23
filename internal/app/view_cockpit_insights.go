@@ -41,14 +41,29 @@ func heatColor(theme *ui.Theme, level int) ui.Color {
 // a week to a column, with the busiest day and the longest streak beside it.
 func (a *app) cockpitHeatmapCard(c *ui.Context, width float32) {
 	state := a.cockpit.contributors
-	if state.unavailable || !state.loaded || state.summary.TotalCommits == 0 {
+	if state.unavailable || state.err != "" {
+		return
+	}
+	if !state.loaded {
+		a.cockpitCard(c, "heatmap", "Commit activity", historyIcon, func() {
+			cockpitLoading(c, tr("Reading the history…"), 130)
+		})
 		return
 	}
 	heat := a.cockpit.insights.heatmap
-	if len(heat.Weeks) == 0 {
+	if state.summary.TotalCommits == 0 || len(heat.Weeks) == 0 {
 		return
 	}
-	a.cockpitCard(c, "heatmap", "Commit activity", historyIcon, func() {
+	line := a.cockpit.insights.heatmapLine
+	actions := func() {
+		if flat := cockpitViewToggle(c, "Show commits as a grid of days", heatGridIcon, !line); flat {
+			a.cockpit.insights.heatmapLine = false
+		}
+		if flat := cockpitViewToggle(c, "Show commits as a line over the weeks", lineChartIcon, line); flat {
+			a.cockpit.insights.heatmapLine = true
+		}
+	}
+	a.cockpitCardWithActions(c, "heatmap", "Commit activity", historyIcon, actions, func() {
 		theme := c.Theme()
 		const cell, gap = 11, 3
 		// As many weeks as fit, at least a quarter of a year.
@@ -57,55 +72,62 @@ func (a *app) cockpitHeatmapCard(c *ui.Context, width float32) {
 		if shown := min(max(fit, 13), len(weeks)); shown < len(weeks) {
 			weeks = weeks[len(weeks)-shown:]
 		}
-		dayNames := []string{tr("Mon"), "", tr("Wed"), "", tr("Fri"), "", ""}
-		ui.Row(c).AlignItems(ui.Start).Gap(6).Children(func() {
-			ui.Column(c).Gap(gap).Padding(15, 0, 0, 0).Shrink(0).Children(func() {
-				for _, name := range dayNames {
-					ui.Box(c).Height(cell).Width(26).Children(func() {
-						if name != "" {
-							ui.Text(c, name).FontSize(theme.FontSize - 3).TextColor(theme.TextMuted).SingleLine()
+		grid := func() {
+			dayNames := []string{tr("Mon"), "", tr("Wed"), "", tr("Fri"), "", ""}
+			ui.Row(c).FillWidth().MinWidth(0).Justify(ui.Center).AlignItems(ui.Start).Gap(6).Children(func() {
+				ui.Column(c).Gap(gap).Padding(15, 0, 0, 0).Shrink(0).Children(func() {
+					for _, name := range dayNames {
+						ui.Box(c).Height(cell).Width(26).Children(func() {
+							if name != "" {
+								ui.Text(c, name).FontSize(theme.FontSize - 3).TextColor(theme.TextMuted).SingleLine()
+							}
+						})
+					}
+				})
+				ui.Column(c).Gap(3).Children(func() {
+					// Month names, each over the weeks that start in it.
+					ui.Row(c).Gap(0).Height(12).Children(func() {
+						for start := 0; start < len(weeks); {
+							month := weeks[start][0].Date.Month()
+							end := start
+							for end < len(weeks) && weeks[end][0].Date.Month() == month {
+								end++
+							}
+							span := float32(end-start) * (cell + gap)
+							c.Key(fmt.Sprintf("heat-month:%d", start))
+							ui.Box(c).Width(span).Height(12).Clip().Children(func() {
+								if end-start >= 2 {
+									ui.Text(c, weeks[start][0].Date.Format("Jan")).FontSize(theme.FontSize - 3).
+										TextColor(theme.TextMuted).SingleLine()
+								}
+							})
+							start = end
 						}
 					})
-				}
-			})
-			ui.Column(c).Gap(3).Children(func() {
-				// Month names, each over the weeks that start in it.
-				ui.Row(c).Gap(0).Height(12).Children(func() {
-					for start := 0; start < len(weeks); {
-						month := weeks[start][0].Date.Month()
-						end := start
-						for end < len(weeks) && weeks[end][0].Date.Month() == month {
-							end++
-						}
-						span := float32(end-start) * (cell + gap)
-						c.Key(fmt.Sprintf("heat-month:%d", start))
-						ui.Box(c).Width(span).Height(12).Clip().Children(func() {
-							if end-start >= 2 {
-								ui.Text(c, weeks[start][0].Date.Format("Jan")).FontSize(theme.FontSize - 3).
-									TextColor(theme.TextMuted).SingleLine()
-							}
-						})
-						start = end
-					}
-				})
-				ui.Row(c).Gap(gap).Label(tr("Commits per day")).Children(func() {
-					for weekIndex, week := range weeks {
-						c.Key(fmt.Sprintf("heat-week:%d", weekIndex))
-						ui.Column(c).Gap(gap).Children(func() {
-							for dayIndex, day := range week {
-								c.Key(fmt.Sprintf("heat-day:%d", dayIndex))
-								box := ui.Box(c).Width(cell).Height(cell).Radius(2)
-								if !day.InRange {
-									continue
+					ui.Row(c).Gap(gap).Label(tr("Commits per day")).Children(func() {
+						for weekIndex, week := range weeks {
+							c.Key(fmt.Sprintf("heat-week:%d", weekIndex))
+							ui.Column(c).Gap(gap).Children(func() {
+								for dayIndex, day := range week {
+									c.Key(fmt.Sprintf("heat-day:%d", dayIndex))
+									box := ui.Box(c).Width(cell).Height(cell).Radius(2)
+									if !day.InRange {
+										continue
+									}
+									box.Background(heatColor(theme, heatLevel(day.Count, heat.Max)))
+									box.Tooltip(day.Date.Format("2006-01-02") + " · " + contributorCountLabel(day.Count))
 								}
-								box.Background(heatColor(theme, heatLevel(day.Count, heat.Max)))
-								box.Tooltip(day.Date.Format("2006-01-02") + " · " + contributorCountLabel(day.Count))
-							}
-						})
-					}
+							})
+						}
+					})
 				})
 			})
-		})
+		}
+		if line {
+			cockpitHeatLine(c, weeks, cell+gap)
+		} else {
+			grid()
+		}
 		ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
 			cockpitChip(c, trf("%s commits in the last year", groupedNumber(heat.Total)), theme.Success, nil)
 			cockpitChip(c, trf("%d active days", heat.ActiveDays), theme.TextMuted, nil)
@@ -114,6 +136,9 @@ func (a *app) cockpitHeatmapCard(c *ui.Context, width float32) {
 			}
 			if heat.Busiest.Count > 0 {
 				cockpitChip(c, trf("busiest day %s · %d commits", heat.Busiest.Date.Format("2006-01-02"), heat.Busiest.Count), theme.TextMuted, nil)
+			}
+			if line {
+				return
 			}
 			ui.Spacer(c).Grow(1)
 			ui.Text(c, tr("Less")).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted)
@@ -133,7 +158,13 @@ func (a *app) cockpitCodeChangesCard(c *ui.Context) {
 	if insights.volumeUnavailable {
 		return
 	}
-	a.cockpitCard(c, "code-changes", "Code changes", diffUnifiedIcon, func() {
+	actions := func() {
+		if index, changed := cockpitPeriodButton(c, insights.volumePeriod, tr("Code changes period")); changed {
+			a.cockpit.insights.volumePeriod = index
+			a.loadCockpitCodeVolume()
+		}
+	}
+	a.cockpitCardWithActions(c, "code-changes", "Code changes", diffUnifiedIcon, actions, func() {
 		theme := c.Theme()
 		switch {
 		case insights.volumeErr != "":
@@ -141,7 +172,7 @@ func (a *app) cockpitCodeChangesCard(c *ui.Context) {
 			ui.Text(c, insights.volumeErr).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
 			return
 		case !insights.volumeLoaded:
-			ui.Text(c, tr("Reading the history…")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+			cockpitLoading(c, tr("Reading the history…"), 130)
 			return
 		}
 		volume := insights.volume
@@ -162,28 +193,33 @@ func (a *app) cockpitCodeChangesCard(c *ui.Context) {
 		for index := range volume.BucketAdded {
 			most = max(most, volume.BucketAdded[index], volume.BucketDeleted[index])
 		}
-		const half = 22
-		barWidth := float32(12)
-		if len(volume.BucketAdded) > 13 {
-			barWidth = 8
-		}
-		ui.Row(c).Gap(3).Label(tr("Lines added and deleted over the period")).Children(func() {
+		ui.Row(c).FillWidth().MinWidth(0).Grow(1).AlignItems(ui.Stretch).Gap(3).MinHeight(60).Label(tr("Lines added and deleted over the period")).Children(func() {
 			for index := range volume.BucketAdded {
 				added, deleted := volume.BucketAdded[index], volume.BucketDeleted[index]
 				from := time.Unix(volume.BucketStart+int64(index)*volume.BucketSeconds, 0).Local()
 				tip := from.Format("2006-01-02") + " · +" + groupedNumber(added) + " −" + groupedNumber(deleted)
 				c.Key(fmt.Sprintf("volume-bar:%d", index))
-				ui.Column(c).Gap(1).Children(func() {
-					ui.Column(c).Height(half).Width(barWidth).Justify(ui.End).Children(func() {
+				ui.Column(c).Gap(1).Width(0).Grow(1).MinWidth(0).Children(func() {
+					// An empty period still leaves a faint stub, so the chart is never blank.
+					ui.Column(c).FillWidth().Grow(1).Children(func() {
 						if added > 0 {
-							ui.Box(c).Width(barWidth).Height(float32(max(2, half*added/most))).Radius(2).
+							share := float32(max(4, 100*added/most))
+							ui.Box(c).FillWidth().Height(0).Grow(100 - share)
+							ui.Box(c).FillWidth().Height(0).Grow(share).Radius(2).
 								Background(theme.Success.Alpha(0.75)).Tooltip(tip)
+						} else {
+							ui.Box(c).FillWidth().Height(0).Grow(1)
+							ui.Box(c).FillWidth().Height(2).Radius(1).Background(theme.Border.Alpha(0.6)).Tooltip(tip)
 						}
 					})
-					ui.Column(c).Height(half).Width(barWidth).Children(func() {
+					ui.Column(c).FillWidth().Grow(1).Children(func() {
 						if deleted > 0 {
-							ui.Box(c).Width(barWidth).Height(float32(max(2, half*deleted/most))).Radius(2).
+							share := float32(max(4, 100*deleted/most))
+							ui.Box(c).FillWidth().Height(0).Grow(share).Radius(2).
 								Background(theme.Danger.Alpha(0.75)).Tooltip(tip)
+							ui.Box(c).FillWidth().Height(0).Grow(100 - share)
+						} else {
+							ui.Box(c).FillWidth().Height(2).Radius(1).Background(theme.Border.Alpha(0.6)).Tooltip(tip)
 						}
 					})
 				})
@@ -212,7 +248,7 @@ func (a *app) cockpitBranchHealthCard(c *ui.Context) {
 			ui.Text(c, insights.healthErr).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
 			return
 		case !insights.healthLoaded:
-			ui.Text(c, tr("Reading the branches…")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+			cockpitLoading(c, tr("Reading the branches…"), 130)
 			return
 		}
 		health := insights.health
@@ -335,4 +371,97 @@ func cockpitBranchAge(unix int64, now time.Time) string {
 		return trf("%d months ago", days/30)
 	}
 	return trf("%d years ago", days/365)
+}
+
+// cockpitViewToggle is a small icon button choosing between views of a card;
+// the shown one is marked. It returns true when it is pressed.
+func cockpitViewToggle(c *ui.Context, label string, icon *ui.SVG, active bool) bool {
+	pressed := false
+	flatToggleIconButton(c, label, label, icon, 15, 4, active, func() { pressed = true })
+	return pressed
+}
+
+// cockpitHeatLine draws the commits of each week as an area under a line, one
+// point per week, lined up with the month names the grid would have.
+func cockpitHeatLine(c *ui.Context, weeks [][7]heatDay, step float32) {
+	theme := c.Theme()
+	totals := make([]int, len(weeks))
+	most := 1
+	for index, week := range weeks {
+		for _, day := range week {
+			totals[index] += day.Count
+		}
+		most = max(most, totals[index])
+	}
+	const height = 98
+	width := step * float32(len(weeks))
+	ui.Row(c).FillWidth().MinWidth(0).Justify(ui.Center).AlignItems(ui.Start).Gap(6).Children(func() {
+		ui.Column(c).Width(26).Height(height).Padding(15, 0, 0, 0).Justify(ui.SpaceBetween).Shrink(0).Children(func() {
+			ui.Text(c, groupedNumber(most)).FontSize(theme.FontSize - 3).TextColor(theme.TextMuted).SingleLine()
+			ui.Text(c, "0").FontSize(theme.FontSize - 3).TextColor(theme.TextMuted).SingleLine()
+		})
+		ui.Column(c).Gap(3).Children(func() {
+			ui.Row(c).Gap(0).Height(12).Children(func() {
+				for start := 0; start < len(weeks); {
+					month := weeks[start][0].Date.Month()
+					end := start
+					for end < len(weeks) && weeks[end][0].Date.Month() == month {
+						end++
+					}
+					c.Key(fmt.Sprintf("heat-line-month:%d", start))
+					ui.Box(c).Width(float32(end-start) * step).Height(12).Clip().Children(func() {
+						if end-start >= 2 {
+							ui.Text(c, weeks[start][0].Date.Format("Jan")).FontSize(theme.FontSize - 3).
+								TextColor(theme.TextMuted).SingleLine()
+						}
+					})
+					start = end
+				}
+			})
+			plot := ui.Row(c).Width(width).Height(height).Label(tr("Commits per week"))
+			plot.Draw(func(p *ui.Painter, r ui.Rect) {
+				point := func(index int) (float32, float32) {
+					x := r.X + (float32(index)+0.5)*r.W/float32(len(totals))
+					y := r.Y + r.H - 3 - (r.H-9)*float32(totals[index])/float32(most)
+					return x, y
+				}
+				for _, share := range []float32{0, 0.5, 1} {
+					var grid ui.Path
+					y := r.Y + r.H - 3 - (r.H-9)*share
+					grid.MoveTo(r.X, y).LineTo(r.X+r.W, y)
+					p.StrokePath(&grid, 1, theme.Border.Alpha(0.5))
+				}
+				var area, stroke ui.Path
+				firstX, _ := point(0)
+				lastX, _ := point(len(totals) - 1)
+				area.MoveTo(firstX, r.Y+r.H-3)
+				for index := range totals {
+					x, y := point(index)
+					area.LineTo(x, y)
+					if index == 0 {
+						stroke.MoveTo(x, y)
+					} else {
+						stroke.LineTo(x, y)
+					}
+				}
+				area.LineTo(lastX, r.Y+r.H-3).Close()
+				p.FillPath(&area, theme.Accent.Alpha(0.2))
+				p.StrokePath(stroke.Join(ui.RoundJoin), 1.75, theme.Accent)
+				for index := range totals {
+					if totals[index] == most {
+						x, y := point(index)
+						var dot ui.Path
+						p.FillPath(dot.Circle(x, y, 3), theme.Accent)
+					}
+				}
+			})
+			plot.Children(func() {
+				for index, week := range weeks {
+					c.Key(fmt.Sprintf("heat-line-week:%d", index))
+					tip := week[0].Date.Format("2006-01-02") + " · " + contributorCountLabel(totals[index])
+					ui.Box(c).Width(0).Grow(1).MinWidth(0).FillHeight().Tooltip(tip)
+				}
+			})
+		})
+	})
 }

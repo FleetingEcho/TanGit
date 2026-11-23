@@ -225,12 +225,28 @@ type codeVolumeSession interface {
 	CodeVolume(ctx context.Context, branch string, since int64, maxCommits int) (repository.CodeVolume, error)
 }
 
+type languageSession interface {
+	LanguageStats(ctx context.Context) (repository.LanguageStats, error)
+}
+
 type branchHealthSession interface {
 	BranchHealth(ctx context.Context) (repository.BranchHealth, error)
 }
 
 type cockpitInsights struct {
 	heatmap commitHeatmap
+	// heatmapLine shows the commit activity as a line over the weeks instead
+	// of a grid of days.
+	heatmapLine bool
+
+	langUnavailable bool
+	langLoading     bool
+	langLoaded      bool
+	langErr         string
+	languages       repository.LanguageStats
+	langGeneration  uint64
+	langLoadedAt    time.Time
+	langToken       uint64
 
 	volumeUnavailable bool
 	volumeLoading     bool
@@ -238,8 +254,10 @@ type cockpitInsights struct {
 	volumeErr         string
 	volume            codeVolumeStats
 	volumeKey         string
-	volumeToken       uint64
-	volumeCache       map[string]insightsCacheEntry[repository.CodeVolume]
+	// volumePeriod is the Code changes card's own time range.
+	volumePeriod int
+	volumeToken  uint64
+	volumeCache  map[string]insightsCacheEntry[repository.CodeVolume]
 
 	healthUnavailable bool
 	healthLoading     bool
@@ -277,7 +295,7 @@ func (a *app) loadCockpitCodeVolume() {
 		return
 	}
 	insights.volumeUnavailable = false
-	branch, period := state.branch, state.period
+	branch, period := state.branch, insights.volumePeriod
 	key := codeVolumeKey(branch, period)
 	now := time.Now()
 	if entry, ok := insights.volumeCache[key]; ok && entry.generation == a.generation && now.Sub(entry.loadedAt) < cockpitContributorsMaxAge {
@@ -356,8 +374,50 @@ func (a *app) loadCockpitBranchHealth() {
 	}()
 }
 
+// loadCockpitLanguages counts the repository's source by language, unless a
+// recent read of this repository is held.
+func (a *app) loadCockpitLanguages() {
+	insights := &a.cockpit.insights
+	if insights.langLoading || a.session == nil {
+		return
+	}
+	session, ok := a.session.(languageSession)
+	if !ok {
+		insights.langUnavailable = true
+		return
+	}
+	insights.langUnavailable = false
+	if insights.langLoaded && insights.langGeneration == a.generation && time.Since(insights.langLoadedAt) < cockpitContributorsMaxAge {
+		return
+	}
+	insights.langLoading, insights.langLoaded = true, false
+	insights.langToken++
+	token := insights.langToken
+	generation := a.generation
+	ctx := a.repositoryWork.Context()
+	go func() {
+		defer a.recoverBackground()
+		stats, err := session.LanguageStats(ctx)
+		a.update(func() {
+			current := &a.cockpit.insights
+			if generation != a.generation || current.langToken != token {
+				return
+			}
+			current.langLoading = false
+			if err != nil {
+				current.langErr = safeError(err)
+				return
+			}
+			current.langErr = ""
+			current.languages, current.langLoaded = stats, true
+			current.langGeneration, current.langLoadedAt = generation, time.Now()
+		})
+	}()
+}
+
 // loadCockpitInsights starts the reads of the three views for the Overview.
 func (a *app) loadCockpitInsights() {
+	a.loadCockpitLanguages()
 	a.loadCockpitCodeVolume()
 	a.loadCockpitBranchHealth()
 }

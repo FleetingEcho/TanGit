@@ -287,7 +287,7 @@ func TestOverviewShowsContributorStatistics(t *testing.T) {
 	h.waitFor(t, "the contributor statistics", func() bool { return h.app.cockpit.contributors.loaded })
 	h.tester.Frame()
 	texts := h.texts()
-	for _, want := range []string{"Contributors", "Most active", "3 commits", "Last week"} {
+	for _, want := range []string{"Contributors", "Most active", "3 commits"} {
 		if !slices.Contains(texts, want) {
 			t.Errorf("Overview is missing %q: %q", want, texts)
 		}
@@ -296,10 +296,18 @@ func TestOverviewShowsContributorStatistics(t *testing.T) {
 	if _, ok := h.tester.Find("Alice Example — 2 commits"); !ok {
 		t.Fatalf("top contributor for the week is missing: %q", texts)
 	}
+	// The Contributors card has its own period dropdown, apart from Code changes.
+	if err := h.tester.Click("Contributor period"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
 	if err := h.tester.Click("Last year"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
+	if h.app.cockpit.insights.volumePeriod != contributorRangeWeek {
+		t.Fatal("the Contributors period must not change the Code changes period")
+	}
 	if _, ok := h.tester.Find("Alice Example — 4 commits"); !ok {
 		t.Fatalf("switching to a year did not recount: %q", h.texts())
 	}
@@ -571,5 +579,55 @@ func TestOverviewShowsHeatmapCodeChangesAndBranchHealth(t *testing.T) {
 	h.tester.Frame()
 	if _, ok := h.tester.Find("old"); !ok {
 		t.Fatalf("the stale branch is not listed: %q", h.texts())
+	}
+}
+
+// The charts take the height their card has, instead of a fixed few pixels, and
+// a card that is still loading is not much shorter than the finished one.
+func TestOverviewChartsFillTheirCards(t *testing.T) {
+	h, _ := menuTestAppWithCalls(t)
+	now := time.Now().Unix()
+	day := int64(24 * 3600)
+	h.app.snapshot.Branches = []repository.Branch{{Name: "main", Head: true}, {Name: "done"}, {Name: "old"}}
+	h.app.session = insightsSession{
+		summarySession: summarySession{fakeSession: h.app.session.(fakeSession), summary: repository.ContributorSummary{
+			Contributors: []repository.Contributor{{Name: "Alice", Email: "a@x", Commits: 3, CommitTimes: []int64{now - 5*day, now - 4*day, now - day}}},
+			TotalCommits: 3, FirstCommit: now - 5*day, LastCommit: now - day,
+		}},
+		volume: repository.CodeVolume{Commits: []repository.CommitVolume{{At: now - day, Added: 1200, Deleted: 300, Files: 4}}},
+		health: repository.BranchHealth{Default: "main", Branches: []repository.BranchHealthEntry{
+			{Name: "done", Merged: true, LastCommit: now - 3*day, Behind: 2},
+			{Name: "d2", Merged: true, LastCommit: now - 3*day}, {Name: "d3", Merged: true, LastCommit: now - 3*day},
+			{Name: "d4", Merged: true, LastCommit: now - 3*day}, {Name: "d5", Merged: true, LastCommit: now - 3*day},
+			{Name: "d6", Merged: true, LastCommit: now - 3*day}, {Name: "old", LastCommit: now - 300*day, Behind: 40},
+		}},
+	}
+	h.app.setWorkspaceTab(sectionOverview)
+	h.tester.SetSize(1280, 2400)
+	h.tester.Frame()
+	h.waitFor(t, "the history reads", func() bool {
+		in := h.app.cockpit.insights
+		return h.app.cockpit.contributors.loaded && in.volumeLoaded && in.healthLoaded
+	})
+	h.tester.Frame()
+	for _, label := range []string{"Commits over the period", "Lines added and deleted over the period"} {
+		info, ok := h.tester.Access(label)
+		if !ok {
+			t.Fatalf("chart %q is missing", label)
+		}
+		if info.Bounds.H < 44 {
+			t.Errorf("chart %q is only %.0f DIP high", label, info.Bounds.H)
+		}
+		t.Logf("%s: %+v", label, info.Bounds)
+	}
+	for _, card := range []string{"Code changes", "Branch health"} {
+		if info, ok := h.tester.Access(card); ok {
+			t.Logf("card %s: %+v", card, info.Bounds)
+		}
+	}
+	chart, _ := h.tester.Access("Lines added and deleted over the period")
+	card, _ := h.tester.Access("Code changes")
+	if bottom := card.Bounds.Y + card.Bounds.H; chart.Bounds.Y+chart.Bounds.H < bottom-40 {
+		t.Errorf("the chart ends at %.0f, far above its card's bottom %.0f", chart.Bounds.Y+chart.Bounds.H, bottom)
 	}
 }

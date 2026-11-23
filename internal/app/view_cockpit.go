@@ -16,6 +16,10 @@ type cockpitUIState struct {
 	// tileInRow says the card being built shares a row with another, so it takes
 	// an equal share of the width; otherwise it fills the width of its column.
 	tileInRow bool
+	// tileGrow is the share of a row the card being built takes, 1 when unset.
+	tileGrow float32
+	// width is the Overview's measured width, so charts can size their bars to it.
+	width float32
 	// contributors is the history statistics the Overview's Contributors card
 	// shows, read in the background when the Overview is entered.
 	contributors cockpitContributors
@@ -395,12 +399,27 @@ func (a *app) cockpitView(c *ui.Context) {
 	theme := c.Theme()
 	root := ui.Column(c).Grow(1).FillWidth().MinWidth(0)
 	width := a.measuredActionGroupWidth(c, root)
+	a.cockpit.width = width
 	root.Children(func() {
 		ui.Scroll(c).Grow(1).TrackScroll(&a.cockpit.scroll).Children(func() {
 			ui.Column(c).FillWidth().MinWidth(0).Gap(0).Padding(0, 2, 6, 2).Children(func() {
 				a.cockpit.tileInRow = false
 				a.cockpitContributorsCard(c, width >= 760)
-				a.cockpitHeatmapCard(c, width)
+				// Commit activity and the languages share a row when it is wide.
+				if width >= 1100 {
+					a.cockpit.tileInRow, a.cockpit.tileGrow = true, 2
+					c.Key("cockpit-activity-row")
+					ui.Row(c).FillWidth().MinWidth(0).Gap(0).AlignItems(ui.Stretch).Children(func() {
+						a.cockpitHeatmapCard(c, width*2/3)
+						a.cockpit.tileGrow = 1
+						a.cockpitLanguagesCard(c)
+					})
+					a.cockpit.tileGrow = 0
+				} else {
+					a.cockpit.tileInRow = false
+					a.cockpitHeatmapCard(c, width)
+					a.cockpitLanguagesCard(c)
+				}
 				a.cockpit.tileInRow = width >= 760
 				if width >= 760 {
 					c.Key("cockpit-insight-row")
@@ -473,22 +492,82 @@ func (a *app) cockpitAttentionCard(c *ui.Context, theme *ui.Theme, summary cockp
 // cockpitCard is one status tile: a tinted icon and title, then its content.
 // Tiles in a row share its width and height.
 func (a *app) cockpitCard(c *ui.Context, id, title string, icon *ui.SVG, body func()) {
+	a.cockpitCardWithActions(c, id, title, icon, nil, body)
+}
+
+// cockpitCardWithActions is cockpitCard with filters and buttons sitting on the
+// title's own row, after the title.
+func (a *app) cockpitCardWithActions(c *ui.Context, id, title string, icon *ui.SVG, actions func(), body func()) {
 	theme := c.Theme()
 	c.Key("cockpit-card:" + id)
 	card := ui.Column(c).MinWidth(0).Gap(4).Padding(7, 10)
 	if a.cockpit.tileInRow {
-		card = card.Width(0).Grow(1)
+		card = card.Width(0).Grow(max(a.cockpit.tileGrow, 1))
 	} else {
 		card = card.FillWidth()
 	}
 	islandCard(c, card).Label(tr(title)).Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
+		ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(7).Wrap().Children(func() {
 			ui.Box(c).Size(20, 20).Radius(6).Center().Shrink(0).Background(theme.Accent.Alpha(0.14)).Children(func() {
 				ui.Icon(c, icon).FontSize(12).TextColor(theme.Accent)
 			})
 			ui.Text(c, tr(title)).Bold().FontSize(14).Grow(1)
+			if actions != nil {
+				actions()
+			}
 		})
 		body()
+	})
+}
+
+// cockpitPeriodButton is a card's own time-range control: a clock icon button
+// whose menu lists the periods, the current one checked. It returns the new
+// period's index when the user picked another one.
+func cockpitPeriodButton(c *ui.Context, period int, label string) (int, bool) {
+	theme := c.Theme()
+	if period < 0 || period >= len(contributorRanges) {
+		period = 0
+	}
+	button := ui.ButtonBase(c).Padding(4).Radius(theme.Radius).Shrink(0).
+		Label(label).Tooltip(label + " · " + tr(contributorRanges[period].label))
+	if button.Hovered() {
+		button.Background(theme.SurfaceHover)
+	}
+	picked := -1
+	button.PopoverMenuButton(func(m *ui.Menu) {
+		for index, spec := range contributorRanges {
+			if m.Item(tr(spec.label)).Checked(index == period).Chosen() {
+				picked = index
+			}
+		}
+	})
+	button.Children(func() {
+		ui.Icon(c, historyIcon).FontSize(15).TextColor(theme.TextMuted)
+	})
+	return picked, picked >= 0 && picked != period
+}
+
+// cockpitTextLink is a small underlined word acting as a button.
+func cockpitTextLink(c *ui.Context, text, label, tooltip string) bool {
+	theme := c.Theme()
+	button := ui.ButtonBase(c).Padding(2, 4).Radius(theme.Radius).Shrink(0).Label(label).Tooltip(tooltip)
+	if button.Hovered() {
+		button.Background(theme.SurfaceHover)
+	}
+	button.Children(func() {
+		ui.Text(c, text).FontSize(theme.FontSize - 1).TextColor(theme.Accent).Underline().SingleLine()
+	})
+	return button.Clicked()
+}
+
+// cockpitLoading is the placeholder a card shows while its data is read. It
+// holds roughly the height the finished card has, so the page does not jump when
+// the data arrives, and sits in the middle of that space.
+func cockpitLoading(c *ui.Context, text string, height float32) {
+	theme := c.Theme()
+	ui.Row(c).FillWidth().MinWidth(0).Height(height).Justify(ui.Center).AlignItems(ui.Center).Gap(8).Children(func() {
+		ui.Spinner(c).Label(text)
+		ui.Text(c, text).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 	})
 }
 
@@ -682,45 +761,31 @@ func (a *app) cockpitContributorsCard(c *ui.Context, wide bool) {
 	if state.unavailable {
 		return
 	}
-	a.cockpitCard(c, "contributors", "Contributors", personIcon, func() {
+	actions := func() {
+		a.contributorBranchPicker(c, 150)
+		if index, changed := cockpitPeriodButton(c, state.period, tr("Contributor period")); changed {
+			a.cockpit.contributors.period = index
+			a.recomputeContributorStats()
+		}
+		if a.showContributors != nil {
+			tip := tr("Open the Activity Center's contributor list")
+			if state.loaded && state.stats.Total > 5 {
+				tip = trf("View all contributors (%d more)", state.stats.Total-5)
+			}
+			if cockpitTextLink(c, tr("All"), tr("View all contributors"), tip) {
+				a.showContributors()
+			}
+		}
+	}
+	a.cockpitCardWithActions(c, "contributors", "Contributors", personIcon, actions, func() {
 		theme := c.Theme()
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
-			a.contributorBranchPicker(c, 190)
-			ui.Row(c).AlignItems(ui.Center).Gap(4).Wrap().Label(tr("Contributor period")).Children(func() {
-				for index, period := range contributorRanges {
-					index := index
-					active := state.period == index
-					label := tr(period.label)
-					c.Key(fmt.Sprintf("cockpit-period:%d", index))
-					button := ui.ButtonBase(c).Padding(2, 9).Radius(999).Border(1, theme.Border).Label(label).Selected(active)
-					switch {
-					case active:
-						button.Background(theme.Accent.Alpha(0.18)).Border(1, theme.Accent.Alpha(0.6))
-					case button.Hovered():
-						button.Background(theme.SurfaceHover)
-					}
-					button.Children(func() {
-						color := theme.TextMuted
-						if active {
-							color = theme.Accent
-						}
-						ui.Text(c, label).FontSize(theme.FontSize - 1).TextColor(color).SingleLine()
-					})
-					if button.Clicked() {
-						a.cockpit.contributors.period = index
-						a.recomputeContributorStats()
-						a.loadCockpitCodeVolume()
-					}
-				}
-			})
-		})
 		switch {
 		case state.err != "":
 			ui.Text(c, tr("Could not read the contributors")).Bold().FontSize(theme.FontSize - 1)
 			ui.Text(c, state.err).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
 			return
 		case !state.loaded:
-			ui.Text(c, tr("Reading the history…")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+			cockpitLoading(c, tr("Reading the history…"), 150)
 			return
 		case state.summary.TotalCommits == 0:
 			ui.Text(c, tr("No commits yet")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
@@ -791,25 +856,14 @@ func (a *app) cockpitContributorsCard(c *ui.Context, wide bool) {
 			}
 		}
 		if wide {
-			ui.Row(c).FillWidth().MinWidth(0).Gap(16).AlignItems(ui.Start).Children(func() {
+			ui.Row(c).FillWidth().MinWidth(0).Gap(16).AlignItems(ui.Stretch).Children(func() {
 				ui.Column(c).Width(0).Grow(1).MinWidth(0).Gap(6).Children(statsColumn)
+				ui.Box(c).Width(1).Shrink(0).Background(theme.Border.Alpha(0.5))
 				ui.Column(c).Width(0).Grow(1).MinWidth(0).Gap(2).Children(topColumn)
 			})
 		} else {
 			statsColumn()
 			topColumn()
-		}
-		if a.showContributors != nil {
-			ui.Row(c).Gap(7).Wrap().Children(func() {
-				label := tr("View all contributors")
-				if remaining := stats.Total - 5; remaining > 0 {
-					label = trf("View all contributors (%d more)", remaining)
-				}
-				if ui.Button(c, label).Label(tr("View all contributors")).
-					Tooltip(tr("Open the Activity Center's contributor list")).Clicked() {
-					a.showContributors()
-				}
-			})
 		}
 	})
 }
@@ -822,21 +876,13 @@ func cockpitCommitChart(c *ui.Context, stats contributorRangeStats) {
 	for _, count := range stats.Buckets {
 		most = max(most, count)
 	}
-	const chartHeight = 34
-	barWidth := float32(12)
-	switch {
-	case len(stats.Buckets) > 24:
-		barWidth = 7
-	case len(stats.Buckets) > 13:
-		barWidth = 10
-	}
-	ui.Column(c).Gap(3).Children(func() {
-		ui.Row(c).AlignItems(ui.End).Gap(3).Height(chartHeight).Label(tr("Commits over the period")).Children(func() {
+	ui.Column(c).FillWidth().MinWidth(0).Gap(3).Children(func() {
+		ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Stretch).Gap(3).MinHeight(44).Label(tr("Commits over the period")).Children(func() {
 			for index, count := range stats.Buckets {
 				c.Key(fmt.Sprintf("cockpit-bar:%d", index))
-				height := float32(3)
+				percent := float32(3)
 				if count > 0 {
-					height = float32(max(5, chartHeight*count/most))
+					percent = float32(max(8, 100*count/most))
 				}
 				color := theme.Accent.Alpha(0.45)
 				if index == len(stats.Buckets)-1 {
@@ -847,8 +893,12 @@ func cockpitCommitChart(c *ui.Context, stats contributorRangeStats) {
 				if stats.BucketSeconds > secondsPerDay {
 					tip += " – " + from.Add(time.Duration(stats.BucketSeconds-1)*time.Second).Format("2006-01-02")
 				}
-				ui.Box(c).Width(barWidth).Height(height).Radius(2).Background(color).
-					Tooltip(tip + " · " + contributorCountLabel(count))
+				// The bar and the space above it share the slot's height by ratio.
+				ui.Column(c).Width(0).Grow(1).MinWidth(0).Children(func() {
+					ui.Box(c).FillWidth().Height(0).Grow(100 - percent)
+					ui.Box(c).FillWidth().Height(0).Grow(percent).Radius(2).Background(color).
+						Tooltip(tip + " · " + contributorCountLabel(count))
+				})
 			}
 		})
 		ui.Text(c, tr("Commits over the period")).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted)
