@@ -253,30 +253,17 @@ func TestOverviewScreenshots(t *testing.T) {
 	for _, size := range []struct {
 		name string
 		w, h int
-	}{{"wide", 1280, 900}, {"narrow", 720, 900}} {
+	}{{"wide", 1280, 1700}, {"narrow", 720, 2300}} {
 		s, tt, updated := activityCenterShell(t)
 		a := s.activeApp()
-		a.session = summarySession{fakeSession: fakeSession{}, summary: repository.ContributorSummary{
-			Contributors: []repository.Contributor{
-				{Name: "Alice Example", Email: "alice@example.com", Commits: 128},
-				{Name: "Bob Builder", Email: "bob@example.com", Commits: 64},
-				{Name: "Chen Wei", Email: "chen@example.com", Commits: 31},
-				{Name: "Dana Okoye", Email: "dana@example.com", Commits: 9},
-			},
-			TotalCommits: 232, FirstCommit: 1_600_000_000,
-		}}
-		now := time.Now().Unix()
-		for index := range a.session.(summarySession).summary.Contributors {
-			contributor := &a.session.(summarySession).summary.Contributors[index]
-			for i := 0; i < contributor.Commits; i++ {
-				contributor.CommitTimes = append(contributor.CommitTimes, now-int64(i*((index+2)*7))*3600)
-			}
-			slices.Sort(contributor.CommitTimes)
-		}
+		a.session = overviewShowcaseSession()
 		a.workspaceTab = sectionOverview
 		a.prepareCockpit()
 		tt.SetSize(size.w, size.h)
-		settleShot(t, tt, updated, func() bool { return a.cockpit.contributors.loaded })
+		settleShot(t, tt, updated, func() bool {
+			in := a.cockpit.insights
+			return a.cockpit.contributors.loaded && in.volumeLoaded && in.healthLoaded
+		})
 		saveScreenshot(t, dir, "overview-"+size.name+"-dark", tt)
 	}
 }
@@ -327,5 +314,45 @@ func TestContributorsScaleToHundredsOfPeople(t *testing.T) {
 	s.activity.contributors.sortBy = contributorSortCommits
 	if first := s.visibleContributors()[0]; first.Name != "Person 000" {
 		t.Fatalf("most commits first = %q", first.Name)
+	}
+}
+
+// overviewShowcaseSession is a session with a year of history for screenshots
+// of the Overview: contributors, code changes and branches.
+func overviewShowcaseSession() insightsSession {
+	now := time.Now().Unix()
+	day := int64(24 * 3600)
+	people := []repository.Contributor{
+		{Name: "Alice Example", Email: "alice@example.com"},
+		{Name: "Bob Builder", Email: "bob@example.com"},
+		{Name: "Chen Wei", Email: "chen@example.com"},
+		{Name: "Dana Okoye", Email: "dana@example.com"},
+	}
+	total := 0
+	for index := range people {
+		for i := 0; i < 160-index*30; i++ {
+			people[index].CommitTimes = append(people[index].CommitTimes, now-int64((i*5+index*3)%360)*day)
+		}
+		slices.Sort(people[index].CommitTimes)
+		people[index].Commits = len(people[index].CommitTimes)
+		total += people[index].Commits
+	}
+	var volume repository.CodeVolume
+	for i := 0; i < 90; i++ {
+		volume.Commits = append(volume.Commits, repository.CommitVolume{At: now - int64(i*4)*3600*5, Added: 40 + (i*37)%300, Deleted: 10 + (i*53)%120, Files: 1 + i%6})
+	}
+	return insightsSession{
+		summarySession: summarySession{fakeSession: fakeSession{}, summary: repository.ContributorSummary{
+			Contributors: people, TotalCommits: total, FirstCommit: now - 360*day, LastCommit: now,
+		}},
+		volume: volume,
+		health: repository.BranchHealth{Default: "main", Branches: []repository.BranchHealthEntry{
+			{Name: "main", Current: true, LastCommit: now},
+			{Name: "feature/login", Merged: true, LastCommit: now - 6*day, Behind: 12},
+			{Name: "fix/typo", Merged: true, LastCommit: now - 20*day, Behind: 48},
+			{Name: "experiment/graph", LastCommit: now - 210*day, Behind: 130},
+			{Name: "old/release-1.2", LastCommit: now - 500*day, Behind: 900},
+			{Name: "origin/wip", Remote: true, LastCommit: now - 120*day, Behind: 77},
+		}},
 	}
 }

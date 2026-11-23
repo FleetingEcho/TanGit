@@ -324,4 +324,5 @@ func (a *app) prepareCockpit() {
 		a.refreshAgentTasks()
 	}
 	a.loadCockpitContributors()
+	a.loadCockpitInsights()
 }

@@ -151,5 +151,7 @@ func (a *app) recomputeContributorStats() {
 	if !state.loaded {
 		return
 	}
-	state.stats = computeContributorRange(state.summary, state.period, time.Now())
+	now := time.Now()
+	state.stats = computeContributorRange(state.summary, state.period, now)
+	a.cockpit.insights.heatmap = buildCommitHeatmap(state.summary, heatmapMaxWeeks, now)
 }

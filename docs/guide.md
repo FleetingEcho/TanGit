@@ -254,7 +254,27 @@ contributor, or **View all contributors**, opens the full list in the Activity
 Center. The history is read from Git once in the background when the Overview
 is entered, with every contributor's commit times, and reused for two minutes;
 switching the period recounts it instantly. Sessions that cannot read the
-history leave the card out. The latest five activity items come last. Attention is ordered from actual failures and Git operations through
+history leave the card out.
+
+Three history views follow it. **Commit activity** is a heat map of the last
+year, one square per day and one column per week (as many weeks as fit, at least
+a quarter of a year), shaded by that day's commits, with the year's commit
+count, active days, longest streak and busiest day; it is counted from the same
+contributor read and follows the chosen branch. **Code changes** shows the
+lines added and deleted over the chosen period and branch as a mirrored bar
+chart, with the net change and commit count; it reads Git's `--shortstat` for
+the period in the background, leaves merge commits out (their changes are in the
+commits they merged), caches each period and branch for two minutes, and for
+**All time** counts only the newest 5,000 commits and says so. **Branch health**
+compares every local and remote branch with the default branch (the remote's
+HEAD, else main, master, trunk or develop) in a few Git calls, however many
+branches there are, and groups the ones that may need care: **merged** (safe to
+delete), **stale** (no commit for 90 days) and **far behind** (200 or more
+commits behind). Each branch is in one group, the first that fits. Choosing a
+group lists up to six branches with their age and distance; a click opens the
+branch in Branches, a merged local branch has a delete button that asks first,
+and "N more" opens the Branches section. Sessions that cannot read these leave
+the cards out. The latest five activity items come last. Attention is ordered from actual failures and Git operations through
 conflicts, unsaved buffers, Agent/transfer issues and ordinary sync or review
 work. At most three primary items appear. Every action uses the shared Command
 Catalog and is checked again before execution.

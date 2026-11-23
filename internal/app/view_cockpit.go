@@ -19,6 +19,8 @@ type cockpitUIState struct {
 	// contributors is the history statistics the Overview's Contributors card
 	// shows, read in the background when the Overview is entered.
 	contributors cockpitContributors
+	// insights are the heat map, code volume and branch health views.
+	insights cockpitInsights
 }
 
 // contributorSummarySession is the optional capability behind the card;
@@ -123,6 +125,7 @@ func (a *app) selectContributorBranch(branch, label string) {
 	state.token++
 	state.loaded = false
 	a.loadCockpitContributors()
+	a.loadCockpitCodeVolume()
 }
 
 // contributorBranchChoices are the branches the picker offers: every branch,
@@ -397,6 +400,19 @@ func (a *app) cockpitView(c *ui.Context) {
 			ui.Column(c).FillWidth().MinWidth(0).Gap(0).Padding(0, 2, 6, 2).Children(func() {
 				a.cockpit.tileInRow = false
 				a.cockpitContributorsCard(c, width >= 760)
+				a.cockpitHeatmapCard(c, width)
+				a.cockpit.tileInRow = width >= 760
+				if width >= 760 {
+					c.Key("cockpit-insight-row")
+					ui.Row(c).FillWidth().MinWidth(0).Gap(0).AlignItems(ui.Stretch).Children(func() {
+						a.cockpitCodeChangesCard(c)
+						a.cockpitBranchHealthCard(c)
+					})
+				} else {
+					a.cockpitCodeChangesCard(c)
+					a.cockpitBranchHealthCard(c)
+				}
+				a.cockpit.tileInRow = false
 				a.cockpitAttentionCard(c, theme, summary)
 				// Four status tiles: two across when there is room, one otherwise.
 				tiles := []func(){
@@ -693,6 +709,7 @@ func (a *app) cockpitContributorsCard(c *ui.Context, wide bool) {
 					if button.Clicked() {
 						a.cockpit.contributors.period = index
 						a.recomputeContributorStats()
+						a.loadCockpitCodeVolume()
 					}
 				}
 			})

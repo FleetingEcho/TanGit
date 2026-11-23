@@ -416,3 +416,160 @@ func TestOverviewContributorsFollowTheChosenBranch(t *testing.T) {
 		t.Fatalf("branch choices = %+v", choices)
 	}
 }
+
+func TestCommitHeatmapCountsDaysStreaksAndLevels(t *testing.T) {
+	now := time.Date(2026, 6, 10, 15, 0, 0, 0, time.Local) // a Wednesday
+	at := func(daysAgo int, hour int) int64 {
+		day := time.Date(2026, 6, 10, hour, 0, 0, 0, time.Local).AddDate(0, 0, -daysAgo)
+		return day.Unix()
+	}
+	summary := repository.ContributorSummary{Contributors: []repository.Contributor{
+		{Name: "A", Email: "a@x", CommitTimes: []int64{at(0, 9), at(0, 11), at(1, 10), at(2, 10), at(9, 10), at(400, 10)}},
+	}}
+	heat := buildCommitHeatmap(summary, 4, now)
+	if len(heat.Weeks) != 4 {
+		t.Fatalf("weeks = %d", len(heat.Weeks))
+	}
+	// 5 commits fall inside four weeks; the one 400 days ago does not.
+	if heat.Total != 5 || heat.ActiveDays != 4 || heat.Max != 2 {
+		t.Fatalf("total=%d active=%d max=%d", heat.Total, heat.ActiveDays, heat.Max)
+	}
+	if heat.LongestStreak != 3 {
+		t.Fatalf("longest streak = %d, want 3 (today, yesterday and the day before)", heat.LongestStreak)
+	}
+	if heat.Busiest.Count != 2 || !heat.Busiest.Date.Equal(time.Date(2026, 6, 10, 0, 0, 0, 0, time.Local)) {
+		t.Fatalf("busiest = %+v", heat.Busiest)
+	}
+	// The last column starts on Monday; days after today are out of range.
+	last := heat.Weeks[3]
+	if weekdayIndex(last[0].Date) != 0 || last[2].Count != 2 || last[3].InRange {
+		t.Fatalf("last week = %+v", last)
+	}
+	if heatLevel(0, 10) != 0 || heatLevel(1, 10) != 1 || heatLevel(10, 10) != 4 || heatLevel(5, 10) != 2 {
+		t.Fatal("heat levels are off")
+	}
+}
+
+func TestCodeVolumeBucketsByPeriod(t *testing.T) {
+	now := time.Unix(100_000_000, 0)
+	day := int64(24 * 3600)
+	volume := repository.CodeVolume{Commits: []repository.CommitVolume{
+		{At: now.Unix() - day, Added: 10, Deleted: 2},
+		{At: now.Unix() - 2*day, Added: 5},
+		{At: now.Unix() - 40*day, Added: 99}, // outside the week
+	}}
+	stats := bucketCodeVolume(volume, contributorRangeWeek, now)
+	if stats.Added != 15 || stats.Deleted != 2 || stats.Commits != 2 || len(stats.BucketAdded) != 7 {
+		t.Fatalf("week = %+v", stats)
+	}
+	if stats.BucketAdded[5] != 10 || stats.BucketDeleted[5] != 2 || stats.BucketAdded[4] != 5 {
+		t.Fatalf("week buckets = %v / %v", stats.BucketAdded, stats.BucketDeleted)
+	}
+	all := bucketCodeVolume(volume, contributorRangeAll, now)
+	if all.Added != 114 || len(all.BucketAdded) != 24 {
+		t.Fatalf("all = %+v", all)
+	}
+	if since := codeVolumeSince(contributorRangeWeek, now); since != now.Unix()+1-7*day {
+		t.Fatalf("since = %d", since)
+	}
+	if codeVolumeSince(contributorRangeAll, now) != 0 {
+		t.Fatal("the whole history has no start")
+	}
+}
+
+func TestBranchHealthGroupsMergedStaleAndFarBehind(t *testing.T) {
+	now := time.Unix(200_000_000, 0)
+	day := int64(24 * 3600)
+	health := repository.BranchHealth{Default: "main", Branches: []repository.BranchHealthEntry{
+		{Name: "main", Current: true, LastCommit: now.Unix()},
+		{Name: "done", Merged: true, LastCommit: now.Unix() - 5*day, Behind: 3},
+		{Name: "abandoned", LastCommit: now.Unix() - 200*day, Behind: 40},
+		{Name: "ancient", LastCommit: now.Unix() - 400*day, Behind: 900},
+		{Name: "drifting", LastCommit: now.Unix() - 10*day, Behind: 350},
+		{Name: "healthy", LastCommit: now.Unix() - 2*day, Behind: 4},
+		{Name: "origin/main", Remote: true, LastCommit: now.Unix()},
+		{Name: "origin/done", Remote: true, Merged: true, LastCommit: now.Unix() - 9*day},
+	}}
+	stats := classifyBranchHealth(health, now)
+	if stats.Local != 6 || stats.Remote != 2 {
+		t.Fatalf("local=%d remote=%d", stats.Local, stats.Remote)
+	}
+	merged, stale, behind := stats.Groups[branchCategoryMerged], stats.Groups[branchCategoryStale], stats.Groups[branchCategoryBehind]
+	if len(merged) != 2 || len(stale) != 2 || len(behind) != 1 {
+		t.Fatalf("groups = merged %v stale %v behind %v", merged, stale, behind)
+	}
+	if stale[0].Name != "ancient" || behind[0].Name != "drifting" {
+		t.Fatalf("order wrong: stale %v behind %v", stale, behind)
+	}
+}
+
+// insightsSession answers the code-volume and branch-health reads, with the
+// contributor summary the heat map is counted from.
+type insightsSession struct {
+	summarySession
+	volume repository.CodeVolume
+	health repository.BranchHealth
+}
+
+func (s insightsSession) CodeVolume(context.Context, string, int64, int) (repository.CodeVolume, error) {
+	return s.volume, nil
+}
+
+func (s insightsSession) BranchHealth(context.Context) (repository.BranchHealth, error) {
+	return s.health, nil
+}
+
+func TestOverviewShowsHeatmapCodeChangesAndBranchHealth(t *testing.T) {
+	h, _ := menuTestAppWithCalls(t)
+	now := time.Now().Unix()
+	day := int64(24 * 3600)
+	h.app.snapshot.Branches = []repository.Branch{{Name: "main", Head: true}, {Name: "done"}, {Name: "old"}}
+	h.app.session = insightsSession{
+		summarySession: summarySession{fakeSession: h.app.session.(fakeSession), summary: repository.ContributorSummary{
+			Contributors: []repository.Contributor{{Name: "Alice", Email: "a@x", Commits: 3, CommitTimes: []int64{now - 5*day, now - 4*day, now - day}}},
+			TotalCommits: 3, FirstCommit: now - 5*day, LastCommit: now - day,
+		}},
+		volume: repository.CodeVolume{Commits: []repository.CommitVolume{{At: now - day, Added: 1200, Deleted: 300, Files: 4}}},
+		health: repository.BranchHealth{Default: "main", Branches: []repository.BranchHealthEntry{
+			{Name: "main", Current: true, LastCommit: now},
+			{Name: "done", Merged: true, LastCommit: now - 3*day, Behind: 2},
+			{Name: "old", LastCommit: now - 300*day, Behind: 40},
+		}},
+	}
+	h.app.setWorkspaceTab(sectionOverview)
+	h.tester.SetSize(1280, 2400)
+	h.tester.Frame()
+	h.waitFor(t, "the history reads", func() bool {
+		in := h.app.cockpit.insights
+		return h.app.cockpit.contributors.loaded && in.volumeLoaded && in.healthLoaded
+	})
+	h.tester.Frame()
+	texts := h.texts()
+	for _, want := range []string{"Commit activity", "Code changes", "Branch health", "+1,200", "−300", "3 commits in the last year"} {
+		if !slices.Contains(texts, want) {
+			t.Errorf("Overview is missing %q: %q", want, texts)
+		}
+	}
+	// The merged group is first; its branch has a delete button, which asks
+	// before removing anything.
+	if _, ok := h.tester.Find("1 merged — safe to delete"); !ok {
+		t.Fatalf("merged group chip is missing: %q", texts)
+	}
+	if err := h.tester.Click("Delete branch done"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.confirm == nil || h.app.confirm.title != "Delete Branch" {
+		t.Fatalf("deleting a merged branch did not ask first: %#v", h.app.confirm)
+	}
+	h.app.confirm = nil
+	h.tester.Frame()
+	// The stale group lists the old branch.
+	if err := h.tester.Click("1 stale (90+ days)"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if _, ok := h.tester.Find("old"); !ok {
+		t.Fatalf("the stale branch is not listed: %q", h.texts())
+	}
+}
