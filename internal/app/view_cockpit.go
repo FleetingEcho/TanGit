@@ -471,8 +471,8 @@ func (a *app) cockpitAttentionCard(c *ui.Context, theme *ui.Theme, summary cockp
 			ui.Text(c, tr("Continue where you left off")).Bold().FontSize(16).Grow(1)
 			ui.Text(c, trf("%d items", len(summary.Attention))).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
 		})
-		for index, attention := range summary.Attention {
-			attention, index := attention, index
+		for _, attention := range summary.Attention {
+			attention := attention
 			c.Key("cockpit-attention:" + attention.ID)
 			color := cockpitSeverityColor(theme, attention.Severity)
 			ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(8).Padding(4, 8, 4, 0).
@@ -484,7 +484,7 @@ func (a *app) cockpitAttentionCard(c *ui.Context, theme *ui.Theme, summary cockp
 					ui.Text(c, tr(attention.Description)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).
 						SingleLine().MinWidth(0).Tooltip(tr(attention.Description))
 				})
-				a.cockpitCommandButton(c, attention.Command, "Open", index == 0)
+				a.cockpitCommandButton(c, attention.Command, "Open", false)
 			})
 		}
 	})
@@ -572,7 +572,7 @@ func (a *app) cockpitOperationCard(c *ui.Context, summary cockpitSummary) {
 		cockpitMetric(c, strings.ToUpper(summary.Operation.Name), tr("in progress"), theme.Warning)
 		ui.Text(c, tr(summary.Operation.Description)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		ui.Row(c).Gap(7).Wrap().Children(func() {
-			a.cockpitCommandButton(c, summary.Operation.Command, "Review next step", true)
+			a.cockpitCommandButton(c, summary.Operation.Command, "Review next step", false)
 			a.cockpitCommandButton(c, commandOpenRecovery, "Open Safety Journal", false)
 		})
 	})
