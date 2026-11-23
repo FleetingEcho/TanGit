@@ -260,6 +260,7 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 	a.fileRecoveryRefreshSeq++
 	a.snapshot = snapshot
 	a.snapshotSeq++
+	a.cockpitRepositoryMoved(old)
 	if refsChanged && !checkout {
 		a.refreshCodeBlameAfterRepositoryMutation()
 	}

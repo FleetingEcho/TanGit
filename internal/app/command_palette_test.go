@@ -303,3 +303,86 @@ func TestCommandPaletteNarrowDialogAndOptionsStayInBounds(t *testing.T) {
 		}
 	}
 }
+
+// A shell line always shows its command text on both of its rows, next to the
+// badge that says where it runs.
+func TestCommandPaletteShellRowsShowTheCommand(t *testing.T) {
+	s, tt, _ := readyPaletteShell(t)
+	s.openCommandPalette(nil)
+	tt.Frame()
+	s.palette.query = "!git status"
+	tt.Frame()
+	tt.Frame()
+	rects := 0
+	for _, text := range []string{"git status", "Terminal", "Command log"} {
+		rect, ok := tt.Find(text)
+		if !ok {
+			t.Fatalf("%q is not on the shell rows", text)
+		}
+		if rect.W < 20 {
+			t.Fatalf("%q is only %.0f DIP wide", text, rect.W)
+		}
+		rects++
+	}
+	if rects != 3 {
+		t.Fatal("missing text")
+	}
+}
+
+// Up and Down move between the two rows of a typed shell line even when the
+// shell history has entries; they used to walk the history instead.
+func TestCommandPaletteArrowsMoveBetweenShellRows(t *testing.T) {
+	s, tt, _ := readyPaletteShell(t)
+	s.palette.shellHistory = []string{"git status", "git log"}
+	s.openCommandPalette(nil)
+	tt.Frame()
+	s.palette.query = "!git pull origin main"
+	tt.Frame()
+	tt.Frame()
+	tt.Key(0, ui.KeyDown)
+	tt.Frame()
+	if s.palette.selected != 1 {
+		t.Fatalf("Down left the selection on row %d, query %q", s.palette.selected, s.palette.query)
+	}
+	tt.Key(0, ui.KeyUp)
+	tt.Frame()
+	if s.palette.selected != 0 || s.palette.query != "!git pull origin main" {
+		t.Fatalf("Up did not return to the first row: row %d, query %q", s.palette.selected, s.palette.query)
+	}
+}
+
+// A custom command's row has an edit button that opens its form, and the
+// palette shows the edited command afterwards.
+func TestCommandPaletteCustomCommandCanBeEdited(t *testing.T) {
+	s, tt, a := readyPaletteShell(t)
+	a.pathUserData = t.TempDir()
+	a.settings.CustomCommands = []customCommandSetting{{Name: "git pull", Command: "git pull origin main", Contexts: []string{"everywhere"}}}
+	s.openCommandPalette(nil)
+	tt.Frame()
+	s.palette.query = "git pull"
+	tt.Frame()
+	tt.Frame()
+	if err := tt.Click("Edit command"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if s.palette.open || !a.settingsUI.open || !a.settingsUI.customCommandFormOpen || a.settingsUI.customCommandFormEdit != 0 {
+		t.Fatalf("the edit form did not open for the command: palette=%v settings=%v form=%v edit=%d",
+			s.palette.open, a.settingsUI.open, a.settingsUI.customCommandFormOpen, a.settingsUI.customCommandFormEdit)
+	}
+	a.settingsUI.customCommandFormName = "pull main"
+	a.settingsUI.customCommandFormCommand = "git pull --ff-only origin main"
+	a.submitCustomCommandForm(nil)
+	a.settingsUI.open = false
+	s.openCommandPalette(nil)
+	ctx := commandContext{Shell: s, App: a}
+	found := false
+	for _, candidate := range s.catalogFor(ctx).Search(ctx, "pull main", nil) {
+		if candidate.Label == "pull main" && candidate.Detail == "git pull --ff-only origin main" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the palette does not show the edited command")
+	}
+}

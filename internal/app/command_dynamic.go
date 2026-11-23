@@ -75,22 +75,50 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 	case '!':
 		if rest == "" {
 			specs = append(specs, commandSpec{
-				ID: "commands/run-hint", Label: "Type a shell command after !", Group: commandGroupApplication, Prefix: '!', Glyph: terminalIcon,
+				ID: "commands/run-hint", Label: "any command", Group: commandGroupApplication, Prefix: '!', Glyph: terminalIcon,
 				Resolve: func(commandContext) commandState {
-					return commandState{Visible: true, DisabledReason: "Placeholders: {{branch}} {{commit}} {{file}} {{root}} {{tag}} {{stash}} {{remote}}"}
+					return commandState{Visible: true, ContextScore: 1000, DisabledReason: "{{branch}} {{commit}} {{file}} … stand for what you have selected"}
 				},
 			})
+			// Examples: choosing one puts it in the box, ready to run or edit.
+			values := a.commandContextValues()
+			for index, example := range shellExamples {
+				example, score := example, 900-index
+				// Say what the placeholder stands for right now.
+				badge, empty := shellExampleValue(values, example.key)
+				specs = append(specs, commandSpec{
+					ID: commandID("commands/run-example/" + example.command), Label: example.command, Detail: tr(example.detail), Badges: []commandBadge{{Text: badge, Muted: empty}},
+					Group: commandGroupApplication, Prefix: '!', Glyph: terminalIcon, KeepOpen: true, NoFilter: true,
+					Resolve: func(commandContext) commandState {
+						return commandState{Visible: true, Enabled: true, ContextScore: score}
+					},
+					Run: func(ctx commandContext) {
+						ctx.Shell.palette.query = "!" + example.command
+						ctx.Shell.palette.selected = 0
+					},
+				})
+			}
 		}
 		if rest != "" {
+			// Two clearly different ways to run the line. A Git command is
+			// non-interactive, so the command log comes first; anything else may
+			// ask for a password or a code, so the terminal comes first.
+			isGit := strings.EqualFold(firstWord(rest), "git")
+			logScore, terminalScore := 10, 0
+			if !isGit {
+				logScore, terminalScore = 0, 10
+			}
 			specs = append(specs, commandSpec{
-				ID: "commands/run-line", Label: rest, Detail: "Run in the repository root; output goes to the command log",
-				Group: commandGroupApplication, Prefix: '!', Glyph: terminalIcon, KeepOpen: true,
+				ID: "commands/run-line", Label: tr("Run it here"), Detail: rest, NoFilter: true,
+				Badges: []commandBadge{{Text: "Command log"}},
+				Group:  commandGroupApplication, Prefix: '!', Glyph: terminalIcon, KeepOpen: true,
 				Resolve: func(ctx commandContext) commandState {
 					state := localCommandState(ctx)
 					if state.Enabled && ctx.App.customCommandRunning {
 						state.Enabled = false
 						state.DisabledReason = "A command is already running"
 					}
+					state.ContextScore = logScore
 					return state
 				},
 				Run: func(ctx commandContext) {
@@ -98,6 +126,20 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 						ctx.Shell.palette.shellRun = paletteShellRun{app: ctx.App, entryID: id, line: rest}
 						ctx.Shell.rememberShellLine(rest)
 					}
+				},
+			})
+			specs = append(specs, commandSpec{
+				ID: "commands/run-line-terminal", Label: tr("Run in terminal"), Detail: rest, NoFilter: true,
+				Badges: []commandBadge{{Text: "Terminal"}},
+				Group:  commandGroupApplication, Prefix: '!', Glyph: terminalIcon,
+				Resolve: func(ctx commandContext) commandState {
+					state := localCommandState(ctx)
+					state.ContextScore = terminalScore
+					return state
+				},
+				Run: func(ctx commandContext) {
+					ctx.Shell.rememberShellLine(rest)
+					ctx.App.runLineInTerminal(rest)
 				},
 			})
 		}
@@ -155,6 +197,11 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 		}
 		if before, typed, ok := branchSuggestion(strings.TrimLeft(s.palette.query, " ")[1:]); ok {
 			specs = append(specs, s.branchSuggestionSpecs(a, before, typed)...)
+			break
+		}
+		if strings.TrimSpace(rest) == "" {
+			// Nothing typed yet: say what can be searched, not list commits.
+			specs = append(specs, s.commitSearchGuideSpecs()...)
 			break
 		}
 		specs = append(specs, s.commitSearchSpecs(a, strings.TrimSpace(rest), '#')...)
@@ -312,4 +359,42 @@ func commitActions(commit repository.Commit) []commandAction {
 		{Label: "Copy commit hash", Run: func(ctx commandContext) { ctx.App.notifyCopied(ctx.App.services, "commit hash", commit.Hash) }},
 		{Label: "Copy commit subject", Run: func(ctx commandContext) { ctx.App.notifyCopied(ctx.App.services, "commit subject", commit.Subject) }},
 	}
+}
+
+// shellExamples are the sample commands a bare ! offers.
+var shellExamples = []struct{ command, detail, key string }{
+	{"git show {{commit}}", "Show the selected commit", "commit"},
+	{"git log --oneline {{branch}}", "List the commits of the current branch", "branch"},
+	{"git diff {{file}}", "Show the changes of the selected file", "file"},
+	{"git stash show -p {{stash}}", "Show the selected stash", "stash"},
+	{"git fetch {{remote}}", "Fetch from the selected remote", "remote"},
+}
+
+// shellExampleValue is what a placeholder stands for now: the selected commit
+// as its short hash and subject, the other values as they are.
+func shellExampleValue(values map[string]string, key string) (string, bool) {
+	value := strings.TrimSpace(values[key])
+	if value == "" {
+		return tr("nothing selected"), true
+	}
+	if key == "commit" {
+		short := value
+		if len(short) > 7 {
+			short = short[:7]
+		}
+		if subject := strings.TrimSpace(values["commitSubject"]); subject != "" {
+			return short + " " + shorten(subject, 48), false
+		}
+		return short, false
+	}
+	return shorten(value, 60), false
+}
+
+// firstWord is the command a shell line starts with.
+func firstWord(line string) string {
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
 }

@@ -9,6 +9,12 @@ import (
 // commitDiffStatBlocks keeps a fixed six-square footprint for every commit.
 // Mixed changes always show both colors, even for a very small minority.
 func commitDiffStatBlocks(c *ui.Context, hash string, added, deleted int) {
+	commitDiffStatBlocksSized(c, hash, added, deleted, max(float32(6), c.Theme().FontSize/2))
+}
+
+// commitDiffStatBlocksSized is commitDiffStatBlocks with squares of the given
+// size, for places where they are the main figure.
+func commitDiffStatBlocksSized(c *ui.Context, hash string, added, deleted int, size float32) {
 	theme := c.Theme()
 	green := 0
 	switch {
@@ -17,7 +23,6 @@ func commitDiffStatBlocks(c *ui.Context, hash string, added, deleted int) {
 	case added > 0:
 		green = 6
 	}
-	size := max(float32(6), theme.FontSize/2)
 	label := trf("Diff statistics for %s: %d additions, %d deletions", hash, added, deleted)
 	row := ui.Row(c).Gap(2).Shrink(0).AlignItems(ui.Center).Label(label).Description(label)
 	row.Children(func() {
@@ -42,8 +47,8 @@ func commitDiffStatTooltip(c *ui.Context, anchor ui.Element, added, deleted int)
 			Shadow(0, 2, 8, 0, ui.RGBA(0, 0, 0, 0.2)).Margin(0, 0, 6, 0).
 			Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Textf(c, "+%d", added).TextColor(theme.Success).SingleLine()
-					ui.Textf(c, "−%d", deleted).TextColor(theme.Danger).SingleLine()
+					ui.Text(c, "+"+groupedNumber(added)).TextColor(theme.Success).SingleLine()
+					ui.Text(c, "−"+groupedNumber(deleted)).TextColor(theme.Danger).SingleLine()
 				})
 			})
 	})

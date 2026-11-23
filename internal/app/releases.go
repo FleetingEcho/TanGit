@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"runtime"
 	"strings"
 	"time"
 
@@ -47,6 +49,10 @@ func setupUpdater() {
 // should advertise and opens the plugin window when its icon is clicked.
 func watchUpdater(s *shell) {
 	s.checkForUpdates = updater.CheckForUpdates
+	if usesPackageUpdateCheck() {
+		watchPackageUpdates(s)
+		return
+	}
 	s.setUpdateInfo(appUpdateInfo{
 		AvailableVersion: updater.AvailableVersion(),
 		LastCheck:        updater.LastCheck(),
@@ -60,6 +66,63 @@ func watchUpdater(s *shell) {
 		}
 		s.update(func() { s.setUpdateInfo(info) })
 	})
+}
+
+// usesPackageUpdateCheck is true for a release build that cannot replace
+// itself where it is installed, such as the .deb: it checks GitHub by itself.
+func usesPackageUpdateCheck() bool {
+	return runtime.GOOS == "linux" && !mygo.IsDev() && !mygo.Updater.Enabled()
+}
+
+// watchPackageUpdates checks the latest release once at launch, and again
+// whenever the update button is pressed.
+func watchPackageUpdates(s *shell) {
+	run := func(manual bool) {
+		go func() {
+			release, err := checkPackageRelease(context.Background())
+			s.update(func() { s.finishPackageCheck(release, err, manual) })
+		}()
+	}
+	s.setUpdateInfo(appUpdateInfo{Enabled: true})
+	s.checkForUpdates = func() { run(true) }
+	run(false)
+}
+
+// finishPackageCheck records a check's result. A manual check also tells the
+// user what it found and starts the download of the package.
+func (s *shell) finishPackageCheck(release *packageRelease, err error, manual bool) {
+	info := appUpdateInfo{Enabled: true}
+	if err == nil {
+		info.LastCheck = time.Now()
+		if release != nil {
+			info.AvailableVersion = release.Version
+		}
+	} else {
+		info = s.updateInfo()
+	}
+	s.setUpdateInfo(info)
+	if !manual {
+		return
+	}
+	a := s.activeApp()
+	if a == nil {
+		return
+	}
+	switch {
+	case err != nil:
+		a.notify("error", "Could not check for updates", safeError(err))
+	case release == nil:
+		a.notifyTranslated("success", tr("TanGit is up to date"), trf("Version %s is the latest release.", currentAppVersion()))
+	default:
+		a.notifyTranslated("info", tr("Update available"), packageUpdateAdvice(*release))
+		if a.openExternalURL != nil {
+			if release.DebURL != "" {
+				a.openExternalURL(release.DebURL)
+			} else {
+				a.openExternalURL(release.Page)
+			}
+		}
+	}
 }
 
 func (s *shell) setUpdateInfo(info appUpdateInfo) {

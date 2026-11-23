@@ -222,7 +222,7 @@ func (a *app) tagsView(c *ui.Context) {
 						ui.Column(row.Context).Gap(2).Padding(7, 8).Children(func() {
 							ui.Text(row.Context, tag.Name)
 							if tag.Message != "" {
-								ui.Text(row.Context, tag.Message).TextColor(theme.TextMuted)
+								ui.Text(row.Context, tag.Message).TextColor(secondaryRowColor(theme, row))
 							}
 						}).PopoverMenu(func(m *ui.Menu) { a.tagRowMenu(m, row, services) })
 					})

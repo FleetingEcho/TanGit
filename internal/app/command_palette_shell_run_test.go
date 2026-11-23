@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/egoist/mygo/ui"
 	"strings"
 	"testing"
 	"time"
@@ -118,8 +119,19 @@ func TestRowActionsAndFailureCommands(t *testing.T) {
 	}
 	h.app.snapshot.Files = nil
 	s.palette.open = true
+	// A bare # explains the search instead of listing commits.
 	s.palette.query = "#"
-	for _, c := range s.catalogFor(ctx).Search(ctx, "#", nil) {
+	guide := s.catalogFor(ctx).Search(ctx, "#", nil)
+	if len(guide) != 4 || guide[1].Label != "by:name" {
+		t.Fatalf("a bare # should show the search guide, got %+v", guide)
+	}
+	for _, c := range guide {
+		if strings.HasPrefix(string(c.ID), "history/commit/") {
+			t.Fatalf("a bare # listed a commit: %+v", c)
+		}
+	}
+	s.palette.query = "#x"
+	for _, c := range s.catalogFor(ctx).Search(ctx, "#x", nil) {
 		if len(c.ActionLabels) != 2 {
 			t.Fatalf("commit row actions = %v", c.ActionLabels)
 		}
@@ -142,5 +154,46 @@ func TestPaletteShellOutputRepaintsWithoutTheCommandLogOpen(t *testing.T) {
 	h.updates.waitForUpdate(t)
 	if h.app.paletteOutputVisible.Load() != true {
 		t.Fatal("visibility flag was cleared by the repaint")
+	}
+}
+
+// While a command's output is shown, the result list is gone to leave the room
+// to the log, and typing brings it back.
+func TestPaletteShellOutputReplacesTheResultList(t *testing.T) {
+	s, tt, a := readyPaletteShell(t)
+	a.snapshot.Root = t.TempDir()
+	a.commandLog = repository.NewCommandLog()
+	s.openCommandPalette(nil)
+	tt.Frame()
+	s.palette.query = "!sleep 30"
+	tt.Frame()
+	tt.Frame()
+	if _, ok := tt.Find("Run in terminal"); !ok {
+		t.Fatal("the two rows are missing before the command runs")
+	}
+	s.invokeCommand("commands/run-line")
+	tt.Frame()
+	tt.Frame()
+	if _, ok := tt.Find("Run in terminal"); ok {
+		t.Fatal("the result list is still shown above the output")
+	}
+	if !s.paletteShowsShellOutput() {
+		t.Fatal("the output is not shown")
+	}
+	// Enter does not run the hidden first row again.
+	first := s.palette.shellRun.entryID
+	a.cancelCustomCommand()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		tt.Frame()
+		if entry, _ := s.palette.shellRun.entry(); !entry.Running {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	if s.palette.shellRun.entryID != first {
+		t.Fatalf("Enter started the command again: entry %d, was %d", s.palette.shellRun.entryID, first)
 	}
 }

@@ -579,3 +579,28 @@ func (s *shell) branchSuggestionSpecs(a *app, before, typed string) []commandSpe
 	}
 	return specs
 }
+
+// commitSearchGuideSpecs are the rows shown after a bare #: what the search
+// understands. Choosing one starts that kind of search in the box.
+func (s *shell) commitSearchGuideSpecs() []commandSpec {
+	guide := []struct{ id, label, detail, query string }{
+		{"guide/message", "Search commit messages", "Type words after #, for example #fix login", "#"},
+		{"guide/by", "by:name", "Only commits by one author, for example #by:alice", "#by:"},
+		{"guide/branch", "branch:name", "Only commits on one branch, for example #branch:main", "#branch:"},
+		{"guide/hash", "Paste a commit hash", "Four or more hex digits jump to that commit, for example #3f9a2c1", "#"},
+	}
+	specs := make([]commandSpec, 0, len(guide))
+	for _, item := range guide {
+		item := item
+		specs = append(specs, commandSpec{
+			ID: commandID("commits/" + item.id), Label: item.label, Detail: item.detail,
+			Group: commandGroupApplication, Prefix: '#', Glyph: historyIcon, KeepOpen: true, NoFilter: true,
+			Resolve: func(commandContext) commandState { return commandState{Visible: true, Enabled: true} },
+			Run: func(ctx commandContext) {
+				ctx.Shell.palette.query = item.query
+				ctx.Shell.palette.selected = 0
+			},
+		})
+	}
+	return specs
+}

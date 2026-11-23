@@ -84,9 +84,15 @@ type commandState struct {
 }
 
 type commandSpec struct {
-	ID       commandID
-	Label    string
-	Detail   string
+	ID     commandID
+	Label  string
+	Detail string
+	// CustomIndex, when above zero, is 1 plus the index of the custom command
+	// the row stands for; the row then offers to edit it.
+	CustomIndex int
+	// Badges are short chips shown after the detail, such as the selection a
+	// placeholder stands for.
+	Badges   []commandBadge
 	Keywords []string
 	Group    commandGroup
 	Chord    string
@@ -117,6 +123,12 @@ type commandSpec struct {
 
 // commandAction is a secondary action of a command row, such as copying the
 // hash of a commit row. Candidates expose only its label.
+// commandBadge is a short chip on a palette row; Muted draws it quietly.
+type commandBadge struct {
+	Text  string
+	Muted bool
+}
+
 type commandAction struct {
 	Label string
 	Run   func(commandContext)
@@ -133,6 +145,8 @@ type commandCandidate struct {
 	ID             commandID
 	Label          string
 	Detail         string
+	Badges         []commandBadge
+	CustomIndex    int
 	Group          commandGroup
 	Chord          string
 	Icon           commandKind
@@ -441,7 +455,7 @@ func (c *commandCatalog) SearchWith(ctx commandContext, query string, hints comm
 			detail = tr(detail)
 		}
 		candidates = append(candidates, commandCandidate{
-			ID: spec.ID, Label: label, Detail: detail, Group: spec.Group,
+			ID: spec.ID, Label: label, Detail: detail, Badges: spec.Badges, CustomIndex: spec.CustomIndex, Group: spec.Group,
 			Chord: spec.Chord, Icon: spec.Icon, Glyph: spec.Glyph, Enabled: state.Enabled,
 			DisabledReason: tr(state.DisabledReason), MatchRanges: match.ranges,
 			Pinned:       pinnedSet[spec.ID],
@@ -935,8 +949,8 @@ func (s *shell) catalogFor(ctx commandContext) *commandCatalog {
 	}
 	if ctx.App != nil {
 		group := currentKeyboardGroup(ctx.App)
-		for _, custom := range ctx.App.settings.CustomCommands {
-			custom := custom
+		for customIndex, custom := range ctx.App.settings.CustomCommands {
+			custom, customIndex := custom, customIndex
 			id := commandID(customShortcutDefinition(custom).id)
 			for suffix := 2; used[id]; suffix++ {
 				id = commandID(fmt.Sprintf("%s/%d", customShortcutDefinition(custom).id, suffix))
@@ -945,7 +959,7 @@ func (s *shell) catalogFor(ctx commandContext) *commandCatalog {
 			base = append(base, commandSpec{
 				ID: id, Label: customShortcutDefinition(custom).label,
 				Detail: custom.Command, Keywords: []string{"custom", "shell", custom.Command}, Group: commandGroupCustom,
-				Chord: customCommandDisplayKey(custom.Key), Icon: commandIconCustom,
+				Chord: customCommandDisplayKey(custom.Key), Icon: commandIconCustom, CustomIndex: customIndex + 1,
 				Resolve: func(ctx commandContext) commandState {
 					state := repositoryState(ctx)
 					if state.Enabled && !customCommandInContext(custom, group) {

@@ -126,7 +126,7 @@ type BranchHealth struct {
 	Branches []BranchHealthEntry
 }
 
-// BranchHealth reads every local and remote branch with its newest commit time,
+// BranchHealth reads every local branch with its newest commit time,
 // whether it is merged into the default branch, and how far it is from it, in
 // a few Git calls however many branches there are.
 func (s *gitSession) BranchHealth(ctx context.Context) (BranchHealth, error) {
@@ -134,13 +134,15 @@ func (s *gitSession) BranchHealth(ctx context.Context) (BranchHealth, error) {
 		return BranchHealth{}, err
 	}
 	health := BranchHealth{Default: s.defaultBranchName()}
+	// Only local branches are read: the Overview is about the branches the user
+	// can act on, and a repository can have thousands of remote ones.
 	format := "%(refname)%1f%(refname:short)%1f%(committerdate:unix)%1f%(HEAD)"
 	withDistance := format
 	if health.Default != "" {
 		withDistance += "%1f%(ahead-behind:" + health.Default + ")"
 	}
 	read := func(format string) (string, error) {
-		return s.cmd.New([]string{"git", "for-each-ref", "--format=" + format, "refs/heads", "refs/remotes"}).RunWithOutput()
+		return s.cmd.New([]string{"git", "for-each-ref", "--format=" + format, "refs/heads"}).RunWithOutput()
 	}
 	output, err := read(withDistance)
 	distance := health.Default != ""
@@ -154,7 +156,7 @@ func (s *gitSession) BranchHealth(ctx context.Context) (BranchHealth, error) {
 	}
 	merged := map[string]bool{}
 	if health.Default != "" {
-		if out, err := s.cmd.New([]string{"git", "for-each-ref", "--merged=" + health.Default, "--format=%(refname)", "refs/heads", "refs/remotes"}).RunWithOutput(); err == nil {
+		if out, err := s.cmd.New([]string{"git", "for-each-ref", "--merged=" + health.Default, "--format=%(refname)", "refs/heads"}).RunWithOutput(); err == nil {
 			for _, line := range strings.Split(out, "\n") {
 				merged[strings.TrimSpace(line)] = true
 			}

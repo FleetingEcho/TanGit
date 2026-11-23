@@ -33,6 +33,51 @@ type contributorSummarySession interface {
 	ContributorSummary(ctx context.Context, branch string) (repository.ContributorSummary, error)
 }
 
+// contributorSinceSession reads only the commits since a time, which keeps the
+// Overview quick on a huge history; sessions without it read everything.
+type contributorSinceSession interface {
+	ContributorSummarySince(ctx context.Context, branch string, since int64) (repository.ContributorSummary, error)
+}
+
+// readContributorSummary reads the history since a Unix time (0 for all of it),
+// as narrowly as the session allows.
+func readContributorSummary(ctx context.Context, session contributorSummarySession, branch string, since int64) (repository.ContributorSummary, error) {
+	if narrow, ok := session.(contributorSinceSession); ok {
+		return narrow.ContributorSummarySince(ctx, branch, since)
+	}
+	return session.ContributorSummary(ctx, branch)
+}
+
+// contributorReadSince is the Unix time the Overview's read of a period starts
+// at: twice the period back, so the period before it can be compared. All time
+// reads everything.
+func contributorReadSince(period int, now time.Time) int64 {
+	if period < 0 || period >= len(contributorRanges) || contributorRanges[period].days == 0 {
+		return 0
+	}
+	return now.AddDate(0, 0, -2*contributorRanges[period].days).Unix()
+}
+
+// syncCockpitBranch makes the Overview follow the checked-out branch until the
+// user picks another one in the branch menu.
+func (a *app) syncCockpitBranch() {
+	state := &a.cockpit.contributors
+	if state.branchChosen {
+		return
+	}
+	current := a.currentBranchName()
+	label := ""
+	if current != "" {
+		label = current + " (" + tr("current") + ")"
+	}
+	if state.branch == current && state.branchInput == label {
+		return
+	}
+	state.branch, state.branchInput = current, label
+	state.loading, state.loaded = false, false
+	state.token++
+}
+
 type contributorCacheEntry struct {
 	summary    repository.ContributorSummary
 	generation uint64
@@ -52,6 +97,11 @@ type cockpitContributors struct {
 	// branchInput is the text of the branch picker.
 	branch      string
 	branchInput string
+	// branchChosen is set once the user picks a branch; until then the Overview
+	// follows the checked-out one. windowed says the read holds only the
+	// recent part of the history.
+	branchChosen bool
+	windowed     bool
 	// cache keeps each branch's read for a while, so going back to a branch is
 	// instant.
 	cache      map[string]contributorCacheEntry
@@ -68,7 +118,11 @@ const cockpitContributorsMaxAge = 2 * time.Minute
 // the cache when a recent read is held, otherwise from Git in the background.
 func (a *app) loadCockpitContributors() {
 	state := &a.cockpit.contributors
-	if state.loading || a.session == nil {
+	if a.session == nil {
+		return
+	}
+	a.syncCockpitBranch()
+	if state.loading {
 		return
 	}
 	session, ok := a.session.(contributorSummarySession)
@@ -78,7 +132,11 @@ func (a *app) loadCockpitContributors() {
 	}
 	state.unavailable = false
 	branch := state.branch
-	if entry, ok := state.cache[branch]; ok && entry.generation == a.generation && time.Since(entry.loadedAt) < cockpitContributorsMaxAge {
+	now := time.Now()
+	since := contributorReadSince(state.period, now)
+	key := contributorCacheKey(branch, state.period)
+	state.windowed = since > 0
+	if entry, ok := state.cache[key]; ok && entry.generation == a.generation && time.Since(entry.loadedAt) < cockpitContributorsMaxAge {
 		if !state.loaded || state.summary.TotalCommits != entry.summary.TotalCommits || state.generation != entry.generation {
 			state.summary, state.loaded, state.generation, state.loadedAt = entry.summary, true, entry.generation, entry.loadedAt
 		}
@@ -93,7 +151,7 @@ func (a *app) loadCockpitContributors() {
 	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		summary, err := session.ContributorSummary(ctx, branch)
+		summary, err := readContributorSummary(ctx, session, branch, since)
 		a.update(func() {
 			current := &a.cockpit.contributors
 			if generation != a.generation || current.token != token {
@@ -109,7 +167,7 @@ func (a *app) loadCockpitContributors() {
 				current.cache = map[string]contributorCacheEntry{}
 			}
 			now := time.Now()
-			current.cache[branch] = contributorCacheEntry{summary: summary, generation: generation, loadedAt: now}
+			current.cache[key] = contributorCacheEntry{summary: summary, generation: generation, loadedAt: now}
 			current.summary, current.loaded = summary, true
 			current.generation, current.loadedAt = generation, now
 			a.recomputeContributorStats()
@@ -125,11 +183,14 @@ func (a *app) selectContributorBranch(branch, label string) {
 		return
 	}
 	state.branch, state.branchInput = branch, label
+	state.branchChosen = true
 	state.loading = false
 	state.token++
 	state.loaded = false
+	a.cockpit.insights.heatLoaded = false
 	a.loadCockpitContributors()
 	a.loadCockpitCodeVolume()
+	a.loadCockpitHeatmap()
 }
 
 // contributorBranchChoices are the branches the picker offers: every branch,
@@ -161,6 +222,13 @@ type contributorBranchChoice struct {
 }
 
 const contributorBranchChoiceLimit = 60
+
+// contributorBranchPickerWidth sizes the branch input to the branch name it
+// holds, within bounds, so a long name is readable.
+func contributorBranchPickerWidth(c *ui.Context, text string) float32 {
+	width := float32(len([]rune(text)))*c.Theme().FontSize*0.58 + 40
+	return min(max(width, 150), 420)
+}
 
 // contributorBranchPicker is the searchable branch menu of the contributor
 // views. A repository with hundreds of branches shows the first matches and
@@ -329,7 +397,8 @@ func (a *app) cockpitCommandButton(c *ui.Context, id commandID, label string, pr
 	} else {
 		button = ui.Button(c, "")
 	}
-	button = button.Label(tr(label)).Disabled(!state.Enabled)
+	// A compact icon: the name is in the tooltip and the accessible label.
+	button = compactIconButton(button).Label(tr(label)).Disabled(!state.Enabled)
 	if state.DisabledReason != "" {
 		button = button.Tooltip(tooltip + " · " + state.DisabledReason)
 	} else {
@@ -337,7 +406,6 @@ func (a *app) cockpitCommandButton(c *ui.Context, id commandID, label string, pr
 	}
 	button.Children(func() {
 		ui.Icon(c, cockpitCommandIcon(id)).FontSize(14)
-		ui.Text(c, tr(label)).SingleLine()
 	})
 	if button.Clicked() && state.Enabled {
 		a.runCockpitCommand(id)
@@ -396,7 +464,6 @@ func (a *app) cockpitView(c *ui.Context) {
 		return
 	}
 	summary := a.cockpitSummary()
-	theme := c.Theme()
 	root := ui.Column(c).Grow(1).FillWidth().MinWidth(0)
 	width := a.measuredActionGroupWidth(c, root)
 	a.cockpit.width = width
@@ -424,21 +491,18 @@ func (a *app) cockpitView(c *ui.Context) {
 				if width >= 760 {
 					c.Key("cockpit-insight-row")
 					ui.Row(c).FillWidth().MinWidth(0).Gap(0).AlignItems(ui.Stretch).Children(func() {
-						a.cockpitCodeChangesCard(c)
 						a.cockpitBranchHealthCard(c)
+						a.cockpitCodeChangesCard(c)
 					})
 				} else {
-					a.cockpitCodeChangesCard(c)
 					a.cockpitBranchHealthCard(c)
+					a.cockpitCodeChangesCard(c)
 				}
 				a.cockpit.tileInRow = false
-				a.cockpitAttentionCard(c, theme, summary)
-				// Four status tiles: two across when there is room, one otherwise.
+				// Two status tiles: two across when there is room, one otherwise.
 				tiles := []func(){
 					func() { a.cockpitWorkingTreeCard(c, summary) },
 					func() { a.cockpitCollaborationCard(c, summary) },
-					func() { a.cockpitOperationCard(c, summary) },
-					func() { a.cockpitAgentsCard(c, summary) },
 				}
 				a.cockpit.tileInRow = width >= 760
 				if width >= 760 {
@@ -458,34 +522,6 @@ func (a *app) cockpitView(c *ui.Context) {
 				a.cockpitRecentCard(c, summary)
 			})
 		})
-	})
-}
-
-// cockpitAttentionCard lists what needs doing next, most important first, each
-// with a stripe in its severity color and one action.
-func (a *app) cockpitAttentionCard(c *ui.Context, theme *ui.Theme, summary cockpitSummary) {
-	c.Key("cockpit-attention")
-	islandCard(c, ui.Column(c).FillWidth().Gap(4).Padding(7, 10)).Label(tr("Continue where you left off")).Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Text(c, tr("Continue where you left off")).Bold().FontSize(16).Grow(1)
-			ui.Text(c, trf("%d items", len(summary.Attention))).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
-		})
-		for _, attention := range summary.Attention {
-			attention := attention
-			c.Key("cockpit-attention:" + attention.ID)
-			color := cockpitSeverityColor(theme, attention.Severity)
-			ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(8).Padding(4, 8, 4, 0).
-				Background(theme.Surface).Radius(theme.Radius).Clip().Children(func() {
-				ui.Box(c).Width(3).Height(24).Radius(2).Background(color).Shrink(0)
-				ui.Icon(c, cockpitSeverityGlyph(attention.Severity)).FontSize(16).TextColor(color).Shrink(0)
-				ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
-					ui.Text(c, tr(attention.Title)).Bold().SingleLine().MinWidth(0)
-					ui.Text(c, tr(attention.Description)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).
-						SingleLine().MinWidth(0).Tooltip(tr(attention.Description))
-				})
-				a.cockpitCommandButton(c, attention.Command, "Open", false)
-			})
-		}
 	})
 }
 
@@ -618,25 +654,6 @@ func (a *app) cockpitWorkingTreeCard(c *ui.Context, summary cockpitSummary) {
 	})
 }
 
-func (a *app) cockpitOperationCard(c *ui.Context, summary cockpitSummary) {
-	a.cockpitCard(c, "operation", "Operation & recovery", continueIcon, func() {
-		theme := c.Theme()
-		if summary.Operation == nil {
-			cockpitMetric(c, tr("None"), tr("no interrupted Git operation"), theme.Success)
-			ui.Row(c).Gap(7).Wrap().Children(func() {
-				a.cockpitCommandButton(c, commandOpenRecovery, "Open Safety Journal", false)
-			})
-			return
-		}
-		cockpitMetric(c, strings.ToUpper(summary.Operation.Name), tr("in progress"), theme.Warning)
-		ui.Text(c, tr(summary.Operation.Description)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-		ui.Row(c).Gap(7).Wrap().Children(func() {
-			a.cockpitCommandButton(c, summary.Operation.Command, "Review next step", false)
-			a.cockpitCommandButton(c, commandOpenRecovery, "Open Safety Journal", false)
-		})
-	})
-}
-
 func (a *app) cockpitCollaborationCard(c *ui.Context, summary cockpitSummary) {
 	a.cockpitCard(c, "collaboration", "Collaboration", branchesIcon, func() {
 		theme := c.Theme()
@@ -661,46 +678,6 @@ func (a *app) cockpitCollaborationCard(c *ui.Context, summary cockpitSummary) {
 			a.cockpitCommandButton(c, commandOpenPRChecks, "Open PR checks", false)
 			a.cockpitCommandButton(c, commandOpenPull, "Pull", false)
 			a.cockpitCommandButton(c, commandOpenPush, "Push", false)
-		})
-	})
-}
-
-func (a *app) cockpitAgentsCard(c *ui.Context, summary cockpitSummary) {
-	a.cockpitCard(c, "agents", "Agent tasks", appIcon, func() {
-		theme := c.Theme()
-		agents := summary.Agents
-		switch {
-		case agents.Loading:
-			cockpitMetric(c, "…", tr("Loading Agent tasks…"), theme.TextMuted)
-		case agents.Error != "":
-			ui.Text(c, agents.Error).TextColor(theme.Danger).Selectable()
-		case !agents.Loaded:
-			cockpitMetric(c, "—", tr("not loaded"), theme.TextMuted)
-			ui.Text(c, tr("Agent tasks have not been loaded for this repository")).
-				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-		default:
-			active := agents.Running + agents.NeedsInput + agents.Testing + agents.ReadyReview + agents.Blocked
-			color := theme.Text
-			if agents.NeedsInput > 0 || agents.FailedTests > 0 {
-				color = theme.Warning
-			}
-			cockpitMetric(c, fmt.Sprintf("%d", active), tr("active tasks"), color)
-			ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
-				cockpitChip(c, fmt.Sprintf(tr("%d running"), agents.Running), theme.Accent, nil)
-				cockpitChip(c, fmt.Sprintf(tr("%d need input"), agents.NeedsInput), theme.Warning, nil)
-				cockpitChip(c, fmt.Sprintf(tr("%d testing"), agents.Testing), theme.TextMuted, nil)
-				cockpitChip(c, fmt.Sprintf(tr("%d ready"), agents.ReadyReview), theme.Success, nil)
-				cockpitChip(c, fmt.Sprintf(tr("%d blocked"), agents.Blocked), theme.Danger, nil)
-			})
-			if agents.FailedTests > 0 {
-				ui.Text(c, fmt.Sprintf(tr("%d tasks have failed tests"), agents.FailedTests)).
-					TextColor(theme.Danger).FontSize(theme.FontSize - 1)
-			} else if active == 0 {
-				ui.Text(c, tr("No Agent task needs attention")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-			}
-		}
-		ui.Row(c).Gap(7).Wrap().Children(func() {
-			a.cockpitCommandButton(c, commandOpenAgents, "Open Agent tasks", false)
 		})
 	})
 }
@@ -743,10 +720,7 @@ func (a *app) cockpitRecentCard(c *ui.Context, summary cockpitSummary) {
 		}
 		ui.Row(c).Gap(7).Wrap().Children(func() {
 			if a.showActivityCenter != nil {
-				if ui.Button(c, tr("View all activity")).Label(tr("View all activity")).
-					Tooltip(tr("Open the Activity Center for every open repository")).Clicked() {
-					a.showActivityCenter()
-				}
+				iconButton(c, "View all activity", "Open the Activity Center for every open repository", historyIcon, false, a.showActivityCenter)
 			}
 			a.cockpitCommandButton(c, commandOpenLog, "Open Command log", false)
 		})
@@ -762,7 +736,7 @@ func (a *app) cockpitContributorsCard(c *ui.Context, wide bool) {
 		return
 	}
 	actions := func() {
-		a.contributorBranchPicker(c, 150)
+		a.contributorBranchPicker(c, contributorBranchPickerWidth(c, state.branchInput))
 		if index, changed := cockpitPeriodButton(c, state.period, tr("Contributor period")); changed {
 			a.cockpit.contributors.period = index
 			a.recomputeContributorStats()
@@ -795,7 +769,11 @@ func (a *app) cockpitContributorsCard(c *ui.Context, wide bool) {
 		period := contributorRanges[stats.Range]
 		summary := state.summary
 		statsColumn := func() {
-			cockpitMetric(c, fmt.Sprintf("%d", stats.Active), trf("of %d contributors were active", stats.Total), theme.Text)
+			caption := trf("of %d contributors were active", stats.Total)
+			if state.windowed {
+				caption = tr("contributors were active")
+			}
+			cockpitMetric(c, fmt.Sprintf("%d", stats.Active), caption, theme.Text)
 			ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
 				cockpitChip(c, contributorCountLabel(stats.Commits), theme.Success, nil)
 				if period.days != 0 && stats.PreviousCommits > 0 {

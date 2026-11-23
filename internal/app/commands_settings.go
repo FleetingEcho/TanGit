@@ -138,6 +138,12 @@ func (a *app) submitCustomCommandForm(c *ui.Context) {
 	if name == "" {
 		name = firstLine(command)
 	}
+	for index, other := range a.settings.CustomCommands {
+		if index != a.settingsUI.customCommandFormEdit && strings.EqualFold(strings.TrimSpace(other.Name), name) {
+			a.settingsUI.customCommandFormError = trf("A command named “%s” already exists. Choose another name.", other.Name)
+			return
+		}
+	}
 	contexts := a.settingsUI.customCommandFormContexts
 	if len(contexts) == 0 {
 		contexts = []string{"everywhere"}
@@ -169,6 +175,9 @@ func (a *app) customCommandForm(c *ui.Context) {
 			ui.TextInput(c, &a.settingsUI.customCommandFormName).Label(tr("Name")).
 				Placeholder(tr("Deploy preview")).Grow(1)
 		})
+		for _, warning := range a.customCommandFormConflicts() {
+			ui.Text(c, warning).TextColor(theme.Warning).FontSize(theme.FontSize - 1).MaxWidth(560)
+		}
 		settingRow(c, "Command", "Run with your shell in the repository root", func() {
 			ui.TextInput(c, &a.settingsUI.customCommandFormCommand).Label(tr("Command")).
 				Placeholder(tr("git push origin HEAD:refs/for/main")).Grow(1).AutoFocus()
@@ -209,4 +218,28 @@ func (a *app) customCommandForm(c *ui.Context) {
 			}
 		})
 	})
+}
+
+// customCommandFormConflicts lists what the command being edited clashes with:
+// another command of the same name, one with the same shortcut, or the very
+// same command line saved under another name.
+func (a *app) customCommandFormConflicts() []string {
+	name := strings.ToLower(strings.TrimSpace(a.settingsUI.customCommandFormName))
+	command := strings.TrimSpace(a.settingsUI.customCommandFormCommand)
+	key := strings.ToLower(strings.TrimSpace(a.settingsUI.customCommandFormKey))
+	var warnings []string
+	for index, other := range a.settings.CustomCommands {
+		if index == a.settingsUI.customCommandFormEdit {
+			continue
+		}
+		switch {
+		case name != "" && strings.ToLower(strings.TrimSpace(other.Name)) == name:
+			warnings = append(warnings, trf("A command named “%s” already exists. Choose another name.", other.Name))
+		case key != "" && strings.ToLower(strings.TrimSpace(other.Key)) == key:
+			warnings = append(warnings, trf("The shortcut %s is already used by “%s”.", key, other.Name))
+		case command != "" && strings.TrimSpace(other.Command) == command:
+			warnings = append(warnings, trf("The same command is already saved as “%s”.", other.Name))
+		}
+	}
+	return warnings
 }

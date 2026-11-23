@@ -276,10 +276,14 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 		a.syncNavSelection()
 		a.stopRepositoryWatch()
 	} else {
-		if a.repositoryStartsOnOverview() {
+		switch start := a.repositoryStartSection(); start {
+		case sectionCode:
+		case sectionOverview:
 			a.workspaceTab = sectionOverview
 			a.syncNavSelection()
 			a.prepareCockpit()
+		default:
+			a.setWorkspaceTab(start)
 		}
 		a.startRepositoryWatch(session)
 	}
@@ -748,6 +752,7 @@ func (a *app) beginRepositoryActionMessage(
 				a.fileRecoveryRefreshSeq++
 				a.snapshot = snapshot
 				a.snapshotSeq++
+				a.cockpitRepositoryMoved(oldSnapshot)
 				checkout := a.refreshCodeAfterCheckout(oldSnapshot, snapshot)
 				a.refreshCodeBlameAfterRepositoryMutation()
 				a.resetCommitPaging(snapshot)
@@ -863,6 +868,10 @@ func (a *app) recordActionFailure(log *repository.CommandLog, start, end uint64,
 }
 
 func (a *app) beginRefresh() {
+	if a.workspaceTab == sectionOverview {
+		// The Overview's own reads are not part of the repository snapshot.
+		a.refreshCockpit()
+	}
 	selectedPath := ""
 	if row, ok := a.selectedChange(); ok {
 		selectedPath = row.file.Path

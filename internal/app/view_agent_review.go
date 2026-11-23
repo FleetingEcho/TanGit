@@ -241,7 +241,7 @@ func (a *app) agentReviewList(c *ui.Context) {
 			commit := review.commits[row.Index]
 			ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(7, 8).Children(func() {
 				ui.Text(row.Context, commit.Subject).Grow(1).SingleLine().Tooltip(commit.Subject)
-				ui.Text(row.Context, commit.ShortHash).TextColor(theme.TextMuted)
+				ui.Text(row.Context, commit.ShortHash).TextColor(secondaryRowColor(theme, row))
 			}).OnClick(func() { a.selectAgentReviewRow(row.Index) })
 			return
 		}

@@ -28,7 +28,9 @@ func TestCommandPaletteModesAndShellEntry(t *testing.T) {
 	s.palette.query = "!echo hi"
 	catalog := s.catalogFor(ctx)
 	got := catalog.Search(ctx, s.palette.query, nil)
-	if len(got) != 1 || got[0].ID != "commands/run-line" || got[0].Label != "echo hi" {
+	// Two rows: the command log, and the integrated terminal for commands that
+	// ask for input. A non-Git line puts the terminal first.
+	if len(got) != 2 || got[0].Detail != "echo hi" || got[0].Label != "Run in terminal" || got[0].ID != "commands/run-line-terminal" || got[1].ID != "commands/run-line" {
 		t.Fatalf("shell mode candidates = %+v", got)
 	}
 	// Prefixed commands never leak into the default list.
@@ -139,14 +141,14 @@ func TestRecentRepositoryModeAndRowActions(t *testing.T) {
 			t.Errorf("%s has %d actions, want %d", branch.ID, len(branch.ActionLabels), want)
 		}
 	}
-	s.palette.query = "#"
+	s.palette.query = "#x"
 	for _, commit := range s.catalogFor(ctx).Search(ctx, s.palette.query, nil) {
 		if len(commit.ActionLabels) != 2 {
 			t.Errorf("commit row actions = %v", commit.ActionLabels)
 		}
 	}
 	s.palette.query = "!"
-	if got := s.catalogFor(ctx).Search(ctx, s.palette.query, nil); len(got) != 1 || got[0].ID != "commands/run-hint" || got[0].Enabled {
+	if got := s.catalogFor(ctx).Search(ctx, s.palette.query, nil); len(got) != 1+len(shellExamples) || got[0].ID != "commands/run-hint" || got[0].Enabled {
 		t.Fatalf("empty shell mode should hint, not run: %+v", got)
 	}
 }
@@ -167,13 +169,40 @@ func TestPaletteLearnsUsageAndOffersDisplayToggles(t *testing.T) {
 	}
 }
 
-func TestSaveShellLineAsCustomCommand(t *testing.T) {
+// Saving a ! line opens the command form, filled in, to confirm; nothing is
+// saved until it is submitted, and a name already taken is refused.
+func TestSaveShellLineOpensTheCommandForm(t *testing.T) {
 	h, _ := menuTestAppWithCalls(t)
 	h.app.pathUserData = t.TempDir()
-	h.app.saveShellLineAsCustomCommand("git log --oneline -5")
-	h.app.saveShellLineAsCustomCommand("git log --oneline -5")
-	saved := loadAppSettings(h.app.pathUserData)
-	if len(saved.CustomCommands) != 1 || saved.CustomCommands[0].Command != "git log --oneline -5" {
-		t.Fatalf("custom commands = %+v", saved.CustomCommands)
+	h.app.saveShellLineAsCustomCommand("git pull origin main")
+	ui := h.app.settingsUI
+	if !h.app.settingsUI.open || ui.page != settingsPageCommands || !ui.customCommandFormOpen ||
+		ui.customCommandFormName != "git pull" || ui.customCommandFormCommand != "git pull origin main" {
+		t.Fatalf("the command form is not open and filled in: %+v", ui)
+	}
+	if len(h.app.settings.CustomCommands) != 0 {
+		t.Fatal("the command was saved before it was confirmed")
+	}
+	h.app.submitCustomCommandForm(nil)
+	if len(h.app.settings.CustomCommands) != 1 || h.app.settings.CustomCommands[0].Command != "git pull origin main" {
+		t.Fatalf("custom commands = %+v", h.app.settings.CustomCommands)
+	}
+
+	// Another command with the same name is refused and called out.
+	h.app.openCustomCommandForm(-1)
+	h.app.settingsUI.customCommandFormName = "Git Pull"
+	h.app.settingsUI.customCommandFormCommand = "git pull --rebase"
+	if len(h.app.customCommandFormConflicts()) != 1 {
+		t.Fatalf("the clashing name was not reported: %v", h.app.customCommandFormConflicts())
+	}
+	h.app.submitCustomCommandForm(nil)
+	if len(h.app.settings.CustomCommands) != 1 || h.app.settingsUI.customCommandFormError == "" {
+		t.Fatalf("a clashing name was saved: %+v", h.app.settings.CustomCommands)
+	}
+
+	// The same line again edits the saved command instead of adding a copy.
+	h.app.saveShellLineAsCustomCommand("git pull origin main")
+	if h.app.settingsUI.customCommandFormEdit != 0 {
+		t.Fatalf("the saved line was not opened for editing: %d", h.app.settingsUI.customCommandFormEdit)
 	}
 }

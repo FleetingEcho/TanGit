@@ -340,6 +340,9 @@ type app struct {
 	fileSearch         string
 	ignoreUntracked    bool
 	changesFiltersOpen bool
+	// startSectionChoice is the text of the Settings selector for the page a
+	// repository opens on.
+	startSectionChoice string
 	fileStatusFilter   changesStatusFilter
 	// review owns content-current review marks, filtering and asynchronous
 	// publication identity as one feature state.

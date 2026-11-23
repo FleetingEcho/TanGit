@@ -72,9 +72,12 @@ type terminalSessionState struct {
 	worktree    string
 	command     []string
 	environment []string
-	attempt     uint64
-	generation  uint64
-	startCancel context.CancelFunc
+	// pendingInput is typed into the shell once it has started, for a command
+	// line sent from the palette while the terminal was still opening.
+	pendingInput string
+	attempt      uint64
+	generation   uint64
+	startCancel  context.CancelFunc
 	// Search belongs to this shell alone. Keeping the handle and latest status
 	// here preserves an independent find bar across splits and drag reordering.
 	searchOpen   bool
@@ -513,6 +516,10 @@ func (a *app) startTerminalAt(index int) {
 				return a.terminalVisible()
 			}
 			current.pane = pane
+			if current.pendingInput != "" {
+				pane.Send([]byte(current.pendingInput))
+				current.pendingInput = ""
+			}
 			return a.terminalVisible()
 		})
 	}()
@@ -1062,4 +1069,26 @@ func (a *app) terminalSessionContent(c *ui.Context, index int, session *terminal
 			a.keyboardPane(c, fmt.Sprintf("terminal-%d", session.id), view)
 		})
 	}
+}
+
+// runLineInTerminal types a command line into the integrated terminal and runs
+// it there. Unlike the command log, the terminal has a real console, so a
+// command that asks for a password, a one-time code or a confirmation can be
+// answered.
+func (a *app) runLineInTerminal(line string) {
+	line = strings.TrimSpace(customCommandPlaceholders(line, a.commandContextValues()))
+	if line == "" {
+		return
+	}
+	a.openTerminal()
+	session := a.activeTerminal()
+	if session == nil {
+		return
+	}
+	input := line + "\r"
+	if session.pane != nil {
+		session.pane.Send([]byte(input))
+		return
+	}
+	session.pendingInput = input
 }

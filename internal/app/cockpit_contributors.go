@@ -2,6 +2,7 @@ package app
 
 import (
 	"sort"
+	"strconv"
 	"time"
 
 	"lazygitapp/internal/repository"
@@ -153,5 +154,8 @@ func (a *app) recomputeContributorStats() {
 	}
 	now := time.Now()
 	state.stats = computeContributorRange(state.summary, state.period, now)
-	a.cockpit.insights.heatmap = buildCommitHeatmap(state.summary, heatmapMaxWeeks, now)
+}
+
+func contributorCacheKey(branch string, period int) string {
+	return branch + "\x00" + strconv.Itoa(period)
 }

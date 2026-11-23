@@ -74,9 +74,15 @@ func (s *shell) openCommandPalette(c *ui.Context) {
 	}
 	a := s.activeApp()
 	if a != nil && a.modalOpen() {
+		// Say why nothing opened, rather than ignoring the click or the key.
+		a.notify("info", "Command Palette is unavailable", tr("Close the open dialog or form first, then open the Command Palette again."))
 		return
 	}
 	s.palette.open = true
+	if entry, ok := s.palette.shellRun.entry(); !ok || !entry.Running {
+		// Output left over from an earlier command is not shown again.
+		s.palette.shellRun = paletteShellRun{}
+	}
 	s.loadPaletteState()
 	s.palette.target = nil
 	s.palette.historyPos = -1
@@ -113,6 +119,11 @@ func (s *shell) closeCommandPalette(restore bool) {
 	}
 	if run := s.palette.shellRun; run.app != nil {
 		run.app.paletteOutputVisible.Store(false)
+		// A finished command's output is cleared with the window; one still
+		// running stays until it ends (it is in the command log either way).
+		if entry, ok := run.entry(); !ok || !entry.Running {
+			s.palette.shellRun = paletteShellRun{}
+		}
 	}
 	s.palette.query = ""
 	s.palette.selected = 0
@@ -419,9 +430,14 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 	}
 	move := func(delta int) {
 		if mode == '!' && len(s.palette.shellHistory) > 0 {
-			// The ! list holds one row; Up and Down walk the shell history.
-			s.recallShellLine(-delta)
-			return
+			// Up and Down move between the rows. They walk the shell history
+			// only while one of its lines is shown, or from the first row of
+			// an empty line.
+			_, typed := commandQueryMode(s.palette.query)
+			if s.palette.historyPos >= 0 || (strings.TrimSpace(typed) == "" && delta < 0 && s.palette.selected == 0) {
+				s.recallShellLine(-delta)
+				return
+			}
 		}
 		if len(candidates) == 0 {
 			return
@@ -432,7 +448,7 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 		s.palette.notice = ""
 	}
 	invokeSelected := func() {
-		if len(candidates) == 0 {
+		if len(candidates) == 0 || s.paletteShowsShellOutput() {
 			return
 		}
 		s.invokeCommandAction(candidates[s.palette.selected].ID, s.palette.actionIndex)
@@ -485,58 +501,65 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 				s.palette.search.OnShortcut(c, 0, ui.KeyTab, cycleAction)
 				search.OnSubmit(invokeSelected)
 				if search.Changed() {
+					if entry, ok := s.palette.shellRun.entry(); ok && !entry.Running {
+						// Typing again brings the result list back.
+						s.palette.shellRun = paletteShellRun{}
+					}
 					s.palette.historyPos = -1
 					s.palette.actionIndex = 0
 					s.palette.selected = 0
 					s.palette.revealSelection = true
 					s.palette.notice = ""
 				}
-				ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-					headerLabel := "Commands"
-					if mode == 'a' {
-						headerLabel = "Actions"
-					}
-					ui.Text(c, tr(headerLabel)).Bold().Grow(1)
-					if query := strings.TrimSpace(s.palette.query); query != "" {
-						if label := commandModeLabel(mode); label != "" {
-							ui.Text(c, tr(label)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+				if !s.paletteShowsShellOutput() {
+					ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+						headerLabel := "Commands"
+						if mode == 'a' {
+							headerLabel = "Actions"
 						}
-						ui.Badge(c, fmt.Sprintf("%d", len(candidates)))
-					} else if mode != 'a' {
-						ui.Text(c, tr("> commands · @ branches · # commits · / files · ~ repos · ! shell")).TextColor(theme.TextMuted).
-							FontSize(theme.FontSize - 1)
-					}
-				})
-				ui.Divider(c)
-				ui.Scroll(c).Grow(1).TrackScroll(&s.palette.scroll).Children(func() {
-					if len(candidates) == 0 {
-						ui.Column(c).Grow(1).Center().Gap(8).Padding(24).Children(func() {
-							ui.Icon(c, searchIcon).FontSize(25).TextColor(theme.TextMuted)
-							ui.Text(c, tr("No commands match your search")).Bold()
-							ui.Text(c, tr("Try an English command name, a translated label, a keyword or a shortcut")).
-								TextColor(theme.TextMuted).TextAlign(ui.Center).MaxWidth(420)
-						})
-						return
-					}
-					ui.Column(c).FillWidth().Gap(4).Role(ui.RoleListBox).Label(tr("Available commands")).Children(func() {
-						sectioned := mode == 0 && strings.TrimSpace(s.palette.query) == ""
-						previousSection := ""
-						for index, candidate := range candidates {
-							index, candidate := index, candidate
-							if section := commandPaletteSection(candidate); sectioned && section != "" && section != previousSection {
-								previousSection = section
-								c.Key("command-palette-section:" + section)
-								ui.Text(c, tr(section)).Bold().FontSize(theme.FontSize-2).TextColor(theme.TextMuted).Padding(6, 10, 0, 10)
+						ui.Text(c, tr(headerLabel)).Bold().Grow(1)
+						if query := strings.TrimSpace(s.palette.query); query != "" {
+							if label := commandModeLabel(mode); label != "" {
+								ui.Text(c, tr(label)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 							}
-							c.Key("command-palette:" + string(candidate.ID))
-							s.commandPaletteRow(c, candidate, index == s.palette.selected, s.palette.revealSelection, func() {
-								s.palette.selected = index
-								s.invokeCommand(candidate.ID)
-							})
+							ui.Badge(c, fmt.Sprintf("%d", len(candidates)))
+						} else if mode != 'a' {
+							ui.Text(c, tr("> commands · @ branches · # commits · / files · ~ repos · ! shell")).TextColor(theme.TextMuted).
+								FontSize(theme.FontSize - 1)
 						}
-						s.palette.revealSelection = false
 					})
-				})
+					ui.Divider(c)
+					ui.Scroll(c).Grow(1).TrackScroll(&s.palette.scroll).Children(func() {
+						if len(candidates) == 0 {
+							ui.Column(c).Grow(1).Center().Gap(8).Padding(24).Children(func() {
+								ui.Icon(c, searchIcon).FontSize(25).TextColor(theme.TextMuted)
+								ui.Text(c, tr("No commands match your search")).Bold()
+								ui.Text(c, tr("Try an English command name, a translated label, a keyword or a shortcut")).
+									TextColor(theme.TextMuted).TextAlign(ui.Center).MaxWidth(420)
+							})
+							return
+						}
+						ui.Column(c).FillWidth().Gap(4).Role(ui.RoleListBox).Label(tr("Available commands")).Children(func() {
+							sectioned := mode == 0 && strings.TrimSpace(s.palette.query) == ""
+							previousSection := ""
+							for index, candidate := range candidates {
+								index, candidate := index, candidate
+								if section := commandPaletteSection(candidate); sectioned && section != "" && section != previousSection {
+									previousSection = section
+									c.Key("command-palette-section:" + section)
+									ui.Text(c, tr(section)).Bold().FontSize(theme.FontSize-2).TextColor(theme.TextMuted).Padding(6, 10, 0, 10)
+								}
+								c.Key("command-palette:" + string(candidate.ID))
+								s.commandPaletteRow(c, candidate, index == s.palette.selected, s.palette.revealSelection, func() {
+									s.palette.selected = index
+									s.invokeCommand(candidate.ID)
+								})
+							}
+							s.palette.revealSelection = false
+						})
+					})
+
+				}
 				s.paletteShellOutput(c)
 				ui.Divider(c)
 				ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
@@ -603,6 +626,10 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 	row := ui.ButtonBase(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(10).
 		Padding(8, 10).Radius(theme.Radius).Role(ui.RoleOption).
 		Label(label).Selected(selected)
+	if candidate.Group == commandGroupCustom && candidate.Detail != "" {
+		// The whole command, which the row may have cut short.
+		row.Tooltip(candidate.Label + "\n" + candidate.Detail)
+	}
 	if selected {
 		row.Background(theme.Accent.Alpha(0.12)).Border(1, theme.Accent.Alpha(0.55))
 		if reveal {
@@ -635,13 +662,28 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 			if !candidate.Enabled && candidate.DisabledReason != "" {
 				detail = candidate.DisabledReason
 			}
-			if detail != "" {
-				text := ui.Text(c, detail).FontSize(theme.FontSize - 1).SingleLine().MinWidth(0)
-				if !candidate.Enabled {
-					text.TextColor(theme.Warning)
-				} else {
-					text.TextColor(theme.TextMuted)
-				}
+			if detail != "" || len(candidate.Badges) > 0 {
+				ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(8).Children(func() {
+					if detail != "" {
+						// The detail takes the room left of the badges, which keep
+						// their own width and sit at the end of the line.
+						text := ui.Text(c, detail).FontSize(theme.FontSize - 1).SingleLine().Width(0).Grow(1).MinWidth(0)
+						if !candidate.Enabled {
+							text.TextColor(theme.Warning)
+						} else {
+							text.TextColor(theme.TextMuted)
+						}
+					}
+					for index, badge := range candidate.Badges {
+						color := theme.Accent
+						if badge.Muted {
+							color = theme.TextMuted
+						}
+						c.Key(fmt.Sprintf("palette-badge:%d", index))
+						ui.Text(c, badge.Text).FontSize(theme.FontSize-2).TextColor(color).SingleLine().
+							Padding(1, 8).Radius(999).Background(color.Alpha(0.16)).Shrink(0)
+					}
+				})
 			}
 		})
 		ui.Column(c).Gap(2).Shrink(0).AlignItems(ui.End).Children(func() {
@@ -660,6 +702,15 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 				groupLabel = "★ " + groupLabel
 			}
 			ui.Text(c, groupLabel).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted).SingleLine()
+			if candidate.CustomIndex > 0 {
+				index := candidate.CustomIndex - 1
+				a := s.activeApp()
+				flatIconButton(c, "Edit command", "Edit this command", editIcon, 14, 4, a == nil, func() {
+					s.closeCommandPalette(false)
+					a.openSettingsSection(settingsPageCommands)
+					a.openCustomCommandForm(index)
+				})
+			}
 			if candidate.Chord != "" {
 				ui.Text(c, candidate.Chord).FontSize(theme.FontSize - 2).TextColor(theme.Accent).SingleLine()
 			}
@@ -692,6 +743,16 @@ func commandModeLabel(mode byte) string {
 
 // paletteShellOutput shows the ! command's progress and output under the
 // list. The command keeps running if the palette is closed; Cancel stops it.
+// paletteShowsShellOutput is true while a ! command's output is on screen.
+func (s *shell) paletteShowsShellOutput() bool {
+	run := s.palette.shellRun
+	if !run.active() {
+		return false
+	}
+	_, ok := run.entry()
+	return ok
+}
+
 func (s *shell) paletteShellOutput(c *ui.Context) {
 	run := s.palette.shellRun
 	if !run.active() {
@@ -704,7 +765,9 @@ func (s *shell) paletteShellOutput(c *ui.Context) {
 	run.app.paletteOutputVisible.Store(true)
 	theme := c.Theme()
 	ui.Divider(c)
-	ui.Column(c).FillWidth().Gap(6).Height(210).Children(func() {
+	// The output takes the room the result list had: that list is out of the way
+	// while a command's output is shown.
+	ui.Column(c).FillWidth().Grow(1).Gap(6).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 			switch {
 			case entry.Running:
@@ -719,28 +782,38 @@ func (s *shell) paletteShellOutput(c *ui.Context) {
 			}
 			ui.Text(c, entry.Command).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).SingleLine().Grow(1).MinWidth(0)
 			if entry.Running {
-				if ui.Button(c, tr("Cancel command")).Clicked() {
+				flatIconButton(c, "Cancel command", "Stop the running command", closeIcon, 15, 5, false, func() {
 					s.palette.shellRun.cancelled = true
 					run.app.cancelCustomCommand()
-				}
+				})
 			} else {
-				if ui.Button(c, tr("Copy output")).Tooltip(tr("Copy everything the command printed")).Clicked() {
+				flatIconButton(c, "Copy output", "Copy everything the command printed", copyIcon, 15, 5, false, func() {
 					c.WriteClipboard(entry.Output)
 					run.app.notify("success", tr("Copied output"), shorten(entry.Command, 80))
-				}
+				})
 				if run.line != "" {
-					if ui.Button(c, tr("Run again")).Tooltip(tr("Run this command line again")).Disabled(run.app.customCommandRunning || run.app.actionBusy).Clicked() {
-						if id := run.app.startCustomCommand(run.line, commandTitle(run.line)); id != 0 {
-							s.palette.shellRun = paletteShellRun{app: run.app, entryID: id, line: run.line}
-						}
-					}
-					if ui.Button(c, tr("Save as command")).Tooltip(tr("Keep this command line in your custom commands")).Clicked() {
-						run.app.saveShellLineAsCustomCommand(run.line)
-					}
+					flatIconButton(c, "Run again", "Run this command line again", refreshIcon, 15, 5,
+						run.app.customCommandRunning || run.app.actionBusy, func() {
+							if id := run.app.startCustomCommand(run.line, commandTitle(run.line)); id != 0 {
+								s.palette.shellRun = paletteShellRun{app: run.app, entryID: id, line: run.line}
+							}
+						})
+					flatIconButton(c, "Run in terminal", "Run this command line in the integrated terminal, where it can ask for input", terminalIcon, 15, 5, false, func() {
+						line := run.line
+						s.palette.shellRun = paletteShellRun{}
+						s.closeCommandPalette(false)
+						run.app.runLineInTerminal(line)
+					})
+					flatIconButton(c, "Save as command", "Keep this command line in your custom commands", plusIcon, 15, 5, false, func() {
+						line, app := run.line, run.app
+						s.palette.shellRun = paletteShellRun{}
+						s.closeCommandPalette(false)
+						app.saveShellLineAsCustomCommand(line)
+					})
 				}
-				if ui.Button(c, tr("Dismiss")).Clicked() {
+				flatIconButton(c, "Dismiss", "Clear this output", closeIcon, 15, 5, false, func() {
 					s.palette.shellRun = paletteShellRun{}
-				}
+				})
 			}
 		})
 		ui.Scroll(c).Grow(1).Children(func() {
@@ -780,23 +853,22 @@ func (s *shell) trimCommandUses() {
 	}
 }
 
-// saveShellLineAsCustomCommand adds a ! command line to the custom commands, so
+// saveShellLineAsCustomCommand opens the custom command form for a ! command line, so
 // it appears in the palette and the Commands settings from then on.
 func (a *app) saveShellLineAsCustomCommand(line string) {
 	line = strings.TrimSpace(line)
 	if line == "" {
 		return
 	}
-	for _, existing := range a.settings.CustomCommands {
-		if existing.Command == line {
-			a.notify("", tr("Already saved"), shorten(line, 80))
-			return
-		}
+	// The command form opens, filled in, to confirm the name and the command;
+	// an already saved line opens for editing instead of being added twice.
+	existing := slices.IndexFunc(a.settings.CustomCommands, func(c customCommandSetting) bool { return c.Command == line })
+	a.openSettingsSection(settingsPageCommands)
+	a.openCustomCommandForm(existing)
+	if existing < 0 {
+		a.settingsUI.customCommandFormName = commandTitle(line)
+		a.settingsUI.customCommandFormCommand = line
 	}
-	a.settings.CustomCommands = normalizeCustomCommands(append(slices.Clone(a.settings.CustomCommands),
-		customCommandSetting{Name: commandTitle(line), Command: line, Contexts: []string{"everywhere"}}))
-	a.saveSettings()
-	a.notify("success", tr("Saved as a custom command"), shorten(line, 80))
 }
 
 func searchPlaceholder(actions bool) string {

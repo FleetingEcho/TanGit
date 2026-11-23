@@ -185,9 +185,14 @@ func TestOverviewViewCommandsUseCatalogAndSurviveExtraFrames(t *testing.T) {
 	h.tester.Frame()
 	h.tester.Frame()
 	texts := h.texts()
-	for _, expected := range []string{"Continue where you left off", "Working tree", "Operation & recovery", "Collaboration", "Agent tasks", "Recent activity"} {
+	for _, expected := range []string{"Working tree", "Collaboration", "Recent activity"} {
 		if !slices.Contains(texts, expected) {
 			t.Errorf("Overview is missing %q: %q", expected, texts)
+		}
+	}
+	for _, removed := range []string{"Continue where you left off", "Operation & recovery"} {
+		if slices.Contains(texts, removed) {
+			t.Errorf("Overview still shows the removed %q card", removed)
 		}
 	}
 	if err := h.tester.Click("Open Command log"); err != nil {
@@ -219,9 +224,9 @@ func TestOverviewResponsiveWidths(t *testing.T) {
 			if h.app.crash != "" {
 				t.Fatalf("Overview crashed at %d DIP: %s", width, h.app.crash)
 			}
-			if info, ok := h.tester.Access("Continue where you left off"); ok {
+			if info, ok := h.tester.Access("Working tree"); ok {
 				if info.Bounds.X < 0 || info.Bounds.X+info.Bounds.W > float32(width) {
-					t.Fatalf("attention overflows %d DIP: %+v", width, info.Bounds)
+					t.Fatalf("a card overflows %d DIP: %+v", width, info.Bounds)
 				}
 			}
 		})
@@ -398,9 +403,13 @@ func TestOverviewContributorsFollowTheChosenBranch(t *testing.T) {
 	h.app.setWorkspaceTab(sectionOverview)
 	h.tester.SetSize(1280, 1800)
 	h.tester.Frame()
-	h.waitFor(t, "all branches", func() bool { return h.app.cockpit.contributors.loaded })
+	h.waitFor(t, "the current branch", func() bool { return h.app.cockpit.contributors.loaded })
+	// The Overview starts on the checked-out branch, not on every branch.
+	if h.app.cockpit.contributors.branch != "main" {
+		t.Fatalf("the Overview started on %q, want the current branch", h.app.cockpit.contributors.branch)
+	}
 	if got := h.app.cockpit.contributors.stats.Top; len(got) != 1 || got[0].Contributor.Name != "Alice" {
-		t.Fatalf("all-branches top = %+v", got)
+		t.Fatalf("current-branch top = %+v", got)
 	}
 
 	h.app.selectContributorBranch("feature", "feature")
@@ -409,15 +418,26 @@ func TestOverviewContributorsFollowTheChosenBranch(t *testing.T) {
 		t.Fatalf("feature top = %+v", got)
 	}
 
-	// Back to every branch: from the cache, with no further read.
-	h.app.selectContributorBranch("", "")
+	// Back to the first branch: from the cache, with no further read.
+	h.app.selectContributorBranch("main", "main")
 	if !h.app.cockpit.contributors.loaded || h.app.cockpit.contributors.stats.Top[0].Contributor.Name != "Alice" {
 		t.Fatalf("a branch read earlier was not reused: %+v", h.app.cockpit.contributors.stats.Top)
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(reads) != 2 || reads[0] != "" || reads[1] != "feature" {
-		t.Fatalf("branches read = %q, want [\"\" feature]", reads)
+	main, feature := 0, 0
+	for _, branch := range reads {
+		switch branch {
+		case "main":
+			main++
+		case "feature":
+			feature++
+		}
+	}
+	// The contributor list and the heat map each read a branch once; going back
+	// to "main" read nothing more for the list.
+	if main < 1 || feature < 1 || len(h.app.cockpit.contributors.cache) != 2 {
+		t.Fatalf("branches read = %q, cache = %d", reads, len(h.app.cockpit.contributors.cache))
 	}
 	choices := h.app.contributorBranchChoices()
 	if len(choices) < 3 || choices[0].branch != "" || choices[1].branch != "main" {
@@ -553,25 +573,22 @@ func TestOverviewShowsHeatmapCodeChangesAndBranchHealth(t *testing.T) {
 	})
 	h.tester.Frame()
 	texts := h.texts()
-	for _, want := range []string{"Commit activity", "Code changes", "Branch health", "+1,200", "−300", "3 commits in the last year"} {
+	for _, want := range []string{"Commit activity", "Code changes", "Branch health", "3 commits in the last year"} {
 		if !slices.Contains(texts, want) {
 			t.Errorf("Overview is missing %q: %q", want, texts)
 		}
 	}
-	// The merged group is first; its branch has a delete button, which asks
-	// before removing anything.
+	// The merged group is first. Branches are only listed here: deleting them
+	// is left to the Branches page.
 	if _, ok := h.tester.Find("1 merged — safe to delete"); !ok {
 		t.Fatalf("merged group chip is missing: %q", texts)
 	}
-	if err := h.tester.Click("Delete branch done"); err != nil {
-		t.Fatal(err)
+	if _, ok := h.tester.Find("Delete branch done"); ok {
+		t.Fatal("the Overview should not offer to delete a branch")
 	}
-	h.tester.Frame()
-	if h.app.confirm == nil || h.app.confirm.title != "Delete Branch" {
-		t.Fatalf("deleting a merged branch did not ask first: %#v", h.app.confirm)
+	if _, ok := h.tester.Find("Open Branches"); !ok {
+		t.Fatalf("the Open Branches button is missing: %q", texts)
 	}
-	h.app.confirm = nil
-	h.tester.Frame()
 	// The stale group lists the old branch.
 	if err := h.tester.Click("1 stale (90+ days)"); err != nil {
 		t.Fatal(err)
@@ -629,5 +646,119 @@ func TestOverviewChartsFillTheirCards(t *testing.T) {
 	card, _ := h.tester.Access("Code changes")
 	if bottom := card.Bounds.Y + card.Bounds.H; chart.Bounds.Y+chart.Bounds.H < bottom-40 {
 		t.Errorf("the chart ends at %.0f, far above its card's bottom %.0f", chart.Bounds.Y+chart.Bounds.H, bottom)
+	}
+}
+
+// The Overview reads its data only once it is opened, and its refresh button
+// reads everything again.
+func TestOverviewLoadsOnlyWhenOpenedAndRefreshes(t *testing.T) {
+	h, _ := menuTestAppWithCalls(t)
+	now := time.Now().Unix()
+	h.app.session = insightsSession{
+		summarySession: summarySession{fakeSession: h.app.session.(fakeSession), summary: repository.ContributorSummary{
+			Contributors: []repository.Contributor{{Name: "Alice", Email: "a@x", Commits: 1, CommitTimes: []int64{now}}},
+			TotalCommits: 1, FirstCommit: now, LastCommit: now,
+		}},
+	}
+	h.app.setWorkspaceTab(sectionHistory)
+	h.tester.SetSize(1280, 1800)
+	h.tester.Frame()
+	h.tester.Frame()
+	if in := h.app.cockpit.insights; h.app.cockpit.contributors.loading || h.app.cockpit.contributors.loaded || in.healthLoading || in.volumeLoading {
+		t.Fatal("the Overview read its data before it was opened")
+	}
+	h.app.setWorkspaceTab(sectionOverview)
+	h.tester.Frame()
+	h.waitFor(t, "the first read", func() bool { return h.app.cockpit.contributors.loaded })
+	h.app.cockpit.contributors.loadedAt = time.Time{}
+	before := h.app.cockpit.contributors.token
+	h.app.beginRefresh()
+	if h.app.cockpit.contributors.token == before || h.app.cockpit.contributors.cache != nil && h.app.cockpit.contributors.loaded {
+		t.Fatal("refreshing did not drop the cached read")
+	}
+	h.waitFor(t, "the second read", func() bool { return h.app.cockpit.contributors.loaded })
+}
+
+// The start page is a choice among the visible pages; an older Overview
+// preference still applies when none is chosen.
+func TestRepositoryStartSectionFollowsTheChosenPage(t *testing.T) {
+	a := newApp(nil)
+	a.state = stateReady
+	a.session = fakeSession{}
+	a.settingsLoaded = true
+	a.settings = defaultSettings()
+	if got := a.repositoryStartSection(); got != sectionOverview {
+		t.Fatalf("fresh settings start on %d, want Overview", got)
+	}
+	a.settings.StartSection = "history"
+	if got := a.repositoryStartSection(); got != sectionHistory {
+		t.Fatalf("chosen History, start on %d", got)
+	}
+	a.settings.VisibleSections = slices.DeleteFunc(slices.Clone(a.settings.VisibleSections), func(id string) bool { return id == "history" })
+	if got := a.repositoryStartSection(); got != sectionOverview {
+		t.Fatalf("a hidden start page should fall back to Overview, got %d", got)
+	}
+	a.settings.StartSection, a.settings.OpenRepositoriesOnOverview = "", false
+	if got := a.repositoryStartSection(); got != sectionCode {
+		t.Fatalf("no Overview preference should start on the Editor, got %d", got)
+	}
+	if normalized := normalizeSettings(appSettings{StartSection: "nonsense"}); normalized.StartSection != "" {
+		t.Fatalf("an unknown start page was kept: %q", normalized.StartSection)
+	}
+}
+
+// A checkout in a terminal, or any other change of the checked-out branch,
+// makes the Overview follow it: the branch it shows and the data it reads.
+func TestOverviewFollowsTheCheckedOutBranch(t *testing.T) {
+	h, _ := menuTestAppWithCalls(t)
+	now := time.Now().Unix()
+	var reads []string
+	mu := &sync.Mutex{}
+	h.app.session = summarySession{
+		fakeSession: h.app.session.(fakeSession), reads: &reads, mu: mu,
+		summary: repository.ContributorSummary{
+			Contributors: []repository.Contributor{{Name: "Alice", Email: "a@x", Commits: 1, CommitTimes: []int64{now}}},
+			TotalCommits: 1,
+		},
+		byBranch: map[string]repository.ContributorSummary{
+			"feature": {
+				Contributors: []repository.Contributor{{Name: "Zoe", Email: "z@x", Commits: 1, CommitTimes: []int64{now}}},
+				TotalCommits: 1,
+			},
+		},
+	}
+	checkout := func(name string) {
+		h.app.snapshot.Branch = name
+		h.app.snapshot.Branches = []repository.Branch{{Name: "main", Head: name == "main"}, {Name: "feature", Head: name == "feature"}, {Name: "other", Head: name == "other"}}
+	}
+	checkout("main")
+	h.app.setWorkspaceTab(sectionOverview)
+	h.tester.SetSize(1280, 1800)
+	h.tester.Frame()
+	h.waitFor(t, "main", func() bool { return h.app.cockpit.contributors.loaded })
+	if h.app.cockpit.contributors.branch != "main" {
+		t.Fatalf("started on %q", h.app.cockpit.contributors.branch)
+	}
+
+	old := h.app.snapshot
+	checkout("feature")
+	h.app.cockpitRepositoryMoved(old)
+	h.waitFor(t, "feature", func() bool {
+		c := h.app.cockpit.contributors
+		return c.loaded && c.branch == "feature"
+	})
+	if got := h.app.cockpit.contributors.stats.Top; len(got) != 1 || got[0].Contributor.Name != "Zoe" {
+		t.Fatalf("the Overview did not read the new branch: %+v", got)
+	}
+
+	// A branch the user chose is not replaced by a checkout.
+	h.app.selectContributorBranch("main", "main")
+	h.waitFor(t, "chosen main", func() bool { return h.app.cockpit.contributors.loaded })
+	old = h.app.snapshot
+	checkout("other")
+	h.app.cockpitRepositoryMoved(old)
+	h.tester.Frame()
+	if h.app.cockpit.contributors.branch != "main" {
+		t.Fatalf("a chosen branch was replaced by %q", h.app.cockpit.contributors.branch)
 	}
 }

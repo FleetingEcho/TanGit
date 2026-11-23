@@ -235,6 +235,16 @@ type branchHealthSession interface {
 
 type cockpitInsights struct {
 	heatmap commitHeatmap
+	// The heat map reads the last year of the chosen branch by itself, so the
+	// Contributors card's shorter period does not shrink it.
+	heatLoading    bool
+	heatLoaded     bool
+	heatErr        string
+	heatTotal      int
+	heatBranch     string
+	heatGeneration uint64
+	heatLoadedAt   time.Time
+	heatToken      uint64
 	// heatmapLine shows the commit activity as a line over the weeks instead
 	// of a grid of days.
 	heatmapLine bool
@@ -295,6 +305,7 @@ func (a *app) loadCockpitCodeVolume() {
 		return
 	}
 	insights.volumeUnavailable = false
+	a.syncCockpitBranch()
 	branch, period := state.branch, insights.volumePeriod
 	key := codeVolumeKey(branch, period)
 	now := time.Now()
@@ -417,6 +428,7 @@ func (a *app) loadCockpitLanguages() {
 
 // loadCockpitInsights starts the reads of the three views for the Overview.
 func (a *app) loadCockpitInsights() {
+	a.loadCockpitHeatmap()
 	a.loadCockpitLanguages()
 	a.loadCockpitCodeVolume()
 	a.loadCockpitBranchHealth()
@@ -431,4 +443,97 @@ func (a *app) revealBranch(name string) {
 			return
 		}
 	}
+}
+
+// invalidateCockpit drops everything the Overview has read and abandons reads
+// still in flight; nothing is read again until the page asks for it.
+func (a *app) invalidateCockpit() {
+	contributors := &a.cockpit.contributors
+	contributors.cache = nil
+	contributors.loading, contributors.loaded = false, false
+	contributors.token++
+	insights := &a.cockpit.insights
+	insights.volumeCache = nil
+	insights.volumeLoading, insights.volumeLoaded = false, false
+	insights.volumeToken++
+	insights.healthLoading, insights.healthLoaded = false, false
+	insights.healthToken++
+	insights.langLoading, insights.langLoaded = false, false
+	insights.langToken++
+	insights.heatLoading, insights.heatLoaded = false, false
+	insights.heatToken++
+}
+
+// refreshCockpit reads everything on the Overview again. The toolbar's refresh
+// calls it while the Overview is open, so that one button reloads the page too.
+func (a *app) refreshCockpit() {
+	if a == nil || a.state != stateReady || a.editorOnlyWorkspace() {
+		return
+	}
+	a.invalidateCockpit()
+	a.prepareCockpit()
+}
+
+// cockpitRepositoryMoved keeps the Overview in step with the repository: when
+// the checked-out branch or its commit changes underneath it (a checkout in a
+// terminal, a pull, another tool), what it read is stale. The open Overview
+// reads again at once, and a hidden one when it is next opened. The branch it
+// follows changes with the checked-out one unless the user picked another.
+func (a *app) cockpitRepositoryMoved(old repository.Snapshot) {
+	if a == nil || a.state != stateReady || a.editorOnlyWorkspace() {
+		return
+	}
+	if old.Branch == a.snapshot.Branch && old.HeadHash == a.snapshot.HeadHash {
+		return
+	}
+	a.invalidateCockpit()
+	if a.workspaceTab == sectionOverview {
+		a.prepareCockpit()
+	}
+}
+
+// loadCockpitHeatmap reads the last year of commit days of the chosen branch,
+// unless a recent read of it is held.
+func (a *app) loadCockpitHeatmap() {
+	insights := &a.cockpit.insights
+	state := &a.cockpit.contributors
+	if a.session == nil {
+		return
+	}
+	a.syncCockpitBranch()
+	session, ok := a.session.(contributorSummarySession)
+	if !ok {
+		return
+	}
+	branch := state.branch
+	if insights.heatLoaded && insights.heatBranch == branch && insights.heatGeneration == a.generation &&
+		time.Since(insights.heatLoadedAt) < cockpitContributorsMaxAge {
+		return
+	}
+	insights.heatLoading, insights.heatLoaded = true, false
+	insights.heatToken++
+	token := insights.heatToken
+	generation := a.generation
+	ctx := a.repositoryWork.Context()
+	since := time.Now().AddDate(0, 0, -7*heatmapMaxWeeks-7).Unix()
+	go func() {
+		defer a.recoverBackground()
+		summary, err := readContributorSummary(ctx, session, branch, since)
+		a.update(func() {
+			current := &a.cockpit.insights
+			if generation != a.generation || current.heatToken != token {
+				return
+			}
+			current.heatLoading = false
+			if err != nil {
+				current.heatErr = safeError(err)
+				return
+			}
+			now := time.Now()
+			current.heatErr = ""
+			current.heatmap = buildCommitHeatmap(summary, heatmapMaxWeeks, now)
+			current.heatTotal, current.heatLoaded = current.heatmap.Total, true
+			current.heatBranch, current.heatGeneration, current.heatLoadedAt = branch, generation, now
+		})
+	}()
 }

@@ -133,6 +133,9 @@ type appSettings struct {
 	// settings whose false zero value must retain their original landing page.
 	OpenRepositoriesOnOverview bool `json:"openRepositoriesOnOverview"`
 	OverviewStartConfigured    bool `json:"overviewStartConfigured,omitempty"`
+	// StartSection is the id of the page a newly opened repository starts on.
+	// Empty follows OpenRepositoriesOnOverview, as older settings files do.
+	StartSection string `json:"startSection,omitempty"`
 	// OverviewPlacementMigrated marks that an existing profile has been given the
 	// Overview section once: shown, and first in the sidebar. After that the
 	// user's own choices to hide or move it are kept.
@@ -337,6 +340,9 @@ func normalizeSettings(s appSettings) appSettings {
 		// Existing profiles also land on Overview, once; they can change it back.
 		s.OpenRepositoriesOnOverview = true
 		s.OverviewPlacementMigrated = true
+	}
+	if !slices.Contains(workspaceSectionIDs, s.StartSection) {
+		s.StartSection = ""
 	}
 	s.TerminalDock = normalizeTerminalDock(s.TerminalDock)
 	s.ConflictActionStyle = normalizeConflictActionStyle(s.ConflictActionStyle)

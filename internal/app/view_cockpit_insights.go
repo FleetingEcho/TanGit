@@ -41,17 +41,18 @@ func heatColor(theme *ui.Theme, level int) ui.Color {
 // a week to a column, with the busiest day and the longest streak beside it.
 func (a *app) cockpitHeatmapCard(c *ui.Context, width float32) {
 	state := a.cockpit.contributors
-	if state.unavailable || state.err != "" {
+	insights := a.cockpit.insights
+	if state.unavailable || insights.heatErr != "" {
 		return
 	}
-	if !state.loaded {
+	if !insights.heatLoaded {
 		a.cockpitCard(c, "heatmap", "Commit activity", historyIcon, func() {
 			cockpitLoading(c, tr("Reading the history…"), 130)
 		})
 		return
 	}
-	heat := a.cockpit.insights.heatmap
-	if state.summary.TotalCommits == 0 || len(heat.Weeks) == 0 {
+	heat := insights.heatmap
+	if insights.heatTotal == 0 || len(heat.Weeks) == 0 {
 		return
 	}
 	line := a.cockpit.insights.heatmapLine
@@ -176,9 +177,9 @@ func (a *app) cockpitCodeChangesCard(c *ui.Context) {
 			return
 		}
 		volume := insights.volume
-		ui.Row(c).AlignItems(ui.End).Gap(14).Children(func() {
-			cockpitMetric(c, "+"+groupedNumber(volume.Added), tr("added"), theme.Success)
-			cockpitMetric(c, "−"+groupedNumber(volume.Deleted), tr("deleted"), theme.Danger)
+		// Six colored squares show the balance; hovering them gives the numbers.
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(4, 0).Children(func() {
+			commitDiffStatBlocksSized(c, tr("Code changes"), volume.Added, volume.Deleted, 14)
 		})
 		ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
 			net := volume.Added - volume.Deleted
@@ -197,7 +198,7 @@ func (a *app) cockpitCodeChangesCard(c *ui.Context) {
 			for index := range volume.BucketAdded {
 				added, deleted := volume.BucketAdded[index], volume.BucketDeleted[index]
 				from := time.Unix(volume.BucketStart+int64(index)*volume.BucketSeconds, 0).Local()
-				tip := from.Format("2006-01-02") + " · +" + groupedNumber(added) + " −" + groupedNumber(deleted)
+				date := from.Format("2006-01-02")
 				c.Key(fmt.Sprintf("volume-bar:%d", index))
 				ui.Column(c).Gap(1).Width(0).Grow(1).MinWidth(0).Children(func() {
 					// An empty period still leaves a faint stub, so the chart is never blank.
@@ -205,21 +206,23 @@ func (a *app) cockpitCodeChangesCard(c *ui.Context) {
 						if added > 0 {
 							share := float32(max(4, 100*added/most))
 							ui.Box(c).FillWidth().Height(0).Grow(100 - share)
-							ui.Box(c).FillWidth().Height(0).Grow(share).Radius(2).
-								Background(theme.Success.Alpha(0.75)).Tooltip(tip)
+							cockpitVolumeTooltip(c, ui.Box(c).FillWidth().Height(0).Grow(share).Radius(2).
+								Background(theme.Success.Alpha(0.75)), date, added, deleted)
 						} else {
 							ui.Box(c).FillWidth().Height(0).Grow(1)
-							ui.Box(c).FillWidth().Height(2).Radius(1).Background(theme.Border.Alpha(0.6)).Tooltip(tip)
+							cockpitVolumeTooltip(c, ui.Box(c).FillWidth().Height(2).Radius(1).
+								Background(theme.Border.Alpha(0.6)), date, added, deleted)
 						}
 					})
 					ui.Column(c).FillWidth().Grow(1).Children(func() {
 						if deleted > 0 {
 							share := float32(max(4, 100*deleted/most))
-							ui.Box(c).FillWidth().Height(0).Grow(share).Radius(2).
-								Background(theme.Danger.Alpha(0.75)).Tooltip(tip)
+							cockpitVolumeTooltip(c, ui.Box(c).FillWidth().Height(0).Grow(share).Radius(2).
+								Background(theme.Danger.Alpha(0.75)), date, added, deleted)
 							ui.Box(c).FillWidth().Height(0).Grow(100 - share)
 						} else {
-							ui.Box(c).FillWidth().Height(2).Radius(1).Background(theme.Border.Alpha(0.6)).Tooltip(tip)
+							cockpitVolumeTooltip(c, ui.Box(c).FillWidth().Height(2).Radius(1).
+								Background(theme.Border.Alpha(0.6)), date, added, deleted)
 						}
 					})
 				})
@@ -252,9 +255,9 @@ func (a *app) cockpitBranchHealthCard(c *ui.Context) {
 			return
 		}
 		health := insights.health
-		caption := trf("%d remote", health.Remote)
+		caption := ""
 		if health.Default != "" {
-			caption += " · " + trf("compared with %s", health.Default)
+			caption = trf("compared with %s", health.Default)
 		}
 		cockpitMetric(c, trf("%d local", health.Local), caption, theme.Text)
 		categories := []struct {
@@ -297,53 +300,38 @@ func (a *app) cockpitBranchHealthCard(c *ui.Context) {
 			ui.Text(c, tr("Nothing in this group — the branches are in good shape.")).
 				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		}
-		const listed = 6
+		// The list scrolls when there are many; each row opens in Branches.
 		now := time.Now()
-		for index, branch := range group {
-			if index == listed {
-				break
-			}
-			branch := branch
-			c.Key("health-branch:" + branch.Name)
-			row := ui.ButtonBase(c).FillWidth().MinWidth(0).Gap(8).Padding(2, 4).AlignItems(ui.Center).
-				Radius(theme.Radius).Role(ui.RoleOption).Label(branch.Name)
-			if row.Hovered() {
-				row.Background(theme.SurfaceHover)
-			}
-			row.Children(func() {
-				icon := branchIcon
-				if branch.Remote {
-					icon = remotesIcon
-				}
-				ui.Icon(c, icon).FontSize(13).TextColor(theme.TextMuted).Shrink(0)
-				ui.Text(c, branch.Name).SingleLine().Width(0).Grow(1).MinWidth(0).Tooltip(branch.Name)
-				detail := cockpitBranchAge(branch.LastCommit, now)
-				if branch.Behind > 0 {
-					detail += " · " + trf("%d behind", branch.Behind)
-				}
-				ui.Text(c, detail).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted).SingleLine().Shrink(0)
-				if selected == branchCategoryMerged && !branch.Remote {
-					if local, ok := a.localBranch(branch.Name); ok {
-						trash := compactIconButton(ui.Button(c, "")).Center().Label(trf("Delete branch %s", branch.Name)).
-							Tooltip(tr("Delete this merged branch…"))
-						trash.Children(func() { ui.Icon(c, trashIcon).FontSize(13) })
-						if trash.Clicked() {
-							a.confirmDeleteBranch(local)
+		if len(group) > 0 {
+			ui.Scroll(c).FillWidth().MinWidth(0).MaxHeight(158).Children(func() {
+				ui.Column(c).FillWidth().MinWidth(0).Gap(0).Children(func() {
+					for _, branch := range group {
+						branch := branch
+						c.Key("health-branch:" + branch.Name)
+						row := ui.ButtonBase(c).FillWidth().MinWidth(0).Gap(8).Padding(3, 4).AlignItems(ui.Center).
+							Radius(theme.Radius).Role(ui.RoleOption).Label(branch.Name)
+						if row.Hovered() {
+							row.Background(theme.SurfaceHover)
+						}
+						row.Children(func() {
+							ui.Icon(c, branchIcon).FontSize(13).TextColor(theme.TextMuted).Shrink(0)
+							ui.Text(c, branch.Name).SingleLine().Width(0).Grow(1).MinWidth(0).Tooltip(branch.Name)
+							detail := cockpitBranchAge(branch.LastCommit, now)
+							if branch.Behind > 0 {
+								detail += " · " + trf("%d behind", branch.Behind)
+							}
+							ui.Text(c, detail).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted).SingleLine().Shrink(0)
+						})
+						if row.Clicked() {
+							a.revealBranch(branch.Name)
 						}
 					}
-				}
-			})
-			if row.Clicked() && !branch.Remote {
-				a.revealBranch(branch.Name)
-			}
-		}
-		if len(group) > listed {
-			ui.Row(c).Gap(7).Wrap().Children(func() {
-				if ui.Button(c, trf("%d more — open Branches", len(group)-listed)).Label(tr("Open Branches")).Clicked() {
-					a.setWorkspaceTab(sectionBranches)
-				}
+				})
 			})
 		}
+		ui.Row(c).Gap(7).Wrap().Children(func() {
+			iconButton(c, "Open Branches", "Open the Branches page", branchesIcon, false, func() { a.setWorkspaceTab(sectionBranches) })
+		})
 	})
 }
 
@@ -463,5 +451,22 @@ func cockpitHeatLine(c *ui.Context, weeks [][7]heatDay, step float32) {
 				}
 			})
 		})
+	})
+}
+
+// cockpitVolumeTooltip shows a bar's date and its added and deleted lines in
+// green and red, as the squares of a commit do.
+func cockpitVolumeTooltip(c *ui.Context, anchor ui.Element, date string, added, deleted int) {
+	theme := c.Theme()
+	ui.TooltipBase(c, anchor, func(tip ui.Element) {
+		tip.Padding(6, 9).Radius(5).Background(theme.Surface).Border(1, theme.Border).
+			Shadow(0, 2, 8, 0, ui.RGBA(0, 0, 0, 0.2)).Margin(0, 0, 6, 0).
+			Children(func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, date).TextColor(theme.TextMuted).SingleLine()
+					ui.Text(c, "+"+groupedNumber(added)).TextColor(theme.Success).SingleLine()
+					ui.Text(c, "−"+groupedNumber(deleted)).TextColor(theme.Danger).SingleLine()
+				})
+			})
 	})
 }

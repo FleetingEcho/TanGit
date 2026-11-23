@@ -1,6 +1,7 @@
 package app
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -305,12 +306,29 @@ func cockpitAttentions(input cockpitInput, summary cockpitSummary) []cockpitAtte
 	return candidates
 }
 
-// repositoryStartsOnOverview is the side-effect-free startup preference
-// decision. A loaded fresh profile may opt in; legacy profiles retain their
-// previous landing section, and editor-only folders always use Code.
+// repositoryStartSection is the page a newly opened repository starts on,
+// side-effect free. The chosen start page counts only while it is shown in the
+// sidebar; otherwise an older Overview preference applies, and the Editor (the
+// page a window has before anything is chosen) is the last resort. Editor-only
+// folders always use Code.
+func (a *app) repositoryStartSection() int {
+	if a == nil || !a.settingsLoaded || a.editorOnlyWorkspace() {
+		return sectionCode
+	}
+	if id := a.settings.StartSection; id != "" {
+		if section := slices.Index(workspaceSectionIDs, id); section >= 0 && a.sectionVisible(section) {
+			return section
+		}
+	}
+	if a.settings.OpenRepositoriesOnOverview && a.sectionVisible(sectionOverview) {
+		return sectionOverview
+	}
+	return sectionCode
+}
+
+// repositoryStartsOnOverview reports whether a new repository opens on Overview.
 func (a *app) repositoryStartsOnOverview() bool {
-	return a != nil && a.settingsLoaded && a.settings.OpenRepositoriesOnOverview &&
-		!a.editorOnlyWorkspace() && a.sectionVisible(sectionOverview)
+	return a.repositoryStartSection() == sectionOverview
 }
 
 // prepareCockpit runs only on an explicit section transition or repository
@@ -318,10 +336,6 @@ func (a *app) repositoryStartsOnOverview() bool {
 func (a *app) prepareCockpit() {
 	if a == nil || a.state != stateReady || a.editorOnlyWorkspace() || a.workspaceTab != sectionOverview {
 		return
-	}
-	repositoryID := a.agentRepositoryID()
-	if a.agents.loadedRepo != repositoryID && !a.agents.loading {
-		a.refreshAgentTasks()
 	}
 	a.loadCockpitContributors()
 	a.loadCockpitInsights()

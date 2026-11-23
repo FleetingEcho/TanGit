@@ -50,6 +50,13 @@ func (s *gitSession) Contributors(ctx context.Context) ([]Contributor, error) {
 // over the history of branch, or of every branch when branch is empty. A
 // branch's history can be read without checking it out.
 func (s *gitSession) ContributorSummary(ctx context.Context, branch string) (ContributorSummary, error) {
+	return s.ContributorSummarySince(ctx, branch, 0)
+}
+
+// ContributorSummarySince is ContributorSummary limited to commits made at or
+// after the Unix time since (0 for the whole history), so a short period of a
+// huge history is a short read.
+func (s *gitSession) ContributorSummarySince(ctx context.Context, branch string, since int64) (ContributorSummary, error) {
 	if err := ctx.Err(); err != nil {
 		return ContributorSummary{}, err
 	}
@@ -58,6 +65,9 @@ func (s *gitSession) ContributorSummary(ctx context.Context, branch string) (Con
 		return ContributorSummary{}, fmt.Errorf("read contributors: invalid branch %q", branch)
 	}
 	args := []string{"git", "log", fmt.Sprintf("--max-count=%d", contributorCommitLimit), "--format=%aN%x1f%aE%x1f%at"}
+	if since > 0 {
+		args = append(args, fmt.Sprintf("--since=%d", since))
+	}
 	if branch == "" {
 		args = append(args, "--all")
 	} else {

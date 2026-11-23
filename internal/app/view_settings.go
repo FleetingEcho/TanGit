@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -13,7 +14,9 @@ func (a *app) settingsChanged(c *ui.Context) {
 	a.saveSettings()
 	currentLanguage = normalizeLanguage(a.settings.Language)
 	refreshTrayMenu()
-	c.Invalidate()
+	if c != nil {
+		c.Invalidate()
+	}
 }
 
 const (
@@ -1021,15 +1024,40 @@ func (a *app) workspaceSettings(c *ui.Context) {
 		})
 		ui.Divider(c)
 		settingsGroup(c, appIcon, "Repository start", "Choose the first page for newly opened repositories")
-		toggle := ui.Checkbox(c, &a.settings.OpenRepositoriesOnOverview,
-			tr("Open repositories on Overview")).
-			Label(tr("Open repositories on Overview")).
-			Tooltip(tr("Existing settings retain their previous landing page until this is enabled"))
-		if toggle.Changed() {
-			a.settings.OverviewStartConfigured = true
-			a.settingsChanged(c)
-		}
+		a.startSectionSelect(c)
 	})
+}
+
+// startSectionSelect chooses the page a newly opened repository starts on, among
+// the pages the sidebar shows.
+func (a *app) startSectionSelect(c *ui.Context) {
+	sections := a.visibleSections()
+	labels := make([]string, 0, len(sections))
+	current := a.repositoryStartSection()
+	for _, section := range sections {
+		labels = append(labels, tr(workspaceSections[section]))
+	}
+	if label := tr(workspaceSections[current]); slices.Contains(labels, label) {
+		a.startSectionChoice = label
+	} else if len(labels) > 0 {
+		a.startSectionChoice = labels[0]
+	}
+	before := a.startSectionChoice
+	settingRow(c, "Start page", "The first page of a repository you open", func() {
+		ui.Select(c, &a.startSectionChoice, labels).Label(tr("Start page")).Grow(1)
+	})
+	if a.startSectionChoice == before {
+		return
+	}
+	index := slices.Index(labels, a.startSectionChoice)
+	if index < 0 {
+		return
+	}
+	section := sections[index]
+	a.settings.StartSection = workspaceSectionIDs[section]
+	a.settings.OpenRepositoriesOnOverview = section == sectionOverview
+	a.settings.OverviewStartConfigured = true
+	a.settingsChanged(c)
 }
 
 // updatesSettings is the settings' release group: the version this build is
