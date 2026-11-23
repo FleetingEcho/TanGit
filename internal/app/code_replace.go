@@ -167,6 +167,9 @@ func (a *app) startCodeSearchReplaceAllWithClient(client remoteWorkspaceClient) 
 	}
 	go func() {
 		defer a.recoverBackground()
+		if remoteErr == nil {
+			paths = scopedCodeSearchPaths(ctx, root, paths, options, client)
+		}
 		for _, candidate := range paths {
 			if ctx.Err() != nil {
 				return

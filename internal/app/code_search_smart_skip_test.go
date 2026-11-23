@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 )
 
 func manyFiles(dir string, count int, names ...string) []string {
@@ -89,5 +90,36 @@ func TestSearchExclusionsIncludeSmartSkips(t *testing.T) {
 	h.app.settings.SmartSearchSkipDisabled = true
 	if slices.Contains(h.app.searchExclusions(), "platform/oskernel") {
 		t.Fatal("the smart skips stayed on after the switch was turned off")
+	}
+}
+
+// Editing the excluded folders applies at once: a search that is showing
+// results runs again with the new list, and the index built for the old list is
+// rebuilt in the background.
+func TestChangingExcludedFoldersRerunsSearchAndRebuildsTheIndex(t *testing.T) {
+	var rebuilds []func()
+	previous := scheduleCodeSearchIndexRebuild
+	scheduleCodeSearchIndexRebuild = func(_ time.Duration, run func()) { rebuilds = append(rebuilds, run) }
+	t.Cleanup(func() { scheduleCodeSearchIndexRebuild = previous })
+
+	h := menuTestApp(t)
+	h.app.pathUserData = t.TempDir()
+	h.app.snapshot.Root = t.TempDir()
+	h.app.code.filesLoaded = true
+	h.app.code.files = []string{"a.txt", "docs/b.txt"}
+	h.app.code.searchQuery, h.app.code.searchSubmitted = "needle", "needle"
+	h.app.code.searchIndex.status = codeSearchIndexReady
+
+	h.app.settings.SearchExcludedDirectories = append(h.app.settings.SearchExcludedDirectories, "docs")
+	h.app.searchExclusionsChanged(nil)
+
+	if !slices.Contains(h.app.code.searchSubmittedOptions.ExcludedDirectories, "docs") {
+		t.Fatalf("the open search still uses the old exclusions: %v", h.app.code.searchSubmittedOptions.ExcludedDirectories)
+	}
+	if h.app.code.searchIndex.status != codeSearchIndexStale || len(rebuilds) != 1 {
+		t.Fatalf("the index was not marked stale and queued for a rebuild: status %v, %d rebuilds", h.app.code.searchIndex.status, len(rebuilds))
+	}
+	if saved := loadAppSettings(h.app.pathUserData); !slices.Contains(saved.SearchExcludedDirectories, "docs") {
+		t.Fatal("the new exclusion was not saved")
 	}
 }

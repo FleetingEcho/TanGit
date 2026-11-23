@@ -2,6 +2,7 @@ package app
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/egoist/mygo"
@@ -97,4 +98,43 @@ func TestCodeBrowseSearchFolderRejectsOutsideAndLateAnswers(t *testing.T) {
 	if h.app.code.searchFolder != "current" {
 		t.Fatalf("late folder answer changed the scope to %q", h.app.code.searchFolder)
 	}
+}
+
+func TestScopedCodeSearchFindsGitIgnoredBuildOutput(t *testing.T) {
+	root := t.TempDir()
+	runGitIn(t, root, "init", "--quiet")
+	writeWorkspaceSearchTestFile(t, root, ".gitignore", "build/\n.build/\n")
+	for _, name := range []string{"web/source.js", "web/build/output.js", "web/.build/static/output.js", "web/.build/static/output.css"} {
+		writeWorkspaceSearchTestFile(t, root, name, "Activity Timeline\n")
+	}
+	paths, err := listCodeFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := menuTestApp(t)
+	h.app.pathUserData = t.TempDir()
+	h.app.snapshot.Root = root
+	h.app.settings.ZoektDisabledRepositories = []string{root}
+	h.app.settings.SearchExcludedDirectories = []string{"build"}
+	h.app.code.files, h.app.code.filesLoaded = paths, true
+	h.app.code.searchQuery = "Timeline"
+	h.app.code.searchInclude = "./web/**/*.js"
+	checkResults := func(want ...string) {
+		t.Helper()
+		h.waitFor(t, "scoped search completed", func() bool { return !h.app.code.searchRunning })
+		var got []string
+		for _, match := range h.app.code.searchResults {
+			got = append(got, match.Path)
+		}
+		slices.Sort(got)
+		if !slices.Equal(got, want) {
+			t.Fatalf("scoped results = %v, want %v", got, want)
+		}
+	}
+	h.app.beginCodeSearch()
+	checkResults("web/.build/static/output.js", "web/source.js")
+
+	h.app.settings.SearchExcludedDirectories = []string{".build"}
+	h.app.searchExclusionsChanged(nil)
+	checkResults("web/build/output.js", "web/source.js")
 }

@@ -40,6 +40,42 @@ const (
 var workspaceSearchLookPath = exec.LookPath
 var workspaceSearchReadFile = readWorkspaceSearchFile
 
+// Scoped searches can opt into generated files by naming a path or glob.
+// Discover those files separately from the Git-filtered Explorer and index.
+func scopedCodeSearchPaths(ctx context.Context, root string, paths []string, options workspaceSearchOptions, client remoteWorkspaceClient) []string {
+	if options.File == "" && options.Folder == "" && len(workspaceSearchGlobs(options.Include)) == 0 {
+		return paths
+	}
+	args := []string{"ls-files", "-z", "--others", "--ignored", "--exclude-standard"}
+	var output []byte
+	var err error
+	if client == nil {
+		command := exec.CommandContext(ctx, "git", args...)
+		command.Dir = root
+		output, err = command.Output()
+	} else {
+		result, runErr := client.Run(ctx, root, "git", args...)
+		output, err = result.Output, runErr
+	}
+	if err != nil {
+		return paths
+	}
+	seen := make(map[string]bool, len(paths))
+	for _, name := range paths {
+		seen[name] = true
+	}
+	for name := range strings.SplitSeq(string(output), "\x00") {
+		if ctx.Err() != nil {
+			return paths
+		}
+		if validCodeRelativePath(name) && !seen[name] && options.pathIncluded(name) {
+			paths = append(paths, name)
+			seen[name] = true
+		}
+	}
+	return paths
+}
+
 // searchWorkspaceFiles searches paths in their supplied order. An explicitly
 // built Zoekt index supplies fresh candidate files when available; ripgrep and
 // the Go scanner retain cold-search and no-index behavior.

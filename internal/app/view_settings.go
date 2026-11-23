@@ -890,11 +890,7 @@ func (a *app) searchExclusionSettings(c *ui.Context) {
 	if settingsSwitch(c, "Skip dependencies and generated folders automatically",
 		"Leaves out folders such as third_party and generated, folders marked linguist-vendored or linguist-generated in .gitattributes, and whole upstream projects copied into the repository (a folder with its own license and configure or Kconfig step, such as a Linux kernel tree). Searching and indexing are faster; turn the switch off to search them.", &smart) {
 		a.settings.SmartSearchSkipDisabled = !smart
-		a.refreshSmartSkips()
-		a.settingsChanged(c)
-		a.code.searchIndex.status = codeSearchIndexMissing
-		a.code.searchIndex.requested = false
-		a.ensureCodeSearchIndex()
+		a.searchExclusionsChanged(c)
 	}
 	if len(a.code.smartSkips) > 0 && smart {
 		ui.Text(c, trf("Skipped in this repository: %s", strings.Join(a.code.smartSkips, ", "))).
@@ -918,7 +914,7 @@ func (a *app) searchExclusionSettings(c *ui.Context) {
 		a.settings.SearchExcludedDirectories = normalizeWorkspaceSearchExcludedDirectories(
 			append(a.settings.SearchExcludedDirectories, name[0]))
 		a.settingsUI.searchExcludedDirectoryDraft = ""
-		a.settingsChanged(c)
+		a.searchExclusionsChanged(c)
 	})
 	settingsChoiceCard(c, "Excluded folders", "Applied before searching", func() {
 		ui.Row(c).Gap(8).Wrap().Children(func() {
@@ -947,7 +943,7 @@ func (a *app) searchExclusionSettings(c *ui.Context) {
 						}
 					}
 					a.settings.SearchExcludedDirectories = kept
-					a.settingsChanged(c)
+					a.searchExclusionsChanged(c)
 				}
 			}
 		})
@@ -956,12 +952,12 @@ func (a *app) searchExclusionSettings(c *ui.Context) {
 		if len(a.settings.SearchExcludedDirectories) > 0 {
 			iconTextButton(c, "Clear list", "Allow content search in every folder", closeIcon, false, func() {
 				a.settings.SearchExcludedDirectories = []string{}
-				a.settingsChanged(c)
+				a.searchExclusionsChanged(c)
 			})
 		}
 		iconTextButton(c, "Restore defaults", "Restore the common generated and dependency folder exclusions", refreshIcon, false, func() {
 			a.settings.SearchExcludedDirectories = defaultWorkspaceSearchExcludedDirectories()
-			a.settingsChanged(c)
+			a.searchExclusionsChanged(c)
 		})
 	})
 }

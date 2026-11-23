@@ -1406,9 +1406,16 @@ func (a *app) startCodeSearch(limit int, loadingMore bool) {
 		if remote {
 			err = remoteErr
 			if err == nil {
+				paths = scopedCodeSearchPaths(ctx, root, paths, options, remoteClient)
 				matches, backend, err = searchRemoteWorkspaceFiles(ctx, remoteClient, root, paths, options, limit)
 			}
 		} else {
+			listed := len(paths)
+			paths = scopedCodeSearchPaths(ctx, root, paths, options, nil)
+			if len(paths) != listed {
+				// The index covers the Explorer list. Scan the expanded scope directly.
+				options.IndexDirectory = ""
+			}
 			matches, backend, err = runCodeSearch(ctx, root, paths, options, limit)
 		}
 		if ctx.Err() == nil {

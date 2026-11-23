@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/egoist/mygo/ui"
 )
 
 // Searching and indexing spend most of their time on folders nobody searches:
@@ -183,5 +185,27 @@ func (a *app) refreshSmartSkips() {
 		if !workspaceSearchDirectoryExcluded(folder+"/x", user) {
 			a.code.smartSkips = append(a.code.smartSkips, folder)
 		}
+	}
+}
+
+// searchExclusionsChanged applies an edit of the excluded folders at once: the
+// automatic folders are worked out again, the repository's search index, which
+// was built for the old list, is rebuilt in the background (search uses ripgrep
+// until it is), and a search that is showing results runs again so that they
+// follow the new list.
+func (a *app) searchExclusionsChanged(c *ui.Context) {
+	a.refreshSmartSkips()
+	a.settingsChanged(c)
+	if a.snapshot.Root == "" {
+		return
+	}
+	if !a.location.IsRemote() {
+		if a.code.searchIndex.status == codeSearchIndexUnavailable {
+			a.code.searchIndex.status = codeSearchIndexMissing
+		}
+		a.invalidateCodeSearchIndex()
+	}
+	if a.code.searchSubmitted != "" && !a.code.searchReplaceRunning {
+		a.beginCodeSearch()
 	}
 }
