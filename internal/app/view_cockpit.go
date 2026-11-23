@@ -395,7 +395,6 @@ func (a *app) cockpitView(c *ui.Context) {
 	root.Children(func() {
 		ui.Scroll(c).Grow(1).TrackScroll(&a.cockpit.scroll).Children(func() {
 			ui.Column(c).FillWidth().MinWidth(0).Gap(0).Padding(0, 2, 6, 2).Children(func() {
-				a.cockpitRepositoryHeader(c, summary)
 				a.cockpit.tileInRow = false
 				a.cockpitContributorsCard(c, width >= 760)
 				a.cockpitAttentionCard(c, theme, summary)
@@ -422,41 +421,6 @@ func (a *app) cockpitView(c *ui.Context) {
 				}
 				a.cockpit.tileInRow = false
 				a.cockpitRecentCard(c, summary)
-			})
-		})
-	})
-}
-
-func (a *app) cockpitRepositoryHeader(c *ui.Context, summary cockpitSummary) {
-	theme := c.Theme()
-	islandCard(c, ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(10).Padding(6, 10)).Children(func() {
-		ui.Box(c).Size(34, 34).Radius(9).Center().Shrink(0).Background(theme.Accent.Alpha(0.14)).Children(func() {
-			ui.Icon(c, appIcon).FontSize(18).TextColor(theme.Accent)
-		})
-		ui.Column(c).Gap(3).Grow(1).MinWidth(0).Children(func() {
-			ui.Text(c, summary.Repository.Name).FontSize(18).Bold().SingleLine().MinWidth(0)
-			ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
-				branch := summary.Repository.Branch
-				if branch == "" {
-					branch = tr("Detached HEAD")
-				}
-				if summary.Collaboration.DivergenceKnown {
-					branch += fmt.Sprintf("  ↑%d ↓%d", summary.Collaboration.Ahead, summary.Collaboration.Behind)
-				}
-				cockpitChip(c, branch, theme.Accent, branchIcon)
-				if summary.Repository.Remote {
-					cockpitChip(c, tr("SSH"), theme.TextMuted, nil)
-				} else {
-					cockpitChip(c, tr("Local"), theme.TextMuted, nil)
-				}
-				if summary.Repository.Clean {
-					cockpitChip(c, tr("Clean"), theme.Success, nil)
-				} else {
-					cockpitChip(c, tr("Dirty"), theme.Warning, nil)
-				}
-				if summary.Repository.DetailsLoading {
-					cockpitChip(c, tr("loading details"), theme.TextMuted, nil)
-				}
 			})
 		})
 	})

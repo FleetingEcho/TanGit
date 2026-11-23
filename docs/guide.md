@@ -232,9 +232,8 @@ list, and the list can be ordered by most commits, most recent or name.
 ### Overview
 
 **Overview** is a workspace section, not a replacement for Changes or History.
-A header shows the repository, its branch with ahead/behind counts and its
-state; fetching, pulling, pushing and refreshing stay in the toolbar above
-rather than being repeated here. **Continue where you left
+The repository name, branch and state live in the title bar above, so the page
+starts straight with the content. **Continue where you left
 off** lists what needs doing next, each row striped in its severity color with
 one action. Four tiles summarize the working tree (changed files, staged,
 modified, untracked and conflicts, with review progress), collaboration
