@@ -135,16 +135,23 @@ func defaultWorkspaceSearchExcludedDirectories() []string {
 	return normalizeWorkspaceSearchExcludedDirectories(workspaceSearchDefaultExcludedDirectories)
 }
 
-// normalizeWorkspaceSearchExcludedDirectories accepts folder names only, and
-// returns a sorted, duplicate-free, non-nil slice. In particular, an empty
-// configured list stays empty instead of silently restoring the defaults.
+// normalizeWorkspaceSearchExcludedDirectories accepts folder names, which match
+// at any depth, and slash-separated paths from the repository root, which match
+// one folder; it returns a sorted, duplicate-free, non-nil slice. In particular,
+// an empty configured list stays empty instead of silently restoring the
+// defaults.
 func normalizeWorkspaceSearchExcludedDirectories(directories []string) []string {
 	normalized := make([]string, 0, len(directories))
 	seen := make(map[string]bool, len(directories))
 	for _, directory := range directories {
 		directory = strings.TrimSpace(directory)
-		if directory == "" || directory == "." || directory == ".." ||
-			strings.ContainsAny(directory, `/\\`) || seen[directory] {
+		if strings.Contains(directory, `\`) {
+			continue
+		}
+		if strings.Contains(directory, "/") {
+			directory = strings.Trim(path.Clean(directory), "/")
+		}
+		if directory == "" || directory == "." || directory == ".." || strings.HasPrefix(directory, "../") || seen[directory] {
 			continue
 		}
 		seen[directory] = true
@@ -160,6 +167,12 @@ func workspaceSearchDirectoryExcluded(name string, directories []string) bool {
 	for _, segment := range segments[:len(segments)-1] {
 		index := sort.SearchStrings(directories, segment)
 		if index < len(directories) && directories[index] == segment {
+			return true
+		}
+	}
+	// An entry with a slash is a folder path from the repository root.
+	for _, directory := range directories {
+		if strings.Contains(directory, "/") && strings.HasPrefix(name, directory+"/") {
 			return true
 		}
 	}

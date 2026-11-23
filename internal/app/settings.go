@@ -105,10 +105,16 @@ type appSettings struct {
 	// content search. Nil in an older settings file selects the
 	// defaults; a saved empty slice deliberately disables every exclusion.
 	SearchExcludedDirectories []string `json:"searchExcludedDirectories"`
+	// SmartSearchSkipDisabled turns off the folders skipped automatically, other
+	// people's code and generated files found by name or by content.
+	SmartSearchSkipDisabled bool `json:"smartSearchSkipDisabled,omitempty"`
 	// ZoektDisabledRepositories remembers which local roots use the complete
 	// ripgrep/native search fallback instead of a full-text Zoekt index. An
 	// absent or empty list keeps Zoekt enabled, including for older settings.
 	ZoektDisabledRepositories []string `json:"zoektDisabledRepositories,omitempty"`
+	// CodeSearchIndexLimitGiB is the most source content one repository may feed
+	// into its Zoekt index; 0 takes the default.
+	CodeSearchIndexLimitGiB int `json:"codeSearchIndexLimitGiB,omitempty"`
 	// LanguageServers keeps per-language executable choices. An absent entry
 	// means the built-in default: enabled and discovered on PATH.
 	LanguageServers map[string]languageServerSettings `json:"languageServers,omitempty"`
@@ -305,6 +311,9 @@ func normalizeSettings(s appSettings) appSettings {
 		s.SearchExcludedDirectories = normalizeWorkspaceSearchExcludedDirectories(s.SearchExcludedDirectories)
 	}
 	s.ZoektDisabledRepositories = normalizeZoektDisabledRepositories(s.ZoektDisabledRepositories)
+	if !slices.Contains(codeSearchIndexLimitChoicesGiB, s.CodeSearchIndexLimitGiB) {
+		s.CodeSearchIndexLimitGiB = 0
+	}
 	s.LanguageServers = normalizeLanguageServerSettings(s.LanguageServers)
 	if !s.AutoFetchConfigured {
 		if s.AutoFetchInterval == 0 {
@@ -572,6 +581,7 @@ func (a *app) loadSettings() {
 	}
 	a.settings = normalizeSettings(loadAppSettings(dir))
 	a.settingsLoaded = true
+	setCodeSearchIndexLimitGiB(a.settings.CodeSearchIndexLimitGiB)
 	currentLanguage = normalizeLanguage(a.settings.Language)
 	a.diffSplit = a.settings.DiffSplit
 	a.diffWrap = a.settings.DiffWrap

@@ -1,6 +1,8 @@
 package app
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -12,49 +14,101 @@ import (
 func (a *app) commandsSettings(c *ui.Context) {
 	theme := c.Theme()
 	settingsSection(c, func() {
-		settingsGroup(c, commandIcon, "Custom commands", "Your own keys for shell commands in this repository")
-		ui.Column(c).Gap(12).Padding(15).Background(theme.Surface.Alpha(0.55)).
-			Border(1, theme.Border).Radius(theme.Radius + 5).Children(func() {
-			ui.Text(c, tr("Commands run in the repository root with your shell. They see the repository through the working directory, never through a remote.")).
-				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).MaxWidth(560)
-			ui.Text(c, tr("Placeholders: {{branch}} {{commit}} {{file}} {{tag}} {{stash}} {{remote}} {{root}} — each is shell-quoted for you.")).
-				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).MaxWidth(560).Selectable()
+		settingsGroup(c, commandIcon, "Custom commands", "Your own keys for shell commands in this repository", func() {
+			flatIconButton(c, "Add command…", "Add a custom command", plusIcon, 15, 5,
+				a.settingsUI.customCommandFormOpen, func() { a.openCustomCommandForm(-1) })
+		})
+		a.customCommandForm(c)
 
-			if len(a.settings.CustomCommands) == 0 {
-				ui.Text(c, tr("No commands yet. Add one to put it on a key.")).TextColor(theme.TextMuted)
+		// Placeholders are small chips; what they stand for is in each tooltip.
+		ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
+			ui.Text(c, tr("Placeholders")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+			for _, placeholder := range customCommandPlaceholderHelp() {
+				c.Key("placeholder:" + placeholder.name)
+				ui.Text(c, "{{"+placeholder.name+"}}").FontSize(theme.FontSize-2).TextColor(theme.Accent).SingleLine().
+					Padding(1, 8).Radius(999).Background(theme.Accent.Alpha(0.12)).
+					Tooltip(placeholder.help)
 			}
+		})
+
+		if len(a.settings.CustomCommands) == 0 {
+			ui.Column(c).FillWidth().Gap(8).Padding(28).AlignItems(ui.Center).
+				Background(theme.Surface.Alpha(0.4)).Border(1, theme.Border).Radius(theme.Radius + 4).Children(func() {
+				ui.Icon(c, commandIcon).FontSize(24).TextColor(theme.TextMuted)
+				ui.Text(c, tr("No commands yet")).Bold()
+				ui.Text(c, tr("Run a command from the palette with !, then save it, or add one here.")).
+					TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).TextAlign(ui.Center).MaxWidth(380)
+				ui.Row(c).Gap(8).Children(func() {
+					iconTextButton(c, "Add command…", "Add a custom command", plusIcon, false, func() { a.openCustomCommandForm(-1) })
+				})
+			})
+		}
+		ui.Column(c).FillWidth().Gap(6).Children(func() {
 			for i := range a.settings.CustomCommands {
-				command := &a.settings.CustomCommands[i]
-				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					if key := customCommandDisplayKey(command.Key); key != "" {
-						keyCapsule(c, key)
-					} else {
-						ui.Text(c, tr("menu")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2).
-							Width(54).TextAlign(ui.Center)
-					}
-					ui.Column(c).Grow(1).Gap(1).Children(func() {
-						ui.Text(c, command.Name).SingleLine()
-						ui.Text(c, command.Command).TextColor(theme.TextMuted).
-							FontSize(theme.FontSize - 1).SingleLine()
+				i := i
+				command := a.settings.CustomCommands[i]
+				c.Key(fmt.Sprintf("custom-command:%d", i))
+				ui.Row(c).FillWidth().MinWidth(0).Gap(12).AlignItems(ui.Center).Padding(9, 12).
+					Background(theme.Surface.Alpha(0.5)).Border(1, theme.Border).Radius(theme.Radius + 2).Children(func() {
+					ui.Column(c).Width(0).Grow(1).MinWidth(0).Gap(3).Children(func() {
+						ui.Row(c).AlignItems(ui.Center).Gap(8).MinWidth(0).Children(func() {
+							ui.Text(c, command.Name).Bold().SingleLine()
+							if key := customCommandDisplayKey(command.Key); key != "" {
+								ui.Text(c, key).FontSize(theme.FontSize-2).TextColor(theme.Text).SingleLine().
+									Padding(0, 7).Radius(4).Background(theme.SurfaceHover).Border(1, theme.Border).Shrink(0)
+							}
+							for _, label := range customCommandContextLabels(command) {
+								ui.Text(c, label).FontSize(theme.FontSize-2).TextColor(theme.TextMuted).SingleLine().
+									Padding(0, 7).Radius(999).Background(theme.TextMuted.Alpha(0.12)).Shrink(0)
+							}
+						})
+						ui.Text(c, command.Command).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).
+							SingleLine().Tooltip(command.Command)
 					})
-					flatIconButton(c, "Edit command", "Edit this command", editIcon, 14, 4, false, func() {
+					flatIconButton(c, "Edit command", "Edit this command", editIcon, 14, 5, false, func() {
 						a.openCustomCommandForm(i)
 					})
-					flatIconButton(c, "Remove command", "Remove this command", trashIcon, 14, 4, false, func() {
+					flatIconButton(c, "Remove command", "Remove this command", trashIcon, 14, 5, false, func() {
 						a.settings.CustomCommands = append(a.settings.CustomCommands[:i], a.settings.CustomCommands[i+1:]...)
 						a.settingsChanged(c)
 					})
 				})
 			}
-			flatIconButton(c, "Add command…", "Add a custom command", plusIcon, 14, 4,
-				a.settingsUI.customCommandFormOpen, func() { a.openCustomCommandForm(-1) })
-
-			ui.Divider(c)
-			ui.Text(c, tr("Press : anywhere in the workspace to run a one-off command. The output goes to the command log (Ctrl+L).")).
-				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).MaxWidth(560)
 		})
-		a.customCommandForm(c)
+		ui.Text(c, tr("Commands run in the repository root with your shell, never through a remote. Press : anywhere for a one-off command; its output goes to the command log (Ctrl+L).")).
+			TextColor(theme.TextMuted).FontSize(theme.FontSize - 2).MaxWidth(620)
 	})
+}
+
+// customCommandPlaceholderHelp is what each placeholder stands for; every
+// value is shell-quoted when it is put into a command.
+func customCommandPlaceholderHelp() []struct{ name, help string } {
+	return []struct{ name, help string }{
+		{"branch", tr("The current branch")},
+		{"commit", tr("The selected commit, else HEAD")},
+		{"file", tr("The selected changed file")},
+		{"tag", tr("The selected tag")},
+		{"stash", tr("The selected stash")},
+		{"remote", tr("The selected remote")},
+		{"root", tr("The repository root")},
+	}
+}
+
+// customCommandContextLabels names where a command is active, nothing for the
+// usual "everywhere".
+func customCommandContextLabels(command customCommandSetting) []string {
+	var labels []string
+	for _, id := range command.Contexts {
+		if id == "everywhere" {
+			return nil
+		}
+		for _, context := range customCommandContexts {
+			if context.id == id {
+				labels = append(labels, tr(context.name))
+			}
+		}
+	}
+	return labels
 }
 
 func keyCapsule(c *ui.Context, key string) {
@@ -187,19 +241,18 @@ func (a *app) customCommandForm(c *ui.Context) {
 				Placeholder(tr("ctrl+g")).Grow(1)
 		})
 		ui.Text(c, tr("Active in")).Bold()
+		// The same chips as the sidebar's page choices, Everywhere first.
 		ui.Row(c).Gap(6).Wrap().Children(func() {
 			for _, ctx := range customCommandContexts {
+				ctx := ctx
 				checked := a.customCommandFormContextChecked(ctx.id)
-				var button ui.Element
-				if checked {
-					button = ui.PrimaryButton(c, tr(ctx.name))
-				} else {
-					button = ui.Button(c, tr(ctx.name))
-				}
-				_ = button
-				if button.Clicked() {
-					a.toggleCustomCommandFormContext(ctx.id, !checked)
-				}
+				c.Key("command-context:" + ctx.id)
+				chip := settingsChoiceChip(c, tr(ctx.name), tr("Click to toggle"), checked)
+				chip.Children(func() {
+					ui.Icon(c, customCommandContextIcon(ctx.id)).FontSize(14)
+					ui.Text(c, tr(ctx.name)).SingleLine()
+				})
+				chip.OnClick(func() { a.toggleCustomCommandFormContext(ctx.id, !checked) })
 			}
 		})
 		if a.settingsUI.customCommandFormError != "" {
@@ -242,4 +295,19 @@ func (a *app) customCommandFormConflicts() []string {
 		}
 	}
 	return warnings
+}
+
+// customCommandContextIcon is the icon of a place a command can be active in:
+// the page's own icon, as the sidebar shows it.
+func customCommandContextIcon(id string) *ui.SVG {
+	switch id {
+	case "everywhere":
+		return appIcon
+	case "diff":
+		return diffUnifiedIcon
+	}
+	if section := slices.Index(workspaceSectionIDs, id); section >= 0 {
+		return sectionIcons[section]
+	}
+	return appIcon
 }

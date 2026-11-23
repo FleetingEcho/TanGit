@@ -83,7 +83,14 @@ func TestStashRemoteAndWorkspaceFileCommands(t *testing.T) {
 	}
 	s.palette.open = true
 	s.palette.query = "/palgo"
+	// By default only the changed files are listed, never the repository's others.
 	candidates := s.catalogFor(ctx).Search(ctx, s.palette.query, nil)
+	if _, ok := catalogCandidate(candidates, "files/open/internal/app/palette.go"); ok {
+		t.Fatalf("the changed-files list offered an unchanged file: %+v", candidates)
+	}
+	// With the switch off, every file is searched and opens in the Editor.
+	s.palette.filesAll = true
+	candidates = s.catalogFor(ctx).Search(ctx, s.palette.query, nil)
 	if _, ok := catalogCandidate(candidates, "files/open/internal/app/palette.go"); !ok {
 		t.Fatalf("workspace file search missed an unchanged file: %+v", candidates)
 	}

@@ -53,9 +53,12 @@ type commandPaletteState struct {
 	uses         map[commandID]int
 	// target is the commit whose actions the palette lists; commitSearch is the
 	// Git search behind the # mode and a pasted hash.
-	target          *paletteCommitTarget
-	commitSearch    paletteCommitSearch
-	historyPos      int
+	target       *paletteCommitTarget
+	commitSearch paletteCommitSearch
+	historyPos   int
+	// filesAll makes the / list search every file of the repository; off, it
+	// lists the changed files only.
+	filesAll        bool
 	historyDraft    string
 	actionIndex     int
 	notice          string
@@ -73,9 +76,10 @@ func (s *shell) openCommandPalette(c *ui.Context) {
 		return
 	}
 	a := s.activeApp()
-	if a != nil && a.modalOpen() {
+	if a != nil && a.paletteBlocked() {
 		// Say why nothing opened, rather than ignoring the click or the key.
-		a.notify("info", "Command Palette is unavailable", tr("Close the open dialog or form first, then open the Command Palette again."))
+		a.notifyTranslated("info", tr("Command Palette is unavailable"),
+			trf("Close %s first, then open the Command Palette again.", a.paletteBlockReason()))
 		return
 	}
 	s.palette.open = true
@@ -387,7 +391,6 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 	} else if s.palette.selected < 0 {
 		s.palette.selected = 0
 	}
-	total := s.catalogFor(s.commandContext()).Total(s.commandContext())
 	mode, _ := commandQueryMode(s.palette.query)
 	if s.palette.target != nil {
 		mode = 'a'
@@ -518,6 +521,19 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 							headerLabel = "Actions"
 						}
 						ui.Text(c, tr(headerLabel)).Bold().Grow(1)
+						if mode == '/' {
+							// On: only the changed files. Off: any file, opened in the Editor.
+							toggle := func() {
+								s.palette.filesAll = !s.palette.filesAll
+								s.palette.selected = 0
+								s.palette.revealSelection = true
+							}
+							if s.palette.filesAll {
+								flatToggleIconButton(c, "Changed files only", "Off: searching every file, which opens in the Editor. Turn on to list only the changed files.", switchIcon, 18, 3, false, toggle)
+							} else {
+								flatToggleIconButton(c, "Changed files only", "On: listing only the changed files. Turn off to search every file in the Editor.", switchIcon, 18, 3, true, toggle)
+							}
+						}
 						if query := strings.TrimSpace(s.palette.query); query != "" {
 							if label := commandModeLabel(mode); label != "" {
 								ui.Text(c, tr(label)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
@@ -550,7 +566,7 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 									ui.Text(c, tr(section)).Bold().FontSize(theme.FontSize-2).TextColor(theme.TextMuted).Padding(6, 10, 0, 10)
 								}
 								c.Key("command-palette:" + string(candidate.ID))
-								s.commandPaletteRow(c, candidate, index == s.palette.selected, s.palette.revealSelection, func() {
+								s.commandPaletteRow(c, candidate, index == s.palette.selected, s.palette.revealSelection, mode == 0 || mode == '>', func() {
 									s.palette.selected = index
 									s.invokeCommand(candidate.ID)
 								})
@@ -577,10 +593,7 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 					} else {
 						count := trf("%d results", len(candidates))
 						if mode == 0 || mode == '>' {
-							count = trf("%d of %d commands", len(candidates), total)
-							if len(candidates) == total {
-								count = trf("%d commands", total)
-							}
+							count = trf("%d commands", len(candidates))
 						}
 						ui.Text(c, count).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 					}
@@ -617,7 +630,7 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 	})
 }
 
-func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, selected, reveal bool, invoke func()) {
+func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, selected, reveal, pinnable bool, invoke func()) {
 	theme := c.Theme()
 	label := candidate.Label
 	if !candidate.Enabled && candidate.DisabledReason != "" {
@@ -701,16 +714,39 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 			if candidate.Pinned {
 				groupLabel = "★ " + groupLabel
 			}
-			ui.Text(c, groupLabel).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted).SingleLine()
-			if candidate.CustomIndex > 0 {
-				index := candidate.CustomIndex - 1
-				a := s.activeApp()
-				flatIconButton(c, "Edit command", "Edit this command", editIcon, 14, 4, a == nil, func() {
-					s.closeCommandPalette(false)
-					a.openSettingsSection(settingsPageCommands)
-					a.openCustomCommandForm(index)
+			// The pin and edit buttons share the line with the group name and show
+			// only while the pointer is over the row; their room is kept so the
+			// row never changes height.
+			ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
+				hovered := row.Hovered()
+				slot := func(show bool, button func()) {
+					if show && hovered {
+						button()
+						return
+					}
+					if show {
+						ui.Box(c).Size(22, 22)
+					}
+				}
+				slot(pinnable && s.palette.target == nil, func() {
+					toggle := func() { s.togglePinnedCommand(candidate.ID) }
+					if candidate.Pinned {
+						flatToggleIconButton(c, "Unpin command", "Remove this command from the pinned ones", pinIcon, 14, 4, true, toggle)
+					} else {
+						flatToggleIconButton(c, "Pin command", "Keep this command at the top of the list", pinIcon, 14, 4, false, toggle)
+					}
 				})
-			}
+				slot(candidate.CustomIndex > 0, func() {
+					index := candidate.CustomIndex - 1
+					a := s.activeApp()
+					flatIconButton(c, "Edit command", "Edit this command", editIcon, 14, 4, a == nil, func() {
+						s.closeCommandPalette(false)
+						a.openSettingsSection(settingsPageCommands)
+						a.openCustomCommandForm(index)
+					})
+				})
+				ui.Text(c, groupLabel).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted).SingleLine()
+			})
 			if candidate.Chord != "" {
 				ui.Text(c, candidate.Chord).FontSize(theme.FontSize - 2).TextColor(theme.Accent).SingleLine()
 			}

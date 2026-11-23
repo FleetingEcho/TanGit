@@ -10,6 +10,7 @@ type settingsUIState struct {
 	revealShortcuts           bool
 	conflictActionStyleChoice int
 	autoFetchChoice           int
+	indexLimitChoice          string
 
 	customEditorFormOpen    bool
 	customEditorFormName    string

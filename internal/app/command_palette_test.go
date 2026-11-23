@@ -362,6 +362,11 @@ func TestCommandPaletteCustomCommandCanBeEdited(t *testing.T) {
 	s.palette.query = "git pull"
 	tt.Frame()
 	tt.Frame()
+	if row, ok := tt.Find("git pull origin main"); ok {
+		tt.Move(row.X+row.W/2, row.Y+row.H/2)
+		tt.Frame()
+		tt.Frame()
+	}
 	if err := tt.Click("Edit command"); err != nil {
 		t.Fatal(err)
 	}
@@ -384,5 +389,139 @@ func TestCommandPaletteCustomCommandCanBeEdited(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("the palette does not show the edited command")
+	}
+}
+
+// The commit message box and the list filter sit in a page, so the palette
+// opens over them; a real dialog still keeps it from opening, and the message
+// names that dialog.
+func TestCommandPaletteOpensOverInlineFormsButNotDialogs(t *testing.T) {
+	s, tt, a := readyPaletteShell(t)
+	a.showCommitForm, a.filterOpen = true, true
+	s.openCommandPalette(nil)
+	tt.Frame()
+	if !s.palette.open {
+		t.Fatal("the palette did not open over the commit message box")
+	}
+	s.closeCommandPalette(false)
+	a.showCommitForm, a.filterOpen = false, false
+
+	a.settingsUI.open = true
+	s.openCommandPalette(nil)
+	if s.palette.open {
+		t.Fatal("the palette opened over Settings")
+	}
+	if got := a.paletteBlockReason(); got != "Settings" {
+		t.Fatalf("block reason = %q, want Settings", got)
+	}
+}
+
+// A command form left open in Settings is not a form once Settings is closed, so
+// it must not keep the palette (or the window's shortcuts) from working.
+func TestClosedSettingsFormDoesNotBlockThePalette(t *testing.T) {
+	s, tt, a := readyPaletteShell(t)
+	a.openSettingsSection(settingsPageCommands)
+	a.openCustomCommandForm(-1)
+	a.closeSettings()
+	if a.anyFormOpen() || a.paletteBlocked() {
+		t.Fatalf("a closed Settings still counts as a form: %q", a.openFormName(false))
+	}
+	s.openCommandPalette(nil)
+	tt.Frame()
+	if !s.palette.open {
+		t.Fatal("the palette did not open")
+	}
+}
+
+// Every command row has a pin button that pins it, and the button then offers
+// to unpin it.
+func TestCommandPaletteRowsHaveAPinButton(t *testing.T) {
+	s, tt, a := readyPaletteShell(t)
+	a.pathUserData = t.TempDir()
+	s.pathUserData = a.pathUserData
+	s.openCommandPalette(nil)
+	tt.Frame()
+	s.palette.query = "Open Settings"
+	tt.Frame()
+	tt.Frame()
+	// The pin is not there until the pointer is over the row, and showing it
+	// does not change the row's height.
+	if _, ok := tt.Find("Pin command"); ok {
+		t.Fatal("the pin button shows without hovering the row")
+	}
+	row, ok := tt.Find("Open Settings")
+	if !ok {
+		t.Fatal("the row is missing")
+	}
+	rowBefore, _ := tt.Access("Open Settings")
+	tt.Move(row.X+row.W/2, row.Y+row.H/2)
+	tt.Frame()
+	tt.Frame()
+	if _, ok := tt.Find("Pin command"); !ok {
+		t.Fatal("the pin button does not show when the row is hovered")
+	}
+	if rowAfter, _ := tt.Access("Open Settings"); rowAfter.Bounds.H != rowBefore.Bounds.H {
+		t.Fatalf("hovering changed the row height from %.1f to %.1f", rowBefore.Bounds.H, rowAfter.Bounds.H)
+	}
+	if err := tt.Click("Pin command"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(s.palette.pinned) != 1 {
+		t.Fatalf("pinned after the click = %v", s.palette.pinned)
+	}
+	tt.Frame()
+	if _, ok := tt.Find("Unpin command"); !ok {
+		t.Fatal("a pinned row does not offer to unpin")
+	}
+}
+
+// The / list has a switch: on (the default) it lists only the changed files, off
+// it searches every file and a click opens it in the Editor.
+func TestCommandPaletteFilesSwitch(t *testing.T) {
+	s, tt, a := readyPaletteShell(t)
+	a.code.files = []string{"README.md", "internal/app/palette.go"}
+	a.code.filesLoaded = true
+	s.openCommandPalette(nil)
+	tt.Frame()
+	if _, ok := tt.Find("Changed files only"); ok {
+		t.Fatal("the switch shows outside the file list")
+	}
+	s.palette.query = "/palette"
+	tt.Frame()
+	tt.Frame()
+	if s.palette.filesAll {
+		t.Fatal("the file list should start with changed files only")
+	}
+	if err := tt.Click("Changed files only"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.Frame()
+	if !s.palette.filesAll {
+		t.Fatal("the switch did not turn off the changed-files filter")
+	}
+	if _, ok := tt.Find("internal/app/palette.go"); !ok {
+		t.Fatal("the repository file is not listed with the switch off")
+	}
+}
+
+// Choosing a file in the / list opens it in the Editor and shows the Editor page.
+func TestCommandPaletteFileOpensInTheEditor(t *testing.T) {
+	s, tt, a := readyPaletteShell(t)
+	a.snapshot.Root = t.TempDir()
+	a.code.files = []string{"internal/app/palette.go"}
+	a.code.filesLoaded = true
+	a.setWorkspaceTab(sectionChanges)
+	s.openCommandPalette(nil)
+	tt.Frame()
+	s.palette.filesAll = true
+	s.palette.query = "/palette"
+	tt.Frame()
+	tt.Frame()
+	s.invokeCommand("files/open/internal/app/palette.go")
+	tt.Frame()
+	if a.workspaceTab != sectionCode || a.code.active != "internal/app/palette.go" {
+		t.Fatalf("the file did not open in the Editor: tab %d, active %q", a.workspaceTab, a.code.active)
 	}
 }

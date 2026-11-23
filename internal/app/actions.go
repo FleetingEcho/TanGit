@@ -286,6 +286,9 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 			a.setWorkspaceTab(start)
 		}
 		a.startRepositoryWatch(session)
+		// Reading the file list in the background lets the search index start
+		// right away, unless Zoekt is off for this repository.
+		a.startCodeSearchIndexOnOpen()
 	}
 	if len(snapshot.Warnings) > 0 {
 		// The repository opened with some optional data unavailable (see the

@@ -233,6 +233,7 @@ func (s *shell) loadPreferences() {
 	}
 	if s.pathUserData != "" {
 		s.settings = normalizeSettings(loadAppSettings(s.pathUserData))
+		setCodeSearchIndexLimitGiB(s.settings.CodeSearchIndexLimitGiB)
 	}
 	s.settingsLoaded = true
 	currentLanguage = normalizeLanguage(s.settings.Language)

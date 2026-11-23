@@ -325,6 +325,9 @@ func (a *app) cacheSettings(c *ui.Context) {
 		}, func() {
 			iconButton(c, "Refresh cache size", "Remeasure the disk space used by Zoekt indexes and cached author avatars", refreshIcon,
 				a.cacheUsage.loading || a.cacheCleanupBusy, a.refreshCacheUsage)
+		}, func() {
+			iconButton(c, "Clear cache", "Delete ALL Zoekt code-search indexes and cached author avatars across every project. They are recreated when needed.",
+				trashIcon, a.cacheCleanupBusy, a.openCacheCleaner)
 		})
 		switch {
 		case a.cacheCleanupBusy:
@@ -345,14 +348,76 @@ func (a *app) cacheSettings(c *ui.Context) {
 			cacheUsageRow("Zoekt search indexes", indexDescription, a.cacheUsage.indexBytes)
 			cacheUsageRow("Cached avatars", avatarDescription, a.cacheUsage.avatarBytes)
 		}
-		ui.Divider(c)
-		settingRow(c, "Cache", "", func() {
-			iconTextButtonState(c, "Clear cache", "Delete ALL Zoekt code-search indexes and cached author avatars across every project. They are recreated when needed.", trashIcon,
-				false, a.cacheCleanupBusy, a.openCacheCleaner)
-		})
+		a.indexLimitSelect(c)
 		ui.Text(c, tr("Only Zoekt indexes and downloaded avatars are included. Unsaved editor recovery and Git safety journals are never cleared.")).
 			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 	})
+}
+
+// codeSearchIndexLimitChoicesGiB are the per-repository budgets Settings offers.
+var codeSearchIndexLimitChoicesGiB = []int{0, 1, 2, 5, 10, 20, 50}
+
+func indexLimitLabel(gib int) string {
+	if gib == 0 {
+		gib = defaultCodeSearchIndexLimitGiB
+	}
+	return trf("%d GiB", gib)
+}
+
+// indexLimitSelect chooses how much source one repository may put into its
+// Zoekt index. Repositories over it use ripgrep and the native search instead.
+// Choosing again lets a repository that was too large try its index again.
+func (a *app) indexLimitSelect(c *ui.Context) {
+	options := make([]string, 0, len(codeSearchIndexLimitChoicesGiB))
+	for _, gib := range codeSearchIndexLimitChoicesGiB {
+		if gib == 0 {
+			continue
+		}
+		options = append(options, indexLimitLabel(gib))
+	}
+	if a.settingsUI.indexLimitChoice == "" || !slices.Contains(options, a.settingsUI.indexLimitChoice) {
+		a.settingsUI.indexLimitChoice = indexLimitLabel(a.settings.CodeSearchIndexLimitGiB)
+	}
+	before := a.settingsUI.indexLimitChoice
+	// The same row as the usage figures above: the title, an info badge that
+	// carries the explanation, and the control at the end.
+	const label = "Index size limit"
+	const description = "The most source content one repository may put into its search index. Larger repositories use ripgrep instead. The index on disk is several times bigger than the source it covers."
+	ui.Row(c).AlignItems(ui.Center).Gap(8).MinHeight(36).Children(func() {
+		ui.Text(c, tr(label)).Bold()
+		cacheInfoBadge(c, label, description)
+		ui.Box(c).Grow(1)
+		ui.Select(c, &a.settingsUI.indexLimitChoice, options).Label(tr("Index size limit per repository")).Width(130)
+	})
+	if a.settingsUI.indexLimitChoice == before {
+		return
+	}
+	a.applyIndexLimitChoice(c, a.settingsUI.indexLimitChoice)
+}
+
+// applyIndexLimitChoice makes a chosen size the budget and stores it.
+func (a *app) applyIndexLimitChoice(c *ui.Context, label string) {
+	gib := -1
+	for _, choice := range codeSearchIndexLimitChoicesGiB {
+		if choice != 0 && indexLimitLabel(choice) == label {
+			gib = choice
+		}
+	}
+	if gib < 0 {
+		return
+	}
+	if gib == defaultCodeSearchIndexLimitGiB {
+		gib = 0
+	}
+	a.settings.CodeSearchIndexLimitGiB = gib
+	setCodeSearchIndexLimitGiB(gib)
+	a.settingsChanged(c)
+	// A repository that was over the old budget may fit this one: look again.
+	if state := &a.code.searchIndex; state.status == codeSearchIndexUnavailable {
+		state.status = codeSearchIndexMissing
+		state.requested = false
+		a.ensureCodeSearchIndex()
+	}
 }
 
 func cacheInfoBadge(c *ui.Context, label, description string) {
@@ -817,9 +882,25 @@ func (a *app) zoektSearchSettings(c *ui.Context) {
 func (a *app) searchExclusionSettings(c *ui.Context) {
 	theme := c.Theme()
 	ui.Text(c, tr("Search exclusions")).Bold().FontSize(theme.FontSize + 1)
-	ui.Text(c, tr("Folder names skipped by content search")).
+	ui.Text(c, tr("Folders skipped by content search and by the search index")).
 		TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).MaxWidth(480)
-	settingRow(c, "Excluded folder name", "Match this folder at any depth", func() {
+	// Folders of other people's code and generated files, recognized by their
+	// names and by what they contain, so unknown ones are covered too.
+	smart := !a.settings.SmartSearchSkipDisabled
+	if settingsSwitch(c, "Skip dependencies and generated folders automatically",
+		"Leaves out folders such as third_party and generated, folders marked linguist-vendored or linguist-generated in .gitattributes, and whole upstream projects copied into the repository (a folder with its own license and configure or Kconfig step, such as a Linux kernel tree). Searching and indexing are faster; turn the switch off to search them.", &smart) {
+		a.settings.SmartSearchSkipDisabled = !smart
+		a.refreshSmartSkips()
+		a.settingsChanged(c)
+		a.code.searchIndex.status = codeSearchIndexMissing
+		a.code.searchIndex.requested = false
+		a.ensureCodeSearchIndex()
+	}
+	if len(a.code.smartSkips) > 0 && smart {
+		ui.Text(c, trf("Skipped in this repository: %s", strings.Join(a.code.smartSkips, ", "))).
+			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).MaxWidth(560).Selectable()
+	}
+	settingRow(c, "Excluded folder", "A folder name matches at any depth; a path such as docs/archive matches one folder", func() {
 		input := ui.TextInput(c, &a.settingsUI.searchExcludedDirectoryDraft).
 			Label(tr("New excluded folder")).Placeholder("node_modules").Grow(1)
 		submitted := input.Submitted()

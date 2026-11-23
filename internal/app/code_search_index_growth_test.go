@@ -88,11 +88,16 @@ func TestForcedZoektRebuildDoesNotAccumulateGenerations(t *testing.T) {
 
 func growZoektFixturePastSourceBudget(t *testing.T, root, name string) {
 	t.Helper()
+	// A small budget keeps the fixture a small file, under the size at which a
+	// file is left out of the index altogether.
+	previous := codeSearchIndexLimit.Load()
+	codeSearchIndexLimit.Store(64 << 10)
+	t.Cleanup(func() { codeSearchIndexLimit.Store(previous) })
 	path := filepath.Join(root, name)
 	if err := os.WriteFile(path, []byte("oversized source fixture"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Truncate(path, codeSearchIndexSourceBytesLimit+1); err != nil {
+	if err := os.Truncate(path, codeSearchIndexSourceBytesLimit()+1); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -136,7 +141,7 @@ func TestEnsureCodeSearchIndexRemovesLegacyOverBudgetIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Emulate the large manifest published by a release without the budget.
-	manifest.SourceBytes = codeSearchIndexSourceBytesLimit + 1
+	manifest.SourceBytes = codeSearchIndexSourceBytesLimit() + 1
 	encoded, err := json.Marshal(manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -167,5 +172,43 @@ func TestEnsureCodeSearchIndexRemovesLegacyOverBudgetIndex(t *testing.T) {
 	a.ensureCodeSearchIndex()
 	if a.code.searchIndex.busy {
 		t.Fatal("over-budget repository started another indexing pass")
+	}
+}
+
+// Big or generated files stay out of the index and are left to the native
+// complement; they must still be found, and cost the budget nothing.
+func TestZoektIndexLeavesBigAndGeneratedFilesToTheNativeSearch(t *testing.T) {
+	if codeSearchIndexSkipsFile("src/app.go", 10<<10) {
+		t.Fatal("an ordinary source file is skipped")
+	}
+	for _, name := range []string{"dist/app.min.js", "web/package-lock.json", "icons/logo.svg", "build/app.js.map"} {
+		if !codeSearchIndexSkipsFile(name, 10) {
+			t.Errorf("%s should be left out of the index", name)
+		}
+	}
+	if !codeSearchIndexSkipsFile("include/registers.h", codeSearchIndexMaxFileBytes+1) {
+		t.Error("a file over the size limit should be left out of the index")
+	}
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "small.go"), []byte("package app // findme in an indexed file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "bundle.min.js"), []byte("var a = 'findme in a skipped file'"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{"small.go", "bundle.min.js"}
+	directory := filepath.Join(t.TempDir(), "index")
+	info, err := buildCodeSearchIndex(context.Background(), root, paths, nil, directory)
+	if err != nil || info.status != codeSearchIndexReady {
+		t.Fatalf("build = %+v, %v", info, err)
+	}
+	if info.documents != 1 {
+		t.Fatalf("indexed %d documents, want only the ordinary file", info.documents)
+	}
+	matches, ok := searchWorkspaceFilesZoekt(context.Background(), root, paths,
+		workspaceSearchOptions{Query: "findme", IndexDirectory: directory}, 10)
+	if !ok || len(matches) != 2 {
+		t.Fatalf("matches = %+v, ok = %v: the skipped file was not searched", matches, ok)
 	}
 }

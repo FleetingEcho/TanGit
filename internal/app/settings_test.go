@@ -366,7 +366,7 @@ func TestSettingsSearchExclusionsDefaultNormalizeAndPersistEmpty(t *testing.T) {
 	custom := defaultSettings()
 	custom.SearchExcludedDirectories = []string{" generated ", "", ".", "..", "nested/path", "node_modules", "generated", ".nx"}
 	custom = normalizeSettings(custom)
-	if got, want := custom.SearchExcludedDirectories, []string{".nx", "generated", "node_modules"}; !reflect.DeepEqual(got, want) {
+	if got, want := custom.SearchExcludedDirectories, []string{".nx", "generated", "nested/path", "node_modules"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("normalized exclusions = %v, want %v", got, want)
 	}
 
@@ -799,6 +799,9 @@ func TestSettingsEditsSearchExcludedFolderList(t *testing.T) {
 		t.Fatalf("adding cooked produced %q with draft %q", h.app.settings.SearchExcludedDirectories, h.app.settingsUI.searchExcludedDirectoryDraft)
 	}
 
+	// The automatic-skip switch above the list pushes it down the page.
+	h.tester.Scroll(700, 400, 0, 200)
+	h.tester.Frame()
 	if err := h.tester.Click("Remove excluded folder node_modules"); err != nil {
 		t.Fatal(err)
 	}
@@ -806,7 +809,7 @@ func TestSettingsEditsSearchExcludedFolderList(t *testing.T) {
 	if slices.Contains(h.app.settings.SearchExcludedDirectories, "node_modules") {
 		t.Fatal("a default exclusion could not be removed")
 	}
-	h.tester.Scroll(700, 400, 0, 500)
+	h.tester.Scroll(700, 400, 0, 300)
 	h.tester.Frame()
 	if err := h.tester.Click("Clear list"); err != nil {
 		t.Fatal(err)

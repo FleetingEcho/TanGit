@@ -40,6 +40,7 @@ func (a *app) codeSidebar(c *ui.Context) {
 				})
 			}
 			a.repositoryExternalEditorButton(c)
+			a.codeSearchIndexButton(c)
 			flatIconButton(c, "Refresh files", "Reload the repository file list", refreshIcon, 14, 4,
 				a.code.filesLoading || a.code.fileOperationBusy, func() {
 					a.code.filesLoaded = false

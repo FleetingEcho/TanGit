@@ -547,7 +547,13 @@ func (a *app) branchListView(c *ui.Context) {
 			services := row.Context.Services()
 			ui.Row(row.Context).Gap(8).Padding(7, 8).Children(func() {
 				if branch.Head {
-					ui.Text(row.Context, tr("●")).TextColor(secondaryRowColor(theme, row))
+					// The checked-out branch's dot is green, as in the title bar; on
+					// the selected row a light ring keeps it clear of the highlight.
+					dot := ui.Box(row.Context).Size(10, 10).Radius(5).Shrink(0).Background(theme.Success)
+					if row.Selected() {
+						dot.Border(2, theme.AccentText.Alpha(0.85))
+					}
+					dot.Label(tr("Current branch"))
 				}
 				ui.Text(row.Context, branchDisplay(branch)).Grow(1).SingleLine()
 				ahead, behind, known := aheadBehind(branch)

@@ -42,8 +42,18 @@ func TestCacheRefreshBelongsToGroupHeader(t *testing.T) {
 	if refresh.Y+refresh.H > total.Y || manage.Y+manage.H > total.Y {
 		t.Fatalf("cache actions are not in the group header: refresh=%+v total=%+v manage=%+v", refresh, total, manage)
 	}
-	if refresh.X+refresh.W < dialog.Bounds.X+dialog.Bounds.W-48 {
-		t.Fatalf("refresh is not aligned with the header's right edge: refresh=%+v dialog=%+v", refresh, dialog.Bounds)
+	clear, found := h.tester.Find("Clear cache")
+	if !found {
+		t.Fatal("the Clear cache button is missing from the header")
+	}
+	if clear.X+clear.W < dialog.Bounds.X+dialog.Bounds.W-48 || clear.Y+clear.H > total.Y {
+		t.Fatalf("Clear cache is not at the header's right edge: clear=%+v dialog=%+v", clear, dialog.Bounds)
+	}
+	if refresh.X+refresh.W > clear.X+1 {
+		t.Fatalf("Refresh and Clear cache overlap or are out of order: %v %v", refresh, clear)
+	}
+	if _, found := h.tester.AccessByRole(ui.RoleText, "Clear cache"); found {
+		t.Fatal("Clear cache is visible as text instead of an icon-only button")
 	}
 	if manage.X+manage.W > refresh.X+1 {
 		t.Fatalf("Manage and refresh overlap or are out of order: Manage=%v Refresh=%v", manage, refresh)
@@ -101,5 +111,37 @@ func TestCacheRefreshBelongsToGroupHeader(t *testing.T) {
 	h.tester.Frame()
 	if h.app.cacheRepositories.open {
 		t.Fatal("closing the manager after a header-icon click failed")
+	}
+}
+
+// The Cache page has a selector for the most source one repository may put into
+// its search index; choosing a size applies at once and is saved.
+func TestCacheIndexLimitSelector(t *testing.T) {
+	previous := codeSearchIndexLimit.Load()
+	t.Cleanup(func() { codeSearchIndexLimit.Store(previous) })
+	h := menuTestApp(t)
+	h.app.pathUserData = t.TempDir()
+	h.app.cacheUsage.loaded = true
+	h.app.openSettings()
+	h.tester.Frame()
+	if err := h.tester.Click("Cache settings"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if got := codeSearchIndexSourceBytesLimit(); got != 10<<30 {
+		t.Fatalf("the default limit is %d, want 10 GiB", got)
+	}
+	if _, ok := h.tester.Find("Index size limit"); !ok {
+		t.Fatal("the index size limit row is missing")
+	}
+	h.app.applyIndexLimitChoice(nil, "2 GiB")
+	if h.app.settings.CodeSearchIndexLimitGiB != 2 || codeSearchIndexSourceBytesLimit() != 2<<30 {
+		t.Fatalf("the choice was not applied: setting %d, limit %d", h.app.settings.CodeSearchIndexLimitGiB, codeSearchIndexSourceBytesLimit())
+	}
+	if saved := loadAppSettings(h.app.pathUserData); saved.CodeSearchIndexLimitGiB != 2 {
+		t.Fatalf("the choice was not saved: %d", saved.CodeSearchIndexLimitGiB)
+	}
+	if normalizeSettings(appSettings{CodeSearchIndexLimitGiB: 7}).CodeSearchIndexLimitGiB != 0 {
+		t.Fatal("an unknown size was kept")
 	}
 }

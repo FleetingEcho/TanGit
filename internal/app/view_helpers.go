@@ -652,47 +652,65 @@ func (a *app) closeAllForms() {
 // anyFormOpen reports whether a text-entry form is showing. Plain-letter
 // shortcuts are registered only while it returns false, so they can never
 // swallow keystrokes meant for a text input.
-func (a *app) anyFormOpen() bool {
-	return a.filterOpen ||
-		a.showCommitForm ||
-		a.showBranchForm ||
-		a.showRenameForm ||
-		a.showRemoteForm ||
-		a.showRemoteWebURLForm ||
-		a.showRemoteCheckoutForm ||
-		a.showRecoveryModal ||
-		a.showStashForm ||
-		a.showStashRenameForm ||
-		a.showTagForm ||
-		a.showTagPushForm ||
-		a.showTagRemoteDeleteForm ||
-		a.showWorktreeForm ||
-		a.showWorktreeMoveForm ||
-		a.showWorktreeLockForm ||
-		a.showWorktreeRepairForm ||
-		a.showWorktreePruneForm ||
-		a.assistance.conflict.open ||
-		a.assistance.splitter.open ||
-		a.agents.formOpen ||
-		a.showSubmoduleForm ||
-		a.showCommitTagForm ||
-		a.showCommitBranchForm ||
-		a.showCommitRewordForm ||
-		a.rebasePlanEditorOpen ||
-		a.showRenameRecent ||
-		(a.homeWorktrees.open && !a.homeWorktrees.dropdown) ||
-		a.ssh.profileFormOpen ||
-		a.cloneOpen ||
-		a.code.fileForm != codeFileFormNone ||
-		a.code.workspaceFormOpen ||
-		a.code.languageDialog != codeLanguageDialogNone ||
-		a.term.renameID != 0 || a.term.renameGroup != 0 ||
-		a.settingsUI.customCommandFormOpen ||
-		a.commandPromptOpen ||
-		a.showBisectForm ||
-		a.showExportPatchForm ||
-		a.showPRForm ||
-		a.prChecksOpen
+func (a *app) anyFormOpen() bool { return a.formOpen(false) }
+
+// formOpen is anyFormOpen; with inline true it leaves out the surfaces that sit
+// in a page rather than over it: the commit message box and the list filter.
+func (a *app) formOpen(inline bool) bool { return a.openFormName(inline) != "" }
+
+// openFormName names the form that is open, "" when none is: the field it is
+// kept in, so a form that stays open by mistake can be found.
+func (a *app) openFormName(inline bool) string {
+	for _, form := range []struct {
+		on   bool
+		name string
+	}{
+		{!inline && a.filterOpen, "filterOpen"},
+		{!inline && a.showCommitForm, "showCommitForm"},
+		{a.showBranchForm, "showBranchForm"},
+		{a.showRenameForm, "showRenameForm"},
+		{a.showRemoteForm, "showRemoteForm"},
+		{a.showRemoteWebURLForm, "showRemoteWebURLForm"},
+		{a.showRemoteCheckoutForm, "showRemoteCheckoutForm"},
+		{a.showRecoveryModal, "showRecoveryModal"},
+		{a.showStashForm, "showStashForm"},
+		{a.showStashRenameForm, "showStashRenameForm"},
+		{a.showTagForm, "showTagForm"},
+		{a.showTagPushForm, "showTagPushForm"},
+		{a.showTagRemoteDeleteForm, "showTagRemoteDeleteForm"},
+		{a.showWorktreeForm, "showWorktreeForm"},
+		{a.showWorktreeMoveForm, "showWorktreeMoveForm"},
+		{a.showWorktreeLockForm, "showWorktreeLockForm"},
+		{a.showWorktreeRepairForm, "showWorktreeRepairForm"},
+		{a.showWorktreePruneForm, "showWorktreePruneForm"},
+		{a.assistance.conflict.open, "conflict assistance"},
+		{a.assistance.splitter.open, "commit splitter"},
+		{a.agents.formOpen, "agent task form"},
+		{a.showSubmoduleForm, "showSubmoduleForm"},
+		{a.showCommitTagForm, "showCommitTagForm"},
+		{a.showCommitBranchForm, "showCommitBranchForm"},
+		{a.showCommitRewordForm, "showCommitRewordForm"},
+		{a.rebasePlanEditorOpen, "rebasePlanEditorOpen"},
+		{a.showRenameRecent, "showRenameRecent"},
+		{a.homeWorktrees.open && !a.homeWorktrees.dropdown, "homeWorktrees"},
+		{a.ssh.profileFormOpen, "ssh profile form"},
+		{a.cloneOpen, "cloneOpen"},
+		{a.code.fileForm != codeFileFormNone, "code file form"},
+		{a.code.workspaceFormOpen, "code workspace form"},
+		{a.code.languageDialog != codeLanguageDialogNone, "language dialog"},
+		{a.term.renameID != 0 || a.term.renameGroup != 0, "terminal rename"},
+		{a.settingsUI.open && a.settingsUI.customCommandFormOpen, "custom command form"},
+		{a.commandPromptOpen, "commandPromptOpen"},
+		{a.showBisectForm, "showBisectForm"},
+		{a.showExportPatchForm, "showExportPatchForm"},
+		{a.showPRForm, "showPRForm"},
+		{a.prChecksOpen, "prChecksOpen"},
+	} {
+		if form.on {
+			return form.name
+		}
+	}
+	return ""
 }
 
 // modalOpen reports whether a dialog or a full-window view owns the keyboard,
@@ -708,6 +726,44 @@ func (a *app) modalOpenExceptDiffFullscreen() bool {
 }
 
 func (a *app) modalOpenIncludingDiffFullscreen(includeDiffFullscreen bool) bool {
+	return a.dialogOpen(includeDiffFullscreen, false)
+}
+
+// paletteBlocked reports whether something that owns the whole window is open,
+// so the Command Palette must not open over it. The commit message box, the
+// list filter, a line selection and a maximized diff or branch view are part of
+// a page, and the palette opens over them.
+func (a *app) paletteBlocked() bool { return a.dialogOpen(false, true) }
+
+// paletteBlockReason names what stops the Command Palette opening, for the
+// message that says so.
+func (a *app) paletteBlockReason() string {
+	for _, item := range []struct {
+		on   bool
+		name string
+	}{
+		{a.confirm != nil, tr("a confirmation")},
+		{a.settingsUI.open, tr("Settings")},
+		{a.keybindingsOpen, tr("the keyboard shortcuts")},
+		{a.commandLogOpen, tr("the command log")},
+		{a.commandPromptOpen, tr("the command line")},
+		{a.patchPreviewOpen, tr("the patch preview")},
+		{a.stackSync.open, tr("the stack sync")},
+		{a.customPatch.open, tr("the custom patch")},
+		{a.courier.open, tr("the change courier")},
+		{a.ssh.workspaceOpen || a.ssh.hostKeyPrompt != nil, tr("the SSH dialog")},
+		{a.state == stateCloning, tr("the clone in progress")},
+		{a.crash != "", tr("an error report")},
+		{a.formOpen(true), tr("a form") + " (" + a.openFormName(true) + ")"},
+	} {
+		if item.on {
+			return item.name
+		}
+	}
+	return ""
+}
+
+func (a *app) dialogOpen(includeDiffFullscreen, inline bool) bool {
 	return a.confirm != nil ||
 		a.settingsUI.open ||
 		a.keybindingsOpen ||
@@ -723,9 +779,9 @@ func (a *app) modalOpenIncludingDiffFullscreen(includeDiffFullscreen bool) bool 
 		a.ssh.hostKeyPrompt != nil ||
 		a.state == stateCloning ||
 		(includeDiffFullscreen && a.diffFullscreen) ||
-		a.branchFullscreen ||
-		a.anyFormOpen() ||
-		a.lineSelectMode ||
+		(!inline && a.branchFullscreen) ||
+		a.formOpen(inline) ||
+		(!inline && a.lineSelectMode) ||
 		a.crash != ""
 }
 

@@ -243,7 +243,12 @@ func (a *app) cockpitBranchHealthCard(c *ui.Context) {
 	if insights.healthUnavailable {
 		return
 	}
-	a.cockpitCard(c, "branch-health", "Branch health", branchesIcon, func() {
+	actions := func() {
+		if cockpitTextLink(c, tr("All"), tr("Open Branches"), tr("Open the Branches page")) {
+			a.setWorkspaceTab(sectionBranches)
+		}
+	}
+	a.cockpitCardWithActions(c, "branch-health", "Branch health", branchesIcon, actions, func() {
 		theme := c.Theme()
 		switch {
 		case insights.healthErr != "":
@@ -329,9 +334,6 @@ func (a *app) cockpitBranchHealthCard(c *ui.Context) {
 				})
 			})
 		}
-		ui.Row(c).Gap(7).Wrap().Children(func() {
-			iconButton(c, "Open Branches", "Open the Branches page", branchesIcon, false, func() { a.setWorkspaceTab(sectionBranches) })
-		})
 	})
 }
 

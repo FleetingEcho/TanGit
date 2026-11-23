@@ -206,7 +206,23 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 		}
 		specs = append(specs, s.commitSearchSpecs(a, strings.TrimSpace(rest), '#')...)
 	case '/':
-		specs = append(specs, workspaceFileSpecs(a, rest)...)
+		if s.palette.filesAll {
+			// Every file of the repository, ranked as the Editor's quick open
+			// ranks them; choosing one opens it in the Editor.
+			if !a.code.filesLoaded && !a.code.filesLoading {
+				a.requestCodeFiles()
+			}
+			specs = append(specs, workspaceFileSpecs(a, rest)...)
+			if len(specs) == 0 && a.code.filesLoading {
+				specs = append(specs, commandSpec{
+					ID: "files/loading", Label: "Reading the files…", Group: commandGroupNavigation, Prefix: '/', Glyph: editIcon, NoFilter: true,
+					Resolve: func(commandContext) commandState {
+						return commandState{Visible: true, DisabledReason: "The list of files is being read"}
+					},
+				})
+			}
+			break
+		}
 		count := 0
 		for _, file := range a.snapshot.Files {
 			if count == dynamicFileLimit {
@@ -300,27 +316,35 @@ func workspaceObjectSpecs(a *app) []commandSpec {
 const workspaceFileMatchLimit = 100
 
 // workspaceFileSpecs searches every file the Editor has indexed for the '/'
-// mode, so it reaches beyond the changed files. Matching happens here, before
-// any spec exists, to keep large workspaces from building a spec per file.
+// mode when it is not limited to the changed files. Matching happens here,
+// before any spec exists, to keep large workspaces from building a spec per file.
 func workspaceFileSpecs(a *app, query string) []commandSpec {
-	if query == "" || len(a.code.files) == 0 {
+	if len(a.code.files) == 0 {
 		return nil
 	}
-	needle := strings.ToLower(query)
-	var specs []commandSpec
-	for _, path := range a.code.files {
-		if _, ok := subsequenceRanges(strings.ToLower(path), needle); !ok {
-			continue
-		}
-		path := path
+	// fzf's ranking, the same as the Editor's quick open; an empty query lists
+	// the files in order.
+	paths := filterCodePathsFzf(a.code.files, query)
+	if len(paths) > workspaceFileMatchLimit {
+		paths = paths[:workspaceFileMatchLimit]
+	}
+	specs := make([]commandSpec, 0, len(paths))
+	for index, path := range paths {
+		path, score := path, workspaceFileMatchLimit-index
 		specs = append(specs, commandSpec{
-			ID: commandID("files/open/" + path), Label: path, Detail: "Open in the Editor",
-			Group: commandGroupNavigation, Prefix: '/', Glyph: editIcon, Resolve: readyAppState,
-			Run: func(ctx commandContext) { ctx.App.openCodeFile(path, 0) },
+			ID: commandID("files/open/" + path), Label: path, Detail: "Open in the Editor", NoFilter: true,
+			Group: commandGroupNavigation, Prefix: '/', Glyph: editIcon,
+			Resolve: func(ctx commandContext) commandState {
+				state := readyAppState(ctx)
+				state.ContextScore = score
+				return state
+			},
+			// The Editor page has to be the one shown, or the file opens unseen.
+			Run: func(ctx commandContext) {
+				ctx.App.setWorkspaceTab(sectionCode)
+				ctx.App.openCodeFile(path, 0)
+			},
 		})
-		if len(specs) == workspaceFileMatchLimit {
-			break
-		}
 	}
 	return specs
 }

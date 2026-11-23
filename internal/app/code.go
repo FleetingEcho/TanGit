@@ -195,7 +195,10 @@ type codeState struct {
 	pendingReveal         string
 	// Empty directories are not returned by git ls-files, so newly created
 	// ones stay in the explorer until they get a file of their own.
-	extraDirectories       map[string]bool
+	extraDirectories map[string]bool
+	// smartSkips are folders left out of search and indexing because they are
+	// probably other people's code or generated files.
+	smartSkips             []string
 	pendingRevealDirectory string
 
 	fileForm               codeFileFormKind
@@ -323,6 +326,7 @@ func (a *app) resetCode() {
 	a.code.filesOperationRefresh = false
 	a.code.pendingReveal = ""
 	a.code.extraDirectories = nil
+	a.code.smartSkips = nil
 	a.code.pendingRevealDirectory = ""
 	a.closeCodeFileForm()
 	a.code.fileOperationBusy = false
@@ -530,6 +534,11 @@ func (a *app) requestCodeFiles() {
 			}
 			a.syncCodeTree()
 			a.applyPendingCodeReveal()
+			// With the file list known, the folders not worth searching are
+			// found, and a repository without a search index starts one in the
+			// background, whatever page is showing.
+			a.refreshSmartSkips()
+			a.ensureCodeSearchIndex()
 			if a.code.searchAfterFiles {
 				a.code.searchAfterFiles = false
 				a.beginCodeSearch()
@@ -1350,7 +1359,7 @@ func (a *app) startCodeSearch(limit int, loadingMore bool) {
 		Exclude:             a.code.searchExclude,
 		Folder:              searchScopeFolder,
 		File:                a.code.searchScopeFile,
-		ExcludedDirectories: append([]string{}, a.settings.SearchExcludedDirectories...),
+		ExcludedDirectories: a.searchExclusions(),
 	}
 	a.code.searchError = ""
 	if !loadingMore {
