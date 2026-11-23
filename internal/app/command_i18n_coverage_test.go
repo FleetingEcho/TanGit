@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"lazygitapp/internal/app/i18n"
+	"github.com/FleetingEcho/lazygitGo/internal/app/i18n"
 )
 
 // paletteStringSources are the files whose command labels, details and reasons

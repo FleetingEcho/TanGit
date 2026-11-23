@@ -22,7 +22,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"golang.org/x/image/draw"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 const (
@@ -355,7 +355,7 @@ func (s *authorAvatarStore) get(ctx context.Context, address string, limit int64
 	if err != nil {
 		return nil, err
 	}
-	request.Header.Set("User-Agent", "TanGit")
+	request.Header.Set("User-Agent", "lazygitGo")
 	response, err := s.client.Do(request)
 	if err != nil {
 		return nil, err

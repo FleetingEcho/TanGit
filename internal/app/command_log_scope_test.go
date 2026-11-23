@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 	"github.com/egoist/mygo/ui"
-	"lazygitapp/internal/repository"
 )
 
 func commandLogTabTitle(tester *ui.Tester, title string) string {

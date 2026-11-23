@@ -10,7 +10,7 @@ import (
 	"github.com/jesseduffield/lazygit/pkg/commands/models"
 	"github.com/stefanhaller/git-todo-parser/todo"
 
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 type remoteRebaseOptions struct {
@@ -257,7 +257,7 @@ func moveSessionFixup(todos []todo.Todo, originalHash, fixupHash string, changeT
 	return todos, nil
 }
 
-// runRemoteRebase never asks Git to invoke TanGit or Lazygit. When a todo must
+// runRemoteRebase never asks Git to invoke lazygitGo or Lazygit. When a todo must
 // be changed, a capture-only rebase generates Git's exact rebase-merges plan,
 // copies it to a temporary file, and aborts before applying any picks. The
 // transformed plan is then installed by a one-off POSIX shell editor.
@@ -298,13 +298,13 @@ func (s *gitSession) runRemoteRebase(base string, options remoteRebaseOptions) e
 	if err := todo.Write(&plan, todos, s.git.Config.GetCoreCommentChar()); err != nil {
 		return err
 	}
-	planName, removePlan, err := s.temporaryFile("tangit-rebase-plan-", plan.Bytes(), 0o600)
+	planName, removePlan, err := s.temporaryFile("lazygitgo-rebase-plan-", plan.Bytes(), 0o600)
 	if err != nil {
 		return err
 	}
 	defer removePlan()
 	script := "#!/bin/sh\nset -eu\ncat " + sshworkspace.ShellQuote(planName) + " > \"$1\"\n"
-	editorName, removeEditor, err := s.temporaryFile("tangit-rebase-sequence-editor-", []byte(script), 0o700)
+	editorName, removeEditor, err := s.temporaryFile("lazygitgo-rebase-sequence-editor-", []byte(script), 0o700)
 	if err != nil {
 		return err
 	}
@@ -321,12 +321,12 @@ func remoteRebaseEnvironment(editor, sequenceEditor string) []string {
 }
 
 func (s *gitSession) remoteRebaseEditor(message []byte) (string, func(), error) {
-	messageName, removeMessage, err := s.temporaryFile("tangit-rebase-message-", message, 0o600)
+	messageName, removeMessage, err := s.temporaryFile("lazygitgo-rebase-message-", message, 0o600)
 	if err != nil {
 		return "", nil, err
 	}
 	script := "#!/bin/sh\nset -eu\ncat " + sshworkspace.ShellQuote(messageName) + " > \"$1\"\n"
-	name, removeEditor, err := s.temporaryFile("tangit-rebase-message-editor-", []byte(script), 0o700)
+	name, removeEditor, err := s.temporaryFile("lazygitgo-rebase-message-editor-", []byte(script), 0o700)
 	if err != nil {
 		removeMessage()
 		return "", nil, err
@@ -335,13 +335,13 @@ func (s *gitSession) remoteRebaseEditor(message []byte) (string, func(), error) 
 }
 
 func (s *gitSession) captureRemoteRebaseTodo(args []string) ([]todo.Todo, error) {
-	captureName, removeCapture, err := s.temporaryFile("tangit-rebase-capture-", nil, 0o600)
+	captureName, removeCapture, err := s.temporaryFile("lazygitgo-rebase-capture-", nil, 0o600)
 	if err != nil {
 		return nil, err
 	}
 	defer removeCapture()
 	script := "#!/bin/sh\ncp \"$1\" " + sshworkspace.ShellQuote(captureName) + "\nexit 1\n"
-	editorName, removeEditor, err := s.temporaryFile("tangit-rebase-capture-editor-", []byte(script), 0o700)
+	editorName, removeEditor, err := s.temporaryFile("lazygitgo-rebase-capture-editor-", []byte(script), 0o700)
 	if err != nil {
 		return nil, err
 	}

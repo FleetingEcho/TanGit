@@ -6,7 +6,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // commandLogTimestampLayout is the full local timestamp in copied text and
@@ -80,7 +80,7 @@ func (a *app) commandLogBody(c *ui.Context, entries []repository.CommandEntry) {
 		message := tr("No commands in this section yet.")
 		hint := tr("Your configured and one-off commands appear in Your commands.")
 		if !a.commandLogUser {
-			hint = tr("Git actions from TanGit appear in Background Git commands.")
+			hint = tr("Git actions from lazygitGo appear in Background Git commands.")
 		}
 		hasSectionEntries := false
 		origin := repository.CommandOriginGit

@@ -1,4 +1,4 @@
-module lazygitapp
+module github.com/FleetingEcho/lazygitGo
 
 go 1.27.3
 

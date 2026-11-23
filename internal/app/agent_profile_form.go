@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"lazygitapp/internal/agentassist"
-	"lazygitapp/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/agentassist"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
 )
 
 const agentManualProfile = "(Manual profile)"
@@ -37,8 +37,8 @@ func parseAgentEnvironment(value string) (map[string]string, error) {
 		if !ok || !validAgentEnvironmentKey(key) {
 			return nil, fmt.Errorf("environment line %d must be KEY=value with a portable variable name", index+1)
 		}
-		if strings.HasPrefix(key, "TANGIT_AGENT_") {
-			return nil, fmt.Errorf("environment line %d uses TanGit's reserved identity prefix", index+1)
+		if isReservedAgentEnvironment(key) {
+			return nil, fmt.Errorf("environment line %d uses lazygitGo's reserved identity prefix", index+1)
 		}
 		if strings.ContainsRune(entry, '\x00') {
 			return nil, fmt.Errorf("environment line %d contains a null byte", index+1)

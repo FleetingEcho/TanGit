@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func TestIgnoreSelectedFileRoutesOnlyUntrackedUnstagedFiles(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // liveOpener hands out sessions that read the snapshot it holds now, so a

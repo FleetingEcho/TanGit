@@ -6,7 +6,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // openCommitRewordForm loads the full message in the background. History rows

@@ -10,7 +10,7 @@ import (
 	"io"
 	"time"
 
-	"lazygitapp/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
 )
 
 const (

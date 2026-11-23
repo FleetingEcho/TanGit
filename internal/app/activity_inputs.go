@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/transfer"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/transfer"
 )
 
 // activityLocation and activitySessionID identify the current repository and

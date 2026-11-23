@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"lazygitapp/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
 )
 
 func TestCommandCatalogHunkActionsResolveAndRecheckExistingStatus(t *testing.T) {

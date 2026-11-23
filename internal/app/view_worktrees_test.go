@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 func TestOpenWorktreePreservesRemoteWorkspace(t *testing.T) {
@@ -103,7 +103,7 @@ func TestWorktreeMaintenanceActionsReachSession(t *testing.T) {
 	}
 	h.app.beginLockWorktree()
 	h.waitFor(t, "worktree lock", func() bool {
-		return calls.has("lock-worktree:/work/feature:TanGit") && !h.app.actionBusy
+		return calls.has("lock-worktree:/work/feature:lazygitGo") && !h.app.actionBusy
 	})
 
 	h.app.repairWorktrees()

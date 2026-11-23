@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 const (

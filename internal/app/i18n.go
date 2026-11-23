@@ -3,7 +3,7 @@ package app
 import (
 	"fmt"
 
-	"lazygitapp/internal/app/i18n"
+	"github.com/FleetingEcho/lazygitGo/internal/app/i18n"
 )
 
 // languageChoice is one entry of the language menu: the code the settings

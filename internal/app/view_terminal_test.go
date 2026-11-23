@@ -14,9 +14,9 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/sshworkspace"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 type monitoredTerminalConn struct {

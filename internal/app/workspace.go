@@ -4,8 +4,8 @@ import (
 	"io"
 	"strings"
 
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 // workspaceSession identifies the workspace owned by a session without making

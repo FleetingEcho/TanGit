@@ -2,10 +2,10 @@ package app
 
 import (
 	"fmt"
+	"github.com/FleetingEcho/lazygitGo/internal/app/i18n"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"lazygitapp/internal/app/i18n"
 	"os"
 	"path/filepath"
 	"sort"
@@ -76,7 +76,7 @@ var i18nIdentityRawUIStrings = map[string]string{
 	"AB":                            "preserve-case search glyph",
 	"C":                             "keyboard shortcut glyph",
 	"Ctrl+,":                        "keyboard shortcut glyph",
-	"tangit <path>":                 "command-line usage hint",
+	"lazygitGo <path>":              "command-line usage hint",
 }
 
 type i18nSourcePos struct {
@@ -318,7 +318,7 @@ func TestI18nSourceAuditUsesFullCodebase(t *testing.T) {
 		found[source.name] = true
 	}
 	for _, required := range []string{
-		"cmd/tangit/main.go",
+		"cmd/lazygitGo/main.go",
 		"internal/app/i18n.go",
 		"internal/repository/session.go",
 		"internal/sshworkspace/profile.go",

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"lazygitapp/internal/agentwork"
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 const (
@@ -294,7 +294,7 @@ func (a *app) startAgentIntegrationDryRun(repositoryID, familyRoot, familyOpenPa
 func agentIntegrationWorktreePath(root string, remote bool, token uint64) string {
 	randomBytes := make([]byte, 6)
 	_, _ = rand.Read(randomBytes)
-	name := fmt.Sprintf(".tangit-agent-integration-%d-%d-%s", time.Now().UnixNano(), token, hex.EncodeToString(randomBytes))
+	name := fmt.Sprintf(".lazygitgo-agent-integration-%d-%d-%s", time.Now().UnixNano(), token, hex.EncodeToString(randomBytes))
 	if remote {
 		return pathpkg.Join(pathpkg.Dir(root), name)
 	}

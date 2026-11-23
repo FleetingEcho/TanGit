@@ -22,9 +22,9 @@ work area. These checks completed successfully for the implementation:
 | Narrow real geometry | `TestCommandLogNarrowGeometry` passed at 720 DIP with a long command, success badge and GitHub Light theme |
 | Complete package suite | `CGO_ENABLED=0 go test ./... -count=1`: all packages passed (`internal/app` 86.428s, `internal/repository` 130.900s) |
 
-Logs are under `tmp/tangit-workflow-plan`, principally
+Logs are under `tmp/lazygitgo-workflow-plan`, principally
 `command-log-regression.log`, `command-log-race.log`, and
-`command-log-full-final.log`. PNGs are under `tmp/tangit-command-log-shots`.
+`command-log-full-final.log`. PNGs are under `tmp/lazygitgo-command-log-shots`.
 These development logs and images are not release assets or native-GUI
 acceptance evidence.
 

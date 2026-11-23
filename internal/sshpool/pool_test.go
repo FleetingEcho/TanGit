@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 type fakeDialer struct {

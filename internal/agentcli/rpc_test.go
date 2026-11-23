@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"lazygitapp/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
 )
 
 func rpcLine(t *testing.T, id any, method string, params any) string {

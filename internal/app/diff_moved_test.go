@@ -5,7 +5,7 @@ import (
 
 	"github.com/egoist/mygo/ui/editor"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func TestDiffStateUsesInlineWordsAndAnnotatesMovedLines(t *testing.T) {

@@ -60,7 +60,7 @@ func workSnapshotRef(kind, id string) (string, error) {
 }
 
 // captureWorkSnapshot writes the same W/I/U object shape git stash uses, but
-// publishes it under a hidden TanGit ref instead of refs/stash and never cleans
+// publishes it under a hidden lazygitGo ref instead of refs/stash and never cleans
 // the working tree. A failed capture therefore cannot destroy user work.
 func (s *gitSession) captureWorkSnapshot(ctx context.Context, kind, name string) (WorkSnapshot, error) {
 	ignored, err := s.ignoredWorkspacePaths()
@@ -86,7 +86,7 @@ func (s *gitSession) captureWorkSnapshotWithIgnored(ctx context.Context, kind, n
 	}
 	name = strings.Join(strings.Fields(name), " ")
 	if name == "" {
-		name = "TanGit snapshot"
+		name = "lazygitGo snapshot"
 	}
 	policy := workspaceArchiveScope{IgnoredPaths: append([]string(nil), ignored...)}
 	if len(policies) > 1 {
@@ -300,10 +300,10 @@ func (s *gitSession) untrackedOnlySnapshotBase(name, listing string) (string, er
 	if listing == "" {
 		return "", fmt.Errorf("there are no changes to capture")
 	}
-	env := []string{"GIT_AUTHOR_NAME=TanGit", "GIT_AUTHOR_EMAIL=recovery@localhost", "GIT_COMMITTER_NAME=TanGit", "GIT_COMMITTER_EMAIL=recovery@localhost"}
+	env := []string{"GIT_AUTHOR_NAME=lazygitGo", "GIT_AUTHOR_EMAIL=recovery@localhost", "GIT_COMMITTER_NAME=lazygitGo", "GIT_COMMITTER_EMAIL=recovery@localhost"}
 	base, baseErr := s.gitText("rev-parse", "--verify", "HEAD")
 	if baseErr != nil {
-		output, err := s.cmd.New([]string{"git", "commit-tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "-m", "TanGit recovery base"}).AddEnvVars(env...).RunWithOutput()
+		output, err := s.cmd.New([]string{"git", "commit-tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "-m", "lazygitGo recovery base"}).AddEnvVars(env...).RunWithOutput()
 		if err != nil {
 			return "", fmt.Errorf("create unborn recovery base: %w: %s", err, strings.TrimSpace(output))
 		}
@@ -313,7 +313,7 @@ func (s *gitSession) untrackedOnlySnapshotBase(name, listing string) (string, er
 	if err != nil {
 		return "", err
 	}
-	indexCommit, err := s.cmd.New([]string{"git", "commit-tree", tree, "-p", base, "-m", "TanGit index snapshot"}).AddEnvVars(env...).RunWithOutput()
+	indexCommit, err := s.cmd.New([]string{"git", "commit-tree", tree, "-p", base, "-m", "lazygitGo index snapshot"}).AddEnvVars(env...).RunWithOutput()
 	if err != nil {
 		return "", fmt.Errorf("create untracked index snapshot: %w: %s", err, strings.TrimSpace(indexCommit))
 	}
@@ -331,7 +331,7 @@ func (s *gitSession) addUntrackedSnapshotParent(hash, name, listing string) (str
 	if listing == "" {
 		return hash, nil
 	}
-	indexName, removeIndex, err := s.temporaryFile("tangit-recovery-index-", nil, 0o600)
+	indexName, removeIndex, err := s.temporaryFile("lazygitgo-recovery-index-", nil, 0o600)
 	if err != nil {
 		return "", err
 	}
@@ -339,12 +339,12 @@ func (s *gitSession) addUntrackedSnapshotParent(hash, name, listing string) (str
 	if err := s.fileService().Remove(indexName); err != nil && !os.IsNotExist(err) {
 		return "", err
 	}
-	pathsName, removePaths, err := s.temporaryFile("tangit-recovery-paths-", []byte(listing), 0o600)
+	pathsName, removePaths, err := s.temporaryFile("lazygitgo-recovery-paths-", []byte(listing), 0o600)
 	if err != nil {
 		return "", err
 	}
 	defer removePaths()
-	env := []string{"GIT_INDEX_FILE=" + indexName, "GIT_AUTHOR_NAME=TanGit", "GIT_AUTHOR_EMAIL=recovery@localhost", "GIT_COMMITTER_NAME=TanGit", "GIT_COMMITTER_EMAIL=recovery@localhost"}
+	env := []string{"GIT_INDEX_FILE=" + indexName, "GIT_AUTHOR_NAME=lazygitGo", "GIT_AUTHOR_EMAIL=recovery@localhost", "GIT_COMMITTER_NAME=lazygitGo", "GIT_COMMITTER_EMAIL=recovery@localhost"}
 	output, err := s.cmd.New([]string{"git", "add", "--all", "--force", "--pathspec-from-file=" + pathsName, "--pathspec-file-nul"}).AddEnvVars(env...).RunWithOutput()
 	if err != nil {
 		return "", fmt.Errorf("index untracked files: %w: %s", err, strings.TrimSpace(output))
@@ -353,7 +353,7 @@ func (s *gitSession) addUntrackedSnapshotParent(hash, name, listing string) (str
 	if err != nil {
 		return "", fmt.Errorf("write untracked tree: %w: %s", err, strings.TrimSpace(output))
 	}
-	untracked, err := s.cmd.New([]string{"git", "commit-tree", strings.TrimSpace(tree), "-m", "TanGit untracked snapshot"}).AddEnvVars(env...).RunWithOutput()
+	untracked, err := s.cmd.New([]string{"git", "commit-tree", strings.TrimSpace(tree), "-m", "lazygitGo untracked snapshot"}).AddEnvVars(env...).RunWithOutput()
 	if err != nil {
 		return "", fmt.Errorf("commit untracked tree: %w: %s", err, strings.TrimSpace(output))
 	}
@@ -425,7 +425,7 @@ func (s *gitSession) CreateCheckpoint(ctx context.Context, name string) (WorkSna
 }
 
 // savedSnapshotPaths is the set a restore may touch, including deletions and
-// the actual untracked parent. A TanGit metadata parent is repository object
+// the actual untracked parent. A lazygitGo metadata parent is repository object
 // storage, not a list of worktree paths, so do not use `git stash show` here.
 func (s *gitSession) savedSnapshotPaths(hash string) ([]string, error) {
 	output, err := s.cmd.New([]string{"git", "diff", "--no-renames", "--name-only", "-z", hash + "^1", hash, "--"}).RunWithOutput()
@@ -542,7 +542,7 @@ func (s *gitSession) restoreSnapshotPaths(hash string, paths []string) error {
 		}
 	}
 	listing := strings.Join(paths, "\x00")
-	name, cleanup, err := s.temporaryFile("tangit-recovery-paths-", []byte(listing), 0o600)
+	name, cleanup, err := s.temporaryFile("lazygitgo-recovery-paths-", []byte(listing), 0o600)
 	if err != nil {
 		return err
 	}

@@ -12,8 +12,8 @@ import (
 func TestUndoFirstCommitRestoresUnbornHeadAndStagedFiles(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init", "-b", "main")
-	runGit(t, dir, "config", "user.name", "TanGit Test")
-	runGit(t, dir, "config", "user.email", "tangit@example.invalid")
+	runGit(t, dir, "config", "user.name", "lazygitGo Test")
+	runGit(t, dir, "config", "user.email", "lazygitgo@example.invalid")
 	runGit(t, dir, "config", "commit.gpgsign", "false")
 	if err := os.WriteFile(filepath.Join(dir, "first.txt"), []byte("first staged payload\n"), 0o600); err != nil {
 		t.Fatal(err)

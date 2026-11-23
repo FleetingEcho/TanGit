@@ -13,7 +13,7 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 	"github.com/jesseduffield/lazygit/pkg/commands/patch"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // changeCourierState freezes source bytes, then binds one fresh preview to the

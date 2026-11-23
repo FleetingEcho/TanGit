@@ -98,7 +98,7 @@ func conflictResultChanged(component string) error {
 // WriteConflictResult archives the exact before/after per-path state with V2
 // recovery, then atomically replaces only the worktree Result. It never stages,
 // continues, commits, or invokes a hook. All validation and publication happen
-// under TanGit's existing worktree mutation lock.
+// under lazygitGo's existing worktree mutation lock.
 func (s *gitSession) WriteConflictResult(ctx context.Context, request ConflictResultRequest) (FileRecoveryRecord, error) {
 	if err := ctx.Err(); err != nil {
 		return FileRecoveryRecord{}, err

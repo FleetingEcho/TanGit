@@ -4,20 +4,6 @@ param(
     [string]$Action
 )
 
-$installDir = $env:TANGIT_INSTALL_DIR
-if ([string]::IsNullOrWhiteSpace($installDir)) {
-    throw 'TANGIT_INSTALL_DIR is not set'
-}
-$installDir = $installDir.TrimEnd('\')
-
-$path = [Environment]::GetEnvironmentVariable('Path', 'User')
-$parts = @(
-    $path -split ';' | Where-Object {
-        $_ -and $_.TrimEnd('\') -ine $installDir
-    }
-)
-if ($Action -eq 'Add') {
-    $parts += $installDir
-}
-
-[Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User')
+# An in-app upgrade keeps the uninstaller from the original installation.
+$env:LAZYGITGO_INSTALL_DIR = $env:TANGIT_INSTALL_DIR
+& (Join-Path $PSScriptRoot 'lazygitgo-path.ps1') -Action $Action

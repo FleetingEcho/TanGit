@@ -169,7 +169,7 @@ func (s *gitSession) readPatchSource(patchPath string) (patchSource, error) {
 // for reconstructing the approved bytes when an in-memory preview is applied.
 func (s *gitSession) newBytePatchSource(content []byte) (patchSource, error) {
 	data := bytes.Clone(content)
-	name, cleanup, err := s.temporaryFile("tangit-import-*.patch", data, 0o600)
+	name, cleanup, err := s.temporaryFile("lazygitgo-import-*.patch", data, 0o600)
 	if err != nil {
 		return patchSource{}, fmt.Errorf("copy patch for inspection: %w", err)
 	}

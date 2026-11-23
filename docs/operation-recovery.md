@@ -1,6 +1,6 @@
 # Operation and workspace recovery
 
-TanGit has several deliberately separate recovery systems:
+lazygitGo has several deliberately separate recovery systems:
 
 - **Safety Journal / operation Undo** restores an exact local Git operation and its workspace.
 - **Reflog/history Undo** is a separate history navigation flow; it is not a claim that side effects of an arbitrary mutation were reversed.
@@ -26,9 +26,9 @@ Blobs and metadata are referenced by immutable Git object IDs. The snapshot comm
 
 ## Restore checks and write ordering
 
-Before an operation runs, TanGit captures and validates its restore point. A failure to capture, store or validate it prevents that protected destructive action from executing. No callback is then dispatched.
+Before an operation runs, lazygitGo captures and validates its restore point. A failure to capture, store or validate it prevents that protected destructive action from executing. No callback is then dispatched.
 
-After the operation, TanGit captures and validates the new post-operation state. Failure to complete that capture makes the journal **interrupted** and removes the unsafe Undo offer. The button never means “protection is complete” when post-state protection could not be established.
+After the operation, lazygitGo captures and validates the new post-operation state. Failure to complete that capture makes the journal **interrupted** and removes the unsafe Undo offer. The button never means “protection is complete” when post-state protection could not be established.
 
 Undo revalidates both layers:
 
@@ -39,7 +39,7 @@ The compare-and-swap checks are against the exact operation that was selected, u
 
 For **new full-workspace records**, restoration does not start with a broad `git reset --hard` or replay only the files changed in a patch. It compares the complete **current raw tree with the target raw tree**, restores differences, reconciles extra files, restores index and Git metadata, and restores the correct attached or detached HEAD. Existing older recovery records retain their explicitly legacy restore behavior. The current raw comparison also restores files that were unchanged relative to HEAD but were then modified by apply, checkout, or another supported operation.
 
-Afterwards, TanGit verifies the restored HEAD/branch and both target fingerprints again. A hook or I/O anomaly cannot make a partial restore count as a completed Undo.
+Afterwards, lazygitGo verifies the restored HEAD/branch and both target fingerprints again. A hook or I/O anomaly cannot make a partial restore count as a completed Undo.
 
 ## Protected workflows
 
@@ -73,7 +73,7 @@ Where a case cannot be fully protected, the appropriate behavior is to refuse ca
 
 ### Remote effects
 
-A remote operation is **not** an ordinary local Undo, and TanGit never automatically force-pushes to pretend a server effect was reversed.
+A remote operation is **not** an ordinary local Undo, and lazygitGo never automatically force-pushes to pretend a server effect was reversed.
 
 `RemoteRefEffect` holds a specific remote name/ref, its previous OID, and the resulting OID, without retaining a credential-bearing URL. When such an effect is recorded, ordinary Undo is refused with `ErrRemoteCompensationRequired`.
 
@@ -81,14 +81,14 @@ A remote operation is **not** an ordinary local Undo, and TanGit never automatic
 
 ## Failure, cancellation, interruption, and retention
 
-- **Capture or protection failure fails closed.** A later Git lock error remains the underlying error; TanGit does not obscure it with a generic checkpoint error. An existing Git `index.lock` is honored before snapshot/mutation work and is never removed as a convenience.
+- **Capture or protection failure fails closed.** A later Git lock error remains the underlying error; lazygitGo does not obscure it with a generic checkpoint error. An existing Git `index.lock` is honored before snapshot/mutation work and is never removed as a convenience.
 - **Cancellation before mutation is fail-closed.** Once the underlying Git command begins, its normal command/lifecycle and cancellation behavior is respected. Recovery work is not exposed as an instantly cancellable global transaction.
 - **Undo first writes `undoing` durably.** On restart, a restoration that did not complete cannot be blindly replayed as though no work had occurred. Its original before/after identities and fingerprints are retained.
 - **Interruption preserves both restore points.** A failed restoration is not marked undone, and the original post-operation state is not overwritten by recalculating it from the partial result. Review the preserved points rather than letting another one-click operation overwrite uncertain or newer data.
 - **Journal writes and published recovery refs are atomic at their respective publication points.** Recovery payload OIDs are pinned or made reachable through existing recovery/journal refs, not an unpinned sidecar pretending to be durable.
 - **Retention remains bounded.** The recovery system preserves restore points referenced by active or interrupted operations; old independent points still follow the documented recovery retention policy.
 
-The mutation lock serializes TanGit sessions that use the same checkout. It is not an exclusive lock on every editor, terminal, or Git process on the machine. External Git concurrency still depends on Git checks and expected-old-value ref updates; external file changes are protected by CAS rather than by pretending those writers can be globally suspended.
+The mutation lock serializes lazygitGo sessions that use the same checkout. It is not an exclusive lock on every editor, terminal, or Git process on the machine. External Git concurrency still depends on Git checks and expected-old-value ref updates; external file changes are protected by CAS rather than by pretending those writers can be globally suspended.
 
 ## Cost, logs, and notifications
 

@@ -3,7 +3,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
-	"lazygitapp/internal/app/i18n"
+	"github.com/FleetingEcho/lazygitGo/internal/app/i18n"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -400,8 +400,8 @@ func TestDiagnosticsFromMultipleServersAreCombined(t *testing.T) {
 }
 
 func TestRealRustAnalyzerHoverAndDefinition(t *testing.T) {
-	if os.Getenv("TANGIT_TEST_REAL_RUST_ANALYZER") != "1" {
-		t.Skip("set TANGIT_TEST_REAL_RUST_ANALYZER=1 to exercise rust-analyzer")
+	if os.Getenv("LAZYGITGO_TEST_REAL_RUST_ANALYZER") != "1" {
+		t.Skip("set LAZYGITGO_TEST_REAL_RUST_ANALYZER=1 to exercise rust-analyzer")
 	}
 	program, err := exec.LookPath("rust-analyzer")
 	if err != nil {

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // A ! command keeps the palette open, shows its log record, survives closing

@@ -30,7 +30,7 @@ func nativeApplicationHelpMenu(existing *mygo.Menu, s *shell) *mygo.Menu {
 	var items []*mygo.MenuItem
 	if existing != nil {
 		for _, item := range existing.Items() {
-			if item.ID != "tangit-help" {
+			if item.ID != "lazygitgo-help" {
 				items = append(items, item)
 			}
 		}
@@ -45,7 +45,7 @@ func nativeHelpMenu(s *shell) *mygo.Menu {
 		accelerator = "Shift+?"
 	}
 	return mygo.NewMenu([]*mygo.MenuItem{
-		{ID: "tangit-help", Label: tr("Help"), Submenu: []*mygo.MenuItem{
+		{ID: "lazygitgo-help", Label: tr("Help"), Submenu: []*mygo.MenuItem{
 			{
 				ID:          "current-page-shortcuts",
 				Label:       tr("Keyboard shortcuts"),

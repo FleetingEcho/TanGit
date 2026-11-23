@@ -6,8 +6,8 @@ import (
 
 	"github.com/egoist/mygo/ui/editor"
 
-	"lazygitapp/internal/agentassist"
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/agentassist"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // conflictAssistUIState contains only source snapshots and display state. An

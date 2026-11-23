@@ -11,9 +11,7 @@ import (
 	updaternative "github.com/egoist/mygo/plugins/updater/native"
 )
 
-// releasesPage is where the app's releases, with their notes and downloads,
-// live on GitHub. The version row in Settings links here.
-const releasesPage = "https://github.com/FleetingEcho/TanGit/releases"
+const projectRepositoryURL = "https://github.com/FleetingEcho/lazygitGo"
 
 // appVersionFallback is the version to show when the build carries none, as
 // `go run` and the tests do. `mygo build` links the version mygo.json names,
@@ -38,7 +36,7 @@ func currentAppVersion() string {
 }
 
 // setupUpdater installs the native update window before the application
-// starts. TanGit has no webview, so the native plugin keeps updates available
+// starts. lazygitGo has no webview, so the native plugin keeps updates available
 // on every platform without adding a browser runtime.
 func setupUpdater() {
 	mygo.Use(updaternative.Plugin)
@@ -112,7 +110,7 @@ func (s *shell) finishPackageCheck(release *packageRelease, err error, manual bo
 	case err != nil:
 		a.notify("error", "Could not check for updates", safeError(err))
 	case release == nil:
-		a.notifyTranslated("success", tr("TanGit is up to date"), trf("Version %s is the latest release.", currentAppVersion()))
+		a.notifyTranslated("success", tr("lazygitGo is up to date"), trf("Version %s is the latest release.", currentAppVersion()))
 	default:
 		a.notifyTranslated("info", tr("Update available"), packageUpdateAdvice(*release))
 		if a.openExternalURL != nil {

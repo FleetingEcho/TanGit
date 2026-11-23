@@ -6,7 +6,7 @@ import (
 
 	"github.com/egoist/mygo"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func acknowledgeAsyncPublications(a *app) <-chan bool {

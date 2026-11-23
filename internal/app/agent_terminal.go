@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"strings"
 
-	"lazygitapp/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
 )
 
 // shellCommandForTerminal runs the user's trusted template as an interactive

@@ -8,7 +8,7 @@ import (
 	"github.com/egoist/mygo"
 )
 
-// The tray keeps TanGit reachable after its window is closed: the close
+// The tray keeps lazygitGo reachable after its window is closed: the close
 // button hides the window instead of destroying it, and the icon's menu
 // brings it back or quits for good.
 var (
@@ -39,7 +39,7 @@ func setupTray() {
 		return
 	}
 	tray, err := mygo.NewTray(mygo.TrayOptions{
-		ID: "tangit",
+		ID: "lazygitgo",
 		// A template icon is black on transparent, so macOS tints it for
 		// the menu bar and Windows for its taskbar.
 		Icon:           icon,
@@ -76,7 +76,7 @@ func trayIcon() (icon []byte, template, ok bool) {
 // trayMenu is the icon's menu, rebuilt when the language changes.
 func trayMenu() *mygo.Menu {
 	return mygo.NewMenu([]*mygo.MenuItem{
-		{Label: tr("Open TanGit"), Click: func(*mygo.MenuItem, *mygo.Window) {
+		{Label: tr("Open lazygitGo"), Click: func(*mygo.MenuItem, *mygo.Window) {
 			showMainWindow()
 		}},
 		mygo.Separator(),

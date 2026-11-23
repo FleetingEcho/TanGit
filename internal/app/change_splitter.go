@@ -7,8 +7,8 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 	gitpatch "github.com/jesseduffield/lazygit/pkg/commands/patch"
 
-	"lazygitapp/internal/agentassist"
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/agentassist"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 type changeSplitGroup struct {
@@ -182,7 +182,7 @@ func (a *app) beginChangeSplitAdvice() {
 		var request agentassist.AdviceRequest
 		var groups []changeSplitGroup
 		var exclusions []agentassist.Exclusion
-		sourceAgent := "TanGit local preview"
+		sourceAgent := "lazygitGo local preview"
 		if runErr == nil && sourcePatch == "" {
 			runErr = fmt.Errorf("the selected file has no unstaged diff to split")
 		}
@@ -193,7 +193,7 @@ func (a *app) beginChangeSplitAdvice() {
 			// Binary bytes stay local. No helper/configuration is consulted and
 			// the canonical binary patch is one indivisible whole-file group.
 			localOnly = true
-			sourceAgent = "TanGit local whole-file; helper not run"
+			sourceAgent = "lazygitGo local whole-file; helper not run"
 			groups = []changeSplitGroup{{
 				id: "binary-whole-file", summary: "Whole binary file (local, not sent to advisor)",
 				patch: sourcePatch, local: true,

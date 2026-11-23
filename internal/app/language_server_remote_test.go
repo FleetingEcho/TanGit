@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 func TestRemoteDocumentsDoNotStartLocalLanguageServers(t *testing.T) {

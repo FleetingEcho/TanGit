@@ -8,8 +8,8 @@ import (
 )
 
 func TestRubyAndCSharpRealProtocolLifecycle(t *testing.T) {
-	if os.Getenv("TANGIT_TEST_REAL_LSP_INSTALL") != "1" {
-		t.Skip("set TANGIT_TEST_REAL_LSP_INSTALL=1 to install and exercise toolchain language servers")
+	if os.Getenv("LAZYGITGO_TEST_REAL_LSP_INSTALL") != "1" {
+		t.Skip("set LAZYGITGO_TEST_REAL_LSP_INSTALL=1 to install and exercise toolchain language servers")
 	}
 	tests := []struct {
 		id, runtime, file, language, text                    string
@@ -21,16 +21,16 @@ func TestRubyAndCSharpRealProtocolLifecycle(t *testing.T) {
 	}{
 		{
 			id: "ruby", runtime: "ruby", file: "main.rb", language: "ruby",
-			text:        "class TangitAnswer\n  def value\n    42\n  end\nend\nTangitAnswer.new.value\nTangitAns\n",
-			hoverMarker: "TangitAnswer.new.value", completionMarker: "TangitAns\n", completionWant: "TangitAnswer",
-			definitionMarker: "TangitAnswer.new.value", replaceOld: "TangitAns\n", replaceNew: "def broken(\n", diagnostic: "expected",
+			text:        "class LazygitGoAnswer\n  def value\n    42\n  end\nend\nLazygitGoAnswer.new.value\nLazygitGoAns\n",
+			hoverMarker: "LazygitGoAnswer.new.value", completionMarker: "LazygitGoAns\n", completionWant: "LazygitGoAnswer",
+			definitionMarker: "LazygitGoAnswer.new.value", replaceOld: "LazygitGoAns\n", replaceNew: "def broken(\n", diagnostic: "expected",
 		},
 		{
 			id: "csharp", runtime: "dotnet", file: "Program.cs", language: "csharp",
-			text:        "namespace Tangit;\n\npublic static class Program\n{\n    public static void Main()\n    {\n        var tangit_answer = 42;\n        System.Console.WriteLine(tangit_answer);\n        System.Console.WriteLine(tangit_ans);\n    }\n}\n",
-			hoverMarker: "tangit_answer);", completionMarker: "tangit_ans);", completionWant: "tangit_answer",
-			definitionMarker: "tangit_answer);", replaceOld: "tangit_ans);", replaceNew: "missing_name);", diagnostic: "missing_name",
-			files:          map[string]string{"Tangit.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>\n"},
+			text:        "namespace lazygitGo;\n\npublic static class Program\n{\n    public static void Main()\n    {\n        var lazygitgo_answer = 42;\n        System.Console.WriteLine(lazygitgo_answer);\n        System.Console.WriteLine(lazygitgo_ans);\n    }\n}\n",
+			hoverMarker: "lazygitgo_answer);", completionMarker: "lazygitgo_ans);", completionWant: "lazygitgo_answer",
+			definitionMarker: "lazygitgo_answer);", replaceOld: "lazygitgo_ans);", replaceNew: "missing_name);", diagnostic: "missing_name",
+			files:          map[string]string{"lazygitGo.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>\n"},
 			definitionLine: 6, waitInitially: true,
 		},
 	}

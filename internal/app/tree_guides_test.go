@@ -234,7 +234,7 @@ func rowCenter(r ui.Rect) int { return int(r.Y + r.H/2) }
 
 func saveTreeGuidePNG(t *testing.T, name string, img *image.RGBA) {
 	t.Helper()
-	directory := os.Getenv("TANGIT_TREE_GUIDE_PNG_DIR")
+	directory := os.Getenv("LAZYGITGO_TREE_GUIDE_PNG_DIR")
 	if directory == "" {
 		return
 	}

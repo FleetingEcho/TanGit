@@ -13,7 +13,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 const (

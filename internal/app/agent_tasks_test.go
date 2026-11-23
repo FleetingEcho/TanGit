@@ -7,9 +7,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/agentwork"
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 func newAgentTestHarness(t *testing.T) (*harness, *agentwork.Store) {

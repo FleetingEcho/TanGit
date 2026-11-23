@@ -7,7 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // withPullRequestSetup performs an explicit, user-initiated auth preflight.
@@ -40,7 +40,7 @@ func (a *app) withPullRequestSetup(onReady func()) {
 
 // openCreatePullRequestForm drafts a request for the checked-out branch.
 // gh/glab resolve authentication and repository ownership using the user's
-// existing CLI configuration; no hosting credentials enter TanGit settings.
+// existing CLI configuration; no hosting credentials enter lazygitGo settings.
 func (a *app) openCreatePullRequestForm() {
 	if a.snapshot.Branch == "" {
 		return

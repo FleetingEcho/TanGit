@@ -22,7 +22,7 @@ var (
 
 // ErrCredentialsInURL rejects newly supplied repository URLs that would put a
 // password or token in .git/config or .gitmodules. Existing credential-bearing
-// URLs remain usable, but are redacted everywhere TanGit presents them.
+// URLs remain usable, but are redacted everywhere lazygitGo presents them.
 var ErrCredentialsInURL = errors.New("repository URL contains credentials; use a Git credential helper or SSH agent instead")
 
 // RedactSecrets removes credentials from commands, Git output, and errors.

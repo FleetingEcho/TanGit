@@ -99,7 +99,7 @@ func expandHelperCommand(template string, values map[string]string) (string, err
 	return strings.NewReplacer(parts...).Replace(template), nil
 }
 
-// shellQuoteHelper follows the command shells already used by TanGit profiles.
+// shellQuoteHelper follows the command shells already used by lazygitGo profiles.
 // In particular, POSIX single quotes make shell syntax in a generated or test
 // temp path data rather than a second program fragment.
 func shellQuoteHelper(value string) string {
@@ -131,7 +131,7 @@ func (a *CommandAdvisor) Propose(ctx context.Context, request AdviceRequest) (Ad
 		return Advice{}, limitError("encoded request has %d bytes, maximum is %d", len(requestJSON), prepared.Limits.MaxRequestBytes)
 	}
 
-	jobDir, err := os.MkdirTemp(a.tempDir, "tangit-agentassist-*")
+	jobDir, err := os.MkdirTemp(a.tempDir, "lazygitgo-agentassist-*")
 	if err != nil {
 		return Advice{}, fmt.Errorf("create private agent advice directory: %w", err)
 	}

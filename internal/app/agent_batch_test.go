@@ -7,8 +7,8 @@ import (
 
 	"github.com/egoist/mygo/plugins/terminal"
 
-	"lazygitapp/internal/agentwork"
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func selectAgentBatchTasks(h *harness, tasks ...agentwork.Task) {

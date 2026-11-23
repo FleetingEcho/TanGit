@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/sshintegration"
-	"lazygitapp/internal/sshworkspace"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshintegration"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 
 	"github.com/stefanhaller/git-todo-parser/todo"
 )
@@ -35,8 +35,8 @@ func TestOpenSSHWorkspaceRealOpenSSH(t *testing.T) {
 
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
-	runGit(t, dir, "config", "user.name", "TanGit Test")
-	runGit(t, dir, "config", "user.email", "tangit@example.com")
+	runGit(t, dir, "config", "user.name", "lazygitGo Test")
+	runGit(t, dir, "config", "user.email", "lazygitgo@example.com")
 	binary := []byte{0, 0xff, 0xfe, 'P', 'N', 'G', 0, 1, 2, '\n'}
 	if err := os.WriteFile(filepath.Join(dir, "image.bin"), binary, 0o600); err != nil {
 		t.Fatal(err)
@@ -168,8 +168,8 @@ func TestOpenSSHWorkspaceRecoveryRealOpenSSH(t *testing.T) {
 	defer client.Close()
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
-	runGit(t, dir, "config", "user.name", "TanGit Test")
-	runGit(t, dir, "config", "user.email", "tangit@example.com")
+	runGit(t, dir, "config", "user.name", "lazygitGo Test")
+	runGit(t, dir, "config", "user.email", "lazygitgo@example.com")
 	if err := os.WriteFile(filepath.Join(dir, "tracked.txt"), []byte("base\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

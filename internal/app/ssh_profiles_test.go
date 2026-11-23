@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"lazygitapp/internal/app/i18n"
+	"github.com/FleetingEcho/lazygitGo/internal/app/i18n"
 	"os"
 	"reflect"
 	"strings"
@@ -13,7 +13,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 type fakeSSHKeychain struct {

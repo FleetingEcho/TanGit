@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"lazygitapp/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
 )
 
 // runAgentTests starts an independent terminal in the task's explicit
@@ -176,8 +176,8 @@ func (a *app) flushAgentTestCompletion(taskID string) {
 }
 
 const (
-	agentReviewerFeedbackStart = "<!-- TANGIT REVIEWER FEEDBACK START -->"
-	agentReviewerFeedbackEnd   = "<!-- TANGIT REVIEWER FEEDBACK END -->"
+	agentReviewerFeedbackStart = "<!-- LAZYGITGO REVIEWER FEEDBACK START -->"
+	agentReviewerFeedbackEnd   = "<!-- LAZYGITGO REVIEWER FEEDBACK END -->"
 )
 
 func agentReviewerFeedback(request, feedback string) string {

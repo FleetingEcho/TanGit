@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"lazygitapp/internal/agentwork"
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 type agentUpdateResultStatus string
@@ -323,7 +323,7 @@ func (a *app) beginAgentUpdateRebase() {
 	a.askConfirm(confirmRequest{
 		title:        "Rebase selected agent tasks",
 		message:      trf("Rebase %d explicitly selected task worktrees onto their recorded BaseRefs?", len(targets)),
-		detail:       tr("Each task is processed sequentially against its frozen path, BaseRef and captured HEAD. TanGit verifies that HEAD and records a durable safety checkpoint before every rebase. Conflicts and errors do not stop unrelated tasks. Task BaseCommit and lifecycle are unchanged; nothing is pushed."),
+		detail:       tr("Each task is processed sequentially against its frozen path, BaseRef and captured HEAD. lazygitGo verifies that HEAD and records a durable safety checkpoint before every rebase. Conflicts and errors do not stop unrelated tasks. Task BaseCommit and lifecycle are unchanged; nothing is pushed."),
 		confirmLabel: "Rebase selected",
 		destructive:  true,
 		run: func() {

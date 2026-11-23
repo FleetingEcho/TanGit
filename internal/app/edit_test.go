@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // stubWorkingFile makes the pane read content and record what it writes back,

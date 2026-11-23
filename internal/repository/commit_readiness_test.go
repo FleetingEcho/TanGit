@@ -39,7 +39,7 @@ func TestCommitHooksAlwaysRunAndRejectionPreservesHEAD(t *testing.T) {
 	runGit(t, dir, "init", "--initial-branch=main")
 	runGit(t, dir, "config", "user.email", "desktop@example.com")
 	runGit(t, dir, "config", "user.name", "Desktop")
-	runGit(t, dir, "config", "tangit.test.initial", "true")
+	runGit(t, dir, "config", "lazygitgo.test.initial", "true")
 	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("base\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -48,13 +48,13 @@ func TestCommitHooksAlwaysRunAndRejectionPreservesHEAD(t *testing.T) {
 	runGit(t, dir, "config", "lazygit.skipHookPrefix", "WIP")
 	head := gitOutput(t, dir, "rev-parse", "HEAD")
 	hook := "#!/bin/sh\necho called >> \"" + filepath.Join(dir, "hook-calls") + "\"\n"
-	if os.Getenv("TANGIT_TEST_ALLOW_HOOK") != "1" {
+	if os.Getenv("LAZYGITGO_TEST_ALLOW_HOOK") != "1" {
 		hook += "exit 1\n"
 	}
 	if err := os.WriteFile(filepath.Join(dir, ".git", "hooks", "pre-commit"), []byte(hook), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("TANGIT_TEST_ALLOW_HOOK", "0")
+	t.Setenv("LAZYGITGO_TEST_ALLOW_HOOK", "0")
 	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("changed\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

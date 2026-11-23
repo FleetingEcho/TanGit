@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"lazygitapp/internal/app/i18n"
+	"github.com/FleetingEcho/lazygitGo/internal/app/i18n"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -16,9 +16,9 @@ import (
 	mygotransfer "github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui/editor"
 
-	"lazygitapp/internal/sshworkspace"
-	"lazygitapp/internal/transfer"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/transfer"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 type remoteTransferUITestSession struct {

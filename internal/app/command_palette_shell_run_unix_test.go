@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // Cancelling stops the whole process tree, not only the shell: a background

@@ -7,7 +7,7 @@ import (
 
 	"github.com/jesseduffield/lazygit/pkg/commands/git_config"
 
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 // remoteGitConfig satisfies Lazygit's string-only config interface without its

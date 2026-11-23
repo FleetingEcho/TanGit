@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/sshintegration"
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshintegration"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 func TestServerProvidesAuthenticatedOpenSSHConnection(t *testing.T) {

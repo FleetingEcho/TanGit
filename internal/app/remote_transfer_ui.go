@@ -12,8 +12,8 @@ import (
 	mygotransfer "github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/sshworkspace"
-	"lazygitapp/internal/transfer"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/transfer"
 )
 
 // remoteTransferUIState belongs to one app/tab. A manager never follows a

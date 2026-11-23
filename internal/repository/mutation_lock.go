@@ -7,7 +7,7 @@ import (
 )
 
 // worktreeMutationLocks coordinates independent sessions for the same checkout
-// inside TanGit. Preview/preflight and its subsequent write must hold the same
+// inside lazygitGo. Preview/preflight and its subsequent write must hold the same
 // lock, otherwise two open tabs can both approve an older state and overwrite
 // each other's work. External Git processes remain subject to Git's own checks
 // and, for branch deletion, the expected-old-value ref update.

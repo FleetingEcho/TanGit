@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="docs/icon.png" width="88" alt="TanGit 图标">
+  <img src="docs/icon.png" width="88" alt="lazygitGo 图标">
 </p>
 
-<h1 align="center">TanGit</h1>
+<h1 align="center">lazygitGo</h1>
 
 <p align="center"><strong>精确提交，直观查看历史，尽在原生 Git 工作区。</strong></p>
 <p align="center">使用 Go 与 MyGo 构建 · macOS · Windows · Linux</p>
 
 <p align="center">
-  <a href="https://github.com/FleetingEcho/TanGit/releases">下载</a> ·
+  <a href="https://github.com/FleetingEcho/lazygitGo/releases">下载</a> ·
   <a href="#主要功能">主要功能</a> ·
   <a href="docs/guide.md#operation-recovery-history-and-assisted-review">操作指南（英文）</a> ·
   <a href="#快速开始">快速开始</a> ·
@@ -21,7 +21,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/workspace.png">
     <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/workspace_light.png">
-    <img src="docs/screenshots/workspace_light.png" alt="TanGit 工作区：仓库导航、文件更改与差异预览">
+    <img src="docs/screenshots/workspace_light.png" alt="lazygitGo 工作区：仓库导航、文件更改与差异预览">
   </picture>
 </p>
 
@@ -46,9 +46,9 @@
   </tr>
 </table>
 
-## TanGit是什么？
+## lazygitGo是什么？
 
-TanGit将Lazygit的 Git 引擎带到了原生桌面界面中，
+lazygitGo将Lazygit的 Git 引擎带到了原生桌面界面中，
 让键盘操作与可视化工具配合，把复杂的更改看清楚、处理好。
 
 - **把混合修改整理成清晰的提交。** 跨多个差异块选择需要的行，单独暂存、取消暂存或储藏，其余修改保持不动。
@@ -69,7 +69,7 @@ TanGit将Lazygit的 Git 引擎带到了原生桌面界面中，
 | **分支与恢复** | 管理远程仓库、标签、储藏、工作树和子模块；查看引用日志，撤销支持的操作。**Sync stack…** 会冻结并预览逐分支的合并、变基和 ref 更新计划，应用前再次校验，还可按预览时的远端 OID 租约逐分支发布。Safety Journal 与单文件冲突恢复分别保存可重新验证的持久恢复状态。 |
 | **协作与自动化** | 通过 GitHub CLI（`gh`）或 GitLab CLI（`glab`）创建拉取请求、查看检查；导出 `format-patch` 系列并应用邮箱补丁。支持持久 Agent 任务、本地 CLI/RPC 和自定义 shell 命令，后台获取与清理策略可配置。 |
 | **冲突处理** | 直接读取 Git 的操作类型、ref、SHA 和进度，并按实际状态提供 **Continue**、**Skip**、**Abort**。分组后的 **Hunk**、**View**、**Apply** 控件在宽、窄面板中都能操作冲突导航、版本视图、各方修改和助手入口；只有明确选择 **Mark resolved** 才会暂存解决结果。 |
-| **辅助审查** | Conflict Assistant 在克隆的 Result 上建议冲突区域替换；Change Splitter 按原始差异标识分组，并预览由 TanGit 生成的纯索引补丁。两者使用可选且与服务商无关的 `AssistCommand`，建议预览本身不会自动暂存或提交。 |
+| **辅助审查** | Conflict Assistant 在克隆的 Result 上建议冲突区域替换；Change Splitter 按原始差异标识分组，并预览由 lazygitGo 生成的纯索引补丁。两者使用可选且与服务商无关的 `AssistCommand`，建议预览本身不会自动暂存或提交。 |
 | **代码工作区** | 使用语法高亮和语言服务器辅助编辑代码，管理文件和标签页，并通过 fzf 快速打开、高级内容搜索和 Markdown 预览提高效率。 |
 | **工作区** | 仓库标签页、目录树、可调整大小的面板、可展开的分支与差异页面、终端和外部编辑器。 |
 | **工作流入口** | 使用**命令面板**（`Ctrl/Cmd+Shift+P`）搜索当前导航、Git、差异块、冲突、Agent 和自定义命令，也可切换模式：`@` 分支、`#` 提交（粘贴 hash，或按消息、`by:作者`、`branch:` 搜索）、`/` 文件、`~` 最近的仓库、`!` 运行 shell 命令并实时显示输出。选中提交会列出其右键菜单的全部操作。**活动中心**（`Ctrl/Cmd+Shift+A`）汇总所有已打开仓库的命令、安全日志、Agent 任务、传输和通知，其中的**贡献者**视图显示谁提交了多少、最近提交了什么。**概览**集中显示工作区、操作、协作、Agent、贡献者（可按最近一周、一个月、3 个月、半年、一年或全部时间查看谁在活跃，含提交图和贡献最多的人）、提交活动热力图、代码更改（新增和删除的行数）、分支健康（已合并、陈旧和严重落后的分支）和近期活动状态。**命令日志**支持按状态、来源和时间范围筛选，显示成功图标、状态徽章和时间，可展开输出，并在向下滚动时每次加载 20 条记录。 |
@@ -84,7 +84,7 @@ Shift 点击可选择连续范围。
 
 - **编写和审查代码。** 使用语法高亮、撤销／重做、临时预览与持久标签页、前进／后退导航以及未保存更改提醒。按 `Ctrl/Cmd+S` 保存，按 `Ctrl/Cmd+Shift+S` 全部保存；可在源码旁预览 Markdown，也可直接查看图片，无需切换到其他应用。
 - **查找并理解代码。** 通过 fzf 模糊匹配快速打开路径。内容搜索支持区分大小写、全词匹配、正则表达式和包含／排除 glob；结果按文件分组并可逐页加载，点击匹配项即可跳转。可选语言服务器还提供代码补全、悬停文档、诊断和跳转到定义。
-- **沿用熟悉的工具。** 可以通过 TanGit 安装受支持的语言服务器、配置自定义语言服务器，或在 ripgrep 与内置 Go 搜索器之间切换。
+- **沿用熟悉的工具。** 可以通过 lazygitGo 安装受支持的语言服务器、配置自定义语言服务器，或在 ripgrep 与内置 Go 搜索器之间切换。
 - **在编辑器中管理文件。** 新建文件和文件夹、重命名或删除，并可通过拖放移动条目。也可将系统文件或文件夹拖放到文件资源管理器的任意位置：本地工作区会复制它们，SSH 工作区会通过 SFTP 上传，并显示字节／条目进度和取消按钮。打开的标签页和未保存缓冲区会跟随重命名与移动，也可以将仓库子文件夹设为工作区根目录。
 - **直接通过 SSH 工作。** 在首页或设置中配置 Linux SSH 工作区，支持 Agent、私钥或密码认证。Git、编辑、搜索、终端和递归传输均在远程执行，无需本地镜像或服务器代理。本地条目通过系统文件管理器打开；远程“在文件资源管理器中打开”会在远程桌面以 `DISPLAY=:0` 启动 `Narwhal`。
 
@@ -93,7 +93,7 @@ Shift 点击可选择连续范围。
 **Changes** 上方的操作卡片来自真实 Git 元数据，可区分合并、变基、带变基的拉取、
 `am`、拣选和还原，而不是根据当前分支名称猜测。可用按钮由操作类型和 Git
 状态决定；并非每种操作都提供 **Skip**。如有冲突，必须先解决并暂存，
-才能执行 **Continue**；TanGit 还会重新核对之前审阅的操作指纹与未合并索引，
+才能执行 **Continue**；lazygitGo 还会重新核对之前审阅的操作指纹与未合并索引，
 避免对已经变化的现场继续操作。
 
 如果需要更明确的操作顺序，可在 **Settings → Behavior → Conflict and hunk
@@ -114,7 +114,7 @@ Required 通过后才会运行 Optional，Optional 留空则记为 skipped。只
 具有当前用户完整权限的可信本地 shell 命令，**不是沙箱**，可以联网和读写文件。SSH 工作区
 会禁用 Continue，而不是拿本地命令去检查远程工作树。
 
-命令结束后，TanGit 会比较操作指纹、规范的索引记录，以及已跟踪文件和普通非忽略的
+命令结束后，lazygitGo 会比较操作指纹、规范的索引记录，以及已跟踪文件和普通非忽略的
 未跟踪文件内容，列出发生变化的路径；检测到内容变化时，必须先成功创建 checkpoint。
 被忽略的文件、仓库外的写入和网络副作用不在这次比较范围内。无论是正常继续，还是
 选择覆盖 Optional 失败，最后都会重新比较现场，再交给操作驱动按预期指纹执行 CAS。
@@ -142,14 +142,18 @@ Conflict Assistant 和 Change Splitter 只有在你主动请求建议时才运�
 2. 对照 **Base**、**Current**、**Incoming**，直接编辑 **Result**，或使用分组后的版本／差异块操作。需要时先预览 Conflict Assistant 的建议，再只接受 Result。
 3. 选择 **Mark resolved**，检查暂存差异，并对其余冲突文件重复处理。若需要回到最初的冲突现场，可使用单文件持久恢复。
 4. 到 **Rebase TODO** 核对当前与待执行步骤后选择 **Continue**。先查看 Required／Optional 的输出、检查命令造成的文件／索引变更和 checkpoint 结果，再选择 **Continue operation**；只有确实需要接受 Optional 失败时才使用专门的 override。只有当前操作确实提供 **Skip**，且你准备丢弃停下的一步时才使用它；放弃整个操作则选择 **Abort**。
-5. 最后检查生成的历史和剩余更改，再继续其他提交。若 CAS 校验失败，应刷新并重新审阅；这不表示 TanGit 覆盖了较新的工作。
+5. 最后检查生成的历史和剩余更改，再继续其他提交。若 CAS 校验失败，应刷新并重新审阅；这不表示 lazygitGo 覆盖了较新的工作。
 
 [详细操作、约束与助手协议（英文）→](docs/guide.md#operation-recovery-history-and-assisted-review) ·
 [大型仓库的刷新行为与实测范围（英文）→](docs/guide.md#large-repositories-and-refresh)
 
 ## 快速开始
 
-1. 安装 [Git](https://git-scm.com/)，然后下载 [TanGit 安装包](https://github.com/FleetingEcho/TanGit/releases)。
+**从 TanGit 升级？** 在 **设置 → 更新 → 检查更新** 中安装改名后的版本。
+如果使用 Debian 安装包，请下载对应架构的 `lazygitgo_*.deb`，再用
+`sudo apt install ./<下载的文件>.deb` 安装。原有设置会保留，新终端命令为 `lazygitGo`。
+
+1. 安装 [Git](https://git-scm.com/)，然后下载 [lazygitGo 安装包](https://github.com/FleetingEcho/lazygitGo/releases)。
 2. macOS 使用 **DMG**，Windows 使用 **安装程序**，Linux 使用对应架构的 **`.deb` 或压缩包**。
 3. 打开本地仓库，点击首页 **打开 SSH** 直接操作远程 Linux 仓库，或选择 **克隆**，通过 HTTPS 或 SSH 地址克隆，查看真实进度、选择分支，并在完成后自动打开。克隆使用现有的 Git 凭据助手或 SSH Agent；SSH 工作区的机密优先保存在操作系统钥匙串中，不可用时仅在当前会话保留。
 
@@ -157,7 +161,7 @@ Conflict Assistant 和 Change Splitter 只有在你主动请求建议时才运�
 版本或 SSH 部署都已通过实测。**Git 2.32 目前尚未验证。**详见
 [版本与能力验证范围（英文）](docs/verification.md#version-and-capability-evidence)。
 
-安装 [ripgrep](https://github.com/BurntSushi/ripgrep) 可以加快大型仓库中的编辑器内容搜索。没有 `rg` 时，TanGit 会自动使用内置搜索，并通过 [fzf](https://github.com/junegunn/fzf) 为快速打开的路径和内容搜索结果排序。
+安装 [ripgrep](https://github.com/BurntSushi/ripgrep) 可以加快大型仓库中的编辑器内容搜索。没有 `rg` 时，lazygitGo 会自动使用内置搜索，并通过 [fzf](https://github.com/junegunn/fzf) 为快速打开的路径和内容搜索结果排序。
 
 可以编辑 **工作区文件夹** 并按回车，或点击文件夹按钮，将仓库中的任意深层子文件夹打开为编辑器根目录。文件资源管理器随后只显示该文件夹及其后代，不再显示祖先或范围外的条目；快速打开和内容搜索也使用相同范围，根级文件创建与拖放会以此文件夹为目标，外部编辑器菜单也会打开此文件夹。尚未提交的输入只是草稿，不会改变当前工作区；点击清除按钮即可恢复整个仓库。可选的包含／排除 glob 默认折叠在 **文件筛选** 中。搜索前会排除常见的生成目录与依赖目录。在 **设置 → 编辑器 → 搜索排除项** 中，可以添加文件夹名称、移除任意默认项、清空列表或恢复默认值。排除项匹配任意层级；`vendor` 等源码目录仍可搜索，除非你主动添加。
 
@@ -166,11 +170,11 @@ Conflict Assistant 和 Change Splitter 只有在你主动请求建议时才运�
 **通过终端打开仓库：**先完成[对应平台的命令配置（英文）](docs/guide.md#open-a-repository-from-the-terminal)，然后运行：
 
 ```sh
-tangit .
-tangit "./包含空格的仓库"
+lazygitGo .
+lazygitGo "./包含空格的仓库"
 ```
 
-命令会立即返回，并复用正在运行的 TanGit 窗口：如果仓库已经打开，就切换到对应标签页；否则新建标签页。
+命令会立即返回，并复用正在运行的 lazygitGo 窗口：如果仓库已经打开，就切换到对应标签页；否则新建标签页。
 macOS 的命令启动器和 Windows 的 PATH 需要配置一次。详细指南也包含现有安装版本和自定义安装位置的配置方法。
 
 **使用外部编辑器：**在 **设置 → 编辑器** 中选择预设或填写命令。
@@ -206,7 +210,7 @@ macOS 的命令启动器和 Windows 的 PATH 需要配置一次。详细指南�
 
 ## 架构
 
-TanGit 使用 Go 开发，**MyGo** 负责原生界面渲染，**Lazygit** 提供 Git 命令层。
+lazygitGo 使用 Go 开发，**MyGo** 负责原生界面渲染，**Lazygit** 提供 Git 命令层。
 仓库会话将 Git 操作与仓库数据封装起来，使界面与底层操作分离。
 
 界面负责发起任务并展示刷新的仓库快照。MyGo 的无窗口测试工具可以模拟点击、输入、
@@ -217,15 +221,16 @@ TanGit 使用 Go 开发，**MyGo** 负责原生界面渲染，**Lazygit** 提供
 需要 Go **1.27.3** 和 Git，依赖统一声明在 `go.mod` 中。
 
 ```sh
-git clone https://github.com/FleetingEcho/TanGit.git
-cd TanGit
+git clone https://github.com/FleetingEcho/lazygitGo.git
+cd lazygitGo
 go tool mygo dev      # 开发模式
-go tool mygo build    # 构建当前平台的应用
+go tool mygo build    # 在 macOS 或 Linux 上构建
+bash scripts/build-windows.sh windows/amd64  # 构建 Windows 安装包
 ```
 
 [开发与检查（英文）](docs/guide.md#development) ·
 [发布构建与签名更新（英文）](docs/guide.md#publishing-signed-updates) ·
-[问题反馈](https://github.com/FleetingEcho/TanGit/issues)
+[问题反馈](https://github.com/FleetingEcho/lazygitGo/issues)
 
 ---
 

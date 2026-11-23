@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // startRepositoryWatch connects a real repository's filesystem notifications

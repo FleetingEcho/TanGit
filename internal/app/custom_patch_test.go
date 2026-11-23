@@ -7,7 +7,7 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 	gitpatch "github.com/jesseduffield/lazygit/pkg/commands/patch"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 const customPatchFixture = `diff --git a/changed.txt b/changed.txt

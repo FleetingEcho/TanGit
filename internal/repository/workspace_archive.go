@@ -415,7 +415,7 @@ func (s *gitSession) commitWorkspaceMetadataWithRefs(tree string, root *workspac
 	for _, parent := range parents {
 		args = append(args, "-p", parent)
 	}
-	commit, err := s.cmd.New(args).SetStdin("TanGit workspace metadata\n").RunWithOutput()
+	commit, err := s.cmd.New(args).SetStdin("lazygitGo workspace metadata\n").RunWithOutput()
 	if err != nil {
 		return "", fmt.Errorf("write workspace metadata commit: %w: %s", err, strings.TrimSpace(commit))
 	}

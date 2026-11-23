@@ -7,8 +7,8 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
-	"lazygitapp/internal/agentwork"
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 type agentReviewMode uint8

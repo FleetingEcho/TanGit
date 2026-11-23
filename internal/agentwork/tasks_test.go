@@ -527,7 +527,7 @@ func TestTaskDependenciesAndPhase3ProfilePersistAndClone(t *testing.T) {
 	input.Profile.Environment = map[string]string{"APP_ENV": "development"}
 	input.Profile.Resources = Resources{
 		DevelopmentPort: 3100,
-		DatabaseName:    "tangit_task_2",
+		DatabaseName:    "lazygitgo_task_2",
 		CacheDirectory:  filepath.Join("cache", "task-2"),
 	}
 	created, err := store.Create(input)
@@ -557,7 +557,7 @@ func TestTaskDependenciesAndPhase3ProfilePersistAndClone(t *testing.T) {
 		!slices.Equal(read.Profile.IgnoredFiles, []string{"config/local.json"}) ||
 		read.Profile.Environment["APP_ENV"] != "development" ||
 		read.Profile.Resources.DevelopmentPort != 3100 ||
-		read.Profile.Resources.DatabaseName != "tangit_task_2" ||
+		read.Profile.Resources.DatabaseName != "lazygitgo_task_2" ||
 		read.Profile.Resources.CacheDirectory != filepath.Join("cache", "task-2") {
 		t.Fatalf("persisted Phase-3 profile = %#v", read.Profile)
 	}

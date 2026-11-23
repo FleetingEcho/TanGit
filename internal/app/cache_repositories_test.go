@@ -332,7 +332,7 @@ func TestRepositoryCacheInventoryAccountsForUnlistedAndStaging(t *testing.T) {
 	a, _ := cacheRepositoriesTestApp(t, recentRepository{Path: selectedRoot})
 	writeCacheForRepository(t, a, selectedRoot)
 	writeCacheForRepository(t, a, unlistedRoot)
-	for _, name := range []string{".tangit-index-2313360354", ".tangit-index-428520547"} {
+	for _, name := range []string{".lazygitgo-index-2313360354", ".lazygitgo-index-428520547"} {
 		directory := filepath.Join(a.pathCache, codeSearchCacheDirName, name)
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)
@@ -367,7 +367,7 @@ func TestRepositoryCacheModalShowsAndClearsUnfinishedIndexes(t *testing.T) {
 	h.app.recentRepositories = []recentRepository{{Path: recentRoot, Name: "Important"}}
 	recentIndex, _ := writeCacheForRepository(t, h.app, recentRoot)
 	unlistedIndex, _ := writeCacheForRepository(t, h.app, unlistedRoot)
-	staging := filepath.Join(h.app.pathCache, codeSearchCacheDirName, ".tangit-index-428520547")
+	staging := filepath.Join(h.app.pathCache, codeSearchCacheDirName, ".lazygitgo-index-428520547")
 	if err := os.MkdirAll(staging, 0o755); err != nil {
 		t.Fatal(err)
 	}

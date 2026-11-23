@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
 )
 
 func TestAgentTaskAttentionsFilterDurableTransitions(t *testing.T) {

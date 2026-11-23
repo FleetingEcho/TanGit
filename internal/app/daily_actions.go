@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // ignoreSelectedFile records an untracked file in .gitignore, or in this

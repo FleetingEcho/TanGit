@@ -3,7 +3,7 @@
 ## Source of truth
 
 The comparison was made against the pinned lazygit dependency's
-`docs/keybindings/Keybindings_en.md`. TanGit keeps the same, context-scoped
+`docs/keybindings/Keybindings_en.md`. lazygitGo keeps the same, context-scoped
 operation definitions for registration, help text and command provenance; a
 `MenuItem.Shortcut` is display metadata, not a complete replacement for an
 application dispatch entry.
@@ -59,7 +59,7 @@ recovery notices remain visible.
 Each accepted invocation appears in the user's Command Log with its chord and
 action, and appears in copied log text. The query searches the chord, action ID,
 label and output. Clicking or typing ordinary text into a terminal or text input
-does not masquerade as a TanGit command or reveal the typed content.
+does not masquerade as a lazygitGo command or reveal the typed content.
 
 `AlreadyRecorded` distinguishes application callbacks which have already logged
 an invocation from framework-only navigation. It is also available to callers

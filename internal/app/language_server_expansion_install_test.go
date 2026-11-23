@@ -136,7 +136,7 @@ func TestLanguageServerExpansionTerraformCheckpoint(t *testing.T) {
 			if request.Method != http.MethodGet || request.URL.String() != "https://checkpoint-api.hashicorp.com/v1/check/terraform-ls" {
 				t.Fatalf("checkpoint request = %s %s", request.Method, request.URL)
 			}
-			if request.Header.Get("User-Agent") != "TanGit language-server installer" {
+			if request.Header.Get("User-Agent") != "lazygitGo language-server installer" {
 				t.Fatalf("checkpoint User-Agent = %q", request.Header.Get("User-Agent"))
 			}
 			return languageServerExpansionResponse(http.StatusOK, []byte(`{"current_version":"0.36.5"}`)), nil

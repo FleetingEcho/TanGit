@@ -7,7 +7,7 @@ import (
 
 	"github.com/egoist/mygo"
 
-	"lazygitapp/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
 )
 
 // agentTaskAttention is one durable result that may need the user's attention.

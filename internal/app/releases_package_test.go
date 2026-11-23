@@ -24,8 +24,8 @@ func TestVersionNewerComparesDottedNumbers(t *testing.T) {
 func TestFetchLatestReleaseFindsTheDebForTheArchitecture(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"tag_name":"v1.24.0","html_url":"https://example.test/r","assets":[
-			{"name":"tangit_1.24.0_arm64.deb","browser_download_url":"https://example.test/arm.deb"},
-			{"name":"tangit_1.24.0_amd64.deb","browser_download_url":"https://example.test/amd.deb"}]}`))
+			{"name":"lazygitgo_1.24.0_arm64.deb","browser_download_url":"https://example.test/arm.deb"},
+			{"name":"lazygitgo_1.24.0_amd64.deb","browser_download_url":"https://example.test/amd.deb"}]}`))
 	}))
 	defer server.Close()
 	previous := latestReleaseAPI
@@ -35,7 +35,7 @@ func TestFetchLatestReleaseFindsTheDebForTheArchitecture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if release.Version != "1.24.0" || release.DebURL != "https://example.test/amd.deb" || release.DebName != "tangit_1.24.0_amd64.deb" {
+	if release.Version != "1.24.0" || release.DebURL != "https://example.test/amd.deb" || release.DebName != "lazygitgo_1.24.0_amd64.deb" {
 		t.Fatalf("release = %+v", release)
 	}
 	if advice := packageUpdateAdvice(release); advice == "" {

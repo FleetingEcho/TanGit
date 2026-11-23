@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // A successful cherry-pick creates a new commit on the checked-out branch.

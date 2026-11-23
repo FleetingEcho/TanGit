@@ -160,7 +160,7 @@ func TestPythonManagedInstallationWorksAfterStagingPublication(t *testing.T) {
 			filepath.Join(strings.TrimSpace(string(output)), "ruff-1.0.dist-info", "METADATA"):         "Metadata-Version: 2.1\nName: ruff\nVersion: 1.0\n",
 			filepath.Join(strings.TrimSpace(string(output)), "ruff-1.0.dist-info", "entry_points.txt"): "[console_scripts]\nruff = fake_ruff:main\n",
 			filepath.Join(strings.TrimSpace(string(output)), "fake_ruff.py"):                           "def main():\n    print('ruff relocation-ok')\n    return 0\n",
-			// Reproduce pip's staging-specific shebang. TanGit must not launch it.
+			// Reproduce pip's staging-specific shebang. lazygitGo must not launch it.
 			filepath.Join(filepath.Dir(program), executableName(profile.Program)): "#!" + program + "\n",
 		}
 		for path, contents := range files {
@@ -453,7 +453,7 @@ func TestNeoCMakePullDiagnosticsRejectStaleResponses(t *testing.T) {
 	document := waitForCodeDocument(t, h, "CMakeLists.txt")
 	h.waitFor(t, "the initial NeoCMake diagnostic pull", func() bool { return len(pulls) == 1 })
 	stale := <-pulls
-	document.state.Insert("PROJECT(TanGit)\n")
+	document.state.Insert("PROJECT(lazygitGo)\n")
 	h.tester.Frame()
 	h.waitFor(t, "the changed NeoCMake diagnostic pull", func() bool { return len(pulls) == 1 })
 	current := <-pulls
@@ -472,7 +472,7 @@ func TestNeoCMakePullDiagnosticsRejectStaleResponses(t *testing.T) {
 		return len(diagnostics) == 1 && diagnostics[0].Message == "command name should be lowercased"
 	})
 
-	document.state.Insert("project(TanGit)\n")
+	document.state.Insert("project(lazygitGo)\n")
 	h.tester.Frame()
 	h.waitFor(t, "the next NeoCMake diagnostic pull", func() bool { return len(pulls) == 1 })
 	latest := <-pulls

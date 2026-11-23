@@ -16,7 +16,7 @@ import (
 	"github.com/sasha-s/go-deadlock"
 	"github.com/sirupsen/logrus"
 
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 type fakeSSHExecCall struct {

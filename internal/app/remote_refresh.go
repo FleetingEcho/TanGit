@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // signSnapshotForWorkspace keeps the local metadata signatures intact while

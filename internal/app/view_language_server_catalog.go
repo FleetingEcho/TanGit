@@ -14,7 +14,7 @@ func (a *app) languageServerCatalog(c *ui.Context) {
 		flatIconButton(c, "Add custom language server", "Add a custom language server", plusIcon, 15, 4,
 			false, func() { a.openCustomLanguageServerForm("") })
 	})
-	ui.Text(c, tr("Search, download, update, and configure language servers managed by TanGit.")).
+	ui.Text(c, tr("Search, download, update, and configure language servers managed by lazygitGo.")).
 		TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).MaxWidth(560)
 	ui.SearchField(c, &a.lsp.catalogQuery).Label(tr("Search language servers")).
 		Placeholder(tr("Search by language, server, or command")).MaxWidth(560)

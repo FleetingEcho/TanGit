@@ -7,7 +7,7 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 	"github.com/jesseduffield/lazygit/pkg/commands/patch"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // diffSupportsLineStaging reports whether the pane may offer to stage or

@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func TestAssistantPreviewEditorsOwnModalAndQuietRefreshLifecycle(t *testing.T) {

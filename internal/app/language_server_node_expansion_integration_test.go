@@ -10,54 +10,54 @@ import (
 )
 
 func TestIntelephenseRealProtocolLifecycle(t *testing.T) {
-	if os.Getenv("TANGIT_TEST_REAL_LSP_INSTALL") != "1" {
-		t.Skip("set TANGIT_TEST_REAL_LSP_INSTALL=1 to download and exercise Intelephense")
+	if os.Getenv("LAZYGITGO_TEST_REAL_LSP_INSTALL") != "1" {
+		t.Skip("set LAZYGITGO_TEST_REAL_LSP_INSTALL=1 to download and exercise Intelephense")
 	}
 	profile := mustLanguageServerProfile(t, "intelephense")
 	installation, dataDir := installRealExpandedLanguageServer(t, profile)
 	workspace := t.TempDir()
 	name := filepath.Join(workspace, "index.php")
-	text := "<?php\n$tangit_answer = 42;\necho $tan;\necho $tangit_answer;\n"
+	text := "<?php\n$lazygitgo_answer = 42;\necho $lazy;\necho $lazygitgo_answer;\n"
 	if err := os.WriteFile(name, []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	server, diagnostics := openRealExpandedLanguageServer(t, installation, dataDir, workspace, name, profile.ID, "php", text)
 	defer server.Close()
 	uri := languageServerFileURI(name)
-	position := realExpandedLanguageServerPosition(uri, text, strings.LastIndex(text, "tangit_answer")+1)
+	position := realExpandedLanguageServerPosition(uri, text, strings.LastIndex(text, "lazygitgo_answer")+1)
 	hover := requestRealExpandedLanguageServer(t, server, "textDocument/hover", position)
 	content, _, ok := parseLanguageServerHover(hover)
 	if !ok || strings.TrimSpace(content) == "" {
 		t.Fatalf("Intelephense hover = %s", hover)
 	}
-	completions := requestRealExpandedLanguageServer(t, server, "textDocument/completion", realExpandedLanguageServerPosition(uri, text, strings.Index(text, "$tan;")+len("$tan")))
-	assertRealExpandedCompletion(t, completions, "tangit_answer")
+	completions := requestRealExpandedLanguageServer(t, server, "textDocument/completion", realExpandedLanguageServerPosition(uri, text, strings.Index(text, "$lazy;")+len("$lazy")))
+	assertRealExpandedCompletion(t, completions, "lazygitgo_answer")
 	definition := requestRealExpandedLanguageServer(t, server, "textDocument/definition", position)
 	location, ok := firstLanguageServerLocation(definition)
 	if !ok || location.URI != uri || location.Range.Start.Line != 1 {
 		t.Fatalf("Intelephense definition = %s", definition)
 	}
-	changed := strings.Replace(text, "echo $tan;", "echo ;", 1)
+	changed := strings.Replace(text, "echo $lazy;", "echo ;", 1)
 	server.DidChange(uri, changed, 2)
 	waitForRealExpandedDiagnostic(t, diagnostics, uri, "")
 }
 
 func TestPrismaRealProtocolLifecycle(t *testing.T) {
-	if os.Getenv("TANGIT_TEST_REAL_LSP_INSTALL") != "1" {
-		t.Skip("set TANGIT_TEST_REAL_LSP_INSTALL=1 to download and exercise Prisma Language Server")
+	if os.Getenv("LAZYGITGO_TEST_REAL_LSP_INSTALL") != "1" {
+		t.Skip("set LAZYGITGO_TEST_REAL_LSP_INSTALL=1 to download and exercise Prisma Language Server")
 	}
 	profile := mustLanguageServerProfile(t, "prisma")
 	installation, dataDir := installRealExpandedLanguageServer(t, profile)
 	workspace := t.TempDir()
 	name := filepath.Join(workspace, "schema.prisma")
-	text := "generator client {\n  provider = \"prisma-client-js\"\n}\n\ndatasource db {\n  provider = \"sqlite\"\n  url      = \"file:dev.db\"\n}\n\nmodel Tangit {\n  id       Int    @id @default(autoincrement())\n  answer   Int    @def\n  relation TangitRelation?\n}\n\nmodel TangitRelation {\n  id       Int    @id\n  tangit   Tangit @relation(fields: [tangitId], references: [id])\n  tangitId Int\n}\n"
+	text := "generator client {\n  provider = \"prisma-client-js\"\n}\n\ndatasource db {\n  provider = \"sqlite\"\n  url      = \"file:dev.db\"\n}\n\nmodel lazygitGo {\n  id       Int    @id @default(autoincrement())\n  answer   Int    @def\n  relation lazygitGoRelation?\n}\n\nmodel lazygitGoRelation {\n  id       Int    @id\n  lazygitgo   lazygitGo @relation(fields: [lazygitgoId], references: [id])\n  lazygitgoId Int\n}\n"
 	if err := os.WriteFile(name, []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	server, diagnostics := openRealExpandedLanguageServer(t, installation, dataDir, workspace, name, profile.ID, "prisma", text)
 	defer server.Close()
 	uri := languageServerFileURI(name)
-	position := realExpandedLanguageServerPosition(uri, text, strings.Index(text, "Tangit @relation"))
+	position := realExpandedLanguageServerPosition(uri, text, strings.Index(text, "lazygitGo @relation"))
 	hover := requestRealExpandedLanguageServer(t, server, "textDocument/hover", position)
 	if content, _, ok := parseLanguageServerHover(hover); !ok || strings.TrimSpace(content) == "" {
 		t.Fatalf("Prisma hover = %s", hover)

@@ -9,7 +9,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // repositoryCloner is deliberately optional. Existing opener fakes implement
@@ -280,7 +280,7 @@ func (a *app) cloneModal(c *ui.Context) {
 						})
 						ui.Column(c).Gap(2).Grow(1).Children(func() {
 							ui.Text(c, tr("Clone remote repository")).FontSize(18).Bold()
-							ui.Text(c, tr("Copy an HTTPS or SSH repository, then open it in TanGit.")).
+							ui.Text(c, tr("Copy an HTTPS or SSH repository, then open it in lazygitGo.")).
 								TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 						})
 						iconButton(c, "Close clone form", "Escape", closeIcon, false, a.closeCloneForm)
@@ -336,7 +336,7 @@ func (a *app) cloneModal(c *ui.Context) {
 							ui.Text(c, a.cloneError).Selectable().FontSize(theme.FontSize - 1)
 						})
 					}
-					ui.Text(c, tr("Cancellation stops Git. TanGit never deletes the destination folder.")).
+					ui.Text(c, tr("Cancellation stops Git. lazygitGo never deletes the destination folder.")).
 						FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
 					ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
 						if ui.Button(c, tr("Cancel")).Tooltip(tr("Cancel (Escape)")).Clicked() {

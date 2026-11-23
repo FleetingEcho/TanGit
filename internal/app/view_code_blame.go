@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
-	"lazygitapp/internal/repository"
 )
 
 func codeBlameCardWidth(c *ui.Context) float32 {

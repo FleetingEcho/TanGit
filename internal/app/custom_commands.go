@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"lazygitapp/internal/app/proc"
+	"github.com/FleetingEcho/lazygitGo/internal/app/proc"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -13,7 +13,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // customCommandSetting is one user-defined shell command bound to an

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // autoRefreshInterval is how often a focused window asks its repository

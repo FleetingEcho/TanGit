@@ -8,7 +8,7 @@ import (
 	"path"
 	"strings"
 
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 // remoteTerminalConn adapts the SSH uint32 PTY API to MyGo's signed cell
@@ -43,7 +43,7 @@ func openRemoteTerminal(ctx context.Context, client remoteWorkspaceClient, root 
 	connection := &remoteTerminalConn{terminal: terminal}
 	// OpenTerminal starts the user's login shell. Enter the repository through
 	// that shell's own quoting rules, then replace it with a fresh shell rooted
-	// there so no TanGit process or local working directory is involved.
+	// there so no lazygitGo process or local working directory is involved.
 	command := "cd -- " + sshworkspace.ShellQuote(root) + " && exec ${SHELL:-/bin/sh}\n"
 	if _, err := connection.Write([]byte(command)); err != nil {
 		_ = connection.Close()

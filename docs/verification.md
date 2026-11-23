@@ -22,11 +22,11 @@ CGO_ENABLED=0 go test ./...
 go test -race -timeout=20m ./internal/repository ./internal/agentwork ./internal/agentcli ./internal/app
 ```
 
-The full test command runs with `TANGIT_TEST_REQUIRE_OPENSSH=1`; the race
+The full test command runs with `LAZYGITGO_TEST_REQUIRE_OPENSSH=1`; the race
 command has the same required-OpenSSH setting at job scope. The job installs
 `build-essential`, `openssh-client`, and `openssh-server`, checks that it is not
 root, and prints the Go, MyGo, Git, and SSH versions in its log. Repository
-fixtures use the runner-local `TanGit CI <ci@tangit.invalid>` Git identity,
+fixtures use the runner-local `lazygitGo CI <ci@lazygitgo.invalid>` Git identity,
 without relying on a developer's global Git configuration. The complete app race
 suite is CPU-sensitive on a shared runner: Test and vet has a 35-minute job
 limit, with a 20-minute limit for each Go race-test package. These outer time
@@ -36,13 +36,13 @@ has to complete successfully.
 ### MyGo 0.10 verification and local extensions
 
 The current MyGo dependency is **0.10.0**. Its vendored code, `go.mod`, pruning
-script and upstream LICENSE are kept in sync. TanGit preserves its own batch
+script and upstream LICENSE are kept in sync. lazygitGo preserves its own batch
 highlight, Quit/Relaunch, hover-anchor, foreground-process and CJK baseline
 behavior while using the newer upstream UI and engine implementation; no
 validation-only stub or changed public behavior substitutes for those APIs.
 
 Nested-module checks include `ui`, `editor`, `terminal` and `pty`, including
-real shell foreground-process transitions. The whole TanGit suite and the
+real shell foreground-process transitions. The whole lazygitGo suite and the
 Linux native build / CLI smoke test also run on the upgraded sources.
 
 Three upstream checks are classified separately rather than silently dropped:
@@ -70,9 +70,9 @@ key. macOS is ad-hoc signed so its bundled executable can be launched.
 
 | Job | Runner and build target | Smoke check | What a passing run establishes | What it does not establish |
 | --- | --- | --- | --- | --- |
-| Linux | `ubuntu-latest`, `linux/amd64` | Execute `build/linux-amd64/tangit agent help` and check its usage output | MyGo can compile/package the Linux target and its native executable can enter and leave the headless CLI on that runner | GUI behavior, package installation, other Linux distributions/architectures, or external network access |
-| macOS | `macos-latest`, `darwin/universal` | Execute `TanGit.app/Contents/MacOS/TanGit agent help` from the universal bundle and check its usage output | Both universal slices compile and the bundle's headless CLI runs on the runner used by that job | Execution of both slices in one run, a DMG, notarization, a Developer ID signature, GUI behavior, or every supported macOS version |
-| Windows | `windows-latest`, `windows/amd64` | Execute `TanGit.exe agent help` and check its usage output | MyGo can compile/package the Windows target and its native executable can enter and leave the headless CLI on that runner | The NSIS installer, Windows on ARM, GUI behavior, or every supported Windows version |
+| Linux | `ubuntu-latest`, `linux/amd64` | Execute `build/linux-amd64/lazygitgo agent help` and check its usage output | MyGo can compile/package the Linux target and its native executable can enter and leave the headless CLI on that runner | GUI behavior, package installation, other Linux distributions/architectures, or external network access |
+| macOS | `macos-latest`, `darwin/universal` | Execute `lazygitGo.app/Contents/MacOS/lazygitGo agent help` and check its usage output and bundle identifier | Both universal slices compile, the CLI runs on the runner, and the bundle uses the existing app identifier | Execution of both slices in one run, a DMG, notarization, a Developer ID signature, GUI behavior, or every supported macOS version |
+| Windows | `windows-latest`, `windows/amd64` | Execute `lazygitGo.exe agent help` and check its usage output | MyGo can compile/package the Windows target and its native executable can enter and leave the headless CLI on that runner | The NSIS installer, Windows on ARM, GUI behavior, or every supported Windows version |
 
 The `agent help` route returns before single-instance, updater, native-window,
 or terminal initialization. It is a launch and output smoke test, not a native
@@ -167,13 +167,13 @@ Set the following variable to turn every environment-driven skip in this
 helper into an explicit test failure:
 
 ```sh
-TANGIT_TEST_REQUIRE_OPENSSH=1
+LAZYGITGO_TEST_REQUIRE_OPENSSH=1
 ```
 
 For example, on a supported POSIX host with OpenSSH installed:
 
 ```sh
-TANGIT_TEST_REQUIRE_OPENSSH=1 CGO_ENABLED=0 go test ./internal/sshintegration ./internal/sshworkspace ./internal/repository ./internal/app
+LAZYGITGO_TEST_REQUIRE_OPENSSH=1 CGO_ENABLED=0 go test ./internal/sshintegration ./internal/sshworkspace ./internal/repository ./internal/app
 ```
 
 Use an unprivileged account. The helper needs `/usr/sbin/sshd`, `ssh-keygen`, a
@@ -198,7 +198,7 @@ go tool mygo vet .
 CGO_ENABLED=0 go test ./...
 go test -race ./internal/repository ./internal/agentwork ./internal/agentcli ./internal/app
 go tool mygo build -platform linux/amd64 -skip-dmg -skip-installer -skip-notarize
-build/linux-amd64/tangit agent help
+build/linux-amd64/lazygitgo agent help
 ```
 
 On macOS or Windows, select the corresponding native target and executable

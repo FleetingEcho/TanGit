@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"lazygitapp/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
 )
 
 func TestAgentTaskEnvironmentIsolatesResourcesAndProtectsIdentity(t *testing.T) {
@@ -30,6 +30,11 @@ func TestAgentTaskEnvironmentIsolatesResourcesAndProtectsIdentity(t *testing.T) 
 	} {
 		if !slices.Contains(environment, expected) {
 			t.Errorf("environment %#v does not contain %q", environment, expected)
+		}
+		if suffix, legacy := strings.CutPrefix(expected, legacyAgentEnvironmentPrefix); legacy {
+			if branded := agentEnvironmentPrefix + suffix; !slices.Contains(environment, branded) {
+				t.Errorf("environment %#v does not contain %q", environment, branded)
+			}
 		}
 	}
 	for _, entry := range environment {

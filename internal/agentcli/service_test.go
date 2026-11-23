@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/agentwork"
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func gitCommand(t *testing.T, dir string, args ...string) string {
@@ -86,6 +86,8 @@ func revision(task agentwork.Task) string {
 }
 
 func TestResolveDataDirPrecedence(t *testing.T) {
+	legacy := filepath.Join(t.TempDir(), "legacy-environment")
+	t.Setenv("TANGIT_AGENT_DATA_DIR", legacy)
 	t.Setenv(DataDirEnvironment, filepath.Join(t.TempDir(), "environment"))
 	explicit := filepath.Join(t.TempDir(), "explicit")
 	resolved, err := ResolveDataDir(explicit)
@@ -95,6 +97,11 @@ func TestResolveDataDirPrecedence(t *testing.T) {
 	resolved, err = ResolveDataDir("")
 	if err != nil || resolved != os.Getenv(DataDirEnvironment) {
 		t.Fatalf("environment data dir = %q, %v", resolved, err)
+	}
+	t.Setenv(DataDirEnvironment, "")
+	resolved, err = ResolveDataDir("")
+	if err != nil || resolved != legacy {
+		t.Fatalf("legacy environment data dir = %q, %v; want %q", resolved, err, legacy)
 	}
 }
 

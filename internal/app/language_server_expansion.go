@@ -177,7 +177,7 @@ func latestTerraformLanguageServerRelease(ctx context.Context, goos, goarch stri
 	if err != nil {
 		return languageServerRelease{}, err
 	}
-	request.Header.Set("User-Agent", "TanGit language-server installer")
+	request.Header.Set("User-Agent", "lazygitGo language-server installer")
 	response, err := languageServerReleaseHTTPClient.Do(request)
 	if err != nil {
 		return languageServerRelease{}, err

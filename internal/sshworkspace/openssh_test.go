@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/sshintegration"
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshintegration"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -415,7 +415,7 @@ func mustReadOpenSSHFile(t *testing.T, name string) []byte {
 
 func makeOpenSSHRemoteRoot(t *testing.T, ctx context.Context, client *sshworkspace.Client) string {
 	t.Helper()
-	result, err := client.Run(ctx, "", "mktemp", "-d", "/tmp/tangit-openssh-workspace-XXXXXXXXXX")
+	result, err := client.Run(ctx, "", "mktemp", "-d", "/tmp/lazygitgo-openssh-workspace-XXXXXXXXXX")
 	if err != nil || result.ExitCode != 0 {
 		t.Fatalf("create remote test root: result=%+v err=%v", result, err)
 	}

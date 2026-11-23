@@ -15,8 +15,8 @@ func TestTrayMenuOffersOpenAndQuit(t *testing.T) {
 	if len(items) != 3 {
 		t.Fatalf("the tray menu has %d items, want 3", len(items))
 	}
-	if items[0].Label != "Open TanGit" {
-		t.Errorf("the first item is %q, want Open TanGit", items[0].Label)
+	if items[0].Label != "Open lazygitGo" {
+		t.Errorf("the first item is %q, want Open lazygitGo", items[0].Label)
 	}
 	if items[1].Type != mygo.MenuItemSeparator {
 		t.Errorf("the second item is %q, want a separator", items[1].Type)
@@ -52,7 +52,7 @@ func TestTrayMenuFollowsTheLanguage(t *testing.T) {
 	currentLanguage = "zh-Hans"
 
 	items := trayMenu().Items()
-	if items[0].Label != "打开 TanGit" || items[2].Label != "退出" {
+	if items[0].Label != "打开 lazygitGo" || items[2].Label != "退出" {
 		t.Fatalf("the menu stayed English: %q, %q", items[0].Label, items[2].Label)
 	}
 }

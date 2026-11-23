@@ -61,7 +61,7 @@ func (s *gitSession) CommitMessage(ctx context.Context, commit Commit) (CommitMe
 
 // RewordCommit changes a commit's message without incorporating staged changes.
 // Rewriting anything below HEAD uses Lazygit's interactive-rebase commands; its
-// early daemon entry point in the TanGit executable edits Git's todo file.
+// early daemon entry point in the lazygitGo executable edits Git's todo file.
 func (s *gitSession) RewordCommit(ctx context.Context, commit Commit, summary, description string) error {
 	if err := ctx.Err(); err != nil {
 		return err

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"sync"
 
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/sshpool"
-	"lazygitapp/internal/sshworkspace"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/sshpool"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 // sshWorkspaceOpener is shared by the tabs of a window. Each app receives a

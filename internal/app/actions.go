@@ -11,8 +11,8 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui/editor"
 
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 	"time"
 )
 
@@ -192,7 +192,7 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 }
 
 // showMissingRecentWorktree keeps the picker useful when its checkout was
-// removed outside TanGit. The recent card remains available for cleanup.
+// removed outside lazygitGo. The recent card remains available for cleanup.
 func (a *app) showMissingRecentWorktree(path string) {
 	a.state = stateEmpty
 	a.path = ""

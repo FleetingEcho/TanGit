@@ -9,7 +9,7 @@ import (
 )
 
 // Interactive-rebase commands invoke the test executable as Git's editor too.
-// Handle the same short-lived instructions as TanGit's main function before the
+// Handle the same short-lived instructions as lazygitGo's main function before the
 // generated test main starts running the suite.
 func TestMain(m *testing.M) {
 	if daemon.InDaemonMode() {

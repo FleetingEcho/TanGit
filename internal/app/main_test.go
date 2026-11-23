@@ -15,7 +15,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 type openResult struct {
@@ -1244,7 +1244,7 @@ func (u *updates) runPending() {
 }
 
 // The command-line path travels through the same shell startup as the real
-// app. Exercise actual Git repositories, including `tangit ./` from inside
+// app. Exercise actual Git repositories, including `lazygitgo ./` from inside
 // one and a path containing whitespace, without opening a native window.
 func TestLaunchPathOpensRealRepository(t *testing.T) {
 	for _, test := range []struct {
@@ -1305,8 +1305,8 @@ func TestHeadlessAgentCommandDispatch(t *testing.T) {
 		contains string
 	}{
 		{name: "desktop", args: []string{"/work/repository"}, handled: false},
-		{name: "agent help", args: []string{"agent", "help"}, handled: true, code: 0, contains: "tangit agent"},
-		{name: "usage error", args: []string{"agent"}, handled: true, code: 2, contains: "tangit agent"},
+		{name: "agent help", args: []string{"agent", "help"}, handled: true, code: 0, contains: "lazygitGo agent"},
+		{name: "usage error", args: []string{"agent"}, handled: true, code: 2, contains: "lazygitGo agent"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer

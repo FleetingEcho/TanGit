@@ -311,7 +311,7 @@ func (s *gitSession) checkHistorySource(patch, source string, reverse bool) erro
 	if err != nil || strings.TrimSpace(historySHA) != source {
 		return fmt.Errorf("history patch: source commit is missing or changed")
 	}
-	indexName, removeIndex, err := s.temporaryFile("tangit-history-check-index-", nil, 0o600)
+	indexName, removeIndex, err := s.temporaryFile("lazygitgo-history-check-index-", nil, 0o600)
 	if err != nil {
 		return err
 	}
@@ -394,7 +394,7 @@ func (s *gitSession) copyHistorySourceWithPatchInParent(commit *models.Commit, p
 	} else if len(parents) != 0 {
 		return "", fmt.Errorf("history patch: merge sources cannot have a synthetic parent")
 	}
-	indexName, removeIndex, err := s.temporaryFile("tangit-history-index-", nil, 0o600)
+	indexName, removeIndex, err := s.temporaryFile("lazygitgo-history-index-", nil, 0o600)
 	if err != nil {
 		return "", err
 	}
@@ -665,7 +665,7 @@ func (s *gitSession) ensureHistoryStash(record OperationRecord) (OperationRecord
 		}
 		return record, fmt.Errorf("history patch: the stash list changed while preparing saved work")
 	}
-	if err := s.git.Stash.Push("TanGit Custom Patch history work"); err != nil {
+	if err := s.git.Stash.Push("lazygitGo Custom Patch history work"); err != nil {
 		return record, fmt.Errorf("history patch: save existing work: %w", err)
 	}
 	current, err = s.stashOperationState()
@@ -723,7 +723,7 @@ func (s *gitSession) expectedHistoryAppliedTree(record OperationRecord, compensa
 	if base == "" {
 		return "", fmt.Errorf("history patch: apply stage has no persisted base commit")
 	}
-	indexName, removeIndex, err := s.temporaryFile("tangit-history-reconcile-index-", nil, 0o600)
+	indexName, removeIndex, err := s.temporaryFile("lazygitgo-history-reconcile-index-", nil, 0o600)
 	if err != nil {
 		return "", err
 	}
@@ -1031,7 +1031,7 @@ func (s *gitSession) restoreHistoryStagedIndex(record OperationRecord) error {
 		}
 		baseTree = strings.TrimSpace(tree)
 	}
-	indexName, removeIndex, err := s.temporaryFile("tangit-history-restore-index-", nil, 0o600)
+	indexName, removeIndex, err := s.temporaryFile("lazygitgo-history-restore-index-", nil, 0o600)
 	if err != nil {
 		return err
 	}

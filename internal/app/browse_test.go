@@ -5,7 +5,7 @@ import (
 
 	"github.com/egoist/mygo"
 
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 func holdRepositoryFolderDialog(t *testing.T) (chan mygo.OpenDialogOptions, chan []string) {

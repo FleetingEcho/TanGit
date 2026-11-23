@@ -703,7 +703,7 @@ func TestDriveOperationRejectsExternallyChangedMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, ".git", "MERGE_MSG"), []byte("edited outside TanGit\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".git", "MERGE_MSG"), []byte("edited outside lazygitGo\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	err = operations.DriveOperation(context.Background(), OperationDriveOptions{Action: OperationActionAbort, ExpectedFingerprint: state.Fingerprint})
@@ -728,7 +728,7 @@ func TestDriveOperationRejectsExternallyChangedState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Resolve outside TanGit after the UI captured its operation fingerprint.
+	// Resolve outside lazygitGo after the UI captured its operation fingerprint.
 	runGit(t, dir, "checkout", "--theirs", "--", "file.txt")
 	runGit(t, dir, "add", "--", "file.txt")
 	err = operations.DriveOperation(ctx, OperationDriveOptions{

@@ -12,8 +12,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 // pathOpener opens a repository rooted at the folder it was asked for, so a
@@ -111,7 +111,7 @@ func TestShellStartsOnThePicker(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Home", "Open a repository", "New tab", "Check for updates",
-		"tangit <path>", "Minimize window", "Maximize window", "Full screen", "Close window",
+		"lazygitGo <path>", "Minimize window", "Maximize window", "Full screen", "Close window",
 	} {
 		if _, found := tt.Find(want); !found {
 			t.Errorf("the window chrome lost %q: %v", want, tt.Texts())
@@ -720,7 +720,7 @@ func TestShellMakesRoomForMacOSWindowControls(t *testing.T) {
 			t.Errorf("the macOS bar still draws the %q control", label)
 		}
 	}
-	mark, found := tt.Find("TanGit home")
+	mark, found := tt.Find("lazygitGo home")
 	if !found {
 		t.Fatal("the macOS bar lost the app mark")
 	}

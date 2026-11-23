@@ -345,7 +345,7 @@ func TestSnapshotIgnoresUnavailableOptionalFilters(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "tracked.custom"), []byte("one\nTWO\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	missing := "tangit-test-missing-custom-filter"
+	missing := "lazygitgo-test-missing-custom-filter"
 	runGit(t, dir, "config", "filter.brokenCustom.required", "true")
 	runGit(t, dir, "config", "filter.brokenCustom.process", missing+" filter-process")
 	runGit(t, dir, "config", "filter.brokenCustom.clean", missing+" clean -- %f")
@@ -428,7 +428,7 @@ func TestSnapshotDoesNotRequireGitLFSExecutable(t *testing.T) {
 	if err := os.WriteFile(lfsPath, []byte(pointer), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	missing := "tangit-test-git-lfs-that-is-not-installed"
+	missing := "lazygitgo-test-git-lfs-that-is-not-installed"
 	runGit(t, dir, "config", "filter.lfs.required", "true")
 	runGit(t, dir, "config", "filter.lfs.process", missing+" filter-process")
 	runGit(t, dir, "config", "filter.lfs.clean", missing+" clean -- %f")

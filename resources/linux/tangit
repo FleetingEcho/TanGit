@@ -1,0 +1,11 @@
+#!/bin/sh
+# Existing auto-updaters and desktop entries still launch this filename.
+set -eu
+launcher=$(readlink -f -- "$0")
+# A user-local installation made by the old install.sh has a link to us.
+# Give it the new command too, leaving any existing file or link in place.
+legacy_command="$HOME/.local/bin/tangit"
+if [ -L "$legacy_command" ] && [ "$(readlink -f -- "$legacy_command")" = "$launcher" ]; then
+    ln -s -- "$launcher" "$HOME/.local/bin/lazygitGo" 2>/dev/null || :
+fi
+exec "${launcher%/*}/lazygitgo" "$@"

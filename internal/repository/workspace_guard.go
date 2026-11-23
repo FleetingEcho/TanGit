@@ -108,7 +108,7 @@ func (s *gitSession) currentWorkspaceScope(scope workspaceArchiveScope) (workspa
 
 // checkWorkspaceIndexLock refuses to capture or mutate through an existing
 // Git index lock. The lock belongs to another writer and is never removed or
-// replaced by TanGit's recovery machinery.
+// replaced by lazygitGo's recovery machinery.
 func (s *gitSession) checkWorkspaceIndexLock() error {
 	index, err := s.cmd.New([]string{"git", "rev-parse", "--path-format=absolute", "--git-path", "index"}).RunWithOutput()
 	if err != nil {

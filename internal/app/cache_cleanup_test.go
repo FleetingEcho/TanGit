@@ -400,8 +400,8 @@ func TestClearRegenerableCachesIncludesUnfinishedIndexes(t *testing.T) {
 	root := filepath.Join(cacheDir, codeSearchCacheDirName)
 	for _, file := range []string{
 		filepath.Join(root, "0123456789abcdef0123456789abcdef", "complete.zoekt"),
-		filepath.Join(root, ".tangit-index-2313360354", "partial.zoekt"),
-		filepath.Join(root, ".tangit-index-428520547-previous", "previous.zoekt"),
+		filepath.Join(root, ".lazygitgo-index-2313360354", "partial.zoekt"),
+		filepath.Join(root, ".lazygitgo-index-428520547-previous", "previous.zoekt"),
 		filepath.Join(root, "operator-owned", "keep.dat"),
 	} {
 		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
@@ -416,7 +416,7 @@ func TestClearRegenerableCachesIncludesUnfinishedIndexes(t *testing.T) {
 	if freed != 15 {
 		t.Fatalf("freed bytes = %d, want the three owned generations only", freed)
 	}
-	for _, name := range []string{"0123456789abcdef0123456789abcdef", ".tangit-index-2313360354", ".tangit-index-428520547-previous"} {
+	for _, name := range []string{"0123456789abcdef0123456789abcdef", ".lazygitgo-index-2313360354", ".lazygitgo-index-428520547-previous"} {
 		if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
 			t.Fatalf("owned cache directory %s survived global cleanup: %v", name, err)
 		}
@@ -626,7 +626,7 @@ func TestCacheHashHexRejectsForeignNames(t *testing.T) {
 		t.Fatal("valid shard key rejected")
 	}
 	for _, name := range []string{
-		".tangit-index-staging", "0123456789ABCDEF0123456789ABCDEF",
+		".lazygitgo-index-staging", "0123456789ABCDEF0123456789ABCDEF",
 		"../../../etc", "0123456789abcdef", "short", "gggggggggggggggggggggggggggggggg",
 	} {
 		if cacheHashHex(name, 16) {

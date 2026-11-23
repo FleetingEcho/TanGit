@@ -2,14 +2,15 @@ package app
 
 import (
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/plugins/terminal"
 
-	"lazygitapp/internal/agentwork"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 func captureAgentTerminalOptions(t *testing.T) (<-chan terminal.Options, *atomic.Int32) {
@@ -77,10 +78,13 @@ func TestAgentTerminalLaunchUsesExactTargetAndReopensExistingSession(t *testing.
 	}
 	wantCommand := h.app.agentTaskCommand(task, false, requestPath)
 	wantEnvironment := []string{
-		"TANGIT_AGENT_OPERATION_ID=" + task.ID,
-		"TANGIT_AGENT_REQUEST_FILE=" + requestPath,
-		"TANGIT_AGENT_TASK_ID=" + task.ID,
-		"TANGIT_AGENT_WORKTREE=" + task.WorktreePath,
+		"LAZYGITGO_AGENT_OPERATION_ID=" + task.ID,
+		"LAZYGITGO_AGENT_REQUEST_FILE=" + requestPath,
+		"LAZYGITGO_AGENT_TASK_ID=" + task.ID,
+		"LAZYGITGO_AGENT_WORKTREE=" + task.WorktreePath,
+	}
+	for _, variable := range wantEnvironment {
+		wantEnvironment = append(wantEnvironment, legacyAgentEnvironmentPrefix+strings.TrimPrefix(variable, agentEnvironmentPrefix))
 	}
 	if options.Dir != task.WorktreePath {
 		t.Fatalf("terminal directory = %q, want task worktree %q", options.Dir, task.WorktreePath)

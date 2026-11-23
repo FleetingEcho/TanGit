@@ -13,12 +13,12 @@ import (
 
 // A copy installed by a package manager, such as the .deb in /opt, cannot
 // replace itself, and a repository without an apt source never gets updates
-// from the package manager either. For those installs TanGit checks GitHub's
+// from the package manager either. For those installs lazygitGo checks GitHub's
 // latest release itself and points to the package to install.
 
 // latestReleaseAPI is where the newest published release is read from. It is a
 // variable so tests can point it at a local server.
-var latestReleaseAPI = "https://api.github.com/repos/FleetingEcho/TanGit/releases/latest"
+var latestReleaseAPI = "https://api.github.com/repos/FleetingEcho/lazygitGo/releases/latest"
 
 // packageRelease is a published release the running build is behind.
 type packageRelease struct {
@@ -46,7 +46,7 @@ func fetchLatestRelease(ctx context.Context, client *http.Client, arch string) (
 		return packageRelease{}, err
 	}
 	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("User-Agent", "TanGit-update-check")
+	request.Header.Set("User-Agent", "lazygitGo-update-check")
 	response, err := client.Do(request)
 	if err != nil {
 		return packageRelease{}, err
@@ -121,8 +121,8 @@ func checkPackageRelease(ctx context.Context) (*packageRelease, error) {
 // packageUpdateAdvice says how to install a release from its .deb.
 func packageUpdateAdvice(release packageRelease) string {
 	if release.DebName == "" {
-		return trf("TanGit %s is available. Download it from the releases page.", release.Version)
+		return trf("lazygitGo %s is available. Download it from the releases page.", release.Version)
 	}
-	return trf("TanGit %s is available. Download %s, then install it with: sudo apt install ./%s",
+	return trf("lazygitGo %s is available. Download %s, then install it with: sudo apt install ./%s",
 		release.Version, release.DebName, release.DebName)
 }

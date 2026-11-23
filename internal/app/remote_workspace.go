@@ -12,8 +12,8 @@ import (
 	"sort"
 	"strings"
 
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 // sshClientSession is deliberately a local assertion. Local repository

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // Reflog can contain several identical reset entries recorded in the same

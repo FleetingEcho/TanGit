@@ -500,11 +500,11 @@ func TestPatchImportRecoveryCaptureFailureDoesNotApply(t *testing.T) {
 		t.Fatal(err)
 	}
 	wrapperDir := t.TempDir()
-	wrapper := "#!/bin/sh\nif { [ \"$1\" = stash ] && [ \"$2\" = create ]; } || [ \"$1\" = commit-tree ]; then\n  echo 'injected recovery failure' >&2\n  exit 1\nfi\nexec \"$TANGIT_TEST_REAL_GIT\" \"$@\"\n"
+	wrapper := "#!/bin/sh\nif { [ \"$1\" = stash ] && [ \"$2\" = create ]; } || [ \"$1\" = commit-tree ]; then\n  echo 'injected recovery failure' >&2\n  exit 1\nfi\nexec \"$LAZYGITGO_TEST_REAL_GIT\" \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(wrapperDir, "git"), []byte(wrapper), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("TANGIT_TEST_REAL_GIT", realGit)
+	t.Setenv("LAZYGITGO_TEST_REAL_GIT", realGit)
 	t.Setenv("PATH", wrapperDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	err = session.ApplyPatch(context.Background(), preview)

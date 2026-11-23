@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // Method-specific seams keep read-only views independent from unrelated

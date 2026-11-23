@@ -283,7 +283,7 @@ func TestStdioLanguageServerInitializesAndShutsDown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	environment := []string{"TANGIT_LANGUAGE_SERVER_HELPER=1"}
+	environment := []string{"LAZYGITGO_LANGUAGE_SERVER_HELPER=1"}
 	if runtime.GOOS == "darwin" {
 		// Model a server that needs another tool beside its executable, while
 		// launched from Finder with only system directories in PATH.
@@ -293,11 +293,11 @@ func TestStdioLanguageServerInitializesAndShutsDown(t *testing.T) {
 			t.Fatal(err)
 		}
 		executable = link
-		tool := filepath.Join(bin, "tangit-helper-tool")
+		tool := filepath.Join(bin, "lazygitgo-helper-tool")
 		if err := os.WriteFile(tool, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		environment = append(environment, "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "TANGIT_LANGUAGE_SERVER_EXPECTED_TOOL="+tool)
+		environment = append(environment, "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "LAZYGITGO_LANGUAGE_SERVER_EXPECTED_TOOL="+tool)
 	}
 	connection, err := connectStdioLanguageServer(languageServerLaunch{
 		Program:               executable,
@@ -340,7 +340,7 @@ func TestStdioLanguageServerInitializesAndShutsDown(t *testing.T) {
 }
 
 func TestLanguageServerHelperProcess(t *testing.T) {
-	if os.Getenv("TANGIT_LANGUAGE_SERVER_HELPER") != "1" {
+	if os.Getenv("LAZYGITGO_LANGUAGE_SERVER_HELPER") != "1" {
 		return
 	}
 	reader := bufio.NewReader(os.Stdin)
@@ -356,7 +356,7 @@ func TestLanguageServerHelperProcess(t *testing.T) {
 		}
 		switch envelope.Method {
 		case "initialize":
-			if expected := os.Getenv("TANGIT_LANGUAGE_SERVER_EXPECTED_TOOL"); expected != "" {
+			if expected := os.Getenv("LAZYGITGO_LANGUAGE_SERVER_EXPECTED_TOOL"); expected != "" {
 				path, err := exec.LookPath(filepath.Base(expected))
 				if err != nil || path != expected {
 					os.Exit(5)

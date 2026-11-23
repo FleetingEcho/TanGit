@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      TANGIT_TEST_REQUIRE_OPENSSH: "1"
+      LAZYGITGO_TEST_REQUIRE_OPENSSH: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -33,8 +33,8 @@ jobs:
           ssh -V
       - name: Configure Git for repository fixtures
         run: |
-          git config --global user.name "TanGit CI"
-          git config --global user.email "ci@tangit.invalid"
+          git config --global user.name "lazygitGo CI"
+          git config --global user.email "ci@lazygitgo.invalid"
       - name: Check the required OpenSSH test environment
         run: |
           if [ "$(id -u)" -eq 0 ]; then
@@ -71,15 +71,15 @@ jobs:
           - name: Linux
             os: ubuntu-latest
             platform: linux/amd64
-            executable: build/linux-amd64/tangit
+            executable: build/linux-amd64/lazygitgo
           - name: macOS
             os: macos-latest
             platform: darwin/universal
-            executable: build/darwin-universal/TanGit.app/Contents/MacOS/TanGit
+            executable: build/darwin-universal/lazygitGo.app/Contents/MacOS/lazygitGo
           - name: Windows
             os: windows-latest
             platform: windows/amd64
-            executable: build/windows-amd64/TanGit.exe
+            executable: build/windows-amd64/lazygitGo.exe
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -90,10 +90,13 @@ jobs:
         # Universal macOS runs on either hosted-runner architecture. Skipping
         # installers, DMGs and notarization keeps PR builds independent of
         # NSIS, signing identities, Apple credentials and updater secrets.
-        run: >-
-          go tool mygo build
-          -platform "${{ matrix.platform }}"
-          -skip-dmg -skip-installer -skip-notarize -sign -
+        run: |
+          flags=(-skip-dmg -skip-installer -skip-notarize -sign -)
+          if [ "${{ matrix.name }}" = Windows ]; then
+            bash scripts/build-windows.sh "${{ matrix.platform }}" "${flags[@]}"
+          else
+            go tool mygo build -platform "${{ matrix.platform }}" "${flags[@]}"
+          fi
       - name: Smoke the native executable through the headless CLI
         shell: bash
         run: |
@@ -105,4 +108,34 @@ jobs:
           if [ "$status" -ne 0 ]; then
             exit "$status"
           fi
-          grep --fixed-strings "tangit agent" <<<"$output"
+          grep --fixed-strings "lazygitGo agent" <<<"$output"
+          grep --fixed-strings "lazygitGo local agent automation" <<<"$output"
+      - name: Verify Debian upgrade identity
+        if: matrix.name == 'Linux'
+        run: |
+          deb="build/linux-amd64/lazygitgo_$(jq -r .version mygo.json)_amd64.deb"
+          bash scripts/prepare-debian-upgrade.sh build "$deb"
+          test "$(dpkg-deb -f "$deb" Package)" = lazygitgo
+          test "$(dpkg-deb -f "$deb" Version)" = "$(jq -r .version mygo.json)"
+          test "$(dpkg-deb -f "$deb" Conflicts)" = tangit
+          test "$(dpkg-deb -f "$deb" Replaces)" = tangit
+          dpkg-deb --fsys-tarfile "$deb" | tar -tf - > build/debian-files
+          grep -Fx './usr/bin/lazygitGo' build/debian-files
+          grep -Fx 'Name=lazygitGo' build/linux-amd64/lazygitgo.desktop
+      - name: Verify macOS upgrade identity
+        if: matrix.name == 'macOS'
+        run: |
+          plist=build/darwin-universal/lazygitGo.app/Contents/Info.plist
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" = dev.tangit.desktop
+      - name: Verify Windows upgrade identity
+        if: matrix.name == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = Get-Item build/windows-amd64/lazygitGo.exe
+          if ($exe.VersionInfo.ProductName -cne 'lazygitGo') {
+            throw 'Unexpected Windows product name'
+          }
+          $output = & build/windows-amd64/TanGit.exe agent help
+          if ($LASTEXITCODE -ne 0 -or -not ($output -match 'lazygitGo agent')) {
+            throw 'The legacy Windows launcher failed'
+          }

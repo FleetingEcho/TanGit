@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // graphRowText draws a row as characters, for readable assertions: the dot,

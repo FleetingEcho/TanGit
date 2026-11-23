@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"lazygitapp/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
 )
 
 // recordAgentActivity serializes an optional lifecycle mutation and its command

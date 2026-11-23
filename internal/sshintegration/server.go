@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 // Server is an isolated OpenSSH server bound to an ephemeral loopback port.
@@ -26,12 +26,12 @@ type Server struct {
 	close     func()
 }
 
-const requireOpenSSHEnvironment = "TANGIT_TEST_REQUIRE_OPENSSH"
+const requireOpenSSHEnvironment = "LAZYGITGO_TEST_REQUIRE_OPENSSH"
 
 // Start launches /usr/sbin/sshd without root privileges. It skips the calling
 // test when OpenSSH, ssh-keygen, a supported POSIX platform, or required host
 // privilege-separation facilities are unavailable. Setting
-// TANGIT_TEST_REQUIRE_OPENSSH=1 makes those environment limitations fatal so a
+// LAZYGITGO_TEST_REQUIRE_OPENSSH=1 makes those environment limitations fatal so a
 // required CI job cannot pass by skipping its OpenSSH coverage. Configuration
 // and key errors caused by this package are fatal rather than skipped.
 func Start(t testing.TB) *Server {

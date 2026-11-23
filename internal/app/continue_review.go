@@ -5,7 +5,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func continueReviewCheckView(c *ui.Context, key, name string, check continueCheck) {
@@ -202,7 +202,7 @@ func (a *app) continuePreflightSettings(c *ui.Context) {
 				a.settingsChanged(c)
 			}
 		})
-		ui.Text(c, tr("After checks, TanGit compares canonical index and working-tree hashes, shows changed files and output, and checkpoints any changes. Continue still passes through the operation driver's expected-fingerprint CAS.")).
+		ui.Text(c, tr("After checks, lazygitGo compares canonical index and working-tree hashes, shows changed files and output, and checkpoints any changes. Continue still passes through the operation driver's expected-fingerprint CAS.")).
 			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).MaxWidth(560)
 	})
 }

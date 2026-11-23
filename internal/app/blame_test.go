@@ -5,7 +5,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func TestFormatBlameCompactsAndGroupsCommitMetadata(t *testing.T) {

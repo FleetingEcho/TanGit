@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/transfer"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/transfer"
 )
 
 type activityOpenResult struct {

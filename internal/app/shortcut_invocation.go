@@ -4,8 +4,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 	"github.com/egoist/mygo/ui"
-	"lazygitapp/internal/repository"
 )
 
 // shortcutDefinition supplies stable logical provenance at registration.

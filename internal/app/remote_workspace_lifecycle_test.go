@@ -10,7 +10,7 @@ import (
 
 	"github.com/egoist/mygo/ui/editor"
 
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 type shutdownTrackingSession struct {

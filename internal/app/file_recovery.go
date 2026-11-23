@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // runFileRecoveryMutation persists an unresolved baseline before the first

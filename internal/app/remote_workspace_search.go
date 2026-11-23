@@ -8,7 +8,7 @@ import (
 	"path"
 	"strings"
 
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 // searchRemoteWorkspaceFiles never invokes the local LookPath, Stat, ReadFile,

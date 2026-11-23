@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"lazygitapp/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
 )
 
 const (
@@ -33,7 +33,7 @@ func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	if args[0] == "rpc" {
 		fs := flag.NewFlagSet("agent rpc", flag.ContinueOnError)
 		fs.SetOutput(stderr)
-		dataDir := fs.String("data-dir", "", "TanGit user data directory (or "+DataDirEnvironment+")")
+		dataDir := fs.String("data-dir", "", "lazygitGo user data directory (or "+DataDirEnvironment+")")
 		if code := parseFlags(fs, args[1:], stderr); code >= 0 {
 			return code
 		}
@@ -50,7 +50,7 @@ func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	command := args[0]
 	fs := flag.NewFlagSet("agent "+command, flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	dataDir := fs.String("data-dir", "", "TanGit user data directory (or "+DataDirEnvironment+")")
+	dataDir := fs.String("data-dir", "", "lazygitGo user data directory (or "+DataDirEnvironment+")")
 	jsonOutput := fs.Bool("json", false, "write machine-readable JSON")
 
 	switch command {
@@ -314,20 +314,20 @@ func runTaskMutation(ctx context.Context, stdout, stderr io.Writer, dataDir stri
 }
 
 func printUsage(writer io.Writer) {
-	fmt.Fprintln(writer, `TanGit local agent automation:
-  tangit agent list [--repository ID] [--json]
-  tangit agent show --id TASK [--json]
-  tangit agent diff --id TASK [--file PATH] [--json]
-  tangit agent create --repository PATH --path PATH --branch NAME --base REF --title TEXT --request TEXT --yes
-  tangit agent report --id TASK --expected-updated-at TIME [--session-id TEXT] [--summary TEXT] [--status STATE]
-  tangit agent comment --id TASK --expected-updated-at TIME --text TEXT
-  tangit agent test-result --id TASK --expected-updated-at TIME --status passed|failed --command CMD --exit-code N
-  tangit agent patch --destination WORKTREE --patch FILE [--yes]
-  tangit agent preview-patch --destination WORKTREE --patch FILE
-  tangit agent apply-patch --destination WORKTREE --patch FILE --yes
-  tangit agent rpc
+	fmt.Fprintln(writer, `lazygitGo local agent automation:
+  lazygitGo agent list [--repository ID] [--json]
+  lazygitGo agent show --id TASK [--json]
+  lazygitGo agent diff --id TASK [--file PATH] [--json]
+  lazygitGo agent create --repository PATH --path PATH --branch NAME --base REF --title TEXT --request TEXT --yes
+  lazygitGo agent report --id TASK --expected-updated-at TIME [--session-id TEXT] [--summary TEXT] [--status STATE]
+  lazygitGo agent comment --id TASK --expected-updated-at TIME --text TEXT
+  lazygitGo agent test-result --id TASK --expected-updated-at TIME --status passed|failed --command CMD --exit-code N
+  lazygitGo agent patch --destination WORKTREE --patch FILE [--yes]
+  lazygitGo agent preview-patch --destination WORKTREE --patch FILE
+  lazygitGo agent apply-patch --destination WORKTREE --patch FILE --yes
+  lazygitGo agent rpc
 
-All commands accept --data-dir DIR; TANGIT_AGENT_DATA_DIR is the environment fallback.`)
+All commands accept --data-dir DIR; LAZYGITGO_AGENT_DATA_DIR is the environment fallback.`)
 }
 
 func printTask(writer io.Writer, task agentwork.Task) {

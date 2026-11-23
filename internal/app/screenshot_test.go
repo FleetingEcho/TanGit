@@ -25,7 +25,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 const screenshotPatch = `diff --git a/one.txt b/one.txt
@@ -407,7 +407,7 @@ func (s screenshotSession) BlameFile(context.Context, repository.File) ([]reposi
 		{Hash: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", Author: "Ada Lovelace", Date: "2026-01-01", Text: "import \"fmt\""},
 		{Hash: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", Author: "Ada Lovelace", Date: "2026-01-01", Text: ""},
 		{Hash: "b2c3d4e5f60718293a4b5c6d7e8f901234567890", Author: "Alan Turing", Date: "2025-11-02", Text: "func main() {"},
-		{Hash: "b2c3d4e5f60718293a4b5c6d7e8f901234567890", Author: "Alan Turing", Date: "2025-11-02", Text: "\tfmt.Println(\"Hello, TanGit\")"},
+		{Hash: "b2c3d4e5f60718293a4b5c6d7e8f901234567890", Author: "Alan Turing", Date: "2025-11-02", Text: "\tfmt.Println(\"Hello, lazygitGo\")"},
 		{Hash: "b2c3d4e5f60718293a4b5c6d7e8f901234567890", Author: "Alan Turing", Date: "2025-11-02", Text: "}"},
 	}, nil
 }
@@ -649,10 +649,10 @@ func TestScreenshot(t *testing.T) {
 		a.settings.Theme = "System"
 		a.recentRepositories = []recentRepository{
 			{Path: "/work/projects/fsoc-ui", Branch: "connector-tools-test", LastOpened: timeNow()},
-			{Path: "/work/projects/tangit", Branch: "main", LastOpened: timeNow() - 14*3600},
+			{Path: "/work/projects/lazygitgo", Branch: "main", LastOpened: timeNow() - 14*3600},
 			{
-				Path:     "/work/worktrees/tangit-typography-window",
-				Worktree: true, WorktreeName: "tangit-typography-window", RepositoryPath: "/work/projects/tangit",
+				Path:     "/work/worktrees/lazygitgo-typography-window",
+				Worktree: true, WorktreeName: "lazygitgo-typography-window", RepositoryPath: "/work/projects/lazygitgo",
 				LastOpened: timeNow() - 14*3600,
 			},
 			{Path: "/work/projects/admin-console", Branch: "feature/campaign", LastOpened: timeNow() - 23*3600},
@@ -829,7 +829,7 @@ func TestScreenshot(t *testing.T) {
 
 	t.Run("code-workspace-dark", func(t *testing.T) {
 		stubCodeWorkspace(t, map[string]string{
-			"README.md":                 "# TanGit\n\nPrecise commits. Visual history.\n",
+			"README.md":                 "# lazygitGo\n\nPrecise commits. Visual history.\n",
 			"internal/app/code.go":      "package app\n\nimport \"fmt\"\n\n// codeDocument owns one persistent editor buffer.\ntype codeDocument struct {\n\tpath  string\n\ttitle string\n}\n\nfunc (d *codeDocument) Label() string {\n\treturn fmt.Sprintf(\"%s — %s\", d.title, d.path)\n}\n",
 			"internal/app/view_code.go": "package app\n\nfunc (a *app) codeView() {\n\t// Render the repository explorer and editor tabs.\n}\n",
 		})
@@ -2015,7 +2015,7 @@ func TestScreenshot(t *testing.T) {
 	t.Run("picker-narrow-dark", func(t *testing.T) {
 		a := newApp(screenshotOpener{snapshot: repository.Snapshot{}})
 		a.recentRepositories = []recentRepository{
-			{Path: "/work/projects/tangit", LastOpened: timeNow()},
+			{Path: "/work/projects/lazygitgo", LastOpened: timeNow()},
 			{Path: "/work/project", LastOpened: timeNow() - 3*3600},
 		}
 		tt := ui.NewTester(a.view, 720, 900)

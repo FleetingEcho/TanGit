@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 
-	"lazygitapp/internal/agentwork"
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // agentAcceptEligibility deliberately excludes uncommitted output: Accept is

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func TestContinueTrustedShellHelperExecutesRealLocalCommand(t *testing.T) {

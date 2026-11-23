@@ -36,9 +36,9 @@ func newCodeSearchIndexBuilder(directory string) (codeSearchIndexBuilder, error)
 		Parallelism:  1,
 		DisableCTags: true,
 		RepositoryDescription: zoekt.Repository{
-			ID: 1, Name: "TanGit working tree",
+			ID: 1, Name: "lazygitGo working tree",
 		},
-		// TanGit has already applied its own size and binary filtering. Do not
+		// lazygitGo has already applied its own size and binary filtering. Do not
 		// let Zoekt silently substitute NOT-INDEXED for large/trigram-heavy
 		// text. The under-three-byte exception is handled by the native complement.
 		LargeFiles: []string{"**"},

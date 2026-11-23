@@ -165,7 +165,7 @@ func (a *app) settingsHeader(c *ui.Context) {
 		})
 		ui.Column(c).Gap(2).Grow(1).Children(func() {
 			ui.Text(c, tr("Settings")).FontSize(21).Bold()
-			ui.Text(c, tr("Make TanGit look and work the way you do")).
+			ui.Text(c, tr("Make lazygitGo look and work the way you do")).
 				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		})
 		iconButton(c, "Close settings", "Escape", closeIcon, false, a.closeSettings)
@@ -1137,17 +1137,22 @@ func (a *app) startSectionSelect(c *ui.Context) {
 	a.settingsChanged(c)
 }
 
-// updatesSettings is the settings' release group: the version this build is
-// and a button that opens the releases page on GitHub. Update checks and
-// installation live in the shared title bar's update button.
 func (a *app) updatesSettings(c *ui.Context) {
 	theme := c.Theme()
 	info := a.updateInfo()
-	settingsGroup(c, updateIcon, "Updates", "Signed updates from GitHub")
-	settingRow(c, "Version", "The release this build came from", func() {
+	openURL := a.openExternalURL
+	if openURL == nil {
+		openURL = c.Services().OpenURL
+	}
+	settingsGroup(c, updateIcon, "Updates", "TanGit is now lazygitGo.", func() {
+		flatIconButton(c, "Open GitHub repository",
+			"Open the new lazygitGo repository in your browser",
+			externalLinkIcon, 16, 6, false, func() { openURL(projectRepositoryURL) })
+	})
+	settingRow(c, "Version", "", func() {
 		ui.Text(c, currentAppVersion()).TextColor(theme.TextMuted)
 	})
-	settingRow(c, "Update status", "TanGit also checks automatically after launch", func() {
+	settingRow(c, "Update status", "", func() {
 		text, color := tr("Waiting for the first update check"), theme.TextMuted
 		switch {
 		case info.AvailableVersion != "":
@@ -1160,18 +1165,6 @@ func (a *app) updatesSettings(c *ui.Context) {
 			color = theme.Success
 		}
 		ui.Text(c, text).TextColor(color)
-	})
-	ui.Text(c, tr("After an update installs, restart TanGit to use the new version.")).
-		TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-	ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
-		iconTextButton(c, "Check for updates",
-			"Check GitHub for a newer signed release",
-			updateIcon, info.AvailableVersion != "", a.checkForUpdates)
-		iconTextButton(c, "Open GitHub releases",
-			"Release notes and downloads, opened in your browser",
-			externalLinkIcon, false, func() {
-				c.Services().OpenURL(releasesPage)
-			})
 	})
 }
 

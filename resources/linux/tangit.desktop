@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=lazygitGo
+Exec=tangit %F
+Icon=lazygitgo
+Terminal=false
+Categories=Development;

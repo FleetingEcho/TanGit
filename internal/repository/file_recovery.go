@@ -68,7 +68,7 @@ func (e *FileRecoveryConflictError) Unwrap() error { return ErrFileRecoveryAfter
 // avoids forcing every existing Session fake to implement V2 file recovery.
 // Archive does not mutate the worktree or index: After describes the exact state
 // produced by the caller's subsequent operation, and Restore CASes against it.
-// TanGit serializes its own mutations and rechecks before each phase; callers
+// lazygitGo serializes its own mutations and rechecks before each phase; callers
 // must still coordinate external Git processes for a cross-process transaction.
 type FileRecoverySession interface {
 	ArchiveFileRecovery(context.Context, FileRecoveryArchive) (FileRecoveryRecord, error)
@@ -134,7 +134,7 @@ type FileRecoveryState struct {
 }
 
 // FileRecoveryIdentity pins an operation to both its repository and worktree.
-// Digest values also include the local/SSH workspace identity used by TanGit.
+// Digest values also include the local/SSH workspace identity used by lazygitGo.
 type FileRecoveryIdentity struct {
 	RepositoryGitDir string `json:"repository_git_dir"`
 	WorktreeGitDir   string `json:"worktree_git_dir"`

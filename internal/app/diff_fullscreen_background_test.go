@@ -13,7 +13,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 type fullscreenBackgroundDiffSession struct {
@@ -93,7 +93,7 @@ func runFullscreenBackground(t *testing.T, w, h int) {
 		}
 	}
 	shot := func(name string) {
-		dir := os.Getenv("TANGIT_DEBUG_SHOTS")
+		dir := os.Getenv("LAZYGITGO_DEBUG_SHOTS")
 		if dir == "" {
 			return
 		}

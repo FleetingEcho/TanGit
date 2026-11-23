@@ -9,7 +9,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // The workspace sections, in tab order; the indices match a.workspaceTab and
@@ -398,7 +398,7 @@ func (a *app) pickerHeroView(c *ui.Context) {
 			path := ui.TextInputBase(c, &a.path).
 				Label(tr(folderLabel)).AutoFocus().
 				Placeholder(tr(placeholder)).
-				Tooltip(tr("Terminal: open a Git repository or folder path directly in TanGit")).
+				Tooltip(tr("Terminal: open a Git repository or folder path directly in lazygitGo")).
 				FontSize(15).Height(34).Grow(1)
 			if path.Submitted() {
 				a.openFromPicker()
@@ -426,8 +426,8 @@ func (a *app) pickerHeroView(c *ui.Context) {
 			ui.Text(c, "F1  "+tr("Keyboard shortcuts")).
 				FontSize(theme.FontSize - 2).TextColor(theme.TextMuted)
 			ui.Text(c, "·").FontSize(theme.FontSize - 2).TextColor(theme.TextMuted)
-			ui.Text(c, "tangit <path>").FontSize(theme.FontSize - 2).TextColor(theme.TextMuted).
-				Tooltip(tr("Terminal: open a Git repository or folder path directly in TanGit"))
+			ui.Text(c, "lazygitGo <path>").FontSize(theme.FontSize - 2).TextColor(theme.TextMuted).
+				Tooltip(tr("Terminal: open a Git repository or folder path directly in lazygitGo"))
 		})
 	})
 }

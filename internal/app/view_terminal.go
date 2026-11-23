@@ -530,7 +530,7 @@ func (a *app) terminalAtLimit() bool {
 		return false
 	}
 	a.notify("error", "Terminal limit reached",
-		trf("TanGit keeps up to %d terminal tabs and split panes open at once. Close a terminal before opening another.", terminalSessionLimit))
+		trf("lazygitGo keeps up to %d terminal tabs and split panes open at once. Close a terminal before opening another.", terminalSessionLimit))
 	return true
 }
 

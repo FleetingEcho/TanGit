@@ -7,7 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // notifyRepositorySuccess attaches an immutable operation ID to immediate
@@ -48,7 +48,7 @@ func (a *app) confirmUndoOperation(record repository.OperationRecord) {
 	a.askConfirm(confirmRequest{
 		title:        "Undo Repository Operation",
 		message:      trf("Undo %s?", record.Summary),
-		detail:       tr("TanGit will first verify that HEAD, the branch and the working tree still match the operation. Newer work stops Undo before anything is overwritten."),
+		detail:       tr("lazygitGo will first verify that HEAD, the branch and the working tree still match the operation. Newer work stops Undo before anything is overwritten."),
 		confirmLabel: "Undo",
 		run: func() {
 			id := record.ID

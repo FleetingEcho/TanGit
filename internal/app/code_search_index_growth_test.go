@@ -56,6 +56,22 @@ func TestRepeatedZoektInspectionDoesNotGrowDiskUsage(t *testing.T) {
 	}
 }
 
+func TestCodeSearchIndexReadsLegacyManifest(t *testing.T) {
+	root, paths := makeZoektGrowthRepository(t)
+	directory := filepath.Join(t.TempDir(), "index")
+	ctx := context.Background()
+	if _, err := buildCodeSearchIndex(ctx, root, paths, nil, directory); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(directory, codeSearchIndexManifestFile), filepath.Join(directory, "tangit-index.json")); err != nil {
+		t.Fatal(err)
+	}
+	info, err := inspectCodeSearchIndex(ctx, root, paths, nil, directory)
+	if err != nil || info.status != codeSearchIndexReady {
+		t.Fatalf("legacy index status = %v, error = %v", info.status, err)
+	}
+}
+
 func TestForcedZoektRebuildDoesNotAccumulateGenerations(t *testing.T) {
 	root, paths := makeZoektGrowthRepository(t)
 	directory := filepath.Join(t.TempDir(), "index")

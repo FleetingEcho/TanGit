@@ -3,7 +3,6 @@ package app
 import (
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // cacheRepositoryRow is one recent history entry and the search-index storage
@@ -124,7 +123,7 @@ func measureRepositoryCaches(o repositoryCacheOwnership) []cacheRepositoryRow {
 		}
 		key := entry.Name()
 		directory := filepath.Join(root, key)
-		if strings.HasPrefix(key, ".tangit-index-") {
+		if isCodeSearchIndexStagingName(key) {
 			temporary += codeSearchIndexDiskBytes(directory)
 			continue
 		}
@@ -332,7 +331,7 @@ func clearUnfinishedIndexCaches(cacheDir string) (freed int64) {
 		root := filepath.Join(cacheDir, codeSearchCacheDirName)
 		entries, _ := os.ReadDir(root)
 		for _, entry := range entries {
-			if !entry.IsDir() || !strings.HasPrefix(entry.Name(), ".tangit-index-") {
+			if !entry.IsDir() || !isCodeSearchIndexStagingName(entry.Name()) {
 				continue
 			}
 			directory := filepath.Join(root, entry.Name())

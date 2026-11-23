@@ -25,7 +25,7 @@ const (
 	maxDatabaseNameLength = 256
 )
 
-// Status describes what TanGit knows, not what it infers from terminal text.
+// Status describes what lazygitGo knows, not what it infers from terminal text.
 // In particular, a zero exit is Exited, not ReadyForReview: only an adapter or
 // a person can say that an agent considers its task complete.
 type Status string
@@ -431,7 +431,7 @@ var (
 )
 
 // OpenStore returns the process-wide store for dir. Tasks and their request
-// files stay in TanGit's user-data directory, never inside repository worktrees.
+// files stay in lazygitGo's user-data directory, never inside repository worktrees.
 func OpenStore(dir string) (*Store, error) {
 	if strings.TrimSpace(dir) == "" {
 		return nil, errors.New("agent task data directory is required")

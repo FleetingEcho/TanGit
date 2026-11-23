@@ -7,7 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
 )
 
 func (a *app) agentReviewView(c *ui.Context) {
@@ -193,7 +193,7 @@ func (a *app) confirmRestoreAgentCheckpoint(task agentwork.Task, checkpointID st
 	a.askConfirm(confirmRequest{
 		title:        "Restore agent checkpoint",
 		message:      trf("Restore %s?", checkpoint.Reason),
-		detail:       tr("TanGit saves the current WIP first, then restores the checkpoint's staged, unstaged, and untracked files. Newer commits prevent restoration."),
+		detail:       tr("lazygitGo saves the current WIP first, then restores the checkpoint's staged, unstaged, and untracked files. Newer commits prevent restoration."),
 		confirmLabel: "Restore checkpoint",
 		run: func() {
 			a.restoreAgentCheckpoint(task.ID, checkpoint.ID)

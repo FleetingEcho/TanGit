@@ -9,8 +9,8 @@ import (
 
 	"github.com/egoist/mygo/plugins/terminal"
 
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 type blockingWorktreeOpener struct {

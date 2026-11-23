@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 // A task may need a small local configuration file, but ignored files must
@@ -272,7 +272,7 @@ trap - 0 1 2 15
 `
 		result, err := s.sshClient.RunStreaming(ctx, sshworkspace.ExecOptions{
 			Stdin: bytes.NewReader(content),
-		}, "sh", "-c", script, "tangit-copy", name, fmt.Sprintf("%04o", permissions))
+		}, "sh", "-c", script, "lazygitgo-copy", name, fmt.Sprintf("%04o", permissions))
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return ctxErr

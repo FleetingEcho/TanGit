@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/sshintegration"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 	"github.com/egoist/mygo/ui"
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/sshintegration"
-	"lazygitapp/internal/sshworkspace"
-	"lazygitapp/internal/workspace"
 )
 
 func sshBrowserTestApp(t *testing.T) (*app, chan func()) {

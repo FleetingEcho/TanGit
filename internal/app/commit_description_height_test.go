@@ -8,7 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func commitDescriptionTestHarness(t *testing.T, tab int, description string) (*harness, *repository.Commit) {

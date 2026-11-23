@@ -2,12 +2,12 @@ package app
 
 import (
 	"fmt"
-	"lazygitapp/internal/app/i18n"
+	"github.com/FleetingEcho/lazygitGo/internal/app/i18n"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func TestGuidedConflictCatalogsCoverEveryLanguage(t *testing.T) {

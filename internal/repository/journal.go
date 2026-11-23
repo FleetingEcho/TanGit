@@ -574,8 +574,8 @@ func (s *gitSession) trackedSnapshotWithoutUntracked(snapshot WorkSnapshot) (Wor
 	if err != nil {
 		return WorkSnapshot{}, err
 	}
-	env := []string{"GIT_AUTHOR_NAME=TanGit", "GIT_AUTHOR_EMAIL=recovery@localhost", "GIT_COMMITTER_NAME=TanGit", "GIT_COMMITTER_EMAIL=recovery@localhost"}
-	hash, err := s.cmd.New([]string{"git", "commit-tree", strings.TrimSpace(tree), "-p", strings.TrimSpace(base), "-p", strings.TrimSpace(index), "-m", "TanGit journal recovery"}).AddEnvVars(env...).RunWithOutput()
+	env := []string{"GIT_AUTHOR_NAME=lazygitGo", "GIT_AUTHOR_EMAIL=recovery@localhost", "GIT_COMMITTER_NAME=lazygitGo", "GIT_COMMITTER_EMAIL=recovery@localhost"}
+	hash, err := s.cmd.New([]string{"git", "commit-tree", strings.TrimSpace(tree), "-p", strings.TrimSpace(base), "-p", strings.TrimSpace(index), "-m", "lazygitGo journal recovery"}).AddEnvVars(env...).RunWithOutput()
 	if err != nil {
 		return WorkSnapshot{}, fmt.Errorf("prepare tracked recovery: %w: %s", err, strings.TrimSpace(hash))
 	}
@@ -607,7 +607,7 @@ func (s *gitSession) restoreSnapshotUntracked(snapshot WorkSnapshot) error {
 	if listing == "" {
 		return nil
 	}
-	name, removePaths, err := s.temporaryFile("tangit-journal-untracked-", []byte(listing), 0o600)
+	name, removePaths, err := s.temporaryFile("lazygitgo-journal-untracked-", []byte(listing), 0o600)
 	if err != nil {
 		return fmt.Errorf("prepare saved untracked files: %w", err)
 	}

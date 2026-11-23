@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 type stackSyncTestSession struct {

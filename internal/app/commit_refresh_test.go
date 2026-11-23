@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 	"github.com/egoist/mygo/ui"
-	"lazygitapp/internal/repository"
 )
 
 // countingLiveOpener is a live repository whose Snapshot reads are counted,

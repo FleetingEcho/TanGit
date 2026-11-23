@@ -1,6 +1,6 @@
 package app
 
-import "lazygitapp/internal/repository"
+import "github.com/FleetingEcho/lazygitGo/internal/repository"
 
 type reflogItemIdentity struct {
 	Hash       string

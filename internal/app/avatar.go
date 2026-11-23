@@ -8,7 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // avatarPalette is the set of colors a generated author avatar picks from.
@@ -76,7 +76,7 @@ func drawAuthorAvatar(c *ui.Context, name, email string, size float32, bitmap *u
 		return
 	}
 	// Native Avatar owns the circular crop and photo path. Passing the
-	// established initial/palette preserves TanGit's identity across themes
+	// established initial/palette preserves lazygitGo's identity across themes
 	// and its readable, single-letter presentation for ordinary authors.
 	ui.Avatar(c, initial, bitmap).Size(size, size).
 		Background(avatarColor(name, email)).Label(authorLabel(name, email))

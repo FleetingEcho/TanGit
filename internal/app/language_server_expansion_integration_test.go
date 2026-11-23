@@ -16,7 +16,7 @@ func TestClangdRealProtocolLifecycle(t *testing.T) {
 	}
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "main.cpp")
-	text := "int tangit_answer = 42;\nint main() { return tangit_answer; }\n"
+	text := "int lazygitgo_answer = 42;\nint main() { return lazygitgo_answer; }\n"
 	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -46,15 +46,15 @@ func TestClangdRealProtocolLifecycle(t *testing.T) {
 			Position:     languageServerPositionAt(text, offset),
 		}
 	}
-	hover, err := server.request("textDocument/hover", position(strings.LastIndex(text, "tangit_answer")), 15*time.Second)
+	hover, err := server.request("textDocument/hover", position(strings.LastIndex(text, "lazygitgo_answer")), 15*time.Second)
 	if err != nil {
 		t.Fatalf("clangd hover: %v", err)
 	}
 	content, _, ok := parseLanguageServerHover(hover)
-	if !ok || !strings.Contains(content, "tangit_answer") {
+	if !ok || !strings.Contains(content, "lazygitgo_answer") {
 		t.Fatalf("clangd hover = %s", hover)
 	}
-	completionOffset := strings.Index(text, "tangit_answer;") + len("tan")
+	completionOffset := strings.Index(text, "lazygitgo_answer;") + len("lazy")
 	completions, err := server.request("textDocument/completion", position(completionOffset), 15*time.Second)
 	if err != nil {
 		t.Fatalf("clangd completion: %v", err)
@@ -62,15 +62,15 @@ func TestClangdRealProtocolLifecycle(t *testing.T) {
 	items := parseLanguageServerCompletions(completions)
 	foundCompletion := false
 	for _, item := range items {
-		if strings.TrimSpace(item.Label) == "tangit_answer" {
+		if strings.TrimSpace(item.Label) == "lazygitgo_answer" {
 			foundCompletion = true
 			break
 		}
 	}
 	if !foundCompletion {
-		t.Fatalf("clangd completion does not contain tangit_answer: %s", completions)
+		t.Fatalf("clangd completion does not contain lazygitgo_answer: %s", completions)
 	}
-	definition, err := server.request("textDocument/definition", position(strings.LastIndex(text, "tangit_answer")), 15*time.Second)
+	definition, err := server.request("textDocument/definition", position(strings.LastIndex(text, "lazygitgo_answer")), 15*time.Second)
 	if err != nil {
 		t.Fatalf("clangd definition: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestClangdRealProtocolLifecycle(t *testing.T) {
 		t.Fatalf("clangd definition = %s", definition)
 	}
 
-	changed := strings.Replace(text, "tangit_answer; }", "missing_name; }", 1)
+	changed := strings.Replace(text, "lazygitgo_answer; }", "missing_name; }", 1)
 	server.DidChange(uri, changed, 2)
 	for {
 		select {

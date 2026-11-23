@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 func buildZoektSearchTestIndex(t *testing.T, root string, paths, excluded []string) string {
@@ -288,27 +288,27 @@ func TestRemoteWorkspaceNeverUsesOrCreatesLocalSearchIndex(t *testing.T) {
 func TestCodeSearchIndexCleanupOnlyRemovesAbandonedStaging(t *testing.T) {
 	parent := t.TempDir()
 	now := time.Now()
-	for _, name := range []string{".tangit-index-abandoned", ".tangit-index-active", "published-generation"} {
+	for _, name := range []string{".lazygitgo-index-abandoned", ".lazygitgo-index-active", "published-generation"} {
 		if err := os.Mkdir(filepath.Join(parent, name), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	writeWorkspaceSearchTestFile(t, filepath.Join(parent, ".tangit-index-abandoned"), "partial.shard", "incomplete")
-	staleFile := filepath.Join(parent, ".tangit-index-not-a-directory")
+	writeWorkspaceSearchTestFile(t, filepath.Join(parent, ".lazygitgo-index-abandoned"), "partial.shard", "incomplete")
+	staleFile := filepath.Join(parent, ".lazygitgo-index-not-a-directory")
 	if err := os.WriteFile(staleFile, []byte("keep"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{".tangit-index-abandoned", ".tangit-index-not-a-directory"} {
+	for _, name := range []string{".lazygitgo-index-abandoned", ".lazygitgo-index-not-a-directory"} {
 		if err := os.Chtimes(filepath.Join(parent, name), now.Add(-48*time.Hour), now.Add(-48*time.Hour)); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	cleanupCodeSearchIndexStaging(parent, now)
-	if _, err := os.Stat(filepath.Join(parent, ".tangit-index-abandoned")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(parent, ".lazygitgo-index-abandoned")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("abandoned staging directory was not removed: %v", err)
 	}
-	for _, name := range []string{".tangit-index-active", "published-generation", ".tangit-index-not-a-directory"} {
+	for _, name := range []string{".lazygitgo-index-active", "published-generation", ".lazygitgo-index-not-a-directory"} {
 		if _, err := os.Stat(filepath.Join(parent, name)); err != nil {
 			t.Fatalf("cleanup removed active or non-staging content %q: %v", name, err)
 		}

@@ -23,11 +23,11 @@ func TestNeovimTerminalCommandPreservesPathsAndLineNumbers(t *testing.T) {
 	// Use a recorder as the editor, so the actual shell quoting and cwd are
 	// exercised without opening a GUI window or running a user's editor.
 	program := filepath.Join(root, "my nvim")
-	if err := os.WriteFile(program, []byte("#!/bin/sh\n{ pwd -P; printf '%s\\n' \"$@\"; } > \"$TANGIT_TERMINAL_EDITOR_ARGS\"\n"), 0o755); err != nil {
+	if err := os.WriteFile(program, []byte("#!/bin/sh\n{ pwd -P; printf '%s\\n' \"$@\"; } > \"$LAZYGITGO_TERMINAL_EDITOR_ARGS\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	output := filepath.Join(root, "arguments")
-	t.Setenv("TANGIT_TERMINAL_EDITOR_ARGS", output)
+	t.Setenv("LAZYGITGO_TERMINAL_EDITOR_ARGS", output)
 	for _, file := range []bool{false, true} {
 		path, line := dir, 0
 		if file {

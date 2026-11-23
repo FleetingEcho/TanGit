@@ -43,7 +43,7 @@ func (a *app) languageServerExecutableAvailable(profile languageServerProfile) b
 
 // A managed TypeScript Language Server is launched through the user's Node.js
 // executable, so checking only Node can hide an obsolete TS6 wrapper install.
-// Require TanGit's managed TypeScript 7 native LSP entry point and version.
+// Require lazygitGo's managed TypeScript 7 native LSP entry point and version.
 func (a *app) managedLanguageServerDependenciesAvailable(profile languageServerProfile) bool {
 	server := a.settings.LanguageServers[profile.ID]
 	if server.Managed != nil {
@@ -215,7 +215,7 @@ func languageServerArguments(text string) []string {
 func editLanguageServerLaunch(server languageServerSettings, path string, arguments []string) languageServerSettings {
 	if server.Path != path || !slices.Equal(server.Arguments, arguments) {
 		// Editing a managed command turns it into a user-owned launch setting.
-		// Its files stay in place, but TanGit no longer has removal authority.
+		// Its files stay in place, but lazygitGo no longer has removal authority.
 		server.Managed = nil
 		server.ProbeArguments = nil
 	}

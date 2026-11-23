@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func snapshotOperationFingerprint(snapshot repository.Snapshot) string {

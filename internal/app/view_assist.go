@@ -4,7 +4,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
-	"lazygitapp/internal/agentassist"
+	"github.com/FleetingEcho/lazygitGo/internal/agentassist"
 )
 
 // assistDialog shares the existing read-only patch dialog's bounded frame.
@@ -175,7 +175,7 @@ func (a *app) changeSplitExclusionPath(exclusion agentassist.Exclusion) string {
 
 func (a *app) changeSplitterModal(c *ui.Context) {
 	assist := &a.assistance.splitter
-	a.assistDialog(c, assist.open, "Change Splitter", "Group original diff identities, preview TanGit-generated patches, and stage only one explicitly applied group.", diffSplitIcon,
+	a.assistDialog(c, assist.open, "Change Splitter", "Group original diff identities, preview lazygitGo-generated patches, and stage only one explicitly applied group.", diffSplitIcon,
 		a.closeChangeSplitter, func() {
 			assist = &a.assistance.splitter
 			theme := c.Theme()
@@ -232,7 +232,7 @@ func (a *app) changeSplitterModal(c *ui.Context) {
 								ui.Text(c, patchFileLabel(file)).TextColor(theme.TextMuted)
 							}
 							if group.preview.Text != "" {
-								ui.Text(c, tr("TanGit-generated patch preview")).Bold()
+								ui.Text(c, tr("lazygitGo-generated patch preview")).Bold()
 								ui.Text(c, group.preview.Text).Selectable().FontSize(theme.FontSize - 1)
 								if group.preview.TextTruncated {
 									ui.Text(c, tr("The display is truncated; Apply still revalidates the complete internally generated patch.")).TextColor(theme.TextMuted)

@@ -7,9 +7,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/agentwork"
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/transfer"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/transfer"
 )
 
 // TestWorkflowEntryScreenshots is opt-in like the other screenshot harnesses:

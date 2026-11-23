@@ -1,22 +1,25 @@
 {
-  "name": "TanGit",
+  "name": "lazygitGo",
+  "slug": "lazygitgo",
   "identifier": "dev.tangit.desktop",
-  "version": "1.23.0",
-  "main": "./cmd/tangit",
+  "version": "1.24.0",
+  "main": "./cmd/lazygitGo",
   "out": "build",
   "updates": {
     "publicKey": "1rrogZ62wSzE01n1qmMjC5ZWdTf18oXbVz34aN/zShw=",
-    "github": "FleetingEcho/TanGit"
+    "github": "FleetingEcho/lazygitGo"
   },
   "windows": {
-    "installerInclude": "packaging/windows/installer.nsh"
+    "installerInclude": "packaging/windows/installer.nsh",
+    "displayName": "lazygitGo",
+    "installDirName": "lazygitGo"
   },
   "linux": {
     "depends": [
       "libayatana-appindicator3-1"
     ],
     "webview": false,
-    "command": "tangit",
+    "command": "lazygitGo",
     "formats": [
       "deb"
     ]

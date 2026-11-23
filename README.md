@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="docs/icon.png" width="88" alt="TanGit icon">
+  <img src="docs/icon.png" width="88" alt="lazygitGo icon">
 </p>
 
-<h1 align="center">TanGit</h1>
+<h1 align="center">lazygitGo</h1>
 
 <p align="center"><strong>Precise commits. Visual history. A native Git workspace.</strong></p>
 <p align="center">Built with Go and MyGo · macOS · Windows · Linux</p>
 
 <p align="center">
-  <a href="https://github.com/FleetingEcho/TanGit/releases">Download</a> ·
+  <a href="https://github.com/FleetingEcho/lazygitGo/releases">Download</a> ·
   <a href="#features">Features</a> ·
   <a href="docs/guide.md#operation-recovery-history-and-assisted-review">Workflow guide</a> ·
   <a href="#get-started">Get started</a> ·
@@ -21,7 +21,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/workspace.png">
     <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/workspace_light.png">
-    <img src="docs/screenshots/workspace_light.png" alt="TanGit workspace with repository navigation, changes, and a file diff">
+    <img src="docs/screenshots/workspace_light.png" alt="lazygitGo workspace with repository navigation, changes, and a file diff">
   </picture>
 </p>
 
@@ -46,9 +46,9 @@
   </tr>
 </table>
 
-## What is TanGit?
+## What is lazygitGo?
 
-TanGit brings Lazygit's Git engine into a native desktop interface, with
+lazygitGo brings Lazygit's Git engine into a native desktop interface, with
 keyboard navigation and visual tools for the work that needs a closer look.
 
 - **Turn mixed edits into clean commits.** Stage, unstage, or stash selected lines across separate hunks, keeping the rest of your changes untouched.
@@ -69,7 +69,7 @@ undo/redo operations, and reflog recovery help you manage changes deliberately.
 | **Branches & recovery** | Manage remotes, tags, stashes, worktrees, and submodules; inspect the reflog and undo eligible operations. **Sync stack…** previews frozen per-branch merge/rebase/update-ref plans, validates the plan before applying it, and optionally publishes each branch with its preview-OID lease. Safety Journal and per-file conflict recovery retain durable, revalidated recovery state. |
 | **Collaboration & automation** | Create pull requests and view checks with **GitHub CLI** (`gh`) or **GitLab CLI** (`glab`); export `format-patch` series and apply mailbox patches. Use durable Agent tasks and local CLI/RPC automation, or add custom shell commands. Background fetching and pruning are configurable. |
 | **Conflict resolution** | Read Git's live operation type, refs, SHAs, and progress; use the supported **Continue**, **Skip**, and **Abort** actions. Grouped **Hunk**, **View**, and **Apply** controls keep conflict navigation, stage views, side choices, and assistant access reachable in wide or compact layouts. **Mark resolved** stages only when you choose it. |
-| **Assisted review** | Conflict Assistant proposes region substitutions on a cloned Result. Change Splitter groups original diff identities and previews TanGit-generated, index-only patches. Both use an optional, provider-neutral `AssistCommand`; neither suggestion preview stages or commits automatically. |
+| **Assisted review** | Conflict Assistant proposes region substitutions on a cloned Result. Change Splitter groups original diff identities and previews lazygitGo-generated, index-only patches. Both use an optional, provider-neutral `AssistCommand`; neither suggestion preview stages or commits automatically. |
 | **Editor workspace** | Edit with syntax highlighting and language-server assistance; manage files and tabs; use fzf Quick Open, advanced content search, and Markdown preview. |
 | **Your workspace** | Repository tabs, directory trees, resizable panels, expanded branch/diff views, a terminal, and external editors. |
 | **Workflow entry points** | Search current navigation, Git, hunk, conflict, Agent, and custom actions in the **Command Palette** (`Ctrl/Cmd+Shift+P`), or switch modes: `@` branches, `#` commits (paste a hash, or search by message, `by:author` and `branch:`), `/` files, `~` recent repositories, and `!` to run a shell command with live output. Choosing a commit lists every action from its context menu. The **Activity Center** (`Ctrl/Cmd+Shift+A`) gathers commands, journal records, Agent tasks, transfers, and notices across open repositories, and its **Contributors** view shows who committed how much and what they last committed. **Overview** summarizes working-tree, operation, collaboration, Agent, contributor (who was active over a week, month, 3 or 6 months, year or all time, with a commit chart and top contributors), commit activity heat map, code changes (lines added and deleted), branch health (merged, stale and far-behind branches), and recent-activity state. **Command Log** provides status/source/time-range filters, success badges, timestamps, expandable output, and scrolling that reveals 20 more records at a time. |
@@ -84,7 +84,7 @@ number to start multiple-line selection; Shift-click selects a range.
 
 - **Write and review code.** Use syntax highlighting, undo/redo, temporary previews and persistent tabs, back/forward navigation, and unsaved-change prompts. Save with `Ctrl/Cmd+S`, save all with `Ctrl/Cmd+Shift+S`, preview Markdown beside its source, and inspect images without another app.
 - **Find and understand code.** Open paths with fuzzy fzf matching. Search by case, whole word, or regular expression; add include/exclude globs; see the complete grouped results after a responsive first page; and jump directly to a match. Optional language servers add completion, hover documentation, diagnostics, go-to-definition, and right-click document or selection formatting.
-- **Use your existing tools.** Install a supported language server through TanGit, configure a custom one, or switch the search backend between ripgrep and the built-in Go scanner. Configure user-installed formatter commands per language in **Settings → Editor**; external commands such as `gofmt` and `prettier --stdin-filepath {{file}}` read source from stdin and replace it with stdout.
+- **Use your existing tools.** Install a supported language server through lazygitGo, configure a custom one, or switch the search backend between ripgrep and the built-in Go scanner. Configure user-installed formatter commands per language in **Settings → Editor**; external commands such as `gofmt` and `prettier --stdin-filepath {{file}}` read source from stdin and replace it with stdout.
 - **Manage files without leaving Editor.** Create files and folders, rename or delete them, and drag items between folders. Drop native files and folders anywhere in the Explorer to copy them into a local workspace or upload them over SFTP, with byte/item progress and cancellation. Open tabs and unsaved buffers follow renames and moves, and a repository subfolder can become the workspace root.
 - **Work directly over SSH.** Configure Linux SSH workspaces from Home or Settings with agent, private-key, or password authentication. Git, editing, search, terminals, and recursive transfers run remotely without a mirror or server agent. Local items open in the host file manager; remote **Open in explorer** launches `Narwhal` on the remote desktop (`DISPLAY=:0`).
 
@@ -121,7 +121,7 @@ network access, and filesystem access—**not a sandbox**. Continue is disabled
 in SSH workspaces rather than running local commands against a remote
 checkout.
 
-After the commands, TanGit compares the operation fingerprint, canonical index
+After the commands, lazygitGo compares the operation fingerprint, canonical index
 records, and tracked plus ordinary non-ignored untracked file content. It
 shows changed paths and requires a checkpoint for detected content changes.
 Ignored files, writes outside the checkout, and network effects are outside
@@ -163,7 +163,13 @@ remote stack transaction.
 
 ## Get started
 
-1. Install [Git](https://git-scm.com/) and download a [TanGit release](https://github.com/FleetingEcho/TanGit/releases).
+**Upgrading from TanGit?** Open **Settings → Updates → Check for updates** to
+install the renamed build on macOS, Windows, or a user-installed Linux archive.
+For Debian installs, download the matching `lazygitgo_*.deb` and install it with
+`sudo apt install ./<downloaded-file>.deb`. Your settings carry over. The
+new terminal command is `lazygitGo`. [Upgrade details](docs/guide.md#upgrade-from-tangit)
+
+1. Install [Git](https://git-scm.com/) and download a [lazygitGo release](https://github.com/FleetingEcho/lazygitGo/releases).
 2. Use the **DMG** on macOS, the **setup executable** on Windows, or the matching **`.deb` / archive** on Linux.
 3. Open a local repository, choose **Open SSH** to work directly in a remote Linux repository, or choose **Clone** on Home to clone an HTTPS or SSH URL with real progress, optional branch selection, and automatic opening. Cloning uses your existing Git credential helpers or SSH agent; direct SSH profiles keep secrets in the OS keychain when available, with session-only fallback.
 
@@ -171,7 +177,7 @@ Verification is tied to the tool versions and environments recorded in its logs;
 it is not evidence for every Git release or SSH deployment. **Git 2.32 has not
 been verified.** See [version and capability evidence](docs/verification.md#version-and-capability-evidence).
 
-Install [ripgrep](https://github.com/BurntSushi/ripgrep) for faster Editor content searches in large repositories. TanGit uses its built-in search when `rg` is unavailable and ranks Quick Open paths and content results with [fzf](https://github.com/junegunn/fzf).
+Install [ripgrep](https://github.com/BurntSushi/ripgrep) for faster Editor content searches in large repositories. lazygitGo uses its built-in search when `rg` is unavailable and ranks Quick Open paths and content results with [fzf](https://github.com/junegunn/fzf).
 
 Edit **Workspace folder** and press Enter, or use its folder button, to open a repository subfolder as the Editor root. The Explorer then lists only that folder and its descendants (without ancestor or outside rows), Quick Open and content search use the same scope, root-level file creation or drops target the opened folder, and the external-editor menu opens that folder too. Unsubmitted text remains a draft and does not change the workspace; the clear button restores the entire repository. Optional include/exclude globs stay collapsed under **File filters**. Common generated and dependency folders are excluded before searching. In **Settings → Editor → Search exclusions**, add folder names, remove any default, clear the list, or restore the defaults. Exclusions match at any depth; source folders such as `vendor` remain searchable unless you add them.
 
@@ -180,11 +186,11 @@ Changing branches refreshes the Explorer, reloads clean open documents, and reru
 **From the terminal**, after [setting up the command for your platform](docs/guide.md#open-a-repository-from-the-terminal):
 
 ```sh
-tangit .
-tangit "./repository with spaces"
+lazygitGo .
+lazygitGo "./repository with spaces"
 ```
 
-The command returns immediately and reuses a running TanGit window, selecting
+The command returns immediately and reuses a running lazygitGo window, selecting
 an existing repository tab or opening a new one. The macOS launcher and Windows
 PATH need one-time setup. The guide includes instructions for existing
 installations and custom app locations.
@@ -224,7 +230,7 @@ confirmation. [More shortcuts →](docs/guide.md#keyboard)
 
 ## Architecture
 
-TanGit is a Go application. **MyGo** renders the native UI, and **Lazygit**
+lazygitGo is a Go application. **MyGo** renders the native UI, and **Lazygit**
 provides the Git command layer. Repository sessions keep Git operations and
 repository data separate from the views.
 
@@ -236,15 +242,16 @@ headless tester exercises clicks, typing, keyboard focus, and rendered layouts.
 Requires Go **1.27.3** and Git. Dependencies are declared in `go.mod`.
 
 ```sh
-git clone https://github.com/FleetingEcho/TanGit.git
-cd TanGit
+git clone https://github.com/FleetingEcho/lazygitGo.git
+cd lazygitGo
 go tool mygo dev      # develop
-go tool mygo build    # build for this platform
+go tool mygo build    # build on macOS or Linux
+bash scripts/build-windows.sh windows/amd64  # build the Windows installer
 ```
 
 [Development & checks](docs/guide.md#development) ·
 [Release builds & signed updates](docs/guide.md#publishing-signed-updates) ·
-[Issues](https://github.com/FleetingEcho/TanGit/issues)
+[Issues](https://github.com/FleetingEcho/lazygitGo/issues)
 
 ---
 

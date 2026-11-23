@@ -2,7 +2,7 @@ package app
 
 import (
 	"fmt"
-	"lazygitapp/internal/app/i18n"
+	"github.com/FleetingEcho/lazygitGo/internal/app/i18n"
 	"os"
 	"strings"
 	"testing"
@@ -10,7 +10,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func TestConflictActionStyleNormalizesAndPersists(t *testing.T) {

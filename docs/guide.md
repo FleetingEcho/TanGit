@@ -1,6 +1,29 @@
-# TanGit guide
+# lazygitGo guide
 
 [English overview](../README.md) · [简体中文概览](../README-CN.md)
+
+## Upgrade from TanGit
+
+lazygitGo is the new name starting with version 1.24.0. In TanGit, use
+**Settings → Updates → Check for updates** to receive the signed build.
+Restart when prompted. On macOS the updater replaces the bundle at its
+installed path, which may still be called `TanGit.app`. The new DMG
+contains `lazygitGo.app`. Use the in-app updater for an in-place upgrade
+of an existing Mac installation, including one made with the old install script.
+Install the bundled launcher below to use the new terminal command.
+
+The Windows setup can also upgrade the existing installation and refresh
+its Start menu shortcut. Older shortcuts forward to `lazygitGo.exe` after
+an in-app update.
+
+On Debian-based systems, download the new `lazygitgo_*.deb` for your
+architecture from the [releases page](https://github.com/FleetingEcho/lazygitGo/releases)
+and install it with `sudo apt install ./<downloaded-file>.deb`. The new
+package replaces `tangit`. For a Linux archive installed in your home
+directory, launch the app once after updating to register `lazygitGo`.
+
+Settings, recent repositories, workspaces, and updater preferences continue
+to use the existing `TanGit` user-data directory.
 
 [Terminal setup](#open-a-repository-from-the-terminal) · [Workflows](#common-workflows) ·
 [Recovery and assisted review](#operation-recovery-history-and-assisted-review) ·
@@ -8,69 +31,71 @@
 
 ## Open a repository from the terminal
 
-After setup, run `tangit .` or `tangit "path/to/repository"`.
+After setup, run `lazygitGo .` or `lazygitGo "path/to/repository"`.
 Relative paths use your current directory. Git must be on `PATH`. The command
-returns immediately. If TanGit is already running, it focuses that window and
+returns immediately. If lazygitGo is already running, it focuses that window and
 opens the path in a new tab, or selects its existing tab. A Git repository opens
 the full workspace; a plain folder opens the Editor-only workspace without
 running `git init`.
 
 ### macOS
 
-Move `TanGit.app` to Applications, then install the bundled launcher once:
+Move `lazygitGo.app` to Applications, then install the bundled launcher once:
 
 ```sh
 sudo mkdir -p /usr/local/bin
-sudo install -m 755 /Applications/TanGit.app/Contents/Resources/tangit /usr/local/bin/tangit
-command -v tangit
-tangit .
+sudo install -m 755 /Applications/lazygitGo.app/Contents/Resources/lazygitGo /usr/local/bin/lazygitGo
+command -v lazygitGo
+lazygitGo .
 ```
 
 The v1.0.2 DMG has no bundled launcher. From a source checkout, use
-`sudo install -m 755 resources/darwin/tangit /usr/local/bin/tangit` instead.
+`sudo install -m 755 resources/darwin/lazygitGo /usr/local/bin/lazygitGo` instead.
 For installation without administrator access, use `~/.local/bin` if it is on your `PATH`.
 
-The launcher returns immediately and opens the repository in the running app, or starts TanGit when it is not running.
-It finds TanGit in `/Applications` or `~/Applications`. For another location:
+The launcher returns immediately and opens the repository in the running app, or starts lazygitGo when it is not running.
+It finds `lazygitGo.app` and upgraded `TanGit.app` bundles in
+`/Applications` or `~/Applications`. For another location:
 
 ```sh
-TANGIT_APP="/path/to/TanGit.app" tangit .
+LAZYGITGO_APP="/path/to/lazygitGo.app" lazygitGo .
 ```
 
 ### Windows
 
-Current installers add `%LOCALAPPDATA%\Programs\TanGit` to your user `PATH`.
+The installer adds the app's folder to your user `PATH`. For new installs,
+the default is `%LOCALAPPDATA%\Programs\lazygitGo`.
 Open a new terminal after installing:
 
 ```powershell
-tangit .
-tangit "C:\Projects\Repository with spaces"
+lazygitGo .
+lazygitGo "C:\Projects\Repository with spaces"
 ```
 
-If the command is missing, check `Get-Command tangit` in PowerShell or
-`where tangit` in Command Prompt. You can always launch by its full path:
+If the command is missing, check `Get-Command lazygitGo` in PowerShell or
+`where lazygitGo` in Command Prompt. You can always launch by its full path:
 
 ```powershell
-& "$env:LOCALAPPDATA\Programs\TanGit\TanGit.exe" .
+& "$env:LOCALAPPDATA\Programs\lazygitGo\lazygitGo.exe" .
 ```
 
 For older installers or extracted archives, add the folder containing
-`TanGit.exe` to PATH once; adjust `$dir` for a custom location:
+`lazygitGo.exe` to PATH once; adjust `$dir` for a custom location:
 
 ```powershell
-$dir = Join-Path $env:LOCALAPPDATA 'Programs\TanGit'
+$dir = Join-Path $env:LOCALAPPDATA 'Programs\lazygitGo'
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if (($userPath -split ';') -notcontains $dir) {
     $newPath = if ($userPath) { "$userPath;$dir" } else { $dir }
     [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
 }
 if (($env:Path -split ';') -notcontains $dir) { $env:Path += ";$dir" }
-Get-Command tangit
+Get-Command lazygitGo
 ```
 
 ### Linux
 
-Packages provide `tangit`; the standalone installer uses `~/.local/bin`.
+Packages provide `lazygitGo`; the standalone installer uses `~/.local/bin`.
 If upgrading from v1.0.0 through the in-app updater, reinstall a newer package
 once to install the launcher. System-managed packages should be updated with
 their package installer.
@@ -80,7 +105,7 @@ their package installer.
 | Task | Steps |
 | --- | --- |
 | Clone and open a repository | On Home, choose **Clone** or press `C`. Enter an HTTPS, SSH, or scp-like URL, optionally choose a branch, and select a native destination parent. **Clone and open** shows Git's real progress and opens the completed repository. Escape cancels Git without deleting the destination. Credential-bearing URLs are rejected; authentication uses your configured Git credential helpers or SSH agent. |
-| Open a plain folder | At the top of Home, switch **Open mode** to **Editor**, then enter or browse to a folder. The workspace shows only **Editor**, with the file tree, content search and replace, editing and saving, structural file operations, and the local terminal. TanGit does not initialize Git or change your saved section visibility. **Recent folders** is independent of **Recent repositories**, including when the same path appears in both; Editor recents persist across restarts. If the selected folder already belongs to a Git repository, it opens the full Git workspace instead. |
+| Open a plain folder | At the top of Home, switch **Open mode** to **Editor**, then enter or browse to a folder. The workspace shows only **Editor**, with the file tree, content search and replace, editing and saving, structural file operations, and the local terminal. lazygitGo does not initialize Git or change your saved section visibility. **Recent folders** is independent of **Recent repositories**, including when the same path appears in both; Editor recents persist across restarts. If the selected folder already belongs to a Git repository, it opens the full Git workspace instead. |
 | Open an SSH workspace | On Home, choose **Open SSH**, then select or edit a profile. Agent, private-key, and password authentication are supported; secrets use the OS keychain when available and otherwise remain session-only. Unknown host keys require confirmation and changed keys are rejected. Git, files, search, terminals, and transfers execute directly on the remote Linux host without a local mirror or server agent. |
 | Stage selected lines | Click diff line numbers, then **Stage**. Shift-click selects a range; Escape clears the selection. **Select changes** (or `m` in the diff) shows the hunk actions and the line row together; the selected lines are listed by number, highlighted all at once, and can also be discarded (after confirmation) or copied as a patch. |
 | Build a Custom Patch | In History or Graph, use `Ctrl+B` on a commit or historical file to add canonical whole-file patches. In its diff, select changed lines and press `Space`, or press `A` for the current hunk. Press `B` to review the basket, preview the combined patch, then export it, apply it atomically to the working tree without staging, or send it to another worktree. This never rewrites history. Different commits cannot contribute changes to the same old/new path; additions, deletions, renames, binary files, and mode-only changes require whole-file selection. |
@@ -90,10 +115,10 @@ their package installer.
 | Exchange mailbox patches | Export selected commits from their History context menu or the batch-actions menu into a local folder as `format-patch` files. Import a patch series with **Changes → Apply mailbox patch…**. The import runs like `git am --3way`: authors and messages are preserved, context drift gets a three-way fallback, and conflicts use the normal Continue/Abort controls. |
 | Pause and edit an older commit | Select the commit in History or Graph, press `e`, and confirm **Edit commit**. The later commits are replayed up to that point, and the rebase pauses with the chosen commit checked out. Edit or amend it, then press **Continue**; **Abort** restores the original history. |
 | Bisect a regression | In History or Graph, right-click a known-bad commit and start bisect, naming a known-good revision. Use **Good** / **Bad** / **Skip** for each tested revision from the banner or commit menu. Git reports the first bad commit. **Reset bisect** returns to your original checkout. |
-| Move work to a new branch | In Branches, right-click the checked-out branch and choose **Move unpushed commits to new branch…**. TanGit creates the new branch with those commits, rewinds the original branch to the fork point from its upstream or the default branch, and checks out the new branch. Commit or stash tracked changes first. This requires an upstream or a recognizable default branch. |
+| Move work to a new branch | In Branches, right-click the checked-out branch and choose **Move unpushed commits to new branch…**. lazygitGo creates the new branch with those commits, rewinds the original branch to the fork point from its upstream or the default branch, and checks out the new branch. Commit or stash tracked changes first. This requires an upstream or a recognizable default branch. |
 | Create a pull request and read checks | Authenticate `gh` for GitHub or `glab` for GitLab, then open the hosting menu in the toolbar or the current branch's menu. Choose **Create pull request**, **Open pull request in browser**, or **View pull request checks**. The CLIs run in the repository, including over SSH; authentication and other CLI output appear in the command log. |
 | Add custom commands | Use **Settings → Commands**. Each command runs in the repository root and can have an optional shortcut and workspace scopes. Placeholders such as `{{branch}}`, `{{commit}}`, `{{file}}`, `{{tag}}`, `{{stash}}`, `{{remote}}`, and `{{root}}` expand to shell-quoted values. Press `:` for a one-off command (locally, not for an SSH workspace); output is recorded in the command log. |
-| Edit files in TanGit | Open **Editor**, select or quick-open a file, and edit its persistent tab. Use Ctrl/Cmd+S to save; a dot marks unsaved tabs. Closing asks whether to save or discard changes. Right-click the code editor and choose **Format Document**, or select one non-empty range and choose **Format Selection**. Configure an optional **Formatter command** for the file's language in **Settings → Editor**—for example, `gofmt` or `prettier --stdin-filepath {{file}}`. Install the formatter yourself; TanGit never downloads it implicitly. The command is parsed without a shell, receives the document or selection on stdin, and replaces that range with stdout. `{{file}}` expands to the current absolute path for parser and configuration discovery. Formatter settings remain available when the language server is disabled. An external command takes precedence; otherwise TanGit uses an enabled language server advertising document or range formatting. Formatting runs asynchronously with a 10-second timeout. Errors, unexpected empty output, and further edits leave the buffer unchanged; successful formatting is one undoable edit. External commands run only in local workspaces. |
+| Edit files in lazygitGo | Open **Editor**, select or quick-open a file, and edit its persistent tab. Use Ctrl/Cmd+S to save; a dot marks unsaved tabs. Closing asks whether to save or discard changes. Right-click the code editor and choose **Format Document**, or select one non-empty range and choose **Format Selection**. Configure an optional **Formatter command** for the file's language in **Settings → Editor**—for example, `gofmt` or `prettier --stdin-filepath {{file}}`. Install the formatter yourself; lazygitGo never downloads it implicitly. The command is parsed without a shell, receives the document or selection on stdin, and replaces that range with stdout. `{{file}}` expands to the current absolute path for parser and configuration discovery. Formatter settings remain available when the language server is disabled. An external command takes precedence; otherwise lazygitGo uses an enabled language server advertising document or range formatting. Formatting runs asynchronously with a 10-second timeout. Errors, unexpected empty output, and further edits leave the buffer unchanged; successful formatting is one undoable edit. External commands run only in local workspaces. |
 | Search the workspace | Press `Ctrl+Shift+F` in **Editor**. Results appear after the first scan page, then continue loading in the background until all matching files and occurrences are included. Partial counts carry `+`; completed counts are exact. Use case, whole-word, regular-expression, folder, and include/exclude filters to narrow the search. |
 | Manage editor tabs | Right-click a file tab to close it, other tabs, tabs to the right, or all tabs, or to copy its absolute or repository-relative path. |
 | Manage files and folders | Use **Editor → New File / New Folder**, or right-click an explorer row to create, rename, delete, view Git file history, or copy paths. Creation starts in the selected folder; deleting asks for confirmation. **Open in explorer** uses the host file manager locally and launches `Narwhal` with `DISPLAY=:0` on an SSH host. |
@@ -113,7 +138,7 @@ stop terminal sessions, background refresh, or other activity.
 Use **Settings → Updates** to check the installed version and available updates.
 The Editor virtualizes large file trees, rebuilds them only when their contents or folding changes, and renders only the active editor tab.
 
-Author avatars load in the background from GitHub, GitLab.com, or self-managed GitLab, using the configured remote host (or its custom web URL). Public lookups work without a hosting CLI; restricted lookups can reuse an existing local `gh` or `glab` login. Images are cached locally. Missing accounts, unavailable images, network failures, and authentication failures silently keep the colored author initial. TanGit never starts a login flow for an avatar lookup. In SSH workspaces, avatar requests still run on the desktop; a company GitLab server must be reachable from that machine.
+Author avatars load in the background from GitHub, GitLab.com, or self-managed GitLab, using the configured remote host (or its custom web URL). Public lookups work without a hosting CLI; restricted lookups can reuse an existing local `gh` or `glab` login. Images are cached locally. Missing accounts, unavailable images, network failures, and authentication failures silently keep the colored author initial. lazygitGo never starts a login flow for an avatar lookup. In SSH workspaces, avatar requests still run on the desktop; a company GitLab server must be reachable from that machine.
 
 ## Workflow entry points
 
@@ -522,7 +547,7 @@ replay.
 
 ### Visual Rebase TODO and marked-base workflows
 
-In **History → Rebase TODO**, prepare a plan for an explicit target ref. TanGit
+In **History → Rebase TODO**, prepare a plan for an explicit target ref. lazygitGo
 asks Git to generate the actual interactive todo, captures it, and aborts the
 capture-only rebase before showing the draft. It does not execute the picks
 while preparing the preview. With no marked base, this is an ordinary rebase
@@ -553,7 +578,7 @@ Apply validates the complete plan SourceID again. Independent non-checked-out
 ref updates use an expected-old-OID `update-ref` transaction; a rejected CAS
 rejects that whole transaction. Checked-out branches run real Git merges or
 rebases. When `rebase.updateRefs` is enabled, Git's generated TODO owns the
-refs it actually lists, rather than TanGit inventing a second set of updates.
+refs it actually lists, rather than lazygitGo inventing a second set of updates.
 A stale plan must be refreshed, not reused.
 
 The batch transaction does not make every later merge, rebase, and push atomic.
@@ -576,7 +601,7 @@ advisor {requestFile} {responseFile} {artifactDir}
 ```
 
 `{requestFile}` and `{responseFile}` must each occur exactly once;
-`{artifactDir}` is optional and may occur once. TanGit writes a versioned JSON
+`{artifactDir}` is optional and may occur once. lazygitGo writes a versioned JSON
 request to a private per-run directory, runs the expanded command through the
 platform shell in its artifact directory, validates the response's source and
 identity hashes, and removes the temporary directory after the run. This
@@ -596,7 +621,7 @@ The `agentassist` advisor has no repository or Git write capability:
   writes Result only with V2 recovery. It does not stage, continue, commit, or
   run a hook.
 - Change Splitter accepts groups of original file/hunk/line identities, not an
-  AI-authored patch. TanGit constructs and Git-previews each generated patch
+  AI-authored patch. lazygitGo constructs and Git-previews each generated patch
   against a frozen source. **Apply group to index** is a separate explicit
   action using that same CAS preview; it stages one group, leaves the working
   tree unchanged, and never creates a commit automatically. Uncovered source
@@ -661,7 +686,7 @@ callbacks do not request a repaint. These paths are in
 
 A quiet Changes refresh still performs its repository/Git read. For the same
 request key and generation, an existing textual state, and the same full patch
-and kind, TanGit reuses that `DiffState` and requests no repaint instead of parsing and
+and kind, lazygitGo reuses that `DiffState` and requests no repaint instead of parsing and
 laying out identical bytes again. Initial loads, changed patches, binary/media,
 and patchless paths keep their existing behavior. This is a narrow unchanged-
 patch fast path, not a claim that Git reads disappear or that `CoreSnapshot`
@@ -706,10 +731,17 @@ Requires Go **1.27.3** and Git. Dependencies are downloaded from `go.mod`.
 macOS builds require macOS 12 or newer; Linux packages use GTK 3 and AppIndicator.
 
 ```sh
-git clone https://github.com/FleetingEcho/TanGit.git
-cd TanGit
+git clone https://github.com/FleetingEcho/lazygitGo.git
+cd lazygitGo
 go tool mygo dev
 ```
+
+To build Windows installers and updates, run
+`bash scripts/build-windows.sh windows/amd64,windows/arm64`. The wrapper
+includes the launcher used by older installations during an in-place update.
+For locally built Debian packages, run
+`bash scripts/prepare-debian-upgrade.sh build build/linux-*/lazygitgo_*.deb`
+to add the package replacement metadata. Release CI applies it before publication.
 
 Before submitting changes:
 
@@ -728,7 +760,8 @@ translations to every catalog in `internal/app/i18n*.go`.
 ## Publishing signed updates
 
 ```sh
-go tool mygo build -platform darwin/universal,windows/amd64,windows/arm64,linux/amd64,linux/arm64
+go tool mygo build -platform darwin/universal,linux/amd64,linux/arm64
+bash scripts/build-windows.sh windows/amd64,windows/arm64
 ```
 
 macOS signing and DMGs need macOS; Windows installers need NSIS (`makensis`).

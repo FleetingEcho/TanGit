@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // beginFetch is the single repository-fetch entry shared by toolbar,

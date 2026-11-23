@@ -11,8 +11,8 @@ import (
 
 	"github.com/egoist/mygo/ui/editor"
 
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 func TestRemoteRefreshIgnoresHostStatAndReloadsSameStatusDiff(t *testing.T) {

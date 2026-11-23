@@ -17,25 +17,25 @@ import (
 	"time"
 )
 
-// TestSSHIntegration is opt-in. Set TANGIT_SSH_TEST_ADDR to host:port and use
-// the current user's SSH agent, or set TANGIT_SSH_TEST_AUTH=password/key and
-// TANGIT_SSH_TEST_PASSWORD / TANGIT_SSH_TEST_KEY and optionally
-// TANGIT_SSH_TEST_PASSPHRASE. The test uses a temporary known_hosts file and a
+// TestSSHIntegration is opt-in. Set LAZYGITGO_SSH_TEST_ADDR to host:port and use
+// the current user's SSH agent, or set LAZYGITGO_SSH_TEST_AUTH=password/key and
+// LAZYGITGO_SSH_TEST_PASSWORD / LAZYGITGO_SSH_TEST_KEY and optionally
+// LAZYGITGO_SSH_TEST_PASSPHRASE. The test uses a temporary known_hosts file and a
 // unique directory beneath the remote home directory.
 func TestSSHIntegration(t *testing.T) {
-	address := os.Getenv("TANGIT_SSH_TEST_ADDR")
+	address := os.Getenv("LAZYGITGO_SSH_TEST_ADDR")
 	if address == "" {
-		t.Skip("set TANGIT_SSH_TEST_ADDR to run SSH integration tests")
+		t.Skip("set LAZYGITGO_SSH_TEST_ADDR to run SSH integration tests")
 	}
 	profile := integrationProfile(t, address)
 	store := NewMemorySecretStore()
 	if profile.AuthMode == AuthPassword {
-		if err := store.Set(PasswordSecretRef(profile.ID), os.Getenv("TANGIT_SSH_TEST_PASSWORD")); err != nil {
+		if err := store.Set(PasswordSecretRef(profile.ID), os.Getenv("LAZYGITGO_SSH_TEST_PASSWORD")); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if profile.AuthMode == AuthKey && os.Getenv("TANGIT_SSH_TEST_PASSPHRASE") != "" {
-		if err := store.Set(PassphraseSecretRef(profile.ID), os.Getenv("TANGIT_SSH_TEST_PASSPHRASE")); err != nil {
+	if profile.AuthMode == AuthKey && os.Getenv("LAZYGITGO_SSH_TEST_PASSPHRASE") != "" {
+		if err := store.Set(PassphraseSecretRef(profile.ID), os.Getenv("LAZYGITGO_SSH_TEST_PASSPHRASE")); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -68,7 +68,7 @@ func TestSSHIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	remoteRoot := path.Join(home, ".tangit-sshworkspace-test-"+suffix)
+	remoteRoot := path.Join(home, ".lazygitgo-sshworkspace-test-"+suffix)
 	if err := client.MkdirAll(remoteRoot); err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func integrationProfile(t *testing.T, address string) Profile {
 	host, portText, err := net.SplitHostPort(address)
 	if err != nil {
 		if strings.Contains(address, ":") {
-			t.Fatalf("TANGIT_SSH_TEST_ADDR must be host:port (bracket IPv6): %v", err)
+			t.Fatalf("LAZYGITGO_SSH_TEST_ADDR must be host:port (bracket IPv6): %v", err)
 		}
 		host, portText = address, strconv.Itoa(DefaultPort)
 	}
@@ -162,7 +162,7 @@ func integrationProfile(t *testing.T, address string) Profile {
 	if err != nil {
 		t.Fatalf("invalid integration port: %v", err)
 	}
-	username := os.Getenv("TANGIT_SSH_TEST_USER")
+	username := os.Getenv("LAZYGITGO_SSH_TEST_USER")
 	if username == "" {
 		current, err := user.Current()
 		if err != nil {
@@ -170,13 +170,13 @@ func integrationProfile(t *testing.T, address string) Profile {
 		}
 		username = current.Username
 	}
-	authMode := AuthMode(os.Getenv("TANGIT_SSH_TEST_AUTH"))
+	authMode := AuthMode(os.Getenv("LAZYGITGO_SSH_TEST_AUTH"))
 	if authMode == "" {
 		authMode = AuthAgent
 	}
 	profile := Profile{
 		ID: "integration", Name: "Integration", Host: host, Username: username,
-		Port: port, AuthMode: authMode, PrivateKeyPath: os.Getenv("TANGIT_SSH_TEST_KEY"),
+		Port: port, AuthMode: authMode, PrivateKeyPath: os.Getenv("LAZYGITGO_SSH_TEST_KEY"),
 	}
 	if err := profile.Validate(); err != nil {
 		t.Fatal(fmt.Errorf("invalid integration profile: %w", err))

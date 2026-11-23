@@ -680,8 +680,8 @@ func TestGoLanguageServerOpensExternalDefinitionsReadOnly(t *testing.T) {
 }
 
 func TestRealGoplsHoverAndDefinition(t *testing.T) {
-	if os.Getenv("TANGIT_TEST_REAL_GOPLS") != "1" {
-		t.Skip("set TANGIT_TEST_REAL_GOPLS=1 to exercise the installed gopls")
+	if os.Getenv("LAZYGITGO_TEST_REAL_GOPLS") != "1" {
+		t.Skip("set LAZYGITGO_TEST_REAL_GOPLS=1 to exercise the installed gopls")
 	}
 	gopls := realGoplsPath(t)
 	root := t.TempDir()
@@ -734,8 +734,8 @@ func TestRealGoplsHoverAndDefinition(t *testing.T) {
 }
 
 func TestRealGoplsEditorHoverAndDefinition(t *testing.T) {
-	if os.Getenv("TANGIT_TEST_REAL_GOPLS") != "1" {
-		t.Skip("set TANGIT_TEST_REAL_GOPLS=1 to exercise the installed gopls")
+	if os.Getenv("LAZYGITGO_TEST_REAL_GOPLS") != "1" {
+		t.Skip("set LAZYGITGO_TEST_REAL_GOPLS=1 to exercise the installed gopls")
 	}
 	gopls := realGoplsPath(t)
 	root := t.TempDir()
@@ -793,7 +793,7 @@ func TestRealGoplsEditorHoverAndDefinition(t *testing.T) {
 
 func realGoplsPath(t *testing.T) string {
 	t.Helper()
-	if path := os.Getenv("TANGIT_TEST_GOPLS_PATH"); path != "" {
+	if path := os.Getenv("LAZYGITGO_TEST_GOPLS_PATH"); path != "" {
 		return path
 	}
 	path, err := exec.LookPath("gopls")

@@ -7,8 +7,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/agentassist"
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/agentassist"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 type fakeChangeSplitSession struct {

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"sync"
 
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 // ErrClosed reports that the connection owner has shut down.

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // The Overview's contributor card answers "who has been working lately" for a

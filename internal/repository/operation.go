@@ -17,7 +17,7 @@ import (
 )
 
 // OperationType identifies the Git command whose metadata describes an
-// interrupted operation. PullRebase is used only when TanGit's own journal
+// interrupted operation. PullRebase is used only when lazygitGo's own journal
 // proves that a rebase came from its pull-with-rebase action.
 type OperationType string
 

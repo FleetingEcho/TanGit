@@ -15,7 +15,7 @@ func (s *gitSession) captureRawWorkSnapshot(ctx context.Context, name string, ar
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	env := []string{"GIT_AUTHOR_NAME=TanGit", "GIT_AUTHOR_EMAIL=recovery@localhost", "GIT_COMMITTER_NAME=TanGit", "GIT_COMMITTER_EMAIL=recovery@localhost"}
+	env := []string{"GIT_AUTHOR_NAME=lazygitGo", "GIT_AUTHOR_EMAIL=recovery@localhost", "GIT_COMMITTER_NAME=lazygitGo", "GIT_COMMITTER_EMAIL=recovery@localhost"}
 	base, err := s.gitText("rev-parse", "--verify", "HEAD")
 	if err != nil {
 		symbolic, symbolicErr := s.gitText("symbolic-ref", "--quiet", "HEAD")
@@ -25,14 +25,14 @@ func (s *gitSession) captureRawWorkSnapshot(ctx context.Context, name string, ar
 		var emptyTree string
 		emptyTree, err = s.writeWorkspaceTree(newWorkspaceTreeNode())
 		if err == nil {
-			base, err = s.cmd.New([]string{"git", "commit-tree", emptyTree, "-m", "TanGit empty recovery base"}).AddEnvVars(env...).RunWithOutput()
+			base, err = s.cmd.New([]string{"git", "commit-tree", emptyTree, "-m", "lazygitGo empty recovery base"}).AddEnvVars(env...).RunWithOutput()
 		}
 		if err != nil {
 			return "", fmt.Errorf("capture unborn workspace: %w", err)
 		}
 	}
 	base = strings.TrimSpace(base)
-	indexName, removeIndex, err := s.temporaryFile("tangit-workspace-index-", nil, 0o600)
+	indexName, removeIndex, err := s.temporaryFile("lazygitgo-workspace-index-", nil, 0o600)
 	if err != nil {
 		return "", err
 	}
@@ -55,7 +55,7 @@ func (s *gitSession) captureRawWorkSnapshot(ctx context.Context, name string, ar
 		return "", fmt.Errorf("capture conflict index tree: %w: %s", err, strings.TrimSpace(indexTree))
 	}
 	indexTree = strings.TrimSpace(indexTree)
-	indexCommit, err := s.cmd.New([]string{"git", "commit-tree", indexTree, "-p", base, "-m", "TanGit conflicted index snapshot"}).AddEnvVars(env...).RunWithOutput()
+	indexCommit, err := s.cmd.New([]string{"git", "commit-tree", indexTree, "-p", base, "-m", "lazygitGo conflicted index snapshot"}).AddEnvVars(env...).RunWithOutput()
 	if err != nil {
 		return "", fmt.Errorf("capture conflict index commit: %w: %s", err, strings.TrimSpace(indexCommit))
 	}
@@ -69,7 +69,7 @@ func (s *gitSession) captureRawWorkSnapshot(ctx context.Context, name string, ar
 		if err != nil {
 			return "", err
 		}
-		untrackedCommit, err := s.cmd.New([]string{"git", "commit-tree", untrackedTree, "-m", "TanGit untracked snapshot"}).AddEnvVars(env...).RunWithOutput()
+		untrackedCommit, err := s.cmd.New([]string{"git", "commit-tree", untrackedTree, "-m", "lazygitGo untracked snapshot"}).AddEnvVars(env...).RunWithOutput()
 		if err != nil {
 			return "", fmt.Errorf("capture conflict untracked snapshot: %w: %s", err, strings.TrimSpace(untrackedCommit))
 		}

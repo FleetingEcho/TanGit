@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // The Chinese placeholder describes precisely what visibleWorktrees searches:

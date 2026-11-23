@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/sshpool"
-	"lazygitapp/internal/sshworkspace"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/sshpool"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 func TestSSHWorkspaceOpenerWithoutAppOnlyOpensLocalPaths(t *testing.T) {

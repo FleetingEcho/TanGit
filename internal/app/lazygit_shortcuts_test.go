@@ -3,8 +3,8 @@ package app
 import (
 	"testing"
 
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 	"github.com/egoist/mygo/ui"
-	"lazygitapp/internal/repository"
 )
 
 func selectFeatureForShortcut(t *testing.T, h *harness) {

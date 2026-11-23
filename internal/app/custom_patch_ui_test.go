@@ -10,7 +10,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 type customPatchSession struct {
@@ -64,8 +64,8 @@ func customPatchPreviewSession(t *testing.T) repository.Session {
 	t.Helper()
 	root := t.TempDir()
 	runGitIn(t, root, "init", "--quiet")
-	runGitIn(t, root, "config", "user.name", "TanGit Tests")
-	runGitIn(t, root, "config", "user.email", "tangit@example.com")
+	runGitIn(t, root, "config", "user.name", "lazygitGo Tests")
+	runGitIn(t, root, "config", "user.email", "lazygitgo@example.com")
 	for _, name := range []string{"one.txt", "two.txt"} {
 		if err := os.WriteFile(filepath.Join(root, name), []byte("one\ntwo\nthree\nfour\n"), 0o644); err != nil {
 			t.Fatal(err)

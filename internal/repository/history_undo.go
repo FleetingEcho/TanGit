@@ -23,7 +23,7 @@ var (
 
 const (
 	// Keep Lazygit's native marker names: the reflog is persisted state shared
-	// by Git clients, so TanGit and Lazygit can understand each other's actions.
+	// by Git clients, so lazygitGo and Lazygit can understand each other's actions.
 	reflogUndoMarker = "[lazygit undo]"
 	reflogRedoMarker = "[lazygit redo]"
 )
@@ -60,7 +60,7 @@ var (
 
 // Undo reverses the newest eligible action in the HEAD reflog. Undo and Redo
 // write their own marked reflog entries rather than maintaining process-local
-// stacks, so repeated calls and calls after restarting TanGit stay balanced.
+// stacks, so repeated calls and calls after restarting lazygitGo stay balanced.
 func (s *gitSession) Undo(ctx context.Context) error {
 	return s.replayReflog(ctx, false, nil)
 }
@@ -293,7 +293,7 @@ func (s *gitSession) resetForReflogReplay(ref string, mode ResetMode, marker str
 	if !dirty {
 		return reset()
 	}
-	if err := s.git.Stash.Push("TanGit auto-stash before reset to " + ref); err != nil {
+	if err := s.git.Stash.Push("lazygitGo auto-stash before reset to " + ref); err != nil {
 		return fmt.Errorf("auto-stash working tree: %w", err)
 	}
 	if err := reset(); err != nil {

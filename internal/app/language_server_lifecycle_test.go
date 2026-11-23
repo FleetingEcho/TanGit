@@ -326,7 +326,7 @@ func TestManagedOwnershipNormalizationRejectsInconsistentMetadata(t *testing.T) 
 	rust.Path = filepath.Join(dataDir, "tools", "lsp", "rust", "rust-analyzer")
 	rust.Arguments = nil
 	if got := normalizeLanguageServerSettings(map[string]languageServerSettings{"rust": rust})["rust"]; got.Managed != nil {
-		t.Fatalf("rustup toolchain acquired TanGit ownership: %#v", got.Managed)
+		t.Fatalf("rustup toolchain acquired lazygitGo ownership: %#v", got.Managed)
 	}
 }
 

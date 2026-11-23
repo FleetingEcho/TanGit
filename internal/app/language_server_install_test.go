@@ -141,7 +141,7 @@ func TestManagedLanguageServerInstallAutomaticallyConfiguresIt(t *testing.T) {
 			t.Fatal("installer received no data directory")
 		}
 		return languageServerInstallation{
-			Path: "C:/TanGit/tools/node.exe", Arguments: []string{"server.js", "--stdio"},
+			Path: "C:/lazygitGo/tools/node.exe", Arguments: []string{"server.js", "--stdio"},
 			ProbeArguments: []string{"server.js", "--version"},
 		}, nil
 	}
@@ -159,7 +159,7 @@ func TestManagedLanguageServerInstallAutomaticallyConfiguresIt(t *testing.T) {
 		t.Fatal("TypeScript installation remained busy after its update")
 	}
 	want := languageServerSettings{
-		Path: "C:/TanGit/tools/node.exe", Arguments: []string{"server.js", "--stdio"},
+		Path: "C:/lazygitGo/tools/node.exe", Arguments: []string{"server.js", "--stdio"},
 		ProbeArguments: []string{"server.js", "--version"},
 	}
 	if got := h.app.settings.LanguageServers["typescript"]; !reflect.DeepEqual(got, want) {
@@ -209,9 +209,9 @@ func TestLanguageServerInstallNotificationsUseStableTranslationFormats(t *testin
 		"Download and configure code intelligence for %s files.": "Translated configure %s files",
 		"Download":             "Translated download",
 		"Could not install %s": "Translated install failure: %s",
-		"TanGit's user data directory is unavailable.": "Translated unavailable data directory",
+		"lazygitGo's user data directory is unavailable.": "Translated unavailable data directory",
 		"Installing %s": "Translated installing %s",
-		"Downloading to TanGit's managed tools directory…": "Translated managed download",
+		"Downloading to lazygitGo's managed tools directory…": "Translated managed download",
 		"%s installed": "Translated installed %s",
 		"Code intelligence is now enabled for matching files.": "Translated code intelligence enabled",
 		payload: "must not be used",
@@ -626,8 +626,8 @@ func TestNodePackageExecutableUsesManifestAndRejectsEscapes(t *testing.T) {
 }
 
 func TestRealManagedTypeScriptInstall(t *testing.T) {
-	if os.Getenv("TANGIT_TEST_REAL_LSP_INSTALL") != "1" {
-		t.Skip("set TANGIT_TEST_REAL_LSP_INSTALL=1 to download and exercise TypeScript 7's native LSP")
+	if os.Getenv("LAZYGITGO_TEST_REAL_LSP_INSTALL") != "1" {
+		t.Skip("set LAZYGITGO_TEST_REAL_LSP_INSTALL=1 to download and exercise TypeScript 7's native LSP")
 	}
 	profile, ok := languageServerProfileByID("typescript")
 	if !ok {

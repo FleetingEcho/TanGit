@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 const (

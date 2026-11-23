@@ -3,7 +3,7 @@ package app
 import (
 	"strings"
 
-	"lazygitapp/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
 )
 
 // This file contains the second Command Catalog migration batch. It adapts

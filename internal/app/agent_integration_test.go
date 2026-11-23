@@ -12,8 +12,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/agentwork"
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 type agentIntegrationDeleteCall struct {
@@ -95,7 +95,7 @@ func (o *agentIntegrationTestOpener) Open(_ context.Context, path string) (repos
 	o.mu.Lock()
 	o.opens = append(o.opens, path)
 	session := o.sessions[path]
-	if session == nil && o.integration != nil && strings.Contains(filepath.Base(path), "tangit-agent-integration-") {
+	if session == nil && o.integration != nil && strings.Contains(filepath.Base(path), "lazygitgo-agent-integration-") {
 		session = o.integration
 	}
 	hook := o.openHook

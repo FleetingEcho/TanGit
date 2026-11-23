@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // Three views of the repository's history for the Overview: a heat map of

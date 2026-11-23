@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // commitHistoryAction describes a one-shot history rewrite. Keeping its labels

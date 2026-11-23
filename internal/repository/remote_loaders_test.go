@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 	"github.com/jesseduffield/lazygit/pkg/commands/models"
-	"lazygitapp/internal/sshworkspace"
 )
 
 func TestParseSessionGitmodules(t *testing.T) {

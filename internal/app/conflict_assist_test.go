@@ -13,8 +13,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/agentassist"
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/agentassist"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 type appFakeAdvisor struct {
@@ -324,7 +324,7 @@ func TestConflictAssistantRealProfileHelperUsesIsolatedPreviewOnly(t *testing.T)
 	script := "#!/bin/sh\nset -eu\n" +
 		"[ -f \"$1\" ]\n[ \"$PWD\" = \"$3\" ]\n" +
 		"printf '%s\\n' \"$1\" \"$2\" \"$3\" > " + shellQuote(capture) + "\n" +
-		"cat > \"$2\" <<'TANGIT_RESPONSE'\n" + string(response) + "\nTANGIT_RESPONSE\n"
+		"cat > \"$2\" <<'LAZYGITGO_RESPONSE'\n" + string(response) + "\nLAZYGITGO_RESPONSE\n"
 	if err := os.WriteFile(helper, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}

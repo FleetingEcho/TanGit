@@ -12,8 +12,8 @@ import (
 	"path"
 	"path/filepath"
 
-	"lazygitapp/internal/sshworkspace"
-	"lazygitapp/internal/transfer"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/transfer"
 )
 
 // EnqueueRemoteUpload enqueues one transfer item for each native local file or
@@ -423,7 +423,7 @@ func reserveRemoteTransferTemporary(client remoteTransferClient, destination str
 		if err != nil {
 			return "", err
 		}
-		temporary := path.Join(path.Dir(destination), ".tangit-transfer-"+suffix+".tmp")
+		temporary := path.Join(path.Dir(destination), ".lazygitgo-transfer-"+suffix+".tmp")
 		_, exists, err := statRemoteTransferDestination(client, temporary)
 		if err != nil {
 			return "", fmt.Errorf("check remote temporary path: %w", err)
@@ -575,7 +575,7 @@ func createLocalTransferTemporary(destination string) (string, *os.File, error) 
 		if err != nil {
 			return "", nil, err
 		}
-		temporary := filepath.Join(filepath.Dir(destination), ".tangit-transfer-"+suffix+".tmp")
+		temporary := filepath.Join(filepath.Dir(destination), ".lazygitgo-transfer-"+suffix+".tmp")
 		output, err := os.OpenFile(temporary, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
 		if err == nil {
 			return temporary, output, nil

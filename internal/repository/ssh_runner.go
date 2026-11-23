@@ -15,7 +15,7 @@ import (
 	"github.com/jesseduffield/lazygit/pkg/utils"
 	"github.com/sirupsen/logrus"
 
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 // sshCommandExecutor is the one SSH operation needed by the Lazygit runner.

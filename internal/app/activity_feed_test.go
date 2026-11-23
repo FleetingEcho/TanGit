@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/agentwork"
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func TestActivityFeedSourceNamespacesAndTargets(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"lazygitapp/internal/app/launch"
+	"github.com/FleetingEcho/lazygitGo/internal/app/launch"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,8 +26,8 @@ func TestCommandLineLaunchReturnsWhileGUIStaysRunning(t *testing.T) {
 	command := exec.CommandContext(context.Background(), os.Args[0], "-test.run=^TestDetachedLaunchHelper$", "--", "./")
 	command.Env = append(os.Environ(),
 		"MYGO_ENV=production",
-		"TANGIT_DETACHED_LAUNCH_HELPER=1",
-		"TANGIT_DETACHED_LAUNCH_RECORD="+recordPath,
+		"LAZYGITGO_DETACHED_LAUNCH_HELPER=1",
+		"LAZYGITGO_DETACHED_LAUNCH_RECORD="+recordPath,
 	)
 	var output bytes.Buffer
 	command.Stdout = &output
@@ -77,7 +77,7 @@ func TestCommandLineLaunchReturnsWhileGUIStaysRunning(t *testing.T) {
 }
 
 func TestDetachedLaunchHelper(t *testing.T) {
-	if os.Getenv("TANGIT_DETACHED_LAUNCH_HELPER") != "1" {
+	if os.Getenv("LAZYGITGO_DETACHED_LAUNCH_HELPER") != "1" {
 		return
 	}
 	if os.Getenv(launch.DetachedLaunchEnvironment) == "1" {
@@ -87,12 +87,12 @@ func TestDetachedLaunchHelper(t *testing.T) {
 		}
 		// Let the parent observe either an absent record or complete JSON.
 		// Writing directly to record.json allowed a valid but partial read.
-		tmp := os.Getenv("TANGIT_DETACHED_LAUNCH_RECORD") + ".tmp"
+		tmp := os.Getenv("LAZYGITGO_DETACHED_LAUNCH_RECORD") + ".tmp"
 		defer os.Remove(tmp)
 		if err := os.WriteFile(tmp, record, 0o600); err != nil {
 			os.Exit(3)
 		}
-		if err := os.Rename(tmp, os.Getenv("TANGIT_DETACHED_LAUNCH_RECORD")); err != nil {
+		if err := os.Rename(tmp, os.Getenv("LAZYGITGO_DETACHED_LAUNCH_RECORD")); err != nil {
 			os.Exit(4)
 		}
 		// Stand in for the GUI event loop. The outer test terminates the new
@@ -109,7 +109,7 @@ func TestDetachedLaunchHelper(t *testing.T) {
 }
 
 func TestDetachedChildDoesNotRelaunch(t *testing.T) {
-	if os.Getenv("TANGIT_DETACHED_LAUNCH_HELPER") == "1" {
+	if os.Getenv("LAZYGITGO_DETACHED_LAUNCH_HELPER") == "1" {
 		t.Skip("helper process")
 	}
 	t.Setenv("MYGO_ENV", "production")

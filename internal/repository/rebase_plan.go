@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 // OperationStepStatus is the step's position in Git's live rebase metadata.
@@ -446,13 +446,13 @@ func rebaseArgs(targetRef, markedBaseSHA string, interactive bool) []string {
 // bytes, exits the sequence editor, and aborts the capture-only operation.
 // This works for local and SSH sessions through the same command/file boundary.
 func (s *gitSession) captureRebasePlanText(args []string) (text string, returnErr error) {
-	captureName, removeCapture, err := s.temporaryFile("tangit-rebase-plan-capture-", nil, 0o600)
+	captureName, removeCapture, err := s.temporaryFile("lazygitgo-rebase-plan-capture-", nil, 0o600)
 	if err != nil {
 		return "", err
 	}
 	defer removeCapture()
 	script := "#!/bin/sh\ncp \"$1\" " + sshworkspace.ShellQuote(captureName) + "\nexit 1\n"
-	editorName, removeEditor, err := s.temporaryFile("tangit-rebase-plan-capture-editor-", []byte(script), 0o700)
+	editorName, removeEditor, err := s.temporaryFile("lazygitgo-rebase-plan-capture-editor-", []byte(script), 0o700)
 	if err != nil {
 		return "", err
 	}
@@ -526,13 +526,13 @@ func (s *gitSession) PrepareRebasePlan(ctx context.Context, options RebasePlanOp
 }
 
 func (s *gitSession) runRebasePlan(args []string, text string) error {
-	planName, removePlan, err := s.temporaryFile("tangit-rebase-visual-plan-", []byte(text), 0o600)
+	planName, removePlan, err := s.temporaryFile("lazygitgo-rebase-visual-plan-", []byte(text), 0o600)
 	if err != nil {
 		return err
 	}
 	defer removePlan()
 	script := "#!/bin/sh\nset -eu\ncat " + sshworkspace.ShellQuote(planName) + " > \"$1\"\n"
-	editorName, removeEditor, err := s.temporaryFile("tangit-rebase-visual-editor-", []byte(script), 0o700)
+	editorName, removeEditor, err := s.temporaryFile("lazygitgo-rebase-visual-editor-", []byte(script), 0o700)
 	if err != nil {
 		return err
 	}
@@ -568,21 +568,21 @@ func (s *gitSession) editActiveRebaseTodoViaGit(expected, edited string) error {
 	if err != nil {
 		return err
 	}
-	expectedName, removeExpected, err := s.temporaryFile("tangit-rebase-expected-", []byte(expectedExecutable), 0o600)
+	expectedName, removeExpected, err := s.temporaryFile("lazygitgo-rebase-expected-", []byte(expectedExecutable), 0o600)
 	if err != nil {
 		return err
 	}
 	defer removeExpected()
-	editedName, removeEdited, err := s.temporaryFile("tangit-rebase-edited-", []byte(edited), 0o600)
+	editedName, removeEdited, err := s.temporaryFile("lazygitgo-rebase-edited-", []byte(edited), 0o600)
 	if err != nil {
 		return err
 	}
 	defer removeEdited()
 	script := "#!/bin/sh\nset -eu\n" +
 		"sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' \"$1\" | " +
-		"cmp -s " + sshworkspace.ShellQuote(expectedName) + " - || { echo 'rebase todo changed outside TanGit' >&2; exit 75; }\n" +
+		"cmp -s " + sshworkspace.ShellQuote(expectedName) + " - || { echo 'rebase todo changed outside lazygitGo' >&2; exit 75; }\n" +
 		"cat " + sshworkspace.ShellQuote(editedName) + " > \"$1\"\n"
-	editorName, removeEditor, err := s.temporaryFile("tangit-rebase-cas-editor-", []byte(script), 0o700)
+	editorName, removeEditor, err := s.temporaryFile("lazygitgo-rebase-cas-editor-", []byte(script), 0o700)
 	if err != nil {
 		return err
 	}
@@ -635,7 +635,7 @@ func (s *gitSession) EditRebasePlan(ctx context.Context, plan RebasePlan, edited
 		return err
 	}
 	if string(current) != plan.Text || rebasePlanFingerprint(string(current)) != plan.Fingerprint {
-		return fmt.Errorf("%w: todo changed outside TanGit", ErrRebasePlanChanged)
+		return fmt.Errorf("%w: todo changed outside lazygitGo", ErrRebasePlanChanged)
 	}
 	if err := validateRebasePlanEdit(string(current), edited); err != nil {
 		return err

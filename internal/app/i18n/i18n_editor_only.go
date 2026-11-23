@@ -16,7 +16,7 @@ var editorOnlyTranslations = map[string]map[string]string{
 		"Browse, search, and edit files or use a terminal without initializing Git.": "浏览、搜索和编辑文件或使用终端，无需初始化 Git。",
 		"Workspace folder":         "工作区文件夹",
 		"This folder has no files": "此文件夹没有文件",
-		"Terminal: open a Git repository or folder path directly in TanGit": "终端：直接在 TanGit 中打开 Git 仓库或文件夹路径",
+		"Terminal: open a Git repository or folder path directly in lazygitGo": "终端：直接在 lazygitGo 中打开 Git 仓库或文件夹路径",
 	},
 	"zh-Hant": {
 		"Open a folder": "開啟資料夾",
@@ -32,7 +32,7 @@ var editorOnlyTranslations = map[string]map[string]string{
 		"Browse, search, and edit files or use a terminal without initializing Git.": "瀏覽、搜尋和編輯檔案或使用終端機，無需初始化 Git。",
 		"Workspace folder":         "工作區資料夾",
 		"This folder has no files": "此資料夾沒有檔案",
-		"Terminal: open a Git repository or folder path directly in TanGit": "終端機：直接在 TanGit 中開啟 Git 儲存庫或資料夾路徑",
+		"Terminal: open a Git repository or folder path directly in lazygitGo": "終端機：直接在 lazygitGo 中開啟 Git 儲存庫或資料夾路徑",
 	},
 	"ja": {
 		"Open a folder": "フォルダーを開く",
@@ -48,7 +48,7 @@ var editorOnlyTranslations = map[string]map[string]string{
 		"Browse, search, and edit files or use a terminal without initializing Git.": "Git を初期化せずに、ファイルの参照、検索、編集やターミナルを利用できます。",
 		"Workspace folder":         "ワークスペースフォルダー",
 		"This folder has no files": "このフォルダーにはファイルがありません",
-		"Terminal: open a Git repository or folder path directly in TanGit": "ターミナル：Git リポジトリまたはフォルダーのパスを TanGit で直接開く",
+		"Terminal: open a Git repository or folder path directly in lazygitGo": "ターミナル：Git リポジトリまたはフォルダーのパスを lazygitGo で直接開く",
 	},
 	"es": {
 		"Open a folder": "Abrir una carpeta",
@@ -64,7 +64,7 @@ var editorOnlyTranslations = map[string]map[string]string{
 		"Browse, search, and edit files or use a terminal without initializing Git.": "Explora, busca y edita archivos o usa una terminal sin inicializar Git.",
 		"Workspace folder":         "Carpeta de trabajo",
 		"This folder has no files": "Esta carpeta no contiene archivos",
-		"Terminal: open a Git repository or folder path directly in TanGit": "Terminal: abre directamente una ruta de repositorio Git o carpeta en TanGit",
+		"Terminal: open a Git repository or folder path directly in lazygitGo": "Terminal: abre directamente una ruta de repositorio Git o carpeta en lazygitGo",
 	},
 	"fr": {
 		"Open a folder": "Ouvrir un dossier",
@@ -80,7 +80,7 @@ var editorOnlyTranslations = map[string]map[string]string{
 		"Browse, search, and edit files or use a terminal without initializing Git.": "Parcourez, recherchez et modifiez des fichiers ou utilisez un terminal sans initialiser Git.",
 		"Workspace folder":         "Dossier de travail",
 		"This folder has no files": "Ce dossier ne contient aucun fichier",
-		"Terminal: open a Git repository or folder path directly in TanGit": "Terminal : ouvrez directement un chemin de dépôt Git ou de dossier dans TanGit",
+		"Terminal: open a Git repository or folder path directly in lazygitGo": "Terminal : ouvrez directement un chemin de dépôt Git ou de dossier dans lazygitGo",
 	},
 }
 

@@ -243,7 +243,7 @@ func TestNormalizeExternalEditorsRejectsInvalidAndDuplicateEntries(t *testing.T)
 }
 
 // A Home card can open its repository in the configured editor without
-// opening that repository in TanGit; its context menu offers the same action.
+// opening that repository in lazygitGo; its context menu offers the same action.
 func TestRecentCardOpensTheRepositoryWithTheConfiguredEditor(t *testing.T) {
 	a, tt, _ := recentTester(t, recentRepository{Path: "/work/project", LastOpened: timeNow()})
 	opened := stubEditor(t, nil)
@@ -257,7 +257,7 @@ func TestRecentCardOpensTheRepositoryWithTheConfiguredEditor(t *testing.T) {
 		t.Fatalf("card editor opened %+v, want %+v", *opened, want)
 	}
 	if a.state != stateEmpty {
-		t.Fatalf("opening the editor must not open the TanGit repository; state=%v", a.state)
+		t.Fatalf("opening the editor must not open the lazygitGo repository; state=%v", a.state)
 	}
 
 	tt.Frame()
@@ -493,11 +493,11 @@ func TestEditorFindsVSCodeOutsideTheMacOSGUIPath(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(executable), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(executable, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$TANGIT_EDITOR_TEST_ARGS\"\n"), 0o755); err != nil {
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$LAZYGITGO_EDITOR_TEST_ARGS\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	argumentsFile := filepath.Join(t.TempDir(), "arguments")
-	t.Setenv("TANGIT_EDITOR_TEST_ARGS", argumentsFile)
+	t.Setenv("LAZYGITGO_EDITOR_TEST_ARGS", argumentsFile)
 
 	if err := runEditorTemplate(vsCodeEditorCommand, "/work/project/one.txt", 0); err != nil {
 		t.Fatalf("an installed VS Code app did not open when its command was outside the GUI PATH: %v", err)

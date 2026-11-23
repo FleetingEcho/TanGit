@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // staleOptionsSession holds the first canonical read until its replacement is

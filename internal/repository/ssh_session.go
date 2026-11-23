@@ -20,8 +20,8 @@ import (
 	"github.com/jesseduffield/lazygit/pkg/config"
 	"github.com/jesseduffield/lazygit/pkg/utils"
 
-	"lazygitapp/internal/sshworkspace"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 // SSHWorkspaceOpener opens repositories directly on a connected Linux host.
@@ -124,7 +124,7 @@ func OpenSSHWorkspace(ctx context.Context, client *sshworkspace.Client, location
 	result.location.Root = repoPaths.WorktreePath()
 	result.files = &sshSessionFiles{
 		client:      client,
-		scratchRoot: path.Join(repoPaths.WorktreeGitDirPath(), "tangit", "tmp"),
+		scratchRoot: path.Join(repoPaths.WorktreeGitDirPath(), "lazygitgo", "tmp"),
 	}
 	session = result
 	return result, nil
@@ -209,7 +209,7 @@ func (localSessionFiles) WriteFileAtomic(name string, data []byte, mode os.FileM
 	if err := os.MkdirAll(filepath.Dir(name), 0o700); err != nil {
 		return err
 	}
-	file, err := os.CreateTemp(filepath.Dir(name), ".tangit-write-")
+	file, err := os.CreateTemp(filepath.Dir(name), ".lazygitgo-write-")
 	if err != nil {
 		return err
 	}

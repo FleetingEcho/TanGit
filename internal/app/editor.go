@@ -12,7 +12,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // filenamePlaceholder and linePlaceholder are what an editor command writes
@@ -41,7 +41,7 @@ var editorPresets = []editorPreset{
 	{Name: "Neovim", Command: "nvim +" + linePlaceholder + " " + filenamePlaceholder},
 }
 
-// Built-in uses TanGit's Code page. The external command remains a plain
+// Built-in uses lazygitGo's Code page. The external command remains a plain
 // setting so existing VS Code, Zed, Neovim, and custom configurations keep working.
 const (
 	builtInEditorCommand = "Built-in"

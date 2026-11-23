@@ -107,7 +107,7 @@ Current task tools also include:
 
 ## CLI/RPC automation and advice helpers
 
-The local `tangit agent ...` CLI and newline-delimited JSON RPC share the same
+The local `lazygitGo agent ...` CLI and newline-delimited JSON RPC share the same
 persistent task store. They provide explicit-target list/show/diff/create,
 report, comment, test-result, patch preview, and confirmed working-tree patch
 application. Existing-task writes require the exact `updatedAt` revision; patch
@@ -125,7 +125,7 @@ actions with source/index/operation checks.
 AssistCommand is executed through the platform shell with the user's normal
 permissions and receives source text or diff content in its request. It is a
 trusted helper, **not a sandbox**, and no model or service provider is bundled.
-The same distinction applies to coding-agent commands: TanGit does not infer
+The same distinction applies to coding-agent commands: lazygitGo does not infer
 integration approval from their output, but a command the user deliberately
 launches can itself edit or commit inside its assigned worktree.
 

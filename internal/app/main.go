@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/FleetingEcho/lazygitGo/internal/app/launch"
 	"io"
-	"lazygitapp/internal/app/launch"
 	"log"
 	"os"
 	"path/filepath"
@@ -20,17 +20,17 @@ import (
 	"github.com/jesseduffield/lazygit/pkg/app/daemon"
 	"github.com/sirupsen/logrus"
 
-	"lazygitapp/internal/agentcli"
-	"lazygitapp/internal/agentwork"
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/sshworkspace"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/agentcli"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 type openState uint8
 
 // appName is the product name window titles and the picker show.
-const appName = "TanGit"
+const appName = "lazygitGo"
 
 const (
 	stateEmpty openState = iota
@@ -1278,7 +1278,7 @@ func launchPathFrom(workingDir string, args []string) string {
 
 // runAgentCommand handles only the explicit agent subcommand. Dispatching it
 // before daemon, launcher and single-instance setup keeps automation headless
-// and prevents a second TanGit window or a forwarded repository-open request.
+// and prevents a second lazygitGo window or a forwarded repository-open request.
 func runAgentCommand(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) (int, bool) {
 	if len(args) == 0 || args[0] != "agent" {
 		return 0, false
@@ -1286,7 +1286,7 @@ func runAgentCommand(ctx context.Context, args []string, stdin io.Reader, stdout
 	return agentcli.Execute(ctx, args[1:], stdin, stdout, stderr), true
 }
 
-// Main runs the TanGit desktop application or its explicit headless CLI.
+// Main runs the lazygitGo desktop application or its explicit headless CLI.
 func Main() {
 	if code, handled := runAgentCommand(context.Background(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr); handled {
 		os.Exit(code)
@@ -1294,7 +1294,7 @@ func Main() {
 
 	// Lazygit's history-editing commands invoke this executable as Git's editor.
 	// Handle their short-lived todo-file instructions before any GUI or updater
-	// initialization, or Git would open another TanGit window and hang the rebase.
+	// initialization, or Git would open another lazygitGo window and hang the rebase.
 	if daemon.InDaemonMode() {
 		daemon.Handle(logrus.New().WithField("component", "git-editor"))
 		return
@@ -1302,17 +1302,21 @@ func Main() {
 
 	launched, err := launch.LaunchInBackground()
 	if err != nil {
-		log.Printf("Could not detach the TanGit launcher: %v", err)
+		log.Printf("Could not detach the lazygitGo launcher: %v", err)
 	}
 	if launched {
 		return
 	}
-	// A command typed while TanGit is running forwards its path to that app's
+	// MyGo includes the app name in its single-instance key. Use the same
+	// key as TanGit while an older installation may still be running.
+	mygo.App.SetName(agentcli.LegacyDataDirectoryName)
+	// A command typed while lazygitGo is running forwards its path to that app's
 	// tabbed window instead of creating a second process and window.
 	if !mygo.App.RequestSingleInstanceLock() {
 		return
 	}
 
+	configureAppIdentity()
 	setupUpdater()
 	// The window reads the history and settings once it exists: the data
 	// directory is resolved from the application, so a first frame already
@@ -1334,6 +1338,22 @@ func Main() {
 	if runErr != nil {
 		log.Fatal(runErr)
 	}
+}
+
+func configureAppIdentity() {
+	// MyGo derives these directories from the app name. Pin the existing
+	// locations before renaming it so settings, updater state, and local
+	// recovery data stay accessible across upgrades.
+	if configDir, err := os.UserConfigDir(); err == nil && agentcli.DefaultDataDirectoryName(configDir) == agentcli.LegacyDataDirectoryName {
+		for _, name := range []mygo.PathName{mygo.PathUserData, mygo.PathCache, mygo.PathLogs} {
+			if dir, err := mygo.App.Path(name); err == nil {
+				mygo.App.SetPath(name, dir)
+			} else {
+				log.Printf("Could not open the existing %s directory: %v", name, err)
+			}
+		}
+	}
+	mygo.App.SetName(appName)
 }
 
 // openAppWindow gives the app its window: one title bar drawn by the app, a
@@ -1395,7 +1415,7 @@ func openAppWindow(opener repositoryOpener, path string) {
 	})
 	win.OnClosed(s.shutdown)
 	// A window shown, focused or restored reads its repositories again, so
-	// what another app changed while TanGit was hidden appears without an
+	// what another app changed while lazygitGo was hidden appears without an
 	// F5; losing focus or hiding stands the timer aside.
 	win.OnShow(s.handleWindowShown)
 	win.OnFocus(s.handleWindowFocused)
@@ -1416,7 +1436,7 @@ func openAppWindow(opener repositoryOpener, path string) {
 	s.startAutoRefresh()
 }
 
-// appWindowOptions is the shape of TanGit's only window: a hidden title bar
+// appWindowOptions is the shape of lazygitGo's only window: a hidden title bar
 // under the app's own bar, and the platform's window controls or the app's.
 func appWindowOptions(content *ui.Content) mygo.WindowOptions {
 	opts := mygo.WindowOptions{

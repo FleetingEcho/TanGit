@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"lazygitapp/internal/agentassist"
+	"github.com/FleetingEcho/lazygitGo/internal/agentassist"
 )
 
 var errAssistNotConfigured = errors.New("no AssistCommand is configured in the current Agent Profile")

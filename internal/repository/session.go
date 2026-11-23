@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"lazygitapp/internal/sshworkspace"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 
 	"github.com/jesseduffield/lazygit/pkg/commands"
 	"github.com/jesseduffield/lazygit/pkg/commands/git_commands"
@@ -414,7 +414,7 @@ func (Opener) Open(ctx context.Context, path string) (Session, error) {
 		oscommands.GetPlatform(),
 		guiIO,
 	)
-	// TanGit is a GUI process. On Windows, every ordinary child command would
+	// lazygitGo is a GUI process. On Windows, every ordinary child command would
 	// otherwise allocate a console, steal focus, and return it when it exits.
 	// The focus callback schedules a refresh, so a snapshot's own Git commands
 	// can keep the app in an endless refresh/console-flash loop.
@@ -442,7 +442,7 @@ func (Opener) Open(ctx context.Context, path string) (Session, error) {
 	cmd := commands.NewGitCmdObjBuilder(cmn.Log, osCommand.Cmd, repoPaths.WorktreePath(), repoPaths.GitLocationEnvVars())
 
 	// Commit status enrichment asks Git which loaded commits are reachable
-	// from a main branch. TanGit drops that status when it makes its own
+	// from a main branch. lazygitGo drops that status when it makes its own
 	// Commit values, so give those loaders an empty main-branch set instead
 	// of paying for rev-list reads and throwing their answer away.
 	commitCommon := common.NewDummyCommon()
@@ -1248,7 +1248,7 @@ func (s *gitSession) applyWorkingTreePatch(ctx context.Context, patchText string
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	name, cleanup, err := s.temporaryFile("tangit-worktree-*.patch", []byte(patchText), 0o600)
+	name, cleanup, err := s.temporaryFile("lazygitgo-worktree-*.patch", []byte(patchText), 0o600)
 	if err != nil {
 		return fmt.Errorf("write the patch: %w", err)
 	}
@@ -2168,12 +2168,12 @@ func (s *gitSession) performStashPatch(ctx context.Context, message, patchText, 
 	if err != nil {
 		return fmt.Errorf("stash selected lines: HEAD is required")
 	}
-	patchName, removePatch, err := s.temporaryFile("tangit-stash-*.patch", []byte(patchText), 0o600)
+	patchName, removePatch, err := s.temporaryFile("lazygitgo-stash-*.patch", []byte(patchText), 0o600)
 	if err != nil {
 		return err
 	}
 	defer removePatch()
-	indexName, removeIndex, err := s.temporaryFile("tangit-stash-index-", nil, 0o600)
+	indexName, removeIndex, err := s.temporaryFile("lazygitgo-stash-index-", nil, 0o600)
 	if err != nil {
 		return err
 	}
@@ -2198,10 +2198,10 @@ func (s *gitSession) performStashPatch(ctx context.Context, message, patchText, 
 		return err
 	}
 	identity := []string{
-		"GIT_AUTHOR_NAME=TanGit", "GIT_AUTHOR_EMAIL=recovery@localhost",
-		"GIT_COMMITTER_NAME=TanGit", "GIT_COMMITTER_EMAIL=recovery@localhost",
+		"GIT_AUTHOR_NAME=lazygitGo", "GIT_AUTHOR_EMAIL=recovery@localhost",
+		"GIT_COMMITTER_NAME=lazygitGo", "GIT_COMMITTER_EMAIL=recovery@localhost",
 	}
-	indexCommit, err := s.cmd.New([]string{"git", "commit-tree", baseTree, "-p", base, "-m", "TanGit selected-line stash index"}).AddEnvVars(identity...).RunWithOutput()
+	indexCommit, err := s.cmd.New([]string{"git", "commit-tree", baseTree, "-p", base, "-m", "lazygitGo selected-line stash index"}).AddEnvVars(identity...).RunWithOutput()
 	if err != nil {
 		return fmt.Errorf("stash selected lines: write index: %w: %s", err, strings.TrimSpace(indexCommit))
 	}
@@ -3312,7 +3312,7 @@ func ignoreRule(path string) string {
 	return rule.String()
 }
 
-// appendIgnoreRule writes beside the repository, never relative to TanGit's
+// appendIgnoreRule writes beside the repository, never relative to lazygitGo's
 // process working directory. Lazygit's high-level Ignore helper uses the
 // latter, which is correct in its terminal process but not in this desktop one.
 func (s *gitSession) appendIgnoreRule(filename, filePath string) error {

@@ -12,8 +12,8 @@ import (
 )
 
 func TestExpandedReleaseLanguageServersRealProtocolLifecycle(t *testing.T) {
-	if os.Getenv("TANGIT_TEST_REAL_LSP_INSTALL") != "1" {
-		t.Skip("set TANGIT_TEST_REAL_LSP_INSTALL=1 to download and exercise release language servers")
+	if os.Getenv("LAZYGITGO_TEST_REAL_LSP_INSTALL") != "1" {
+		t.Skip("set LAZYGITGO_TEST_REAL_LSP_INSTALL=1 to download and exercise release language servers")
 	}
 	tests := []struct {
 		id, file, language, text                                             string
@@ -24,40 +24,40 @@ func TestExpandedReleaseLanguageServersRealProtocolLifecycle(t *testing.T) {
 	}{
 		{
 			id: "lua", file: "main.lua", language: "lua",
-			text:        "local tangit_answer = 42\nlocal answer = tangit_answer\ntan\n",
-			hoverMarker: "tangit_answer\ntan", completionMarker: "tan\n", completionWant: "tangit_answer",
-			definitionMarker: "tangit_answer\ntan", definitionLine: 0,
-			replaceOld: "tan\n", replaceNew: "missing_name\n", diagnostic: "missing_name",
+			text:        "local lazygitgo_answer = 42\nlocal answer = lazygitgo_answer\nlazy\n",
+			hoverMarker: "lazygitgo_answer\nlazy", completionMarker: "lazy\n", completionWant: "lazygitgo_answer",
+			definitionMarker: "lazygitgo_answer\nlazy", definitionLine: 0,
+			replaceOld: "lazy\n", replaceNew: "missing_name\n", diagnostic: "missing_name",
 		},
 		{
 			id: "neocmake", file: "CMakeLists.txt", language: "cmake",
-			text:        "cmake_minimum_required(VERSION 3.20)\nproject(TanGit)\nfunction(tangit_answer)\n  set(TANGIT_ANSWER 42)\nendfunction()\ntangit_answer()\ninclude(TangitHelpers.cmake)\ntangit_ans\n",
-			hoverMarker: "tangit_answer()\ninclude", completionMarker: "tangit_ans\n", completionWant: "tangit_answer",
-			definitionMarker: "TangitHelpers.cmake)\ntangit_ans", definitionFile: "TangitHelpers.cmake", definitionLine: 0,
-			replaceOld: "tangit_ans\n", replaceNew: "PROJECT(TanGit)\n", diagnostic: "case",
-			files: map[string]string{"TangitHelpers.cmake": "set(TANGIT_ANSWER 42)\n", ".neocmake.toml": "command_case = \"lower_case\"\n"},
+			text:        "cmake_minimum_required(VERSION 3.20)\nproject(lazygitGo)\nfunction(lazygitgo_answer)\n  set(LAZYGITGO_ANSWER 42)\nendfunction()\nlazygitgo_answer()\ninclude(lazygitGoHelpers.cmake)\nlazygitgo_ans\n",
+			hoverMarker: "lazygitgo_answer()\ninclude", completionMarker: "lazygitgo_ans\n", completionWant: "lazygitgo_answer",
+			definitionMarker: "lazygitGoHelpers.cmake)\nlazygitgo_ans", definitionFile: "lazygitGoHelpers.cmake", definitionLine: 0,
+			replaceOld: "lazygitgo_ans\n", replaceNew: "PROJECT(lazygitGo)\n", diagnostic: "case",
+			files: map[string]string{"lazygitGoHelpers.cmake": "set(LAZYGITGO_ANSWER 42)\n", ".neocmake.toml": "command_case = \"lower_case\"\n"},
 		},
 		{
 			id: "terraform", file: "main.tf", language: "terraform",
-			text:        "variable \"tangit_answer\" {\n  type    = number\n  default = 42\n}\n\noutput \"answer\" {\n  value = var.tangit_answer\n}\n\noutput \"completion\" {\n  value = var.tan\n}\n",
-			hoverMarker: "var.tangit_answer", completionMarker: "var.tan\n", completionWant: "tangit_answer",
-			definitionMarker: "var.tangit_answer", definitionLine: 0,
-			replaceOld: "var.tan\n", replaceNew: "var.missing_name\n", diagnostic: "missing_name",
+			text:        "variable \"lazygitgo_answer\" {\n  type    = number\n  default = 42\n}\n\noutput \"answer\" {\n  value = var.lazygitgo_answer\n}\n\noutput \"completion\" {\n  value = var.lazy\n}\n",
+			hoverMarker: "var.lazygitgo_answer", completionMarker: "var.lazy\n", completionWant: "lazygitgo_answer",
+			definitionMarker: "var.lazygitgo_answer", definitionLine: 0,
+			replaceOld: "var.lazy\n", replaceNew: "var.missing_name\n", diagnostic: "missing_name",
 		},
 		{
 			id: "tombi", file: "pyproject.toml", language: "toml",
-			text:        "#:schema ./schema.json\n\n[project]\nname = \"tangit\"\ndesc\n",
-			hoverMarker: "name = \"tangit\"", completionMarker: "desc\n", completionWant: "description",
+			text:        "#:schema ./schema.json\n\n[project]\nname = \"lazygitgo\"\ndesc\n",
+			hoverMarker: "name = \"lazygitgo\"", completionMarker: "desc\n", completionWant: "description",
 			definitionMarker: "./schema.json", definitionFile: "schema.json", definitionLine: 0,
-			replaceOld: "name = \"tangit\"\ndesc\n", replaceNew: "name = 42\ndescription = \"ok\"\n", diagnostic: "string",
+			replaceOld: "name = \"lazygitgo\"\ndesc\n", replaceNew: "name = 42\ndescription = \"ok\"\n", diagnostic: "string",
 			files: map[string]string{"schema.json": `{
   "type": "object",
   "properties": {
     "project": {
       "type": "object",
       "properties": {
-        "name": {"type": "string", "description": "TanGit project name"},
-        "description": {"type": "string", "description": "TanGit project description"}
+        "name": {"type": "string", "description": "lazygitGo project name"},
+        "description": {"type": "string", "description": "lazygitGo project description"}
       }
     }
   }
@@ -66,10 +66,10 @@ func TestExpandedReleaseLanguageServersRealProtocolLifecycle(t *testing.T) {
 		},
 		{
 			id: "zls", file: "main.zig", language: "zig",
-			text:        "const tangit_answer: i32 = 42;\npub fn main() void {\n    const answer = tangit_answer;\n    _ = answer;\n    _ = tan;\n}\n",
-			hoverMarker: "tangit_answer;\n    _ = answer", completionMarker: "_ = tan;", completionWant: "tangit_answer",
-			definitionMarker: "tangit_answer;\n    _ = answer", definitionLine: 0,
-			replaceOld: "_ = tan;", replaceNew: "_ = missing_name;", diagnostic: "missing_name",
+			text:        "const lazygitgo_answer: i32 = 42;\npub fn main() void {\n    const answer = lazygitgo_answer;\n    _ = answer;\n    _ = lazy;\n}\n",
+			hoverMarker: "lazygitgo_answer;\n    _ = answer", completionMarker: "_ = lazy;", completionWant: "lazygitgo_answer",
+			definitionMarker: "lazygitgo_answer;\n    _ = answer", definitionLine: 0,
+			replaceOld: "_ = lazy;", replaceNew: "_ = missing_name;", diagnostic: "missing_name",
 		},
 	}
 	for _, test := range tests {

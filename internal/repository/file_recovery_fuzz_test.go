@@ -22,7 +22,7 @@ func runGitForRecoveryFuzz(f *testing.F, dir string, args ...string) {
 
 func fileRecoveryFuzzSession(f *testing.F) (*gitSession, string) {
 	f.Helper()
-	dir, err := os.MkdirTemp("", "tangit-file-recovery-fuzz-")
+	dir, err := os.MkdirTemp("", "lazygitgo-file-recovery-fuzz-")
 	if err != nil {
 		f.Fatal(err)
 	}

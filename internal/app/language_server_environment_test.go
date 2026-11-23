@@ -63,10 +63,10 @@ func TestLanguageServerChildProcessesFindSiblingTools(t *testing.T) {
 	}
 	bin := t.TempDir()
 	program := filepath.Join(bin, "test-server")
-	if err := os.WriteFile(program, []byte("#!/bin/sh\nprintf '%s\\n' \"$GOBIN\"\ncommand -v tangit-test-go\n"), 0o755); err != nil {
+	if err := os.WriteFile(program, []byte("#!/bin/sh\nprintf '%s\\n' \"$GOBIN\"\ncommand -v lazygitgo-test-go\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	tool := filepath.Join(bin, "tangit-test-go")
+	tool := filepath.Join(bin, "lazygitgo-test-go")
 	if err := os.WriteFile(tool, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}

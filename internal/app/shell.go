@@ -1159,7 +1159,7 @@ func (s *shell) notifyTabLimit(a *app) {
 		return
 	}
 	a.notify("error", "Tab limit reached",
-		trf("TanGit keeps up to %d repositories open at once. Close a tab before opening another.",
+		trf("lazygitGo keeps up to %d repositories open at once. Close a tab before opening another.",
 			maxRepositoryTabs))
 	s.invalidate()
 }
@@ -1256,7 +1256,7 @@ func (s *shell) updaterView(c *ui.Context) {
 func (s *shell) appMarkView(c *ui.Context) {
 	theme := c.Theme()
 	button := ui.ButtonBase(c).Size(28, tabPillHeight).Radius(pillRadius(theme)).Center()
-	button.Label(tr("TanGit home")).Tooltip(tr("TanGit — open the repository picker"))
+	button.Label(tr("lazygitGo home")).Tooltip(tr("lazygitGo — open the repository picker"))
 	hovered := button.Hovered()
 	button.Children(func() {
 		ui.Icon(c, appIcon).FontSize(16).TextColor(theme.Accent)

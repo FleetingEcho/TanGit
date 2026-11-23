@@ -1,9 +1,9 @@
 # Local agent automation
 
 The `internal/agentcli` package provides a local CLI/RPC service over the same
-`agentwork.Store` and repository review operations used by TanGit. It has no GUI,
+`agentwork.Store` and repository review operations used by lazygitGo. It has no GUI,
 MyGo, socket, network, or MCP dependency. `app.Main` routes the explicit
-`tangit agent ...` subcommand to `agentcli.Execute` with `os.Stdin`, `os.Stdout`,
+`lazygitGo agent ...` subcommand to `agentcli.Execute` with `os.Stdin`, `os.Stdout`,
 and `os.Stderr` before starting any GUI, launcher, or single-instance handling.
 The newline-delimited JSON interface below is local structured RPC; it is not a
 complete MCP implementation and creates no listener or network connection.
@@ -19,18 +19,20 @@ integration action from UI state.
 Every CLI command accepts `--data-dir DIR`. Resolution is, in order:
 
 1. the explicit `--data-dir` value;
-2. `TANGIT_AGENT_DATA_DIR`;
-3. `filepath.Join(os.UserConfigDir(), "TanGit")`.
+2. `LAZYGITGO_AGENT_DATA_DIR`;
+3. the legacy `TANGIT_AGENT_DATA_DIR`, if set;
+4. the desktop app's default data directory.
 
-For example, the usual Linux default is `${XDG_CONFIG_HOME:-~/.config}/TanGit`.
+On Linux, fresh installations default to `${XDG_CONFIG_HOME:-~/.config}/lazygitGo`.
+Upgraded installations keep their existing data directory.
 Tasks are stored in `agent-tasks.json` and `agent-tasks/TASK_ID/request.md` under
 that directory.
 
-**The CLI directory must be the desktop TanGit user-data directory, not a
+**The CLI directory must be the desktop lazygitGo user-data directory, not a
 repository directory.** If the desktop uses a non-default user-data location,
 pass that exact location with `--data-dir` or the environment variable. Using a
 second directory creates a separate task store rather than synchronizing two
-stores. Likewise, list/create repository filters use TanGit's opaque repository
+stores. Likewise, list/create repository filters use lazygitGo's opaque repository
 ID. For a local repository this is its canonical main-worktree path; use the same
 path spelling for CLI-created tasks so they appear with desktop-created tasks.
 
@@ -44,15 +46,15 @@ errors; it never calls `os.Exit` itself.
 
 ```sh
 # All tasks, or exactly one repository family.
-tangit agent list --json
-tangit agent list --repository /work/project --json
+lazygitGo agent list --json
+lazygitGo agent list --repository /work/project --json
 
 # Explicit IDs only; no desktop selection is consulted.
-tangit agent show --id 0123456789abcdef0123456789abcdef --json
+lazygitGo agent show --id 0123456789abcdef0123456789abcdef --json
 
 # The direct stored BaseCommit -> current index/worktree final result.
-tangit agent diff --id 0123456789abcdef0123456789abcdef --json
-tangit agent diff --id 0123456789abcdef0123456789abcdef \
+lazygitGo agent diff --id 0123456789abcdef0123456789abcdef --json
+lazygitGo agent diff --id 0123456789abcdef0123456789abcdef \
   --file path/within/worktree.go --json
 ```
 
@@ -71,7 +73,7 @@ infer a target from the currently selected desktop tab.
 ## Create a task
 
 ```sh
-tangit agent create \
+lazygitGo agent create \
   --repository /work/project \
   --path /work/project-agent-search \
   --branch agent/search \
@@ -107,15 +109,15 @@ requires that exact revision as RFC3339 (fractional seconds are accepted):
 TASK=0123456789abcdef0123456789abcdef
 REV='2026-11-13T19:30:00.123456789Z'
 
-tangit agent report --id "$TASK" --expected-updated-at "$REV" \
+lazygitGo agent report --id "$TASK" --expected-updated-at "$REV" \
   --session-id agent-session-42 --summary 'Implemented and checked.' \
   --status ready_for_review --json
 
 # Use the newly returned updatedAt for each subsequent mutation.
-tangit agent comment --id "$TASK" --expected-updated-at "$REV" \
+lazygitGo agent comment --id "$TASK" --expected-updated-at "$REV" \
   --text 'Please add a regression test for empty input.' --json
 
-tangit agent test-result --id "$TASK" --expected-updated-at "$REV" \
+lazygitGo agent test-result --id "$TASK" --expected-updated-at "$REV" \
   --status passed --command 'go test ./...' --exit-code 0 \
   --started-at '2026-11-13T19:31:00Z' \
   --finished-at '2026-11-13T19:31:04Z' --json
@@ -128,8 +130,8 @@ session ID or summary clears that field. Allowed report lifecycle values are
 preserved, and the underlying store still enforces every legal transition.
 
 `comment` appends nonempty text between
-`<!-- TANGIT AGENT COMMENT START -->` and
-`<!-- TANGIT AGENT COMMENT END -->` in the durable request. It does not resume an
+`<!-- LAZYGITGO AGENT COMMENT START -->` and
+`<!-- LAZYGITGO AGENT COMMENT END -->` in the durable request. It does not resume an
 agent or change lifecycle state.
 
 `test-result` requires `passed` or `failed`, a nonempty command, and an explicit
@@ -147,12 +149,12 @@ must show/list again and resubmit against the new `updatedAt`.
 
 ```sh
 # Preview only: the default is read-only.
-tangit agent patch --destination /work/integration --patch /tmp/change.patch
-tangit agent preview-patch --destination /work/integration --patch /tmp/change.patch --json
+lazygitGo agent patch --destination /work/integration --patch /tmp/change.patch
+lazygitGo agent preview-patch --destination /work/integration --patch /tmp/change.patch --json
 
 # Apply requires both a clean preview and explicit confirmation.
-tangit agent patch --destination /work/integration --patch /tmp/change.patch --yes
-tangit agent apply-patch --destination /work/integration --patch /tmp/change.patch --yes --json
+lazygitGo agent patch --destination /work/integration --patch /tmp/change.patch --yes
+lazygitGo agent apply-patch --destination /work/integration --patch /tmp/change.patch --yes --json
 ```
 
 There is no default or inferred destination. Preview opens exactly the supplied
@@ -169,7 +171,7 @@ apply modifies the patch source.
 Run the stream server with:
 
 ```sh
-tangit agent rpc --data-dir /path/to/TanGit-user-data
+lazygitGo agent rpc --data-dir /path/to/lazygitGo-user-data
 ```
 
 Input is one JSON object per line on stdin; output is one compact JSON response
@@ -177,8 +179,8 @@ per nonempty request line on stdout. EOF closes cleanly. No listener or network
 connection is created.
 
 ```json
-{"id":"read-1","method":"list","params":{"dataDir":"/config/TanGit","repository":"/work/project"}}
-{"id":"read-2","method":"show","params":{"dataDir":"/config/TanGit","taskId":"0123456789abcdef0123456789abcdef"}}
+{"id":"read-1","method":"list","params":{"dataDir":"/config/lazygitGo","repository":"/work/project"}}
+{"id":"read-2","method":"show","params":{"dataDir":"/config/lazygitGo","taskId":"0123456789abcdef0123456789abcdef"}}
 ```
 
 Successful response:
@@ -218,13 +220,13 @@ operations.
 Example mutation:
 
 ```json
-{"id":42,"method":"report","params":{"dataDir":"/config/TanGit","taskId":"0123456789abcdef0123456789abcdef","expectedUpdatedAt":"2026-11-13T19:30:00.123456789Z","summary":"Implemented","status":"ready_for_review"}}
+{"id":42,"method":"report","params":{"dataDir":"/config/lazygitGo","taskId":"0123456789abcdef0123456789abcdef","expectedUpdatedAt":"2026-11-13T19:30:00.123456789Z","summary":"Implemented","status":"ready_for_review"}}
 ```
 
 Example test result:
 
 ```json
-{"id":43,"method":"test_result","params":{"dataDir":"/config/TanGit","taskId":"0123456789abcdef0123456789abcdef","expectedUpdatedAt":"2026-11-13T19:31:10Z","status":"failed","command":"go test ./...","exitCode":1,"startedAt":"2026-11-13T19:30:30Z","finishedAt":"2026-11-13T19:31:09Z"}}
+{"id":43,"method":"test_result","params":{"dataDir":"/config/lazygitGo","taskId":"0123456789abcdef0123456789abcdef","expectedUpdatedAt":"2026-11-13T19:31:10Z","status":"failed","command":"go test ./...","exitCode":1,"startedAt":"2026-11-13T19:30:30Z","finishedAt":"2026-11-13T19:31:09Z"}}
 ```
 
 Malformed JSON, invalid params, unknown methods, stale revisions, and operation
@@ -238,14 +240,14 @@ stdin/stdout I/O failures are returned to `Execute` and reported on stderr.
 
 The desktop's Agent Profile can also contain an optional **AssistCommand** for
 Conflict Assistant and Change Splitter. That JSON-file advisor is separate
-from `agentcli`: `tangit agent ...` neither launches it nor turns its output
+from `agentcli`: `lazygitGo agent ...` neither launches it nor turns its output
 into task status or a Git mutation. Its protocol and mutation boundaries are
 described in the [workflow guide](guide.md#optional-external-assist-helpers).
 
 Assist responses are proposals only. Merely requesting or previewing one does
 not stage, commit, continue an operation, or accept a task. Conflict Result
 acceptance and split-group staging are separate explicit desktop actions, and
-TanGit generates and validates the exact data used by those actions. An
+lazygitGo generates and validates the exact data used by those actions. An
 AssistCommand is a user-trusted helper run through the platform shell with
 ordinary process permissions; private request files and response validation do
 not make it a sandbox. No model or service provider is built in.
@@ -256,7 +258,7 @@ explicit confirmation. Even confirmed CLI patch application does not stage or
 commit files. Task reports and passing test results similarly record
 observations, not approval to integrate.
 
-Desktop **Continue preflight** is separate too. `tangit agent ...` does not run
+Desktop **Continue preflight** is separate too. `lazygitGo agent ...` does not run
 the Required/Optional commands from **Settings → Behavior**, and
 `agent test-result` does not satisfy those checks, create their checkpoint, or
 approve the final operation CAS. Those desktop commands are fully trusted local

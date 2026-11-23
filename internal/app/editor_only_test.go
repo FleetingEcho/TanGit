@@ -2,7 +2,7 @@ package app
 
 import (
 	"errors"
-	"lazygitapp/internal/app/i18n"
+	"github.com/FleetingEcho/lazygitGo/internal/app/i18n"
 	"os"
 	"path/filepath"
 	"slices"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func waitForEditorOnlyOpen(t *testing.T, a *app, tt *ui.Tester, updated *updates) {
@@ -411,7 +411,7 @@ func TestEditorOnlyHomeStringsAreLocalized(t *testing.T) {
 		"Browse, search, and edit files or use a terminal without initializing Git.",
 		"Workspace folder",
 		"This folder has no files",
-		"Terminal: open a Git repository or folder path directly in TanGit",
+		"Terminal: open a Git repository or folder path directly in lazygitGo",
 	}
 	for _, language := range languageChoices[1:] {
 		for _, key := range keys {

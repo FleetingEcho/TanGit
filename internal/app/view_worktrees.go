@@ -9,7 +9,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func (a *app) beginCreateWorktree() {
@@ -317,7 +317,7 @@ func (a *app) toggleWorktreeLock(worktree repository.Worktree) {
 	a.worktreeLockTargetName = worktree.Name
 	a.worktreeLockReason = strings.TrimSpace(worktree.LockReason)
 	if a.worktreeLockReason == "" {
-		a.worktreeLockReason = "TanGit"
+		a.worktreeLockReason = "lazygitGo"
 	}
 	a.showWorktreeLockForm = true
 }
@@ -776,9 +776,9 @@ func (a *app) worktreesView(c *ui.Context) {
 						ui.Text(c, worktree.Name).FontSize(18).Bold().Grow(1).Shrink(1).MinWidth(0).
 							SingleLine().Ellipsis("…").Tooltip(worktree.Name)
 						if !worktree.Current && !worktree.Missing {
-							primaryIconButton(c, "Open worktree", "Open this worktree in TanGit (O)", folderOpenIcon, a.actionBusy, a.openSelectedWorktree)
+							primaryIconButton(c, "Open worktree", "Open this worktree in lazygitGo (O)", folderOpenIcon, a.actionBusy, a.openSelectedWorktree)
 							if a.openTab != nil {
-								flatIconButton(c, "Open worktree in new tab", "Open this worktree in a separate TanGit tab, or focus its existing tab", plusIcon, 14, 4, a.actionBusy, a.openSelectedWorktreeInTab)
+								flatIconButton(c, "Open worktree in new tab", "Open this worktree in a separate lazygitGo tab, or focus its existing tab", plusIcon, 14, 4, a.actionBusy, a.openSelectedWorktreeInTab)
 							}
 						}
 						if !worktree.Main {

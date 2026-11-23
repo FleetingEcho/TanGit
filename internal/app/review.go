@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
-const reviewLocalStatusMessage = "Review marks are only a status in TanGit; they do not change Git information."
+const reviewLocalStatusMessage = "Review marks are only a status in lazygitGo; they do not change Git information."
 
 type reviewUIState struct {
 	files        map[string]bool
@@ -35,7 +35,7 @@ func reviewActionTooltip() string {
 
 // requestReviewedFiles reads review marks after a new repository snapshot.
 // Marks are content fingerprints, so a refresh can invalidate a row edited by
-// TanGit, another application, or an ordinary Git operation without special
+// lazygitGo, another application, or an ordinary Git operation without special
 // cases in each action.
 func (a *app) requestReviewedFiles() {
 	reviewer, ok := a.session.(repository.ReviewSession)

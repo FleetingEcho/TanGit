@@ -20,8 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 	"github.com/egoist/mygo/ui"
-	"lazygitapp/internal/repository"
 )
 
 type avatarRoundTripper func(*http.Request) (*http.Response, error)

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func TestActionFailureLogFollowsPushNotLaterSnapshotReads(t *testing.T) {

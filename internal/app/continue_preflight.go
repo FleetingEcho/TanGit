@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // continueTestRunner is the seam for deterministic execute tests. Production

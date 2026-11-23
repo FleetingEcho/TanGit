@@ -8,7 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 const commandLogPageSize = 20
@@ -142,7 +142,7 @@ func commandLogSourceLabel(value string) string {
 	case "direct":
 		return tr("Your commands")
 	case "background":
-		return tr("TanGit actions")
+		return tr("lazygitGo actions")
 	default:
 		return tr("All sources")
 	}

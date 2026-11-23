@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/sshworkspace"
-	"lazygitapp/internal/transfer"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/transfer"
 )
 
 type remoteTransferFakeInfo struct {

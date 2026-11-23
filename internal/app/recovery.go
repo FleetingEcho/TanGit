@@ -8,7 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // openActivityRecovery exposes the operation journal through its own status
@@ -273,7 +273,7 @@ func (a *app) confirmDeleteWorkSnapshot(snapshot repository.WorkSnapshot) {
 	a.askConfirm(confirmRequest{
 		title:        "Delete Saved Work",
 		message:      trf("Delete %s?", snapshot.Name),
-		detail:       "The entry will no longer be discoverable in TanGit. This cannot be undone from the app.",
+		detail:       "The entry will no longer be discoverable in lazygitGo. This cannot be undone from the app.",
 		confirmLabel: "Delete",
 		destructive:  true,
 		run: func() {

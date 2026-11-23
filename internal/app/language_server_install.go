@@ -79,7 +79,7 @@ func (a *app) installLanguageServer(id string) {
 	}
 	dataDir := a.dataDir()
 	if dataDir == "" {
-		a.notifyTranslated("error", trf("Could not install %s", profile.Name), "TanGit's user data directory is unavailable.")
+		a.notifyTranslated("error", trf("Could not install %s", profile.Name), "lazygitGo's user data directory is unavailable.")
 		return
 	}
 	if a.lsp.installing == nil {
@@ -87,7 +87,7 @@ func (a *app) installLanguageServer(id string) {
 	}
 	a.lsp.installing[id] = true
 	connection := a.stopLanguageServerForLifecycle(id)
-	a.notifyTranslated("info", trf("Installing %s", profile.Name), "Downloading to TanGit's managed tools directory…")
+	a.notifyTranslated("info", trf("Installing %s", profile.Name), "Downloading to lazygitGo's managed tools directory…")
 	go func() {
 		defer a.recoverBackground()
 		waitForLanguageServerClose(connection)
@@ -284,7 +284,7 @@ func installMarksman(ctx context.Context, toolsDir string) (languageServerInstal
 		return languageServerInstallation{}, err
 	}
 	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("User-Agent", "TanGit language-server installer")
+	request.Header.Set("User-Agent", "lazygitGo language-server installer")
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return languageServerInstallation{}, err
@@ -335,7 +335,7 @@ func downloadLanguageServerBinary(ctx context.Context, url, target string) error
 	if err != nil {
 		return err
 	}
-	request.Header.Set("User-Agent", "TanGit language-server installer")
+	request.Header.Set("User-Agent", "lazygitGo language-server installer")
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err
@@ -410,7 +410,7 @@ func installNodeLanguageServer(ctx context.Context, toolsDir string, profile lan
 		version := "@latest"
 		if name == "typescript" {
 			// TypeScript 7 ships its own native LSP. Pin the major so a future
-			// compiler release cannot silently change TanGit's protocol backend.
+			// compiler release cannot silently change lazygitGo's protocol backend.
 			version = "@7"
 		}
 		arguments = append(arguments, name+version)

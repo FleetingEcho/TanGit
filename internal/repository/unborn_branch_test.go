@@ -2,9 +2,9 @@ package repository
 
 import (
 	"context"
-	"lazygitapp/internal/sshintegration"
-	"lazygitapp/internal/sshworkspace"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshintegration"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 	"os"
 	"path/filepath"
 	"strings"

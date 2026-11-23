@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const managedLanguageServerManifestFile = ".tangit-language-server.json"
+const managedLanguageServerManifestFile = ".lazygitgo-language-server.json"
 
 type managedLanguageServerManifest struct {
 	Format int    `json:"format"`
@@ -76,7 +76,7 @@ func prepareLanguageServerInstallation(profile languageServerProfile, dataDir st
 	version = shortLanguageServerVersion(version)
 	if installation.OwnedRoot == "" {
 		// Rustup owns its toolchain and files. A successful probe validates the
-		// component but deliberately creates no TanGit deletion ownership.
+		// component but deliberately creates no lazygitGo deletion ownership.
 		installation.ManagedRoot = ""
 		return installation, version, nil
 	}
@@ -178,6 +178,9 @@ func rebaseLanguageServerInstallation(installation *languageServerInstallation, 
 func readManagedLanguageServerManifest(root, id string) (managedLanguageServerManifest, error) {
 	var manifest managedLanguageServerManifest
 	file, err := os.Open(filepath.Join(root, managedLanguageServerManifestFile))
+	if errors.Is(err, os.ErrNotExist) {
+		file, err = os.Open(filepath.Join(root, ".tangit-language-server.json"))
+	}
 	if err != nil {
 		return manifest, err
 	}
@@ -223,7 +226,7 @@ func (a *app) removeManagedLanguageServer(id string) {
 	}
 	root := a.settings.LanguageServers[id].Managed.Root
 	a.confirmAttention("Remove managed language server", profile.Name,
-		"Only TanGit's managed copy will be deleted. The enabled preference will be kept and PATH can be used afterwards.",
+		"Only lazygitGo's managed copy will be deleted. The enabled preference will be kept and PATH can be used afterwards.",
 		func() { a.beginManagedLanguageServerRemoval(id, root) })
 }
 
@@ -239,7 +242,7 @@ func (a *app) beginManagedLanguageServerRemoval(id, root string) {
 	}
 	a.lsp.uninstalling[id] = true
 	connection := a.stopLanguageServerForLifecycle(id)
-	a.notifyTranslated("info", trf("Removing %s", profile.Name), "Removing TanGit's managed language-server copy…")
+	a.notifyTranslated("info", trf("Removing %s", profile.Name), "Removing lazygitGo's managed language-server copy…")
 	dataDir := a.dataDir()
 	go func() {
 		defer a.recoverBackground()
@@ -274,7 +277,7 @@ func (a *app) beginManagedLanguageServerRemoval(id, root string) {
 			a.settings.LanguageServers[id] = current
 			a.saveSettings()
 			a.loadGoLanguageServerDraft()
-			a.notifyTranslated("success", trf("%s removed", profile.Name), "TanGit's managed copy was removed.")
+			a.notifyTranslated("success", trf("%s removed", profile.Name), "lazygitGo's managed copy was removed.")
 			a.syncGoLanguageServer()
 		})
 	}()
@@ -285,7 +288,7 @@ func validateManagedLanguageServerDeletion(profile languageServerProfile, dataDi
 	if profile.Custom || server.Custom != nil || profile.ID == "rust" || server.Managed == nil ||
 		server.Managed.Root != root || root != managedLanguageServerRoot(dataDir, profile.ID) ||
 		!validManagedLanguageServerRoot(profile.ID, root) || !languageServerSettingsReferenceRoot(server, root) {
-		return errors.New("language server is not a TanGit-owned isolated installation")
+		return errors.New("language server is not a lazygitGo-owned isolated installation")
 	}
 	info, err := os.Lstat(root)
 	if err != nil {

@@ -10,7 +10,7 @@ import (
 
 	"github.com/egoist/mygo/ui/editor"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // runGitIn runs git in dir, for the round-trip test against a real repository.

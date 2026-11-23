@@ -1,8 +1,8 @@
 package app
 
 import (
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 	"github.com/egoist/mygo/ui"
-	"lazygitapp/internal/repository"
 )
 
 // shortcutApp resolves at invocation time, not when a tab was built. Global

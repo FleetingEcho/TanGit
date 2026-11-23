@@ -10,7 +10,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 type blockingReviewSession struct {
@@ -176,7 +176,7 @@ func TestReviewedRowHoverOffersUnreviewInsteadOfAnotherReview(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.waitFor(t, "hover unreview action", func() bool { return calls.has("review:a.txt:false") })
-	if got := reviewActionTooltip(); !strings.Contains(got, "only a status in TanGit") || !strings.Contains(got, "do not change Git information") {
+	if got := reviewActionTooltip(); !strings.Contains(got, "only a status in lazygitGo") || !strings.Contains(got, "do not change Git information") {
 		t.Fatalf("review action does not explain its app-only scope: %q", got)
 	}
 }

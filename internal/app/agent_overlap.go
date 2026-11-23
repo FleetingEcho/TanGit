@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"lazygitapp/internal/agentwork"
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // agentOverlapUIState is one read-only, task-bound analysis. Results are hints,

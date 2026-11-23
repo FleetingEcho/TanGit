@@ -14,7 +14,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"lazygitapp/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
 // continuePreflightSettings names the two independent Continue gates. The
@@ -178,7 +178,7 @@ type languageServerSettings struct {
 	// Formatter is an optional user-installed command for Format Document and
 	// Format Selection. It reads source from stdin and prints the replacement.
 	Formatter string `json:"formatter,omitempty"`
-	// Managed identifies an isolated copy installed and owned by TanGit. It is
+	// Managed identifies an isolated copy installed and owned by lazygitGo. It is
 	// deliberately explicit: a path under the tools directory alone never
 	// grants permission to remove user files.
 	Managed *managedLanguageServerSettings `json:"managed,omitempty"`

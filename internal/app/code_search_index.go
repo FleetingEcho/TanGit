@@ -19,7 +19,7 @@ import (
 
 const (
 	codeSearchIndexVersion                   = 1
-	codeSearchIndexManifestFile              = "tangit-index.json"
+	codeSearchIndexManifestFile              = "lazygitgo-index.json"
 	codeSearchIndexRefreshInterval           = 30 * time.Second
 	codeSearchIndexBackgroundRefreshInterval = 5 * time.Minute
 	codeSearchIndexRebuildDelay              = 1500 * time.Millisecond
@@ -460,7 +460,7 @@ func buildCodeSearchIndex(ctx context.Context, root string, paths, excluded []st
 	// Staging cleanup is serialized globally in cache GC and explicit cache
 	// clearing. One repository's per-index lock must not imply it owns another
 	// repository's unfinished generation in this shared parent directory.
-	staging, err := os.MkdirTemp(parent, ".tangit-index-")
+	staging, err := os.MkdirTemp(parent, codeSearchIndexStagingPrefix)
 	if err != nil {
 		return missing, err
 	}
@@ -579,7 +579,7 @@ func cleanupCodeSearchIndexStaging(parent string, now time.Time) {
 	}
 	cutoff := now.Add(-codeSearchIndexStagingMaxAge)
 	for _, entry := range entries {
-		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), ".tangit-index-") {
+		if !entry.IsDir() || !isCodeSearchIndexStagingName(entry.Name()) {
 			continue
 		}
 		info, err := entry.Info()
@@ -648,8 +648,17 @@ func codeSearchIndexDiskBytes(directory string) int64 {
 	return total
 }
 
+const codeSearchIndexStagingPrefix = ".lazygitgo-index-"
+
+func isCodeSearchIndexStagingName(name string) bool {
+	return strings.HasPrefix(name, codeSearchIndexStagingPrefix) || strings.HasPrefix(name, ".tangit-index-")
+}
+
 func loadCodeSearchIndexManifest(directory string) (codeSearchIndexManifest, error) {
 	data, err := os.ReadFile(filepath.Join(directory, codeSearchIndexManifestFile))
+	if errors.Is(err, os.ErrNotExist) {
+		data, err = os.ReadFile(filepath.Join(directory, "tangit-index.json"))
+	}
 	if err != nil {
 		return codeSearchIndexManifest{}, err
 	}

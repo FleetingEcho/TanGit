@@ -16,7 +16,7 @@ import (
 
 	"github.com/egoist/mygo/ui/editor"
 
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 type externalFormatterCall struct {
@@ -55,7 +55,7 @@ func TestParseCodeFormatterCommandQuotesAndFilePlaceholder(t *testing.T) {
 }
 
 func TestCodeFormatterHelperProcess(t *testing.T) {
-	mode := os.Getenv("TANGIT_CODE_FORMATTER_HELPER")
+	mode := os.Getenv("LAZYGITGO_CODE_FORMATTER_HELPER")
 	if mode == "" {
 		return
 	}
@@ -73,7 +73,7 @@ func TestCodeFormatterHelperProcess(t *testing.T) {
 				break
 			}
 		}
-		want := []string{"--tag", "$HOME literal", "--stdin-filepath", os.Getenv("TANGIT_CODE_FORMATTER_EXPECT_FILE"), "--", "value with spaces"}
+		want := []string{"--tag", "$HOME literal", "--stdin-filepath", os.Getenv("LAZYGITGO_CODE_FORMATTER_EXPECT_FILE"), "--", "value with spaces"}
 		if separator < 0 || !reflect.DeepEqual(os.Args[separator+1:], want) {
 			fmt.Fprintf(os.Stderr, "arguments = %#v, want %#v", os.Args, want)
 			os.Exit(13)
@@ -108,10 +108,10 @@ func TestRunCodeFormatterCommandArgumentsStdinStdoutFailuresAndTimeout(t *testin
 		{name: "timeout kills a stuck formatter", mode: "hang", input: "source", timeout: 40 * time.Millisecond, wantErr: errCodeFormatterTimedOut},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			t.Setenv("TANGIT_CODE_FORMATTER_HELPER", test.mode)
+			t.Setenv("LAZYGITGO_CODE_FORMATTER_HELPER", test.mode)
 			root := t.TempDir()
 			filePath := filepath.Join(root, "file with spaces.go")
-			t.Setenv("TANGIT_CODE_FORMATTER_EXPECT_FILE", filePath)
+			t.Setenv("LAZYGITGO_CODE_FORMATTER_EXPECT_FILE", filePath)
 			commandLine := strconv.Quote(os.Args[0]) +
 				` -test.run=^TestCodeFormatterHelperProcess$ -- --tag "$HOME literal" --stdin-filepath "{{file}}" -- "value with spaces"`
 			timeout := test.timeout

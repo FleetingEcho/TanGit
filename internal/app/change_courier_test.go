@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"lazygitapp/internal/repository"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 type courierTargetSession struct {

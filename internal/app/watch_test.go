@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // watchingLiveOpener adds filesystem notifications to the mutable repository

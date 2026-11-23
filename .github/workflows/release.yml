@@ -25,7 +25,7 @@ jobs:
         run: |
           if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-              --draft --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+              --draft --verify-tag --title "lazygitGo $GITHUB_REF_NAME" --generate-notes
           fi
 
   build:
@@ -82,4 +82,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
-        run: go tool mygo build -platform "${{ matrix.platform }}" -upload
+        run: |
+          if [ "${{ matrix.name }}" = Windows ]; then
+            bash scripts/build-windows.sh "${{ matrix.platform }}" -upload
+          else
+            go tool mygo build -platform "${{ matrix.platform }}" -upload
+          fi
+      - name: Add Debian package upgrade metadata
+        if: matrix.name == 'Linux'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --pattern SHA256SUMS --dir build --clobber
+          debs=(build/linux-*/lazygitgo_*.deb)
+          bash scripts/prepare-debian-upgrade.sh build "${debs[@]}"
+          gh release upload "$GITHUB_REF_NAME" --clobber "${debs[@]}" build/SHA256SUMS

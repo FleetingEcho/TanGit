@@ -45,7 +45,7 @@ func writeResponseHelper(t *testing.T, path, before string, response any) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeExecutable(t, path, before+"\ncat > \"$2\" <<'TANGIT_RESPONSE'\n"+string(data)+"\nTANGIT_RESPONSE\n")
+	writeExecutable(t, path, before+"\ncat > \"$2\" <<'LAZYGITGO_RESPONSE'\n"+string(data)+"\nLAZYGITGO_RESPONSE\n")
 }
 
 func TestCommandAdvisorRealHelperIsolatedProtocol(t *testing.T) {
@@ -242,7 +242,7 @@ func TestCommandAdvisorRejectsInvalidResponses(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			writeExecutable(t, helper, "cat > \"$2\" <<'TANGIT_RESPONSE'\n"+string(data)+test.rawSuffix+"\nTANGIT_RESPONSE\n")
+			writeExecutable(t, helper, "cat > \"$2\" <<'LAZYGITGO_RESPONSE'\n"+string(data)+test.rawSuffix+"\nLAZYGITGO_RESPONSE\n")
 			advisor, err := NewCommandAdvisor(CommandConfig{Template: shellQuoteHelper(helper) + " {requestFile} {responseFile}", Timeout: 5 * time.Second, TempDir: root})
 			if err != nil {
 				t.Fatal(err)
@@ -310,7 +310,7 @@ func TestCommandAdvisorResponseSizeLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	data = append(bytes.Repeat([]byte{' '}, 128), data...)
-	writeExecutable(t, helper, "cat > \"$2\" <<'TANGIT_RESPONSE'\n"+string(data)+"\nTANGIT_RESPONSE\n")
+	writeExecutable(t, helper, "cat > \"$2\" <<'LAZYGITGO_RESPONSE'\n"+string(data)+"\nLAZYGITGO_RESPONSE\n")
 	advisor, err := NewCommandAdvisor(CommandConfig{Template: shellQuoteHelper(helper) + " {requestFile} {responseFile}", TempDir: root})
 	if err != nil {
 		t.Fatal(err)

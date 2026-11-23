@@ -40,7 +40,7 @@ func latestLanguageServerRelease(ctx context.Context, repository string) (langua
 		return languageServerRelease{}, err
 	}
 	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("User-Agent", "TanGit language-server installer")
+	request.Header.Set("User-Agent", "lazygitGo language-server installer")
 	response, err := languageServerReleaseHTTPClient.Do(request)
 	if err != nil {
 		return languageServerRelease{}, err
@@ -189,7 +189,7 @@ func downloadLanguageServerRelease(ctx context.Context, source, target string) e
 	if err != nil {
 		return err
 	}
-	request.Header.Set("User-Agent", "TanGit language-server installer")
+	request.Header.Set("User-Agent", "lazygitGo language-server installer")
 	response, err := languageServerReleaseHTTPClient.Do(request)
 	if err != nil {
 		return err

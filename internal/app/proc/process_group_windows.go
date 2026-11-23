@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // configureCustomCancellation uses Windows' supported process-tree terminate

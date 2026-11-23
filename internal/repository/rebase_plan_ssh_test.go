@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/sshintegration"
-	"lazygitapp/internal/sshworkspace"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/sshintegration"
+	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 // This is the remote counterpart of the local live-todo integration test. The
@@ -35,8 +35,8 @@ func TestOpenSSHWorkspaceVisualRebasePlanRealOpenSSH(t *testing.T) {
 
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
-	runGit(t, dir, "config", "user.name", "TanGit Test")
-	runGit(t, dir, "config", "user.email", "tangit@example.com")
+	runGit(t, dir, "config", "user.name", "lazygitGo Test")
+	runGit(t, dir, "config", "user.email", "lazygitgo@example.com")
 	runGit(t, dir, "config", "rebase.updateRefs", "true")
 	hashes := map[string]string{}
 	for index, subject := range []string{"root", "first", "second"} {

@@ -21,7 +21,7 @@ func TestClearUnfinishedIndexesCancelsAndWaitsForBuilders(t *testing.T) {
 	a := newApp(nil)
 	a.pathCache = filepath.Join(t.TempDir(), "cache")
 	cacheRoot := filepath.Join(a.pathCache, codeSearchCacheDirName)
-	staging := filepath.Join(cacheRoot, ".tangit-index-abandoned")
+	staging := filepath.Join(cacheRoot, ".lazygitgo-index-abandoned")
 	if err := os.MkdirAll(staging, 0o755); err != nil {
 		t.Fatal(err)
 	}

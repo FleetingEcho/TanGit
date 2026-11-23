@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func TestRepositoryShutdownCancelsCustomCommand(t *testing.T) {

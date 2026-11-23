@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/agentwork"
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 func agentActivityCount(task agentwork.Task, kind agentwork.ActivityKind) int {

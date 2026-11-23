@@ -11,11 +11,21 @@ import (
 	"strings"
 	"time"
 
-	"lazygitapp/internal/agentwork"
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
-const DataDirEnvironment = "TANGIT_AGENT_DATA_DIR"
+const DataDirEnvironment = "LAZYGITGO_AGENT_DATA_DIR"
+
+const LegacyDataDirectoryName = "TanGit"
+
+// DefaultDataDirectoryName reuses an existing installation's data directory.
+func DefaultDataDirectoryName(configDir string) string {
+	if _, err := os.Stat(filepath.Join(configDir, LegacyDataDirectoryName)); !errors.Is(err, os.ErrNotExist) {
+		return LegacyDataDirectoryName
+	}
+	return "lazygitGo"
+}
 
 // ResolveDataDir applies the CLI, environment, then per-user default precedence.
 // The desktop app must be configured with this same directory to share tasks.
@@ -25,6 +35,9 @@ func ResolveDataDir(explicit string) (string, error) {
 		dir = strings.TrimSpace(os.Getenv(DataDirEnvironment))
 	}
 	if dir == "" {
+		dir = strings.TrimSpace(os.Getenv("TANGIT_AGENT_DATA_DIR"))
+	}
+	if dir == "" {
 		configDir, err := os.UserConfigDir()
 		if err != nil {
 			return "", fmt.Errorf("resolve user config directory: %w", err)
@@ -32,7 +45,7 @@ func ResolveDataDir(explicit string) (string, error) {
 		if strings.TrimSpace(configDir) == "" {
 			return "", errors.New("user config directory is empty; set --data-dir or " + DataDirEnvironment)
 		}
-		dir = filepath.Join(configDir, "TanGit")
+		dir = filepath.Join(configDir, DefaultDataDirectoryName(configDir))
 	}
 	absolute, err := filepath.Abs(dir)
 	if err != nil {
@@ -360,8 +373,8 @@ func (s *Service) Report(ctx context.Context, params ReportParams) (agentwork.Ta
 }
 
 const (
-	agentCommentStart = "<!-- TANGIT AGENT COMMENT START -->"
-	agentCommentEnd   = "<!-- TANGIT AGENT COMMENT END -->"
+	agentCommentStart = "<!-- LAZYGITGO AGENT COMMENT START -->"
+	agentCommentEnd   = "<!-- LAZYGITGO AGENT COMMENT END -->"
 )
 
 // Comment appends feedback without implicitly resuming or changing status.

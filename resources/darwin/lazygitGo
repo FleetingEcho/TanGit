@@ -1,0 +1,59 @@
+#!/bin/sh
+# LaunchServices does not preserve the caller's working directory, so resolve
+# the repository before opening a new application instance.
+set -eu
+
+usage() {
+    printf 'Usage: lazygitGo [<repository-path>] | lazygitGo agent <command>\n'
+}
+
+agent=false
+case "${1-}" in
+    -h|--help) usage; exit 0 ;;
+    agent) agent=true ;;
+    --) shift ;;
+esac
+if [ "$agent" = false ] && [ "$#" -gt 1 ]; then
+    usage >&2
+    exit 2
+fi
+
+app=${LAZYGITGO_APP:-${TANGIT_APP-}}
+if [ -z "$app" ]; then
+    # The built-in updater replaces the bundle in place, including when
+    # its installed path still ends in TanGit.app.
+    for candidate in /Applications/lazygitGo.app "$HOME/Applications/lazygitGo.app" \
+        /Applications/TanGit.app "$HOME/Applications/TanGit.app"; do
+        if [ -d "$candidate" ]; then
+            app=$candidate
+            break
+        fi
+    done
+fi
+if [ ! -d "$app" ]; then
+    printf 'lazygitGo.app was not found. Install it in Applications, or set LAZYGITGO_APP to its location.\n' >&2
+    exit 1
+fi
+
+if [ "$agent" = true ]; then
+    exe="$app/Contents/MacOS/lazygitGo"
+    if [ ! -x "$exe" ]; then
+        exe="$app/Contents/MacOS/TanGit"
+    fi
+    exec "$exe" "$@"
+fi
+if [ "$#" -eq 0 ]; then
+    exec open -a "$app"
+fi
+case "$1" in
+    /*) target=$1 ;;
+    *) target="$PWD/$1" ;;
+esac
+if [ ! -d "$target" ]; then
+    printf 'Repository folder does not exist: %s\n' "$1" >&2
+    exit 1
+fi
+repository=$(CDPATH= cd "$target" && pwd -P)
+# --args alone is ignored for an already running application. A fresh
+# instance receives this path and opens its repository page on startup.
+exec open -n -a "$app" --args "$repository"

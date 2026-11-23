@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"lazygitapp/internal/workspace"
+	"github.com/FleetingEcho/lazygitGo/internal/workspace"
 )
 
 func TestRemoteGitFileOpensBuiltInWithoutLocalLstat(t *testing.T) {

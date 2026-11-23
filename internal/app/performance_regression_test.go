@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // cancellationDiffSession models a repository read that observes cancellation.

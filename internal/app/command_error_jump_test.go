@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func TestClickingStatusErrorOpensAndScrollsToFailedCommand(t *testing.T) {

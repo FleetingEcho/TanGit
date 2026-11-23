@@ -461,7 +461,7 @@ func clearRegenerableCaches(cacheDir string) (freed int64) {
 			directory := filepath.Join(root, entry.Name())
 			if cacheHashHex(entry.Name(), 16) {
 				removeCodeSearchIndexDirectory(directory)
-			} else if strings.HasPrefix(entry.Name(), ".tangit-index-") {
+			} else if isCodeSearchIndexStagingName(entry.Name()) {
 				_ = os.RemoveAll(directory)
 			}
 		}

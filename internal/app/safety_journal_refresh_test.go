@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"lazygitapp/internal/repository"
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 func TestSnapshotSignaturesTrackJournalAndRecoveryOnlyChanges(t *testing.T) {
