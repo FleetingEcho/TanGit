@@ -556,15 +556,16 @@ func (a *app) cockpitCardWithActions(c *ui.Context, id, title string, icon *ui.S
 	})
 }
 
-// cockpitPeriodButton is a card's own time-range control: a clock icon button
-// whose menu lists the periods, the current one checked. It returns the new
+// cockpitPeriodButton is a card's own time-range control: a clock icon and the
+// current period in words, as a button whose menu lists the periods, the
+// current one checked. Each card keeps its own period. It returns the new
 // period's index when the user picked another one.
 func cockpitPeriodButton(c *ui.Context, period int, label string) (int, bool) {
 	theme := c.Theme()
 	if period < 0 || period >= len(contributorRanges) {
 		period = 0
 	}
-	button := ui.ButtonBase(c).Padding(4).Radius(theme.Radius).Shrink(0).
+	button := ui.ButtonBase(c).Padding(4, 8).Gap(6).AlignItems(ui.Center).Radius(theme.Radius).Shrink(0).
 		Label(label).Tooltip(label + " · " + tr(contributorRanges[period].label))
 	if button.Hovered() {
 		button.Background(theme.SurfaceHover)
@@ -577,8 +578,10 @@ func cockpitPeriodButton(c *ui.Context, period int, label string) (int, bool) {
 			}
 		}
 	})
+	// The icon is followed by the period in words, so the card says what it shows.
 	button.Children(func() {
 		ui.Icon(c, historyIcon).FontSize(15).TextColor(theme.TextMuted)
+		ui.Text(c, tr(contributorRanges[period].label)).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).SingleLine()
 	})
 	return picked, picked >= 0 && picked != period
 }
@@ -617,45 +620,87 @@ func cockpitMetric(c *ui.Context, value, caption string, color ui.Color) {
 }
 
 func (a *app) cockpitWorkingTreeCard(c *ui.Context, summary cockpitSummary) {
-	a.cockpitCard(c, "working-tree", "Working tree", folderIcon, func() {
+	work := summary.WorkingTree
+	// The buttons sit at the top right of the card, beside its title.
+	actions := func() {
+		a.cockpitCommandButton(c, commandOpenChanges, "Open Changes", false)
+		if work.Staged > 0 {
+			a.cockpitCommandButton(c, commandCommitStaged, "Commit staged", false)
+		}
+		if work.Reviewed < work.ReviewTotal {
+			a.cockpitCommandButton(c, commandNextUnreviewed, "Next unreviewed", false)
+		}
+	}
+	a.cockpitCardWithActions(c, "working-tree", "Working tree", folderIcon, actions, func() {
 		theme := c.Theme()
-		work := summary.WorkingTree
 		total := work.Staged + work.Unstaged + work.Untracked + work.Conflicted
-		color := theme.Text
-		if work.Conflicted > 0 {
-			color = theme.Danger
-		}
-		cockpitMetric(c, fmt.Sprintf("%d", total), tr("changed files"), color)
-		ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
-			cockpitChip(c, fmt.Sprintf(tr("%d staged"), work.Staged), theme.Success, nil)
-			cockpitChip(c, fmt.Sprintf(tr("%d modified"), work.Unstaged), theme.Warning, nil)
-			cockpitChip(c, fmt.Sprintf(tr("%d untracked"), work.Untracked), theme.TextMuted, nil)
+		if total == 0 {
+			// Nothing to count: say so once instead of listing zeros.
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Margin(4, 0, 4, 0).Children(func() {
+				ui.Icon(c, commitIcon).FontSize(18).TextColor(theme.Success)
+				ui.Text(c, tr("Working tree clean")).FontSize(theme.FontSize + 1).Bold()
+			})
+		} else {
+			parts := []struct {
+				count int
+				label string
+				color ui.Color
+			}{
+				{work.Staged, tr("Staged"), theme.Success},
+				{work.Unstaged, tr("Modified"), theme.Warning},
+				{work.Untracked, tr("Untracked"), theme.TextMuted},
+			}
 			if work.Conflicted > 0 {
-				cockpitChip(c, fmt.Sprintf(tr("%d conflicts"), work.Conflicted), theme.Danger, conflictIcon)
+				parts = append(parts, struct {
+					count int
+					label string
+					color ui.Color
+				}{work.Conflicted, tr("Conflicts"), theme.Danger})
 			}
-		})
-		if work.ReviewTotal > 0 {
-			ui.Progress(c, float64(work.Reviewed)/float64(work.ReviewTotal)).Height(5)
+			number := theme.Text
+			if work.Conflicted > 0 {
+				number = theme.Danger
+			}
+			// Left: the total. Right: where those changes stand, one row per
+			// state with its share as a thin bar. The split matches Branch health.
+			ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Stretch).Gap(12).Children(func() {
+				ui.Column(c).Width(110).Shrink(0).Justify(ui.Center).Gap(0).Children(func() {
+					ui.Text(c, fmt.Sprintf("%d", total)).FontSize(34).Bold().TextColor(number).SingleLine()
+					ui.Text(c, tr("changed files")).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).SingleLine()
+				})
+				ui.Box(c).Width(1).AlignSelf(ui.Stretch).Background(theme.Border.Alpha(0.6)).Shrink(0)
+				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+					const track = 96
+					for index, part := range parts {
+						c.Key(fmt.Sprintf("work-part:%d", index))
+						dot, text, value := part.color, theme.Text, theme.Text
+						if part.count == 0 {
+							dot, text, value = theme.TextMuted.Alpha(0.35), theme.TextMuted.Alpha(0.7), theme.TextMuted.Alpha(0.7)
+						}
+						ui.Row(c).FillWidth().MinWidth(0).Height(26).AlignItems(ui.Center).Gap(8).Padding(0, 4).Children(func() {
+							ui.Box(c).Width(8).Height(8).Radius(4).Background(dot).Shrink(0)
+							ui.Text(c, part.label).FontSize(theme.FontSize - 1).TextColor(text).SingleLine().Width(0).Grow(1).MinWidth(0)
+							ui.Text(c, fmt.Sprintf("%d", part.count)).FontSize(theme.FontSize - 1).Bold().TextColor(value).SingleLine().Shrink(0)
+							ui.Row(c).Width(track).Height(4).Radius(2).Clip().Shrink(0).Background(theme.Border.Alpha(0.5)).Children(func() {
+								if part.count > 0 {
+									ui.Box(c).Width(max(4, track*float32(part.count)/float32(total))).Height(4).Background(part.color)
+								}
+							})
+						})
+					}
+				})
+			})
 		}
-		review := fmt.Sprintf(tr("%d of %d files reviewed"), work.Reviewed, work.ReviewTotal)
-		if work.ReviewLoading {
-			review += " · " + tr("review marks loading")
-		}
-		ui.Text(c, review).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-		ui.Row(c).Gap(7).Wrap().Children(func() {
-			a.cockpitCommandButton(c, commandOpenChanges, "Open Changes", false)
-			if work.Staged > 0 {
-				a.cockpitCommandButton(c, commandCommitStaged, "Commit staged", false)
-			}
-			if work.Reviewed < work.ReviewTotal {
-				a.cockpitCommandButton(c, commandNextUnreviewed, "Next unreviewed", false)
-			}
-		})
 	})
 }
 
 func (a *app) cockpitCollaborationCard(c *ui.Context, summary cockpitSummary) {
-	a.cockpitCard(c, "collaboration", "Collaboration", branchesIcon, func() {
+	actions := func() {
+		a.cockpitCommandButton(c, commandOpenPRChecks, "Open PR checks", false)
+		a.cockpitCommandButton(c, commandOpenPull, "Pull", false)
+		a.cockpitCommandButton(c, commandOpenPush, "Push", false)
+	}
+	a.cockpitCardWithActions(c, "collaboration", "Collaboration", branchesIcon, actions, func() {
 		theme := c.Theme()
 		collaboration := summary.Collaboration
 		if collaboration.DivergenceKnown {
@@ -674,16 +719,17 @@ func (a *app) cockpitCollaborationCard(c *ui.Context, summary cockpitSummary) {
 			ui.Text(c, checksLabel).Bold().FontSize(theme.FontSize - 1)
 			ui.Text(c, tr(collaboration.ChecksSummary)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		})
-		ui.Row(c).Gap(7).Wrap().Children(func() {
-			a.cockpitCommandButton(c, commandOpenPRChecks, "Open PR checks", false)
-			a.cockpitCommandButton(c, commandOpenPull, "Pull", false)
-			a.cockpitCommandButton(c, commandOpenPush, "Push", false)
-		})
 	})
 }
 
 func (a *app) cockpitRecentCard(c *ui.Context, summary cockpitSummary) {
-	a.cockpitCard(c, "recent", "Recent activity", historyIcon, func() {
+	actions := func() {
+		if a.showActivityCenter != nil {
+			iconButton(c, "View all activity", "Open the Activity Center for every open repository", historyIcon, false, a.showActivityCenter)
+		}
+		a.cockpitCommandButton(c, commandOpenLog, "Open Command log", false)
+	}
+	a.cockpitCardWithActions(c, "recent", "Recent activity", historyIcon, actions, func() {
 		theme := c.Theme()
 		if len(summary.Recent) == 0 {
 			ui.Text(c, tr("No activity has been recorded in this session")).
@@ -718,12 +764,6 @@ func (a *app) cockpitRecentCard(c *ui.Context, summary cockpitSummary) {
 				}
 			}
 		}
-		ui.Row(c).Gap(7).Wrap().Children(func() {
-			if a.showActivityCenter != nil {
-				iconButton(c, "View all activity", "Open the Activity Center for every open repository", historyIcon, false, a.showActivityCenter)
-			}
-			a.cockpitCommandButton(c, commandOpenLog, "Open Command log", false)
-		})
 	})
 }
 
@@ -739,7 +779,10 @@ func (a *app) cockpitContributorsCard(c *ui.Context, wide bool) {
 		a.contributorBranchPicker(c, contributorBranchPickerWidth(c, state.branchInput))
 		if index, changed := cockpitPeriodButton(c, state.period, tr("Contributor period")); changed {
 			a.cockpit.contributors.period = index
+			// The read covers twice the period, so a longer one needs a new read
+			// (kept per branch and period, so going back is instant).
 			a.recomputeContributorStats()
+			a.loadCockpitContributors()
 		}
 		if a.showContributors != nil {
 			tip := tr("Open the Activity Center's contributor list")

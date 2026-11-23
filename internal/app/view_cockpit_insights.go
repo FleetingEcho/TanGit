@@ -152,8 +152,9 @@ func (a *app) cockpitHeatmapCard(c *ui.Context, width float32) {
 	})
 }
 
-// cockpitCodeChangesCard shows the lines added and deleted over the period
-// chosen in the Contributors card, as a mirrored bar chart.
+// cockpitCodeChangesCard shows the lines added and deleted over its own period,
+// chosen with the card's time-range button, as a mirrored bar chart. The
+// Contributors card's period does not change it.
 func (a *app) cockpitCodeChangesCard(c *ui.Context) {
 	insights := a.cockpit.insights
 	if insights.volumeUnavailable {
@@ -260,60 +261,85 @@ func (a *app) cockpitBranchHealthCard(c *ui.Context) {
 			return
 		}
 		health := insights.health
-		caption := ""
-		if health.Default != "" {
-			caption = trf("compared with %s", health.Default)
-		}
-		cockpitMetric(c, trf("%d local", health.Local), caption, theme.Text)
+		// Three short tabs: the number and one word. What each group means (and
+		// its threshold) is in its tooltip, so the card stays quiet when nothing
+		// needs care.
 		categories := []struct {
-			label string
-			color ui.Color
+			name    string
+			meaning string
+			color   ui.Color
 		}{
-			{tr("merged — safe to delete"), theme.Success},
-			{trf("stale (%d+ days)", branchStaleDays), theme.Warning},
-			{trf("far behind (%d+ commits)", branchFarBehindAfter), theme.Danger},
+			{tr("Merged"), tr("merged — safe to delete"), theme.Success},
+			{tr("Stale"), trf("stale (%d+ days)", branchStaleDays), theme.Warning},
+			{tr("Far behind"), trf("far behind (%d+ commits)", branchFarBehindAfter), theme.Danger},
 		}
-		selected := insights.healthCategory
-		ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Label(tr("Branch groups")).Children(func() {
-			for index, category := range categories {
-				index, category := index, category
-				count := len(health.Groups[index])
-				label := fmt.Sprintf("%d %s", count, category.label)
-				c.Key(fmt.Sprintf("branch-group:%d", index))
-				active := selected == index
-				button := ui.ButtonBase(c).Padding(2, 9).Radius(999).Border(1, theme.Border).Label(label).Selected(active)
-				switch {
-				case active:
-					button.Background(category.color.Alpha(0.16)).Border(1, category.color.Alpha(0.6))
-				case button.Hovered():
-					button.Background(theme.SurfaceHover)
-				}
-				button.Children(func() {
-					color := theme.TextMuted
-					if count > 0 {
-						color = category.color
-					}
-					ui.Text(c, label).FontSize(theme.FontSize - 1).TextColor(color).SingleLine()
-				})
-				if button.Clicked() {
-					a.cockpit.insights.healthCategory = index
-				}
+		// A group with nothing in it cannot be chosen, and the list never opens on
+		// an empty one while another has branches.
+		selected := min(max(insights.healthCategory, 0), len(categories)-1)
+		first := -1
+		for index := range categories {
+			if len(health.Groups[index]) > 0 {
+				first = index
+				break
 			}
-		})
-		group := health.Groups[min(max(selected, 0), len(health.Groups)-1)]
-		if len(group) == 0 {
-			ui.Text(c, tr("Nothing in this group — the branches are in good shape.")).
-				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		}
-		// The list scrolls when there are many; each row opens in Branches.
+		if first < 0 {
+			ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
+				ui.Icon(c, commitIcon).FontSize(14).TextColor(theme.Success)
+				ui.Text(c, tr("All branches are healthy")).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
+			})
+			return
+		}
+		if len(health.Groups[selected]) == 0 {
+			selected = first
+		}
+		// Left: the groups as a vertical tab list. Right: the chosen group's
+		// branches, each opening in Branches. A row says only what matters for its
+		// group: how old, or how far behind.
 		now := time.Now()
-		if len(group) > 0 {
-			ui.Scroll(c).FillWidth().MinWidth(0).MaxHeight(158).Children(func() {
+		ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Stretch).Gap(10).Children(func() {
+			ui.Column(c).Width(150).Shrink(0).Gap(2).Label(tr("Branch groups")).Children(func() {
+				for index, category := range categories {
+					index, category := index, category
+					count := len(health.Groups[index])
+					c.Key(fmt.Sprintf("branch-group:%d", index))
+					active := selected == index
+					// Every tab has the same layout: dot, name, then the count at the
+					// right edge, so the three line up whatever their state.
+					tab := ui.ButtonBase(c).FillWidth().MinWidth(0).Height(32).Gap(8).Padding(0, 10).AlignItems(ui.Center).
+						Radius(theme.Radius).Label(fmt.Sprintf("%d %s", count, category.name)).
+						Tooltip(category.meaning).Selected(active).Disabled(count == 0)
+					switch {
+					case active:
+						tab.Background(category.color.Alpha(0.14))
+					case count > 0 && tab.Hovered():
+						tab.Background(theme.SurfaceHover)
+					}
+					tab.Children(func() {
+						dot, label, number := category.color, theme.Text, theme.TextMuted
+						if count == 0 {
+							dot, label = theme.TextMuted.Alpha(0.35), theme.TextMuted.Alpha(0.6)
+						}
+						if active {
+							number = category.color
+						}
+						ui.Box(c).Width(8).Height(8).Radius(4).Background(dot).Shrink(0)
+						ui.Text(c, category.name).FontSize(theme.FontSize - 1).TextColor(label).SingleLine().Width(0).Grow(1).MinWidth(0)
+						ui.Text(c, fmt.Sprintf("%d", count)).FontSize(theme.FontSize - 1).Bold().TextColor(number).SingleLine().Shrink(0)
+					})
+					if tab.Clicked() && count > 0 {
+						a.cockpit.insights.healthCategory = index
+					}
+				}
+			})
+			ui.Box(c).Width(1).AlignSelf(ui.Stretch).Background(theme.Border.Alpha(0.6)).Shrink(0)
+			// The list scrolls when there are many.
+			ui.Scroll(c).Grow(1).Basis(0).MinWidth(0).MaxHeight(158).Children(func() {
 				ui.Column(c).FillWidth().MinWidth(0).Gap(0).Children(func() {
-					for _, branch := range group {
+					for _, branch := range health.Groups[selected] {
 						branch := branch
 						c.Key("health-branch:" + branch.Name)
-						row := ui.ButtonBase(c).FillWidth().MinWidth(0).Gap(8).Padding(3, 4).AlignItems(ui.Center).
+						row := ui.ButtonBase(c).FillWidth().MinWidth(0).Gap(8).Padding(4, 6).AlignItems(ui.Center).
 							Radius(theme.Radius).Role(ui.RoleOption).Label(branch.Name)
 						if row.Hovered() {
 							row.Background(theme.SurfaceHover)
@@ -322,8 +348,8 @@ func (a *app) cockpitBranchHealthCard(c *ui.Context) {
 							ui.Icon(c, branchIcon).FontSize(13).TextColor(theme.TextMuted).Shrink(0)
 							ui.Text(c, branch.Name).SingleLine().Width(0).Grow(1).MinWidth(0).Tooltip(branch.Name)
 							detail := cockpitBranchAge(branch.LastCommit, now)
-							if branch.Behind > 0 {
-								detail += " · " + trf("%d behind", branch.Behind)
+							if selected == branchCategoryBehind && branch.Behind > 0 {
+								detail = trf("%d behind", branch.Behind)
 							}
 							ui.Text(c, detail).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted).SingleLine().Shrink(0)
 						})
@@ -333,7 +359,7 @@ func (a *app) cockpitBranchHealthCard(c *ui.Context) {
 					}
 				})
 			})
-		}
+		})
 	})
 }
 

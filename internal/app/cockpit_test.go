@@ -580,7 +580,7 @@ func TestOverviewShowsHeatmapCodeChangesAndBranchHealth(t *testing.T) {
 	}
 	// The merged group is first. Branches are only listed here: deleting them
 	// is left to the Branches page.
-	if _, ok := h.tester.Find("1 merged — safe to delete"); !ok {
+	if _, ok := h.tester.Find("1 Merged"); !ok {
 		t.Fatalf("merged group chip is missing: %q", texts)
 	}
 	if _, ok := h.tester.Find("Delete branch done"); ok {
@@ -590,7 +590,7 @@ func TestOverviewShowsHeatmapCodeChangesAndBranchHealth(t *testing.T) {
 		t.Fatalf("the Open Branches button is missing: %q", texts)
 	}
 	// The stale group lists the old branch.
-	if err := h.tester.Click("1 stale (90+ days)"); err != nil {
+	if err := h.tester.Click("1 Stale"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()

@@ -260,10 +260,23 @@ func TestOverviewScreenshots(t *testing.T) {
 		a.workspaceTab = sectionOverview
 		a.prepareCockpit()
 		tt.SetSize(size.w, size.h)
+		// A working tree with changes in each state, so the card has something
+		// to show. The session refreshes the snapshot, so set it on every poll.
+		changes := []repository.File{
+			{Path: "internal/app/view_cockpit.go", Staged: true, Tracked: true},
+			{Path: "internal/app/cockpit_test.go", Staged: true, Tracked: true},
+			{Path: "README.md", Unstaged: true, Tracked: true},
+			{Path: "docs/guide.md", Unstaged: true, Tracked: true},
+			{Path: "docs/notes.md", Unstaged: true, Tracked: true},
+			{Path: "scratch.txt"},
+		}
 		settleShot(t, tt, updated, func() bool {
+			a.snapshot.Files = changes
 			in := a.cockpit.insights
 			return a.cockpit.contributors.loaded && in.volumeLoaded && in.healthLoaded
 		})
+		a.snapshot.Files = changes
+		tt.Frame()
 		saveScreenshot(t, dir, "overview-"+size.name+"-dark", tt)
 	}
 }
