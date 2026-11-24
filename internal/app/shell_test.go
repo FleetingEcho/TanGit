@@ -977,3 +977,23 @@ func TestRememberTabColorRejectsBadHex(t *testing.T) {
 		t.Fatal("forgetting an unknown path bumped the history revision")
 	}
 }
+
+// A repository reopened through the real install path keeps its remembered
+// tab color: the rebuild in rememberOpened must not drop it.
+func TestShellTabColorSurvivesFullReopen(t *testing.T) {
+	s, tt, updated := newShellTester(t, repository.Snapshot{Root: "/work/project", Branch: "main"})
+	tab := readyShellTab(s, "/work/project")
+	tab.app.recentRepositories = []recentRepository{{Path: "/work/project", TabColor: "#c56f6f"}}
+	s.activate(s.indexOf(tab))
+	tt.Frame()
+	openShellRepo(t, s, tt, updated, "/work/project")
+	for _, repo := range tab.app.recentRepositories {
+		if cleanRepoPath(repo.Path) == "/work/project" {
+			if repo.TabColor != "#c56f6f" {
+				t.Fatalf("a full reopen dropped the tab color: %q", repo.TabColor)
+			}
+			return
+		}
+	}
+	t.Fatal("the repository lost its recent entry after reopening")
+}

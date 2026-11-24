@@ -233,6 +233,7 @@ func rememberRecentMode(repositories []recentRepository, path string, now int64,
 		}
 		if cleanRepoPath(r.Path) == path {
 			out[0].Name = r.Name
+			out[0].TabColor = r.TabColor
 			continue
 		}
 		if kept < maxRecentRepositories {
