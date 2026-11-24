@@ -88,7 +88,7 @@ func TestWatchReportsWorkingTreeAndGitMetadataChanges(t *testing.T) {
 	waitRepositoryEvent(t, events)
 }
 
-func TestCoreSnapshotDoesNotNotifyItsOwnRepositoryWatcher(t *testing.T) {
+func TestQuietSnapshotDoesNotNotifyItsOwnRepositoryWatcher(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
 	runGit(t, dir, "config", "user.name", "Desktop Test")
@@ -115,13 +115,17 @@ func TestCoreSnapshotDoesNotNotifyItsOwnRepositoryWatcher(t *testing.T) {
 	}
 	waitRepositoryEvent(t, events)
 
-	if _, err := session.(ProgressiveSession).CoreSnapshot(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-events:
-		t.Fatal("a background snapshot changed Git metadata and notified its own watcher")
-	case <-time.After(3 * repositoryEventDelay):
+	// Exercise both loading the details and reusing them, as the Overview's
+	// quiet refresh does after a watcher notification or timer tick.
+	for _, phase := range []string{"initial details", "cached details"} {
+		if _, err := session.(*gitSession).SnapshotQuiet(ctx); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-events:
+			t.Fatalf("quiet snapshot (%s) notified its own repository watcher", phase)
+		case <-time.After(3 * repositoryEventDelay):
+		}
 	}
 }
 
@@ -168,7 +172,7 @@ func TestAddWatchTreeHonorsCancellation(t *testing.T) {
 	defer watcher.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err = addWatchTree(ctx, watcher, root, func(string, os.DirEntry) bool { return false })
+	err = addWatchTree(ctx, watcher, nil, root, func(string, os.DirEntry) bool { return false })
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("the cancelled walk returned %v, want context.Canceled", err)
 	}

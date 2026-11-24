@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -47,19 +49,23 @@ func (s *gitSession) Watch(ctx context.Context) (<-chan struct{}, error) {
 	}
 
 	paths := s.git.RepoPaths
+	var modes watchModes
+	if runtime.GOOS == "darwin" {
+		modes = make(watchModes)
+	}
 	worktreeGitDir := cleanWatchPath(paths.WorktreeGitDirPath())
 	commonGitDir := cleanWatchPath(paths.RepoGitDirPath())
 	if worktree := cleanWatchPath(paths.WorktreePath()); worktree != "" {
-		err = addWatchTree(ctx, watcher, worktree, func(path string, entry fs.DirEntry) bool {
+		err = addWatchTree(ctx, watcher, modes, worktree, func(path string, entry fs.DirEntry) bool {
 			clean := filepath.Clean(path)
 			return clean == worktreeGitDir || clean == commonGitDir || entry.Name() == ".git"
 		})
 	}
 	if err == nil && worktreeGitDir != "" {
-		err = addWatchTree(ctx, watcher, worktreeGitDir, gitMetadataWatchExcluded(worktreeGitDir))
+		err = addWatchTree(ctx, watcher, modes, worktreeGitDir, gitMetadataWatchExcluded(worktreeGitDir))
 	}
 	if err == nil && commonGitDir != "" && commonGitDir != worktreeGitDir {
-		err = addWatchTree(ctx, watcher, commonGitDir, gitMetadataWatchExcluded(commonGitDir))
+		err = addWatchTree(ctx, watcher, modes, commonGitDir, gitMetadataWatchExcluded(commonGitDir))
 	}
 	if err != nil {
 		_ = watcher.Close()
@@ -67,7 +73,7 @@ func (s *gitSession) Watch(ctx context.Context) (<-chan struct{}, error) {
 	}
 
 	notifications := make(chan struct{}, 1)
-	go runRepositoryWatcher(ctx, watcher, notifications, func(path string, entry fs.DirEntry) bool {
+	go runRepositoryWatcher(ctx, watcher, modes, notifications, func(path string, entry fs.DirEntry) bool {
 		clean := filepath.Clean(path)
 		return entry.Name() == ".git" ||
 			(worktreeGitDir != "" && clean == filepath.Join(worktreeGitDir, "objects")) ||
@@ -87,6 +93,29 @@ func cleanWatchPath(path string) string {
 	return filepath.Clean(absolute)
 }
 
+// On macOS kqueue reports access-time changes as Chmod events. Comparing
+// modes keeps Git reads from triggering another refresh while still observing
+// real permission changes, including Git's executable bit.
+type watchModes map[string]fs.FileMode
+
+func (m watchModes) record(path string, info fs.FileInfo) bool {
+	previous, known := m[path]
+	m[path] = info.Mode()
+	return !known || previous != info.Mode()
+}
+
+func (m watchModes) remove(path string) {
+	if m[path].IsDir() {
+		prefix := path + string(filepath.Separator)
+		for name := range m {
+			if strings.HasPrefix(name, prefix) {
+				delete(m, name)
+			}
+		}
+	}
+	delete(m, path)
+}
+
 // addWatchTree includes existing directories and skips excluded subtrees. New
 // directories are added by runRepositoryWatcher as their Create events arrive.
 // Checking the context at every entry keeps closing a repository responsive,
@@ -94,6 +123,7 @@ func cleanWatchPath(path string) string {
 func addWatchTree(
 	ctx context.Context,
 	watcher *fsnotify.Watcher,
+	modes watchModes,
 	root string,
 	excluded func(string, fs.DirEntry) bool,
 ) error {
@@ -104,11 +134,16 @@ func addWatchTree(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if entry.IsDir() && path != root && excluded(path, entry) {
+			return filepath.SkipDir
+		}
+		if modes != nil {
+			if info, err := entry.Info(); err == nil {
+				modes.record(path, info)
+			}
+		}
 		if !entry.IsDir() {
 			return nil
-		}
-		if path != root && excluded(path, entry) {
-			return filepath.SkipDir
 		}
 		return watcher.Add(path)
 	})
@@ -126,6 +161,7 @@ func gitMetadataWatchExcluded(root string) func(string, fs.DirEntry) bool {
 func runRepositoryWatcher(
 	ctx context.Context,
 	watcher *fsnotify.Watcher,
+	modes watchModes,
 	notifications chan<- struct{},
 	excluded func(string, fs.DirEntry) bool,
 ) {
@@ -155,11 +191,24 @@ func runRepositoryWatcher(
 				events = nil
 				continue
 			}
+			if modes != nil {
+				if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
+					modes.remove(event.Name)
+				}
+				if event.Has(fsnotify.Create) || event.Has(fsnotify.Chmod) {
+					if info, err := os.Lstat(event.Name); err == nil {
+						changed := modes.record(event.Name, info)
+						if event.Op == fsnotify.Chmod && !changed {
+							continue
+						}
+					}
+				}
+			}
 			// Chmod matters too: on filesystems with executable-bit support,
 			// it can be the only notification for a change to Git's status.
 			if event.Op&(fsnotify.Create|fsnotify.Rename) != 0 {
 				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-					_ = addWatchTree(ctx, watcher, event.Name, excluded)
+					_ = addWatchTree(ctx, watcher, modes, event.Name, excluded)
 				}
 			}
 			if timer == nil {
