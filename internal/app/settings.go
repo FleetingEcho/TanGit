@@ -623,10 +623,10 @@ type themeChoice struct {
 // background luminance from lightest to darkest. Names break luminance ties.
 var themeNames = []string{
 	"System",
-	"GitHub Light",
 	"High Contrast Light",
 	"Ayu Light",
 	"One Light",
+	"GitHub Light",
 	"Solarized Light",
 	"Rosé Pine Dawn",
 	"Catppuccin Latte",
@@ -649,7 +649,7 @@ var themeNames = []string{
 }
 
 var themeChoices = map[string]themeChoice{
-	"System": {build: func() *ui.Theme { return ui.LightTheme() }},
+	"System": {build: systemLightTheme},
 	"Tokyo Night": {build: func() *ui.Theme {
 		return palette(ui.DarkTheme(), paletteColors{
 			background: "#1a1b26", surface: "#24283b", surfaceHover: "#2f3549",
@@ -802,9 +802,9 @@ var themeChoices = map[string]themeChoice{
 	}},
 	"GitHub Light": {build: func() *ui.Theme {
 		return palette(ui.LightTheme(), paletteColors{
-			background: "#ffffff", surface: "#f6f8fa", surfaceHover: "#eef1f4",
-			surfacePressed: "#e7ebef", border: "#d0d7de", text: "#1f2328",
-			textMuted: "#656d76", accent: "#0969da", accentHover: "#1f6feb",
+			background: "#f6f8fa", surface: "#eaeef2", surfaceHover: "#dfe4ea",
+			surfacePressed: "#d0d7de", border: "#c0c8d2", text: "#1f2328",
+			textMuted: "#59636e", accent: "#0969da", accentHover: "#1f6feb",
 			accentPressed: "#0550ae", accentText: "#ffffff", danger: "#cf222e",
 			warning: "#9a6700", success: "#1a7f37",
 			selection: ui.RGBA(9, 105, 218, 0.2), focus: ui.RGBA(9, 105, 218, 0.5),
@@ -894,6 +894,22 @@ type paletteColors struct {
 	accent, accentHover, accentPressed, accentText            string
 	danger, warning, success                                  string
 	selection, focus                                          ui.Color
+}
+
+// systemLightTheme is the light appearance the System choice follows. The
+// toolkit's own light theme is pure white with faint borders, which leaves a
+// card, its controls and its dividers nearly the same color. This one keeps
+// the same blue accent on a soft gray-white face, with surfaces, borders and
+// muted text a step stronger so panes and controls read apart.
+func systemLightTheme() *ui.Theme {
+	return palette(ui.LightTheme(), paletteColors{
+		background: "#f5f6f8", surface: "#e9ebf0", surfaceHover: "#dfe2e9",
+		surfacePressed: "#d3d7e0", border: "#c4cad6", text: "#16181d",
+		textMuted: "#566070", accent: "#2563eb", accentHover: "#1d4ed8",
+		accentPressed: "#1e40af", accentText: "#ffffff", danger: "#c62828",
+		warning: "#b45309", success: "#15803d",
+		selection: ui.RGBA(37, 99, 235, 0.22), focus: ui.RGBA(37, 99, 235, 0.55),
+	})
 }
 
 func palette(base *ui.Theme, c paletteColors) *ui.Theme {
@@ -1061,7 +1077,7 @@ func themeForSettings(s appSettings, systemDark bool) *ui.Theme {
 	var t *ui.Theme
 	choice, ok := themeChoices[s.Theme]
 	if !ok || s.Theme == "System" {
-		t = ui.LightTheme()
+		t = systemLightTheme()
 		if systemDark {
 			t = ui.DarkTheme()
 		}

@@ -46,7 +46,7 @@ func islandBackdrop(theme *ui.Theme) ui.Color {
 	if theme.Dark {
 		return theme.Background.Mix(black, 0.5)
 	}
-	return theme.Background.Mix(black, 0.08)
+	return theme.Background.Mix(black, 0.11)
 }
 
 var black = ui.RGBA(0, 0, 0, 1)
