@@ -129,25 +129,47 @@ func TestHistoryPagesOlderCommits(t *testing.T) {
 }
 
 func TestHistoryEndReachedLoadsTheNextPage(t *testing.T) {
-	page := repository.SnapshotCommitLimit
-	session := &pagedCommitSession{fakeSession: fakeSession{snapshot: repository.Snapshot{Branch: "main"}}, total: 2*page + 1}
-	a := newApp(fakeOpener{})
-	a.session = session
-	a.snapshot.Commits, _ = requireHistorySession(session).RecentCommits(context.Background(), page, 0)
-	a.commitsMore = true
-	updated := newUpdates()
-	a.update = updated.update
-	a.workspaceTab = sectionHistory
+	for _, section := range []struct {
+		name string
+		tab  int
+		view func(*app, *ui.Context)
+	}{
+		{"History", sectionHistory, (*app).historyView},
+		{"Graph", sectionGraph, (*app).graphView},
+	} {
+		t.Run(section.name, func(t *testing.T) {
+			const page = 50
+			session := &pagedCommitSession{fakeSession: fakeSession{snapshot: repository.Snapshot{Branch: "main"}}, total: 2*page + 1}
+			a := newApp(fakeOpener{})
+			a.session = session
+			a.snapshot.Commits, _ = requireHistorySession(session).RecentCommits(context.Background(), repository.SnapshotCommitLimit, 0)
+			a.resetCommitPaging(a.snapshot)
+			updated := newUpdates()
+			a.update = updated.update
+			a.workspaceTab = section.tab
+			tester := ui.NewTester(func(c *ui.Context) { section.view(a, c) }, 3840, 2160)
+			tester.SetPreferences(ui.Preferences{ReduceMotion: true})
+			tester.Frame()
 
-	a.commitList.EndReached(page - 1)
-	updated.waitForUpdate(t)
-	if got := len(a.snapshot.Commits); got != 2*page {
-		t.Fatalf("end reached loaded %d commits, want %d", got, 2*page)
-	}
-	a.commitList.EndReached(2*page - 1)
-	updated.waitForUpdate(t)
-	if got := len(a.snapshot.Commits); got != 2*page+1 || a.commitsMore {
-		t.Fatalf("last page left %d commits and more=%v", got, a.commitsMore)
+			if len(a.snapshot.Commits) != page || !a.commitsMore {
+				t.Fatalf("initial page = %d commits and more=%v, want %d and true", len(a.snapshot.Commits), a.commitsMore, page)
+			}
+			first, ok := tester.Find("Commit 0")
+			if !ok {
+				t.Fatal("the first commit is missing from the list")
+			}
+			tester.Scroll(first.X+first.W/2, first.Y+first.H/2, 0, 10000)
+			updated.waitForUpdate(t)
+			if got := len(a.snapshot.Commits); got != 2*page {
+				t.Fatalf("end reached loaded %d commits, want %d", got, 2*page)
+			}
+			tester.Frame()
+			tester.Scroll(first.X+first.W/2, first.Y+first.H/2, 0, 10000)
+			updated.waitForUpdate(t)
+			if got := len(a.snapshot.Commits); got != 2*page+1 || a.commitsMore {
+				t.Fatalf("last page left %d commits and more=%v", got, a.commitsMore)
+			}
+		})
 	}
 }
 

@@ -37,14 +37,19 @@ func heatColor(theme *ui.Theme, level int) ui.Color {
 	return theme.Accent
 }
 
+func (a *app) cockpitHeatmapVisible() bool {
+	insights := &a.cockpit.insights
+	return !a.cockpit.contributors.unavailable && insights.heatErr == "" &&
+		(!insights.heatLoaded || insights.heatTotal > 0 && len(insights.heatmap.Weeks) > 0)
+}
+
 // cockpitHeatmapCard draws the commits of the last weeks as one square per day,
 // a week to a column, with the busiest day and the longest streak beside it.
 func (a *app) cockpitHeatmapCard(c *ui.Context, width float32) {
-	state := a.cockpit.contributors
-	insights := a.cockpit.insights
-	if state.unavailable || insights.heatErr != "" {
+	if !a.cockpitHeatmapVisible() {
 		return
 	}
+	insights := a.cockpit.insights
 	if !insights.heatLoaded {
 		a.cockpitCard(c, "heatmap", "Commit activity", historyIcon, func() {
 			cockpitLoading(c, tr("Reading the history…"), 130)
@@ -52,9 +57,6 @@ func (a *app) cockpitHeatmapCard(c *ui.Context, width float32) {
 		return
 	}
 	heat := insights.heatmap
-	if insights.heatTotal == 0 || len(heat.Weeks) == 0 {
-		return
-	}
 	line := a.cockpit.insights.heatmapLine
 	actions := func() {
 		if flat := cockpitViewToggle(c, "Show commits as a grid of days", heatGridIcon, !line); flat {
@@ -75,7 +77,7 @@ func (a *app) cockpitHeatmapCard(c *ui.Context, width float32) {
 		}
 		grid := func() {
 			dayNames := []string{tr("Mon"), "", tr("Wed"), "", tr("Fri"), "", ""}
-			ui.Row(c).FillWidth().MinWidth(0).Justify(ui.Center).AlignItems(ui.Start).Gap(6).Children(func() {
+			ui.Row(c).FillWidth().MinWidth(0).Grow(1).Center().Gap(6).Children(func() {
 				ui.Column(c).Gap(gap).Padding(15, 0, 0, 0).Shrink(0).Children(func() {
 					for _, name := range dayNames {
 						ui.Box(c).Height(cell).Width(26).Children(func() {
@@ -284,7 +286,7 @@ func (a *app) cockpitBranchHealthCard(c *ui.Context) {
 			}
 		}
 		if first < 0 {
-			ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
+			ui.Row(c).FillWidth().MinWidth(0).Grow(1).Center().Gap(6).Children(func() {
 				ui.Icon(c, commitIcon).FontSize(14).TextColor(theme.Success)
 				ui.Text(c, tr("All branches are healthy")).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
 			})

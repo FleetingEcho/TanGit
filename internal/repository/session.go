@@ -58,10 +58,9 @@ type File struct {
 	UnstagedLinesDeleted int
 }
 
-// SnapshotCommitLimit is a viewport-sized page, not a target for eager history
-// hydration. A larger first page can spend many seconds computing numstat for
-// commits far below the visible list. History and Graph always page farther.
-const SnapshotCommitLimit = 20
+// SnapshotCommitLimit is the commit page size. It gives tall viewports enough
+// rows to scroll and trigger another page in History and Graph.
+const SnapshotCommitLimit = 50
 
 // ConflictStage is one immutable index-stage version of an unmerged path.
 // Present distinguishes an absent side (a deletion) from an empty file.

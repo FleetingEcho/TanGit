@@ -124,7 +124,7 @@ func (a *app) cockpitLanguagesCard(c *ui.Context) {
 			return languageColor(slice.Name)
 		}
 		const size = 118
-		ui.Row(c).FillWidth().MinWidth(0).Gap(18).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+		ui.Row(c).FillWidth().MinWidth(0).Grow(1).Gap(18).Center().Children(func() {
 			ui.Box(c).Size(size, size).Shrink(0).Label(tr("Languages")).Draw(func(p *ui.Painter, r ui.Rect) {
 				cx, cy := float64(r.X+r.W/2), float64(r.Y+r.H/2)
 				outer := float64(min(r.W, r.H)) / 2

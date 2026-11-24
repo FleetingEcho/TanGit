@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo/ui"
+
 	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
 	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
@@ -210,6 +212,54 @@ func TestOverviewViewCommandsUseCatalogAndSurviveExtraFrames(t *testing.T) {
 	h.tester.Frame()
 	if h.app.crash != "" {
 		t.Fatalf("Overview rebuild crashed: %s", h.app.crash)
+	}
+}
+
+func TestOverviewFillsTallViewportAndScrollsInShortWindows(t *testing.T) {
+	h, _ := menuTestAppWithCalls(t)
+	a := h.app
+	a.snapshot.Files = nil
+	a.cockpit.insights.healthLoaded = true
+	tester := ui.NewTester(a.cockpitView, 3840, 1080)
+	tester.SetPreferences(ui.Preferences{ReduceMotion: true})
+	cardBounds := func(label string) ui.Rect {
+		t.Helper()
+		card, ok := tester.Access(label)
+		if !ok {
+			t.Fatalf("missing Overview card %q", label)
+		}
+		return card.Bounds
+	}
+	tester.Frame()
+	tester.Frame()
+	initial := cardBounds("Recent activity").H
+
+	tester.SetSize(3840, 2160)
+	tester.Frame()
+	tester.Frame()
+	tester.Frame()
+	recent := cardBounds("Recent activity")
+	if bottom := recent.Y + recent.H; bottom < 2160-islandGap || bottom > 2160 || recent.H <= initial || a.cockpit.scroll.MaxY != 0 {
+		t.Fatalf("recent activity did not grow to the viewport bottom: bounds=%+v max scroll=%g", recent, a.cockpit.scroll.MaxY)
+	}
+	height := cardBounds("Branch health").H
+	for _, label := range []string{"Code changes", "Working tree", "Collaboration"} {
+		if got := cardBounds(label).H; got != height {
+			t.Errorf("%s height = %g, want %g", label, got, height)
+		}
+	}
+
+	tester.SetSize(720, 400)
+	tester.Frame()
+	tester.Frame()
+	tester.Frame()
+	if a.cockpit.scroll.MaxY <= 0 {
+		t.Fatal("a short window clipped the cards without allowing scrolling")
+	}
+	tester.Scroll(360, 200, 0, 10000)
+	recent = cardBounds("Recent activity")
+	if bottom := recent.Y + recent.H; bottom > 400 || bottom < 400-islandGap {
+		t.Fatalf("scrolling did not reach the last card: bounds=%+v", recent)
 	}
 }
 

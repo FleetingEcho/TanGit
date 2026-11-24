@@ -475,15 +475,26 @@ func (a *app) cockpitView(c *ui.Context) {
 	width := a.measuredActionGroupWidth(c, root)
 	a.cockpit.width = width
 	root.Children(func() {
-		ui.Scroll(c).Grow(1).TrackScroll(&a.cockpit.scroll).Children(func() {
-			ui.Column(c).FillWidth().MinWidth(0).Gap(0).Padding(0, 2, 0, 2).Children(func() {
+		scroll := ui.Scroll(c).Grow(1).TrackScroll(&a.cockpit.scroll)
+		viewportHeight := scroll.LayoutBounds().H
+		_, windowHeight := c.Size()
+		// Scroll measures its content without a height constraint. Use the
+		// committed viewport as a minimum, so short pages grow and tall ones scroll.
+		size := [2]float32{viewportHeight, windowHeight}
+		lastSize := ui.Local(scroll, [2]float32{}, func() [2]float32 { return [2]float32{-1, -1} })
+		if *lastSize != size {
+			*lastSize = size
+			c.Invalidate()
+		}
+		scroll.Children(func() {
+			ui.Column(c).FillWidth().MinWidth(0).MinHeight(viewportHeight).Padding(0, 2, 0, 2).Children(func() {
 				a.cockpit.tileInRow = false
 				a.cockpitContributorsCard(c, width >= 760)
 				// Commit activity and the languages share a row when it is wide.
-				if width >= 1100 {
+				if width >= 1100 && (a.cockpitHeatmapVisible() || !a.cockpit.insights.langUnavailable) {
 					a.cockpit.tileInRow, a.cockpit.tileGrow = true, 2
 					c.Key("cockpit-activity-row")
-					ui.Row(c).FillWidth().MinWidth(0).Gap(0).AlignItems(ui.Stretch).Children(func() {
+					ui.Row(c).FillWidth().MinWidth(0).Grow(1).Shrink(0).AlignItems(ui.Stretch).Children(func() {
 						a.cockpitHeatmapCard(c, width*2/3)
 						a.cockpit.tileGrow = 1
 						a.cockpitLanguagesCard(c)
@@ -495,35 +506,32 @@ func (a *app) cockpitView(c *ui.Context) {
 					a.cockpitLanguagesCard(c)
 				}
 				a.cockpit.tileInRow = width >= 760
-				if width >= 760 {
-					c.Key("cockpit-insight-row")
-					ui.Row(c).FillWidth().MinWidth(0).Gap(0).AlignItems(ui.Stretch).Children(func() {
-						a.cockpitBranchHealthCard(c)
-						a.cockpitCodeChangesCard(c)
+				if a.cockpit.tileInRow {
+					showInsights := !a.cockpit.insights.healthUnavailable || !a.cockpit.insights.volumeUnavailable
+					rows := 1
+					if showInsights {
+						rows++
+					}
+					c.Key("cockpit-status-grid")
+					ui.Grid(c).FillWidth().MinWidth(0).Grow(float32(rows)).Shrink(0).Columns(1).GridRows(rows).Children(func() {
+						if showInsights {
+							c.Key("cockpit-insight-row")
+							ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Stretch).Children(func() {
+								a.cockpitBranchHealthCard(c)
+								a.cockpitCodeChangesCard(c)
+							})
+						}
+						c.Key("cockpit-status-row")
+						ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Stretch).Children(func() {
+							a.cockpitWorkingTreeCard(c, summary)
+							a.cockpitCollaborationCard(c, summary)
+						})
 					})
 				} else {
 					a.cockpitBranchHealthCard(c)
 					a.cockpitCodeChangesCard(c)
-				}
-				a.cockpit.tileInRow = false
-				// Two status tiles: two across when there is room, one otherwise.
-				tiles := []func(){
-					func() { a.cockpitWorkingTreeCard(c, summary) },
-					func() { a.cockpitCollaborationCard(c, summary) },
-				}
-				a.cockpit.tileInRow = width >= 760
-				if width >= 760 {
-					for row := 0; row < len(tiles); row += 2 {
-						c.Key(fmt.Sprintf("cockpit-tile-row:%d", row))
-						ui.Row(c).FillWidth().MinWidth(0).Gap(0).AlignItems(ui.Stretch).Children(func() {
-							tiles[row]()
-							tiles[row+1]()
-						})
-					}
-				} else {
-					for _, tile := range tiles {
-						tile()
-					}
+					a.cockpitWorkingTreeCard(c, summary)
+					a.cockpitCollaborationCard(c, summary)
 				}
 				a.cockpit.tileInRow = false
 				a.cockpitRecentCard(c, summary)
@@ -547,7 +555,7 @@ func (a *app) cockpitCardWithActions(c *ui.Context, id, title string, icon *ui.S
 	if a.cockpit.tileInRow {
 		card = card.Width(0).Grow(max(a.cockpit.tileGrow, 1))
 	} else {
-		card = card.FillWidth()
+		card = card.FillWidth().Grow(1).Shrink(0)
 	}
 	islandCard(c, card).Label(tr(title)).Children(func() {
 		ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(7).Wrap().Children(func() {
@@ -611,7 +619,7 @@ func cockpitTextLink(c *ui.Context, text, label, tooltip string) bool {
 // the data arrives, and sits in the middle of that space.
 func cockpitLoading(c *ui.Context, text string, height float32) {
 	theme := c.Theme()
-	ui.Row(c).FillWidth().MinWidth(0).Height(height).Justify(ui.Center).AlignItems(ui.Center).Gap(8).Children(func() {
+	ui.Row(c).FillWidth().MinWidth(0).MinHeight(height).Grow(1).Center().Gap(8).Children(func() {
 		ui.Spinner(c).Label(text)
 		ui.Text(c, text).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 	})
@@ -643,7 +651,7 @@ func (a *app) cockpitWorkingTreeCard(c *ui.Context, summary cockpitSummary) {
 		total := work.Staged + work.Unstaged + work.Untracked + work.Conflicted
 		if total == 0 {
 			// Nothing to count: say so once instead of listing zeros.
-			ui.Row(c).AlignItems(ui.Center).Gap(8).Margin(4, 0, 4, 0).Children(func() {
+			ui.Row(c).FillWidth().MinWidth(0).Grow(1).Center().Gap(8).Margin(4, 0, 4, 0).Children(func() {
 				ui.Icon(c, commitIcon).FontSize(18).TextColor(theme.Success)
 				ui.Text(c, tr("Working tree clean")).FontSize(theme.FontSize + 1).Bold()
 			})
@@ -884,7 +892,7 @@ func (a *app) cockpitContributorsCard(c *ui.Context, wide bool) {
 			}
 		}
 		if wide {
-			ui.Row(c).FillWidth().MinWidth(0).Gap(16).AlignItems(ui.Stretch).Children(func() {
+			ui.Row(c).FillWidth().MinWidth(0).Grow(1).Gap(16).AlignItems(ui.Stretch).Children(func() {
 				ui.Column(c).Width(0).Grow(1).MinWidth(0).Gap(6).Children(statsColumn)
 				ui.Box(c).Width(1).Shrink(0).Background(theme.Border.Alpha(0.5))
 				ui.Column(c).Width(0).Grow(1).MinWidth(0).Gap(2).Children(topColumn)
@@ -904,8 +912,8 @@ func cockpitCommitChart(c *ui.Context, stats contributorRangeStats) {
 	for _, count := range stats.Buckets {
 		most = max(most, count)
 	}
-	ui.Column(c).FillWidth().MinWidth(0).Gap(3).Children(func() {
-		ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Stretch).Gap(3).MinHeight(44).Label(tr("Commits over the period")).Children(func() {
+	ui.Column(c).FillWidth().MinWidth(0).Grow(1).Gap(3).Children(func() {
+		ui.Row(c).FillWidth().MinWidth(0).Grow(1).AlignItems(ui.Stretch).Gap(3).MinHeight(44).Label(tr("Commits over the period")).Children(func() {
 			for index, count := range stats.Buckets {
 				c.Key(fmt.Sprintf("cockpit-bar:%d", index))
 				percent := float32(3)
