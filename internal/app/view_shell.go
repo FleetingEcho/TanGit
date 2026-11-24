@@ -220,7 +220,7 @@ func (a *app) crashView(c *ui.Context) {
 // its pages agree on it.
 func (a *app) applySettingsFor(c *ui.Context, systemDark bool) {
 	currentLanguage = normalizeLanguage(a.settings.Language)
-	c.SetTheme(themeForSettings(a.settings, systemDark))
+	c.SetTheme(themeForSettingsCached(a.settings, systemDark))
 	a.applyBufferFonts()
 	a.syncHomeBackground()
 }

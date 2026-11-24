@@ -10,6 +10,28 @@ import (
 // filteredSourceRows returns snapshot indices for visible rows. Lists bind
 // their selection to a separate visible-row index; repository actions always
 // use the source index, even after a search hides earlier rows.
+// filteredCache memoizes one filteredSourceRows call per filter state; idle
+// frames hit it instead of rejoining and re-lowering every row.
+type filteredCache struct {
+	set      bool
+	snapshot uint64
+	query    string
+	length   int
+	rows     []int
+}
+
+// filteredCached computes the visible rows for one filter, reusing the last
+// result while the query, the snapshot seat and the entry count are unchanged.
+func filteredCached(cache *filteredCache, snapshot uint64, length int, query string, text func(int) string) []int {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if cache.set && cache.snapshot == snapshot && cache.query == q && cache.length == length {
+		return cache.rows
+	}
+	rows := filteredSourceRows(length, query, text)
+	*cache = filteredCache{set: true, snapshot: snapshot, query: q, length: length, rows: rows}
+	return rows
+}
+
 func filteredSourceRows(length int, query string, text func(int) string) []int {
 	query = strings.ToLower(strings.TrimSpace(query))
 	rows := make([]int, 0, length)

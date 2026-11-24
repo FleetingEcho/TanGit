@@ -16,7 +16,7 @@ type remoteBranchRow struct {
 }
 
 func (a *app) visibleRemotes() []int {
-	return filteredSourceRows(len(a.snapshot.Remotes), a.remoteFilter, func(source int) string {
+	return filteredCached(&a.remoteVisibleCache, a.snapshotSeq, len(a.snapshot.Remotes), a.remoteFilter, func(source int) string {
 		remote := a.snapshot.Remotes[source]
 		return strings.Join(append([]string{remote.Name}, remote.URLs...), "\x00")
 	})

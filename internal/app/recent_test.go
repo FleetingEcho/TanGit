@@ -1043,3 +1043,34 @@ func TestRecentRenameSavesOnEnter(t *testing.T) {
 		t.Fatalf("Enter saved the name %q", got)
 	}
 }
+
+// A repository that opened with degraded optional data tells the user once,
+// with the details from the snapshot.
+func TestOpenedSnapshotWithWarningsNotifiesTheUser(t *testing.T) {
+	s, _, _ := newShellTester(t, repository.Snapshot{Root: "/work/late"})
+	s.pathUserData = t.TempDir()
+	a := s.activeApp()
+	if a == nil {
+		t.Fatal("no active page")
+	}
+	snapshot := repository.Snapshot{
+		Root:     "/work/late",
+		Branch:   "main",
+		Warnings: []string{"Repository operations could not be read: permission denied"},
+	}
+	updated := newUpdates()
+	a.update = updated.update
+	a.state = stateEmpty
+	a.snapshot = repository.Snapshot{}
+	a.installOpenedRepository(nil, snapshot)
+	if len(a.pendingToasts) != 1 {
+		t.Fatalf("degraded open produced %d notifications, want 1", len(a.pendingToasts))
+	}
+	toast := a.pendingToasts[0]
+	if toast.title != "Repository opened with limited data" {
+		t.Fatalf("degraded open toast title = %q", toast.title)
+	}
+	if !strings.Contains(toast.description, "permission denied") {
+		t.Fatalf("degraded open toast did not carry the reason: %q", toast.description)
+	}
+}

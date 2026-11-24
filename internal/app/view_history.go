@@ -938,9 +938,8 @@ func (a *app) commitDetailBodyWithOptions(c *ui.Context, commit *repository.Comm
 			return
 		}
 		files := *state.files
-		paths := commitFilePaths(files)
 		previousSelectedRow := *state.selectedFileRow
-		*state.fileRows = a.syncFileTreeRows(state.scope, paths, *state.fileRows,
+		*state.fileRows = a.syncFileTreeRows(state.scope, files, *state.fileRows,
 			state.selectedFileRow, state.selectedFile)
 		revealSelectedRow := *state.selectedFileRow >= 0 && *state.selectedFileRow != previousSelectedRow
 		// The files and the diff share the rest of the pane, and the line

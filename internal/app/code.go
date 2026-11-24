@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -112,12 +113,17 @@ type codeDocument struct {
 	blameOffsets         map[int]int
 	blameActiveLine      int
 	blameAnnotationSet   bool
-	markdownPreviewOpen  bool
-	localStamp           localFileStamp
-	localStampKnown      bool
-	remoteStamp          remoteFileStamp
-	remoteStampKnown     bool
-	remoteSave           remoteSaveState
+	// breadcrumbMemo and stickyMemo cache this frame's symbol-breadcrumb
+	// results: both are recomputed only when the buffer version, the anchor
+	// offset or the symbols slice changes, never per idle frame.
+	breadcrumbMemo      breadcrumbMemo
+	stickyMemo          breadcrumbMemo
+	markdownPreviewOpen bool
+	localStamp          localFileStamp
+	localStampKnown     bool
+	remoteStamp         remoteFileStamp
+	remoteStampKnown    bool
+	remoteSave          remoteSaveState
 }
 
 type codeNavigationLocation struct {
@@ -175,13 +181,14 @@ type codeState struct {
 	selectedSource      int
 	// treeDirty is set by folder folding. Stable frames retain the already
 	// sorted rows instead of rebuilding a large repository tree every frame.
-	treeDirty     bool
-	appliedFilter string
-	filter        string
-	filesLoading  bool
-	filesLoaded   bool
-	filesError    string
-	filesToken    uint64
+	treeDirty      bool
+	appliedFilter  string
+	filter         string
+	filesLoading   bool
+	filesLoaded    bool
+	filesError     string
+	filesTruncated bool
+	filesToken     uint64
 	// filesOperationRefresh marks the quiet snapshot that belongs to an Editor
 	// structural operation whose explicit file-index reload already ran.
 	filesOperationRefresh bool
@@ -473,6 +480,8 @@ func (a *app) requestCodeFiles() {
 	go func() {
 		defer a.recoverBackground()
 		var paths, emptyDirectories []string
+		var plainSkipped int
+		filesTruncated := false
 		var err error
 		if remote {
 			err = remoteErr
@@ -483,7 +492,11 @@ func (a *app) requestCodeFiles() {
 				}
 			}
 		} else if plain {
-			paths, emptyDirectories, err = listPlainCodeFiles(root)
+			var found plainFileList
+			found, err = listPlainCodeFiles(root)
+			paths, emptyDirectories = found.Paths, found.EmptyDirectories
+			plainSkipped = found.Skipped
+			filesTruncated = found.Truncated
 		} else {
 			paths, err = listCodeFiles(root)
 			if err == nil {
@@ -496,6 +509,7 @@ func (a *app) requestCodeFiles() {
 			}
 			a.code.filesLoading = false
 			a.code.filesLoaded = true
+			a.code.filesTruncated = filesTruncated
 			if err != nil {
 				a.code.filesError = safeError(err)
 				return a.workspaceTab == sectionCode
@@ -506,6 +520,10 @@ func (a *app) requestCodeFiles() {
 					a.code.extraDirectories = make(map[string]bool)
 				}
 				a.code.extraDirectories[directory] = true
+			}
+			if plainSkipped > 0 {
+				a.notify("error", "Some files and folders could not be read",
+					fmt.Sprintf("%d entries were skipped (permission denied or unreadable)", plainSkipped))
 			}
 			if !remote {
 				a.pruneCodeDirectories(root)
@@ -1442,4 +1460,59 @@ func (a *app) navigateCodeSearch(direction int) {
 	}
 	a.revealCodeSearchMatch(match)
 	a.openCodeSearchMatch(a.code.searchResults[match])
+}
+
+// breadcrumbMemo memoizes one symbol-breadcrumb computation per frame key.
+type breadcrumbMemo struct {
+	ok      bool
+	version uint64
+	offset  int
+	symbols *languageServerDocumentSymbol
+	length  int
+	value   string
+}
+
+// lookup reports the cached breadcrumb for the current frame, when the
+// buffer version, the anchor offset and the symbols all match what was
+// computed for.
+func (m *breadcrumbMemo) lookup(version uint64, offset int, symbols []languageServerDocumentSymbol) (string, bool) {
+	if !m.ok || m.version != version || m.offset != offset || m.length != len(symbols) {
+		return "", false
+	}
+	var first *languageServerDocumentSymbol
+	if len(symbols) > 0 {
+		first = &symbols[0]
+	}
+	if first != m.symbols {
+		return "", false
+	}
+	return m.value, true
+}
+
+// store remembers the breadcrumb computed for the current frame.
+func (m *breadcrumbMemo) store(version uint64, offset int, symbols []languageServerDocumentSymbol, value string) {
+	var first *languageServerDocumentSymbol
+	if len(symbols) > 0 {
+		first = &symbols[0]
+	}
+	m.ok = true
+	m.version = version
+	m.offset = offset
+	m.symbols = first
+	m.length = len(symbols)
+	m.value = value
+}
+
+// cachedSymbolBreadcrumb computes languageServerSymbolBreadcrumb once per
+// (buffer version, offset, symbols) combination. Callers must treat the
+// symbols slice as immutable between edits; LSP replaces it wholesale on
+// every refresh, which is what the pointer comparison detects.
+func (m *breadcrumbMemo) cachedSymbolBreadcrumb(buffer *editor.Buffer, symbols []languageServerDocumentSymbol, offset int) string {
+	version := buffer.Version()
+	if value, ok := m.lookup(version, offset, symbols); ok {
+		return value
+	}
+	value := languageServerSymbolBreadcrumb(symbols, buffer.String(), offset)
+	m.store(version, offset, symbols, value)
+	return value
 }

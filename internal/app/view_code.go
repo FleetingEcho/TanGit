@@ -76,6 +76,10 @@ func (a *app) codeFileExplorer(c *ui.Context) {
 			loadingPane(c, "Loading files", "Loading files…")
 			return
 		}
+		if a.code.filesTruncated {
+			ui.Text(c, trf("Too many files; showing the first %d in this folder", plainFileLimit)).
+				FontSize(theme.FontSize - 1).TextColor(theme.Warning)
+		}
 		if a.code.filesError != "" {
 			ui.Column(c).Grow(1).Center().Gap(8).Padding(8).Children(func() {
 				ui.Text(c, tr("The file list could not be read.")).Bold().TextAlign(ui.Center)
@@ -692,7 +696,7 @@ func (a *app) codeEditorPane(c *ui.Context) {
 			breadcrumb := ""
 			if document.state != nil && document.state.Buffer != nil {
 				if offset, ok := codeLanguageOffset(document); ok {
-					breadcrumb = languageServerSymbolBreadcrumb(document.symbols, document.state.Buffer.String(), offset)
+					breadcrumb = document.breadcrumbMemo.cachedSymbolBreadcrumb(document.state.Buffer, document.symbols, offset)
 				}
 			}
 			location := document.path
@@ -873,7 +877,7 @@ func (a *app) codeStickySymbolHeader(c *ui.Context, document *codeDocument) {
 		return
 	}
 	offset := buffer.Offset(editor.Pos{Line: min(first, buffer.LineCount()-1)})
-	crumb := languageServerSymbolBreadcrumb(document.symbols, buffer.String(), offset)
+	crumb := document.stickyMemo.cachedSymbolBreadcrumb(buffer, document.symbols, offset)
 	if crumb == "" {
 		return
 	}
