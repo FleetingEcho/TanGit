@@ -26,9 +26,9 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/workspace.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/workspace_light.png">
-    <img src="docs/screenshots/workspace_light.png" alt="lazygitGo 工作区：仓库导航、文件更改与差异预览">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/graph.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/graph.png">
+    <img src="docs/screenshots/graph.png" alt="lazygitGo graph">
   </picture>
 </p>
 
@@ -66,6 +66,14 @@ lazygitGo 两者兼顾：沿用 Lazygit 的 Git 命令层，放进原生窗口�
 
 ### 在审查差异的地方解决冲突
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/merge_conflict_dark_theme.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/merge_conflict_light_theme.png">
+    <img src="docs/screenshots/merge_conflict_light_theme.png" alt="一次有两处冲突的合并：变更列表、合并卡片，以及带 Continue 和 Abort 的 Result 编辑器">
+  </picture>
+</p>
+
 - 四栏 **Base / Current / Incoming / Result** 视图，差异块、版本和 Result 控件会随窄窗口自动调整。
 - 操作卡片读取 Git 的真实状态（合并、变基、`am`、拣选、还原），只提供当前确实可用的 **Continue**、**Skip** 和 **Abort**。
 - **Guided 模式**提供实时清单：读冲突、选择或编辑 Result、标记已解决、检查暂存、继续。
@@ -101,22 +109,35 @@ lazygitGo 两者兼顾：沿用 Lazygit 的 Git 命令层，放进原生窗口�
 
 <table>
   <tr>
-    <td width="50%"><a href="docs/screenshots/workspace.png"><img src="docs/screenshots/workspace.png" alt="工作区 · 深色"></a><br><sub>工作区 · 深色</sub></td>
-    <td width="50%"><a href="docs/screenshots/workspace_light.png"><img src="docs/screenshots/workspace_light.png" alt="工作区 · 浅色"></a><br><sub>工作区 · 浅色</sub></td>
+    <td width="50%"><a href="docs/screenshots/overview_dark.png"><img src="docs/screenshots/overview_dark.png" alt="概览，深色主题"></a><br><sub>概览 · 深色</sub></td>
+    <td width="50%"><a href="docs/screenshots/overview_light.png"><img src="docs/screenshots/overview_light.png" alt="概览，浅色主题"></a><br><sub>概览 · 浅色</sub></td>
   </tr>
   <tr>
-    <td width="50%"><a href="docs/screenshots/graph_dark.png"><img src="docs/screenshots/graph_dark.png" alt="提交图 · 深色"></a><br><sub>提交图 · 深色</sub></td>
-    <td width="50%"><a href="docs/screenshots/graph_light.png"><img src="docs/screenshots/graph_light.png" alt="提交图 · 浅色"></a><br><sub>提交图 · 浅色</sub></td>
+    <td width="50%"><a href="docs/screenshots/history.png"><img src="docs/screenshots/history.png" alt="历史"></a><br><sub>历史</sub></td>
+    <td width="50%"><a href="docs/screenshots/graph.png"><img src="docs/screenshots/graph.png" alt="提交图、变更文件与差异"></a><br><sub>提交图</sub></td>
   </tr>
   <tr>
-    <td width="50%"><a href="docs/screenshots/picker.png"><img src="docs/screenshots/picker.png" alt="仓库选择"></a><br><sub>仓库选择</sub></td>
-    <td width="50%"><a href="docs/screenshots/file-history.png"><img src="docs/screenshots/file-history.png" alt="文件历史"></a><br><sub>文件历史</sub></td>
+    <td width="50%"><a href="docs/screenshots/file_history.png"><img src="docs/screenshots/file_history.png" alt="文件历史"></a><br><sub>文件历史</sub></td>
+    <td width="50%"><a href="docs/screenshots/commit_context_menu.png"><img src="docs/screenshots/commit_context_menu.png" alt="提交右键菜单"></a><br><sub>提交操作</sub></td>
   </tr>
   <tr>
-    <td width="50%"><a href="docs/screenshots/editor.png"><img src="docs/screenshots/editor.png" alt="代码编辑器"></a><br><sub>代码编辑器</sub></td>
-    <td width="50%"><a href="docs/screenshots/i18n.png"><img src="docs/screenshots/i18n.png" alt="界面语言"></a><br><sub>界面语言</sub></td>
+    <td width="50%"><a href="docs/screenshots/command_palette.png"><img src="docs/screenshots/command_palette.png" alt="命令面板"></a><br><sub>命令面板</sub></td>
+    <td width="50%"><a href="docs/screenshots/keyboard_shortcuts.png"><img src="docs/screenshots/keyboard_shortcuts.png" alt="可搜索的快捷键列表"></a><br><sub>快捷键</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/remote_branches.png"><img src="docs/screenshots/remote_branches.png" alt="远程仓库与远程分支"></a><br><sub>远程仓库与远程分支</sub></td>
+    <td width="50%"><a href="docs/screenshots/terminal.png"><img src="docs/screenshots/terminal.png" alt="停靠在工作区旁的内置终端"></a><br><sub>内置终端</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/editor.png"><img src="docs/screenshots/editor.png" alt="代码编辑器与内容搜索"></a><br><sub>编辑器与搜索</sub></td>
+    <td width="50%"><a href="docs/screenshots/tokyo_night_theme.png"><img src="docs/screenshots/tokyo_night_theme.png" alt="Tokyo Night 主题与中文界面"></a><br><sub>Tokyo Night 主题</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><a href="docs/screenshots/i18n.png"><img src="docs/screenshots/i18n.png" alt="中文界面，浅色主题" width="50%"></a><br><sub>界面语言 · 浅色主题</sub></td>
   </tr>
 </table>
+
+<p align="center"><sub>截图中展示的是开源项目 <a href="https://github.com/jesseduffield/lazygit">Lazygit</a> 的仓库。</sub></p>
 
 ## 安装
 

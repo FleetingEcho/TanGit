@@ -26,9 +26,9 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/workspace.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/workspace_light.png">
-    <img src="docs/screenshots/workspace_light.png" alt="lazygitGo workspace with repository navigation, changes, and a file diff">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/graph.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/graph.png">
+    <img src="docs/screenshots/graph.png" alt="lazygitGo Graph: contributors, commit activity, languages, branch health, code changes and the working tree">
   </picture>
 </p>
 
@@ -67,6 +67,14 @@ command layer, wrapped in a native window with visual tools where they help.
 
 ### Resolve conflicts where you review diffs
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/merge_conflict_dark_theme.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/merge_conflict_light_theme.png">
+    <img src="docs/screenshots/merge_conflict_light_theme.png" alt="A merge with two conflicts: the Changes list, the merge card and the Result editor with Continue and Abort">
+  </picture>
+</p>
+
 - Four-pane **Base / Current / Incoming / Result** view with hunk, side and Result controls that adapt to narrow windows.
 - An operation card that reads Git's real state (merge, rebase, `am`, cherry-pick, revert) and offers only the valid **Continue**, **Skip** and **Abort**.
 - **Guided mode** shows a live checklist: read the conflict, choose or edit Result, mark resolved, review staged, continue.
@@ -102,22 +110,35 @@ command layer, wrapped in a native window with visual tools where they help.
 
 <table>
   <tr>
-    <td width="50%"><a href="docs/screenshots/workspace.png"><img src="docs/screenshots/workspace.png" alt="Workspace, dark"></a><br><sub>Workspace · Dark</sub></td>
-    <td width="50%"><a href="docs/screenshots/workspace_light.png"><img src="docs/screenshots/workspace_light.png" alt="Workspace, light"></a><br><sub>Workspace · Light</sub></td>
+    <td width="50%"><a href="docs/screenshots/overview_dark.png"><img src="docs/screenshots/overview_dark.png" alt="Overview, dark theme"></a><br><sub>Overview · Dark</sub></td>
+    <td width="50%"><a href="docs/screenshots/overview_light.png"><img src="docs/screenshots/overview_light.png" alt="Overview, light theme"></a><br><sub>Overview · Light</sub></td>
   </tr>
   <tr>
-    <td width="50%"><a href="docs/screenshots/graph_dark.png"><img src="docs/screenshots/graph_dark.png" alt="Commit graph, dark"></a><br><sub>Commit graph · Dark</sub></td>
-    <td width="50%"><a href="docs/screenshots/graph_light.png"><img src="docs/screenshots/graph_light.png" alt="Commit graph, light"></a><br><sub>Commit graph · Light</sub></td>
+    <td width="50%"><a href="docs/screenshots/history.png"><img src="docs/screenshots/history.png" alt="History"></a><br><sub>History</sub></td>
+    <td width="50%"><a href="docs/screenshots/graph.png"><img src="docs/screenshots/graph.png" alt="Commit graph with changed files and diff"></a><br><sub>Commit graph</sub></td>
   </tr>
   <tr>
-    <td width="50%"><a href="docs/screenshots/picker.png"><img src="docs/screenshots/picker.png" alt="Repository picker"></a><br><sub>Repository picker</sub></td>
-    <td width="50%"><a href="docs/screenshots/file-history.png"><img src="docs/screenshots/file-history.png" alt="File history"></a><br><sub>File history</sub></td>
+    <td width="50%"><a href="docs/screenshots/file_history.png"><img src="docs/screenshots/file_history.png" alt="File history"></a><br><sub>File history</sub></td>
+    <td width="50%"><a href="docs/screenshots/commit_context_menu.png"><img src="docs/screenshots/commit_context_menu.png" alt="Commit context menu"></a><br><sub>Commit actions</sub></td>
   </tr>
   <tr>
-    <td width="50%"><a href="docs/screenshots/editor.png"><img src="docs/screenshots/editor.png" alt="Code editor"></a><br><sub>Code editor</sub></td>
-    <td width="50%"><a href="docs/screenshots/i18n.png"><img src="docs/screenshots/i18n.png" alt="Interface languages"></a><br><sub>Interface languages</sub></td>
+    <td width="50%"><a href="docs/screenshots/command_palette.png"><img src="docs/screenshots/command_palette.png" alt="Command Palette"></a><br><sub>Command Palette</sub></td>
+    <td width="50%"><a href="docs/screenshots/keyboard_shortcuts.png"><img src="docs/screenshots/keyboard_shortcuts.png" alt="Searchable keyboard shortcut list"></a><br><sub>Keyboard shortcuts</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/remote_branches.png"><img src="docs/screenshots/remote_branches.png" alt="Remotes and remote branches"></a><br><sub>Remotes and remote branches</sub></td>
+    <td width="50%"><a href="docs/screenshots/terminal.png"><img src="docs/screenshots/terminal.png" alt="Built-in terminal docked beside the workspace"></a><br><sub>Built-in terminal</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/editor.png"><img src="docs/screenshots/editor.png" alt="Code editor with content search"></a><br><sub>Editor and search</sub></td>
+    <td width="50%"><a href="docs/screenshots/tokyo_night_theme.png"><img src="docs/screenshots/tokyo_night_theme.png" alt="Tokyo Night theme with the Chinese interface"></a><br><sub>Tokyo Night theme</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><a href="docs/screenshots/i18n.png"><img src="docs/screenshots/i18n.png" alt="Chinese interface, light theme" width="50%"></a><br><sub>Interface languages · light theme</sub></td>
   </tr>
 </table>
+
+<p align="center"><sub>Screenshots show the open-source <a href="https://github.com/jesseduffield/lazygit">Lazygit</a> repository.</sub></p>
 
 ## Install
 
