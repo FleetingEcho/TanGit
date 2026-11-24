@@ -3,6 +3,13 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      manually_verified:
+        description: All release platforms were verified manually
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: write
@@ -10,22 +17,41 @@ permissions:
 jobs:
   verify:
     name: Verify
+    if: github.event_name == 'push'
     uses: ./.github/workflows/verify.yml
 
   draft-release:
     needs: verify
+    if: always() && (needs.verify.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.manually_verified && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
-      - name: Check tag matches mygo.json
-        run: test "$GITHUB_REF_NAME" = "v$(jq -r .version mygo.json)"
-      - name: Create the draft release
+      - name: Resolve release tag
+        id: tag
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-              --draft --verify-tag --title "lazygitGo $GITHUB_REF_NAME" --generate-notes
+          tag="v$(jq -r .version mygo.json)"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            if existing=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha' 2>/dev/null); then
+              test "$existing" = "$GITHUB_SHA"
+            else
+              gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" >/dev/null
+            fi
+          else
+            test "$GITHUB_REF_NAME" = "$tag"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --draft --verify-tag --title "lazygitGo $RELEASE_TAG" --generate-notes
           fi
 
   build:
@@ -92,8 +118,9 @@ jobs:
         if: matrix.name == 'Linux'
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.draft-release.outputs.tag }}
         run: |
-          gh release download "$GITHUB_REF_NAME" --pattern SHA256SUMS --dir build --clobber
+          gh release download "$RELEASE_TAG" --pattern SHA256SUMS --dir build --clobber
           debs=(build/linux-*/lazygitgo_*.deb)
           bash scripts/prepare-debian-upgrade.sh build "${debs[@]}"
-          gh release upload "$GITHUB_REF_NAME" --clobber "${debs[@]}" build/SHA256SUMS
+          gh release upload "$RELEASE_TAG" --clobber "${debs[@]}" build/SHA256SUMS
