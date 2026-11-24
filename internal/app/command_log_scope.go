@@ -261,11 +261,11 @@ func (a *app) commandLogTools(c *ui.Context) {
 		{commandLogRangeAll, tr("All time")},
 	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
-		a.commandLogFilterMenu(c, "Status filter", commandLogStatusLabel(a.commandLogStatus), statusOptions, a.commandLogStatus, func(value string) {
+		a.commandLogFilterSelect(c, "Status filter", a.commandLogStatus, commandLogStatusLabel(a.commandLogStatus), statusOptions, func(value string) {
 			a.commandLogStatus = value
 		})
-		a.commandLogFilterMenu(c, "Source filter", commandLogSourceLabel(a.commandLogSource), sourceOptions, a.commandLogSource, a.selectCommandLogSource)
-		a.commandLogFilterMenu(c, "Time range filter", commandLogTimeRangeLabel(a.commandLogRange), timeOptions, a.commandLogRange, func(value string) {
+		a.commandLogFilterSelect(c, "Source filter", a.commandLogSource, commandLogSourceLabel(a.commandLogSource), sourceOptions, a.selectCommandLogSource)
+		a.commandLogFilterSelect(c, "Time range filter", a.commandLogRange, commandLogTimeRangeLabel(a.commandLogRange), timeOptions, func(value string) {
 			a.commandLogRange = value
 		})
 		filtered := strings.TrimSpace(a.commandLogQuery) != "" || a.commandLogStatus != "" || a.commandLogSource != "" ||
@@ -281,17 +281,30 @@ type commandLogFilterOption struct {
 	label string
 }
 
-func (a *app) commandLogFilterMenu(c *ui.Context, name, label string, options []commandLogFilterOption, selected string, selectOption func(string)) {
-	button := ui.Button(c, label+" ˅").Label(tr(name)).Tooltip(tr("Choose a filter"))
-	button.PopoverMenuButton(func(menu *ui.Menu) {
-		for _, option := range options {
-			option := option
-			if menu.Item(option.label).Checked(option.value == selected).Chosen() {
-				selectOption(option.value)
-				a.resetCommandLogPaging()
-			}
+// commandLogFilterSelect is one filter as the toolkit's own drop-down. The
+// drop-down chooses among the options' words, so the current value is shown by
+// its label and a new word is turned back into the filter value it stands for.
+func (a *app) commandLogFilterSelect(c *ui.Context, name, value, fallback string, options []commandLogFilterOption, selectOption func(string)) {
+	labels := make([]string, len(options))
+	current := fallback
+	for index, option := range options {
+		labels[index] = option.label
+		if option.value == value {
+			current = option.label
 		}
-	})
+	}
+	chosen := current
+	ui.Select(c, &chosen, labels).Label(tr(name)).Tooltip(tr("Choose a filter"))
+	if chosen == current {
+		return
+	}
+	for _, option := range options {
+		if option.label == chosen {
+			selectOption(option.value)
+			a.resetCommandLogPaging()
+			return
+		}
+	}
 }
 
 func commandLogEntryText(entry repository.CommandEntry) string {

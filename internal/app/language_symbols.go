@@ -488,36 +488,19 @@ func (a *app) languageSymbolsFilterButtons(c *ui.Context) {
 }
 
 func (a *app) languageSymbolsToolbar(c *ui.Context) {
-	theme := c.Theme()
 	state := &a.code.languageSymbols
 	ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
-		sortLabel := tr("by: kind")
-		if state.sort == languageSymbolSortName {
-			sortLabel = tr("by: name")
-		} else if state.sort == languageSymbolSortPosition {
-			sortLabel = tr("by: position")
-		}
-		sortButton := ui.ButtonBase(c).Gap(5).Padding(3, 5).Radius(theme.Radius).
-			Label(tr("Sort document symbols")).Tooltip(tr("Sort document symbols"))
-		if sortButton.Hovered() {
-			sortButton.Background(theme.SurfaceHover)
-		}
-		sortButton.Children(func() {
-			ui.Icon(c, arrowDownIcon).FontSize(11).TextColor(theme.TextMuted)
-			ui.Text(c, sortLabel).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
-			ui.Icon(c, chevronDownIcon).FontSize(11).TextColor(theme.TextMuted)
-		})
-		sortButton.PopoverMenuButton(func(m *ui.Menu) {
-			for order, label := range []string{"By kind", "By name", "By position"} {
-				order := order
-				if order == state.sort {
-					label = "✓ " + label
-				}
-				if m.Item(tr(label)).ID(fmt.Sprintf("language-symbol-sort:%d", order)).Chosen() {
-					state.sort = order
+		orders := []string{tr("By kind"), tr("By name"), tr("By position")}
+		order := min(max(state.sort, 0), len(orders)-1)
+		chosen := orders[order]
+		ui.Select(c, &chosen, orders).Label(tr("Sort document symbols")).Tooltip(tr("Sort document symbols"))
+		if chosen != orders[order] {
+			for index, name := range orders {
+				if name == chosen {
+					state.sort = index
 				}
 			}
-		})
+		}
 		ui.Spacer(c)
 		flatIconButton(c, "Expand all symbols", "Expand all symbols", expandIcon, 13, 4, false, func() {
 			state.collapsed = nil

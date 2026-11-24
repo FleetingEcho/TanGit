@@ -188,11 +188,11 @@ func TestLanguageSymbolsDialogCollapseSortAndKeyboard(t *testing.T) {
 		t.Fatalf("open sort menu: %v", err)
 	}
 	h.tester.Frame()
-	if err := h.tester.ChooseMenuItem("By name"); err != nil {
+	if err := h.tester.Click("By name"); err != nil {
 		t.Fatalf("sort symbols by name: %v", err)
 	}
 	h.tester.Frame()
-	if h.app.code.languageSymbols.sort != languageSymbolSortName || !h.tester.HasText("by: name") {
+	if h.app.code.languageSymbols.sort != languageSymbolSortName || !h.tester.HasText("By name") {
 		t.Fatal("sort selection did not update the toolbar")
 	}
 

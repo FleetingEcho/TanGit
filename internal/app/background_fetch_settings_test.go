@@ -32,7 +32,7 @@ func TestBackgroundFetchSelectorChoosesPreset(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Background fetch interval: 30 min"); err != nil {
+	if err := h.tester.Click("30 min"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
@@ -66,7 +66,7 @@ func TestBackgroundFetchSelectorAcceptsAndPersistsCustomMinutes(t *testing.T) {
 			t.Errorf("the selector lost preset %q", label)
 		}
 	}
-	if err := h.tester.Click("Custom fetch interval"); err != nil {
+	if err := h.tester.Click("Custom…"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
@@ -113,7 +113,7 @@ func TestBackgroundFetchSelectorAcceptsAndPersistsCustomMinutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Background fetch interval: 30 min"); err != nil {
+	if err := h.tester.Click("30 min"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()

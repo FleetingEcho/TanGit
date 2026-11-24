@@ -145,25 +145,23 @@ func (a *app) sshProfileForm(c *ui.Context) {
 // sshAuthModeSelect keeps persisted SSH mode IDs stable while presenting each
 // choice in the interface language, just like the language picker does.
 func (a *app) sshAuthModeSelect(c *ui.Context) {
-	theme := c.Theme()
-	selects := ui.SelectBase(c, &a.ssh.profileDraft.AuthMode)
-	selects.Trigger.Label(tr("SSH authentication")).Grow(1).Padding(6, 10).Gap(8).
-		Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius).
-		Children(func() {
-			ui.Text(c, sshAuthModeName(a.ssh.profileDraft.AuthMode)).Grow(1)
-		})
-	selects.Popup(func(panel ui.Element) {
-		panel.Padding(4).Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius)
-		for _, mode := range []string{sshAuthAgent, sshAuthKey, sshAuthPassword} {
-			item := selects.Item(mode).Padding(6, 10)
-			if item.Highlighted() {
-				item.Background(theme.SurfaceHover)
-			}
-			item.Children(func() {
-				ui.Text(c, sshAuthModeName(mode))
-			})
+	modes := []string{sshAuthAgent, sshAuthKey, sshAuthPassword}
+	names := make([]string, len(modes))
+	for index, mode := range modes {
+		names[index] = sshAuthModeName(mode)
+	}
+	current := sshAuthModeName(a.ssh.profileDraft.AuthMode)
+	chosen := current
+	ui.Select(c, &chosen, names).Label(tr("SSH authentication")).Grow(1)
+	if chosen == current {
+		return
+	}
+	for index, name := range names {
+		if name == chosen {
+			a.ssh.profileDraft.AuthMode = modes[index]
+			return
 		}
-	})
+	}
 }
 
 func sshAuthModeName(mode string) string {

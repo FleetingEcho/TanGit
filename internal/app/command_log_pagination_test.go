@@ -16,7 +16,10 @@ func commandLogFilterChoice(t *testing.T, tester *ui.Tester, filter, choice stri
 		t.Fatalf("open %s: %v", filter, err)
 	}
 	tester.Frame()
-	item, found := tester.AccessByRole(ui.RoleMenuItem, choice)
+	item, found := tester.AccessByRole(ui.RoleOption, choice)
+	if !found {
+		item, found = tester.AccessByRole(ui.RoleMenuItem, choice)
+	}
 	if !found {
 		for _, candidate := range tester.AccessAll() {
 			if candidate.Name == choice && (candidate.Role == ui.RoleMenuItemCheckBox || candidate.Role == ui.RoleMenuItemRadio) {

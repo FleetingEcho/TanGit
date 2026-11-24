@@ -646,39 +646,30 @@ func (a *app) behaviorSettings(c *ui.Context) {
 // bounded numeric editor, so a user's existing non-preset value round-trips.
 func (a *app) backgroundFetchIntervalChoice(c *ui.Context) {
 	theme := c.Theme()
-	selects := ui.SelectBase(c, &a.settingsUI.autoFetchChoice)
-	selects.Trigger.Width(170).Padding(6, 10).Gap(8).
-		Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius).
+	labels := make([]string, 0, len(backgroundFetchIntervals)+1)
+	for _, minutes := range backgroundFetchIntervals {
+		labels = append(labels, trf("%d min", minutes))
+	}
+	custom := tr("Custom…")
+	labels = append(labels, custom)
+	current := custom
+	if a.settingsUI.autoFetchChoice != backgroundFetchCustomChoice {
+		current = trf("%d min", a.settings.AutoFetchInterval)
+	}
+	chosen := current
+	ui.Select(c, &chosen, labels).Width(170).
 		Label(tr("Background fetch interval")).
-		Tooltip(tr("Choose a preset or enter a custom interval in minutes")).
-		Children(func() {
-			label := tr("Custom…")
-			if a.settingsUI.autoFetchChoice != backgroundFetchCustomChoice {
-				label = trf("%d min", a.settings.AutoFetchInterval)
+		Tooltip(tr("Choose a preset or enter a custom interval in minutes"))
+	if chosen != current {
+		if chosen == custom {
+			a.settingsUI.autoFetchChoice = backgroundFetchCustomChoice
+		} else {
+			for _, minutes := range backgroundFetchIntervals {
+				if trf("%d min", minutes) == chosen {
+					a.settingsUI.autoFetchChoice = minutes
+					a.settings.AutoFetchInterval = minutes
+				}
 			}
-			ui.Text(c, label).Grow(1).SingleLine()
-		})
-	selects.Popup(func(panel ui.Element) {
-		panel.Padding(4).Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius)
-		for _, minutes := range backgroundFetchIntervals {
-			label := trf("%d min", minutes)
-			item := selects.Item(minutes).Padding(6, 10).
-				Label(tr("Background fetch interval") + ": " + label)
-			if item.Highlighted() {
-				item.Background(theme.SurfaceHover)
-			}
-			item.Children(func() { ui.Text(c, label) })
-		}
-		custom := selects.Item(backgroundFetchCustomChoice).Padding(6, 10).
-			Label(tr("Custom fetch interval"))
-		if custom.Highlighted() {
-			custom.Background(theme.SurfaceHover)
-		}
-		custom.Children(func() { ui.Text(c, tr("Custom…")) })
-	})
-	if selects.Trigger.Changed() {
-		if a.settingsUI.autoFetchChoice != backgroundFetchCustomChoice {
-			a.settings.AutoFetchInterval = a.settingsUI.autoFetchChoice
 		}
 		a.settings.AutoFetchConfigured = true
 		a.settingsChanged(c)
@@ -1215,32 +1206,26 @@ func settingsSection(c *ui.Context, build func()) {
 	ui.Column(c).FillWidth().Gap(12).Children(build)
 }
 
-// languageSelect is the interface language menu: the current language's own
-// name is the trigger, and every supported language is an option.
+// languageSelect is the interface language drop-down: every supported
+// language is listed by its own name, and the stored code follows the choice.
 func (a *app) languageSelect(c *ui.Context) {
-	theme := c.Theme()
-	selects := ui.SelectBase(c, &a.settings.Language)
-	selects.Trigger.Grow(1).Padding(6, 10).Gap(8).
-		Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius).
-		Children(func() {
-			ui.Text(c, languageName(a.settings.Language)).Grow(1)
-		})
-	if selects.Trigger.Changed() {
-		a.settingsChanged(c)
+	names := make([]string, len(languageChoices))
+	for index, choice := range languageChoices {
+		names[index] = choice.Name
 	}
-	selects.Popup(func(panel ui.Element) {
-		panel.Padding(4).Background(theme.Surface).Border(1, theme.Border).
-			Radius(theme.Radius)
-		for _, choice := range languageChoices {
-			item := selects.Item(choice.Code).Padding(6, 10)
-			if item.Highlighted() {
-				item.Background(theme.SurfaceHover)
-			}
-			item.Children(func() {
-				ui.Text(c, choice.Name)
-			})
+	current := languageName(a.settings.Language)
+	chosen := current
+	ui.Select(c, &chosen, names).Grow(1)
+	if chosen == current {
+		return
+	}
+	for _, choice := range languageChoices {
+		if choice.Name == chosen {
+			a.settings.Language = choice.Code
+			a.settingsChanged(c)
+			return
 		}
-	})
+	}
 }
 
 // accentPicker starts with the palette's own color, then the colors that can
