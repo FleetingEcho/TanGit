@@ -5,6 +5,7 @@ import (
 
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -80,20 +81,29 @@ func (a *app) confirmAbortOperation() {
 // selected commit. Its generation rejects an A-B-A completion even when a
 // backend returns a result after its context has been cancelled.
 type commitMessageDetailState struct {
-	hash           string
-	message        repository.CommitMessage
-	loading        bool
-	error          string
-	height         float32
-	heightByCommit map[string]float32
-	raw            bool
-	markdown       *markdown.Options
-	scroll         ui.ScrollState
-	cancel         context.CancelFunc
-	generation     uint64
+	hash            string
+	message         repository.CommitMessage
+	loading         bool
+	showLoading     bool
+	reserveHeight   bool
+	cachedMessages  map[string]repository.CommitMessage
+	cacheGeneration uint64
+	error           string
+	height          float32
+	heightByCommit  map[string]float32
+	raw             bool
+	markdown        *markdown.Options
+	scroll          ui.ScrollState
+	cancel          context.CancelFunc
+	generation      uint64
 }
 
 func (s *commitMessageDetailState) reset() {
+	s.resetSelection()
+	s.cachedMessages = nil
+}
+
+func (s *commitMessageDetailState) resetSelection() {
 	if s.cancel != nil {
 		s.cancel()
 		s.cancel = nil
@@ -102,6 +112,8 @@ func (s *commitMessageDetailState) reset() {
 	s.hash = ""
 	s.message = repository.CommitMessage{}
 	s.loading = false
+	s.showLoading = false
+	s.reserveHeight = false
 	s.error = ""
 	s.scroll = ui.ScrollState{}
 }
@@ -112,16 +124,38 @@ func (a *app) requestCommitMessage(state *commitMessageDetailState, commit repos
 	}
 	session := a.session
 	repositoryGeneration := a.generation
-	state.reset()
+	reserveHeight := state.reserveHeight || state.message.Description != ""
+	state.resetSelection()
+	if state.cacheGeneration != repositoryGeneration {
+		state.cachedMessages = nil
+		state.cacheGeneration = repositoryGeneration
+	}
+	state.hash = commit.Hash
+	if cached, ok := state.cachedMessages[commit.Hash]; ok {
+		state.message = cached
+		return
+	}
 	requestGeneration := state.generation
 	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
 	state.cancel = cancel
-	state.hash = commit.Hash
 	state.loading = true
+	state.reserveHeight = reserveHeight
 
+	// Fast reads render directly. Slow reads still get feedback for the
+	// currently selected commit.
+	timer := time.AfterFunc(200*time.Millisecond, func() {
+		a.updateChanged(func() bool {
+			if ctx.Err() != nil || state.generation != requestGeneration || !state.loading {
+				return false
+			}
+			state.showLoading = true
+			return visible()
+		})
+	})
 	go func() {
 		defer a.recoverBackground()
 		defer cancel()
+		defer timer.Stop()
 		message, err := requireHistorySession(session).CommitMessage(ctx, commit)
 		a.updateChanged(func() bool {
 			if requestGeneration != state.generation || state.hash != commit.Hash {
@@ -129,6 +163,8 @@ func (a *app) requestCommitMessage(state *commitMessageDetailState, commit repos
 			}
 			state.cancel = nil
 			state.loading = false
+			state.showLoading = false
+			state.reserveHeight = false
 			if repositoryGeneration != a.generation {
 				// An action rewrote the repository. Drop the key so the next
 				// frame reads the selected commit again.
@@ -141,6 +177,10 @@ func (a *app) requestCommitMessage(state *commitMessageDetailState, commit repos
 				return visible()
 			}
 			state.message = message
+			if state.cachedMessages == nil || len(state.cachedMessages) >= 128 {
+				state.cachedMessages = make(map[string]repository.CommitMessage)
+			}
+			state.cachedMessages[commit.Hash] = message
 			return visible()
 		})
 	}()
@@ -972,7 +1012,7 @@ func (a *app) commitDetailBodyWithOptions(c *ui.Context, commit *repository.Comm
 			})
 		}).Grow(1)
 	}
-	if state.message.message.Description != "" && !state.message.loading && state.message.error == "" {
+	if state.message.reserveHeight || state.message.message.Description != "" {
 		a.commitDescriptionSplit(c, *commit, state, filesAndDiff).Grow(1)
 		return
 	}

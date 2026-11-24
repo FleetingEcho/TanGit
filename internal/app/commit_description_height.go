@@ -38,11 +38,13 @@ func (a *app) preferredCommitDescriptionHeight(c *ui.Context, commit repository.
 	message := state.message
 	var measured commitDescriptionMeasurement
 	switch {
-	case message.loading:
+	case message.showLoading:
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 			ui.Spinner(c).Label(tr("Loading the full commit message…"))
 			ui.Text(c, tr("Loading the full commit message…")).TextColor(c.Theme().TextMuted)
 		})
+		return measured
+	case message.loading:
 		return measured
 	case message.error != "":
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {

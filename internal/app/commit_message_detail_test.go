@@ -92,6 +92,48 @@ func TestCommitDetailsLoadAndRetainEveryBodyLine(t *testing.T) {
 	}
 }
 
+func TestCommitDetailsDelayLoadingAndReuseReadMessages(t *testing.T) {
+	const loading = "Loading the full commit message…"
+	var reads atomic.Int32
+	release := make(chan struct{})
+	session := &commitMessageDetailSession{read: func(ctx context.Context, commit repository.Commit) (repository.CommitMessage, error) {
+		reads.Add(1)
+		if commit.Hash == "bbbbbbbb" {
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return repository.CommitMessage{}, ctx.Err()
+			}
+		}
+		return repository.CommitMessage{Description: "Body for " + commit.Hash}, nil
+	}}
+	h, selected := commitMessageDetailHarness(t, sectionHistory, session)
+	first := *selected
+	h.tester.Frame()
+	h.waitFor(t, "first commit message", func() bool {
+		return h.tester.HasText("Body for aaaaaaaa")
+	})
+
+	selected.Hash = "bbbbbbbb"
+	h.tester.Frame()
+	if h.tester.HasText(loading) || h.tester.HasText("Body for aaaaaaaa") {
+		t.Fatalf("new selection rendered a loading flash or the previous commit: %q", h.texts())
+	}
+	h.waitFor(t, "slow commit message loading indicator", func() bool {
+		return h.tester.HasText(loading)
+	})
+	close(release)
+	h.waitFor(t, "second commit message", func() bool {
+		return h.tester.HasText("Body for bbbbbbbb")
+	})
+
+	*selected = first
+	h.tester.Frame()
+	if !h.tester.HasText("Body for aaaaaaaa") || h.tester.HasText(loading) || reads.Load() != 2 {
+		t.Fatalf("revisiting a commit did not render its cached message immediately: %q", h.texts())
+	}
+}
+
 func TestCommitMessageRenderedAndRawModesAllowSelectionAndCopy(t *testing.T) {
 	body := "Add the **native** client.\n\nSee the release notes."
 	session := &commitMessageDetailSession{read: func(_ context.Context, commit repository.Commit) (repository.CommitMessage, error) {
