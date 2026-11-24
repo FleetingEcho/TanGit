@@ -12,8 +12,13 @@
     "installerInclude": "packaging/windows/installer.nsh"
   },
   "linux": {
-    "depends": ["libayatana-appindicator3-1"],
+    "depends": [
+      "libayatana-appindicator3-1"
+    ],
     "webview": false,
-    "command": "tangit"
+    "command": "tangit",
+    "formats": [
+      "deb"
+    ]
   }
 }
