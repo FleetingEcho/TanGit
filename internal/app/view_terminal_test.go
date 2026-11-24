@@ -1590,3 +1590,82 @@ func TestLeavingARepositoryDropsAStartingTerminal(t *testing.T) {
 		t.Fatalf("the terminal dock stayed open after the repository was left: tab=%d", h.app.workspaceTab)
 	}
 }
+
+// While the terminal holds the keyboard, its shell owns the letters and
+// Escape; only the window's terminal toggle and its own search answer.
+func TestTerminalFocusSuppressesAppShortcuts(t *testing.T) {
+	peers := make(chan monitoredTerminalPeer, 1)
+	original := newTerminal
+	newTerminal = func(options terminal.Options) (*terminal.Terminal, error) {
+		return newMonitoredTerminal(options, peers)
+	}
+	t.Cleanup(func() { newTerminal = original })
+
+	h := menuTestApp(t)
+	h.app.setWorkspaceTab(sectionChanges)
+	h.tester.Frame()
+	section := h.app.workspaceTab
+
+	h.tester.Key(ui.Ctrl, ui.KeyBackquote)
+	h.tester.Frame()
+	h.waitFor(t, "the shell to start", func() bool {
+		return len(h.app.term.sessions) == 1 && h.app.term.sessions[0].pane != nil
+	})
+	h.tester.Frame()
+	h.tester.Advance(time.Second)
+	h.tester.Frame()
+	h.tester.ClickAt(640, 700)
+	h.tester.Frame()
+
+	// App shortcuts are inert while the terminal has focus.
+	h.tester.Key(0, ui.KeyF6)
+	h.tester.Frame()
+	if h.app.workspaceTab != section {
+		t.Fatalf("F6 switched the section to %d", h.app.workspaceTab)
+	}
+	h.tester.Key(0, ui.Key2)
+	h.tester.Frame()
+	if h.app.workspaceTab != section {
+		t.Fatalf("Key 2 switched the section to %d", h.app.workspaceTab)
+	}
+	h.tester.Key(ui.Ctrl, ui.KeyComma)
+	h.tester.Frame()
+	if h.app.settingsOpen {
+		t.Fatal("Ctrl+, opened settings while the terminal had focus")
+	}
+	h.tester.Key(0, ui.KeyF1)
+	h.tester.Frame()
+	if h.app.keybindingsOpen {
+		t.Fatal("F1 opened shortcuts while the terminal had focus")
+	}
+	h.tester.Key(ui.Ctrl, ui.KeyL)
+	h.tester.Frame()
+	if h.app.commandLogOpen {
+		t.Fatal("Ctrl+L opened the command log while the terminal had focus")
+	}
+
+	// The terminal's own search answers.
+	h.tester.Key(ui.Ctrl, ui.KeyF)
+	h.tester.Frame()
+	if active := h.app.activeTerminal(); active == nil || !active.searchOpen {
+		t.Fatal("Ctrl+F did not open terminal search")
+	}
+	h.tester.Key(0, ui.KeyEscape)
+	h.tester.Frame()
+	if active := h.app.activeTerminal(); active == nil || active.searchOpen {
+		t.Fatal("Escape did not close terminal search")
+	}
+
+	// Ctrl+` toggles the dock off.
+	h.tester.Key(ui.Ctrl, ui.KeyBackquote)
+	h.tester.Frame()
+	if h.app.term.panelOpen {
+		t.Fatal("Ctrl+` did not hide the dock")
+	}
+	// App shortcuts work again once the terminal is gone.
+	h.tester.Key(ui.Ctrl, ui.KeyL)
+	h.tester.Frame()
+	if !h.app.commandLogOpen {
+		t.Fatal("Ctrl+L did not open the command log after the terminal was closed")
+	}
+}
