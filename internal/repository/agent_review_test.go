@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -231,6 +232,9 @@ func TestAgentReviewFinalFilesHandleUntrackedEmptyBinaryAndSpecialNames(t *testi
 	runGit(t, dir, "commit", "--allow-empty", "-m", "base")
 	base := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
 	special := "odd [review]\t\n.txt"
+	if runtime.GOOS == "windows" {
+		special = "odd [review] #.txt"
+	}
 	writeAgentReviewFile(t, dir, "empty.txt", nil)
 	writeAgentReviewFile(t, dir, "binary.dat", []byte{0, 1, 2})
 	writeAgentReviewFile(t, dir, special, []byte("first\nsecond\n"))

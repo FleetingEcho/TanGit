@@ -113,7 +113,8 @@ func validateRelativePath(path string) error {
 	if containsControl(path) {
 		return errors.New("path contains a control character")
 	}
-	if filepath.IsAbs(path) {
+	// Windows also has drive-relative and root-relative paths.
+	if filepath.VolumeName(path) != "" || os.IsPathSeparator(path[0]) {
 		return fmt.Errorf("path %q must be relative", path)
 	}
 	clean := filepath.Clean(path)

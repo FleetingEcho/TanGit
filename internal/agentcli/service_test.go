@@ -43,6 +43,7 @@ func newGitRepo(t *testing.T) string {
 	gitCommand(t, root, "init", "-b", "main")
 	gitCommand(t, root, "config", "user.name", "Agent CLI Test")
 	gitCommand(t, root, "config", "user.email", "agentcli@example.invalid")
+	gitCommand(t, root, "config", "core.autocrlf", "false")
 	writeTestFile(t, root, "tracked.txt", "base\n")
 	gitCommand(t, root, "add", "tracked.txt")
 	gitCommand(t, root, "commit", "-m", "base")
@@ -107,6 +108,7 @@ func TestResolveDataDirPrecedence(t *testing.T) {
 
 func TestSafeReadsAndDirectBaseFinalDiff(t *testing.T) {
 	root := newGitRepo(t)
+	gitCommand(t, root, "config", "core.autocrlf", "true")
 	service, _ := newTestService(t)
 	base := gitCommand(t, root, "rev-parse", "HEAD")
 	created := createStoredTask(t, service, root, nil)
@@ -156,6 +158,9 @@ func TestSafeReadsAndDirectBaseFinalDiff(t *testing.T) {
 	}
 	if !strings.Contains(fileResult.Patch, "+untracked line") {
 		t.Fatalf("untracked patch = %q / new text %q", fileResult.Patch, fileResult.NewText)
+	}
+	if strings.Contains(fileResult.Patch, "will be replaced by CRLF") {
+		t.Fatalf("untracked patch contains a Git line-ending warning: %q", fileResult.Patch)
 	}
 	if _, err := service.Diff(context.Background(), DiffOptions{TaskID: created.ID, File: "missing.txt"}); err == nil {
 		t.Fatal("diff selected a file absent from the final review")

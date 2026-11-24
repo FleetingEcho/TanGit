@@ -191,16 +191,16 @@ func (s *gitSession) FinalFileDiff(ctx context.Context, base string, file Commit
 	if strings.HasPrefix(file.Status, "?") {
 		args := append([]string{"git", "diff", "--no-index", "--no-color", "--no-ext-diff"}, optionArgs...)
 		args = append(args, "--", "/dev/null", file.Path)
-		patch, stderr, commandErr := s.cmd.New(args).RunWithOutputs()
+		output, stderr, commandErr := s.output(s.cmd.New(args))
 		if commandErr != nil {
 			if exitCode, ok := commandExitCode(commandErr); !ok || exitCode != 1 {
-				if message := strings.TrimSpace(stderr); message != "" {
+				if message := strings.TrimSpace(string(stderr)); message != "" {
 					return Diff{}, fmt.Errorf("load final untracked file diff: %w: %s", commandErr, message)
 				}
 				return Diff{}, fmt.Errorf("load final untracked file diff: %w", commandErr)
 			}
 		}
-		if strings.TrimSpace(patch) != "" {
+		if patch := string(output); strings.TrimSpace(patch) != "" {
 			return Diff{Patch: patch, Kind: "Final"}, nil
 		}
 		content, err := s.fileService().ReadFile(s.joinPath(s.git.RepoPaths.WorktreePath(), file.Path))

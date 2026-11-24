@@ -785,7 +785,7 @@ func TestTaskStoreValidatesPhase3ProfileResourcesAndPaths(t *testing.T) {
 		})
 	}
 
-	for _, cache := range []string{filepath.Join("relative", "cache"), filepath.Join(string(filepath.Separator), "absolute", "cache")} {
+	for _, cache := range []string{filepath.Join("relative", "cache"), filepath.Join(t.TempDir(), "cache")} {
 		task := validTask("local:/repo")
 		task.Profile.Resources = Resources{DevelopmentPort: 65535, DatabaseName: "development", CacheDirectory: cache}
 		task.Profile.SparsePaths = []string{filepath.Join("dir", "..", "allowed")}
