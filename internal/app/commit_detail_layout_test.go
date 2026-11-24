@@ -248,7 +248,7 @@ func TestCommitDetailToolbarsFitNarrowPanes(t *testing.T) {
 				tt.SetDark(true)
 				tt.Frame()
 				labels := []string{"Toggle whitespace-only diff changes", "Change diff context lines",
-					"Toggle diff layout", "Toggle diff line wrapping", "Save diff", "Expand diff"}
+					"Toggle diff layout", "Toggle diff line wrapping", "Save diff"}
 				var top, bottom float32
 				for i, label := range labels {
 					r, ok := tt.Find(tr(label))
@@ -288,14 +288,8 @@ func TestCommitDetailToolbarsFitNarrowPanes(t *testing.T) {
 					copyHash.Y >= hash.Y+hash.H || copyHash.Y+copyHash.H <= hash.Y {
 					t.Fatalf("copy control is not immediately after the hash on its row: hash=%+v copy=%+v", hash, copyHash)
 				}
-				if !branchView {
-					subject, _ := tt.Find(commit.Subject)
-					expand, _ := tt.Find(tr("Expand diff"))
-					if expand.X <= subject.X || expand.Y >= subject.Y+subject.H || expand.Y+expand.H <= subject.Y ||
-						float32(width)-(expand.X+expand.W) > 24 {
-						t.Fatalf("expand control is not at the commit header's top-right: subject=%+v expand=%+v width=%d",
-							subject, expand, width)
-					}
+				if _, ok := tt.Find("Expand diff"); ok {
+					t.Fatal("commit details should use their draggable middle divider, not a maximize control")
 				}
 				if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
 					saveScreenshot(t, dir, fmt.Sprintf("commit-detail-%d-branch-%v", width, branchView), tt)
