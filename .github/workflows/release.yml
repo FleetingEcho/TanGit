@@ -10,6 +10,10 @@ on:
         type: boolean
         required: true
         default: false
+      existing_tag:
+        description: Existing release tag to rebuild
+        type: string
+        required: false
 
 permissions:
   contents: write
@@ -26,16 +30,25 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
+      revision: ${{ steps.tag.outputs.revision }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.existing_tag && format('refs/tags/{0}', inputs.existing_tag) || github.sha }}
       - name: Resolve release tag
         id: tag
         env:
           GH_TOKEN: ${{ github.token }}
+          EXISTING_TAG: ${{ inputs.existing_tag }}
         run: |
           tag="v$(jq -r .version mygo.json)"
+          revision="$(git rev-parse HEAD)"
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            if existing=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha' 2>/dev/null); then
+            if [ -n "$EXISTING_TAG" ]; then
+              test "$EXISTING_TAG" = "$tag"
+              test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)" = "$revision"
+              gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft | grep -qx true
+            elif existing=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha' 2>/dev/null); then
               test "$existing" = "$GITHUB_SHA"
             else
               gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" >/dev/null
@@ -44,6 +57,7 @@ jobs:
             test "$GITHUB_REF_NAME" = "$tag"
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
       - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -56,6 +70,7 @@ jobs:
 
   build:
     needs: draft-release
+    if: "!cancelled() && needs.draft-release.result == 'success'"
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -68,6 +83,8 @@ jobs:
           - { name: Linux, os: ubuntu-latest, platform: "linux/amd64,linux/arm64" }
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.draft-release.outputs.revision }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
