@@ -65,17 +65,24 @@ func (a *app) syncCockpitBranch() {
 	if state.branchChosen {
 		return
 	}
+	// While the branches are still being read there is no checked-out branch to
+	// follow, and an empty name would mean "every branch": keep what was chosen.
+	if len(a.snapshot.Branches) == 0 {
+		return
+	}
 	current := a.currentBranchName()
 	label := ""
 	if current != "" {
 		label = current + " (" + tr("current") + ")"
 	}
-	if state.branch == current && state.branchInput == label {
-		return
+	// Only another branch resets the read. The picker's text is just a label
+	// the user may have edited, so a different label alone never does.
+	if state.branch != current {
+		state.branch = current
+		state.loading, state.loaded = false, false
+		state.token++
 	}
-	state.branch, state.branchInput = current, label
-	state.loading, state.loaded = false, false
-	state.token++
+	state.branchInput = label
 }
 
 type contributorCacheEntry struct {
@@ -469,7 +476,7 @@ func (a *app) cockpitView(c *ui.Context) {
 	a.cockpit.width = width
 	root.Children(func() {
 		ui.Scroll(c).Grow(1).TrackScroll(&a.cockpit.scroll).Children(func() {
-			ui.Column(c).FillWidth().MinWidth(0).Gap(0).Padding(0, 2, 6, 2).Children(func() {
+			ui.Column(c).FillWidth().MinWidth(0).Gap(0).Padding(0, 2, 0, 2).Children(func() {
 				a.cockpit.tileInRow = false
 				a.cockpitContributorsCard(c, width >= 760)
 				// Commit activity and the languages share a row when it is wide.

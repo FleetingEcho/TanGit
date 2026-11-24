@@ -313,6 +313,10 @@ func TestOverviewShowsContributorStatistics(t *testing.T) {
 	if h.app.cockpit.insights.volumePeriod != contributorRangeWeek {
 		t.Fatal("the Contributors period must not change the Code changes period")
 	}
+	// A longer period reads the history again (it covers twice the period), so
+	// wait for that read before counting.
+	h.waitFor(t, "the year's contributors", func() bool { return h.app.cockpit.contributors.loaded })
+	h.tester.Frame()
 	if _, ok := h.tester.Find("Alice Example — 4 commits"); !ok {
 		t.Fatalf("switching to a year did not recount: %q", h.texts())
 	}

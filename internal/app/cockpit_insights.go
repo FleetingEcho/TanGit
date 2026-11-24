@@ -305,7 +305,9 @@ func (a *app) loadCockpitCodeVolume() {
 		return
 	}
 	insights.volumeUnavailable = false
-	a.syncCockpitBranch()
+	// The branch is read, never synced here: syncing resets the Contributors
+	// card, which this card's own period must not touch. The Contributors read
+	// that starts every load of the page syncs it first.
 	branch, period := state.branch, insights.volumePeriod
 	key := codeVolumeKey(branch, period)
 	now := time.Now()
@@ -500,7 +502,7 @@ func (a *app) loadCockpitHeatmap() {
 	if a.session == nil {
 		return
 	}
-	a.syncCockpitBranch()
+	// The branch is only read, so loading this card never resets another.
 	session, ok := a.session.(contributorSummarySession)
 	if !ok {
 		return

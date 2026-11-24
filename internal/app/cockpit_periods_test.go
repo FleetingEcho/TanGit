@@ -60,6 +60,35 @@ func TestCodeChangesPeriodLeavesContributorsAlone(t *testing.T) {
 	}
 }
 
+// Loading the Code changes card used to sync the Contributors card's branch,
+// which reset it to "not loaded" with nothing to read it again. That showed up
+// when the picker's text differed from the branch label, or while the branches
+// were being read again. Neither may touch Contributors.
+func TestCodeChangesPeriodNeverResetsContributors(t *testing.T) {
+	for name, disturb := range map[string]func(*harness){
+		"the picker text was edited": func(h *harness) {
+			h.app.cockpit.contributors.branchInput = "ma"
+		},
+		"the branches are being read again": func(h *harness) {
+			h.app.snapshot.Branches = nil
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := overviewPeriodsApp(t)
+			disturb(h)
+			before := h.app.cockpit.contributors
+			h.app.cockpit.insights.volumePeriod = contributorRangeMonth
+			h.app.loadCockpitCodeVolume()
+			h.tester.Frame()
+			after := h.app.cockpit.contributors
+			if !after.loaded || after.token != before.token || after.branch != before.branch {
+				t.Fatalf("Contributors was reset by the Code changes load: before loaded=%v token=%d branch=%q, after loaded=%v token=%d branch=%q",
+					before.loaded, before.token, before.branch, after.loaded, after.token, after.branch)
+			}
+		})
+	}
+}
+
 // The Contributors period reads twice its length of history, so a longer one
 // needs a new read; it must not change the Code changes period.
 func TestContributorPeriodRereadsAndLeavesCodeChangesAlone(t *testing.T) {
