@@ -46,6 +46,7 @@ command layer, wrapped in a native window with visual tools where they help.
 | 🧩 **Safer conflicts** | Compare Base, Current, Incoming and Result side by side, pick hunks, edit the result, and undo a choice before staging. |
 | 🛟 **Recovery built in** | Reflog, a durable Safety Journal and per-file conflict recovery. Risky actions explain themselves and ask first. |
 | 💻 **One workspace** | A code editor, search, terminal and SSH workspaces sit beside your repository tabs. |
+| 🌏 **Your language** | The whole interface is translated into six languages: English, 简体中文, 繁體中文, 日本語, Español and Français. Switch any time in **Settings → Appearance**. |
 
 ## What you can do
 
@@ -94,7 +95,8 @@ command layer, wrapped in a native window with visual tools where they help.
 - Create pull requests and read checks with the GitHub CLI (`gh`) or GitLab CLI (`glab`).
 - **Agent tasks** give each task an isolated branch and worktree, with durable state and review. Drive them from a local `lazygitGo agent …` CLI or RPC. See [Agent workspaces](docs/agent-workspaces.md) and [automation](docs/agent-automation.md).
 - Add **custom commands** with placeholders such as `{{branch}}` and `{{file}}`, and optional shortcuts.
-- Configurable background fetch and prune, 20 colour palettes, custom fonts, six interface languages, and signed in-app updates.
+- Configurable background fetch and prune, 20 colour palettes, custom fonts and signed in-app updates.
+- **Six interface languages**: English, 简体中文, 繁體中文, 日本語, Español and Français. Menus, dialogs, tooltips, errors and the command palette are all translated. See the screenshot below.
 
 ## Screenshots
 
