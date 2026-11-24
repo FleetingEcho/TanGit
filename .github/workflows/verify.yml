@@ -135,7 +135,17 @@ jobs:
           if ($exe.VersionInfo.ProductName -cne 'lazygitGo') {
             throw 'Unexpected Windows product name'
           }
-          $output = & build/windows-amd64/TanGit.exe agent help
-          if ($LASTEXITCODE -ne 0 -or -not ($output -match 'lazygitGo agent')) {
-            throw 'The legacy Windows launcher failed'
+          # The launcher is a GUI-subsystem program so that it opens no console
+          # window. PowerShell neither waits for such a program nor captures its
+          # output, so start it with redirected handles and wait for it instead.
+          $launcher = (Resolve-Path build/windows-amd64/TanGit.exe).Path
+          $stdout = Join-Path $env:RUNNER_TEMP 'legacy-launcher.out'
+          $stderr = Join-Path $env:RUNNER_TEMP 'legacy-launcher.err'
+          $process = Start-Process -FilePath $launcher -ArgumentList 'agent', 'help' `
+            -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          $output = Get-Content -Raw $stdout
+          Write-Host $output
+          if ($process.ExitCode -ne 0 -or -not ($output -match 'lazygitGo agent')) {
+            Write-Host (Get-Content -Raw $stderr)
+            throw "The legacy Windows launcher failed (exit $($process.ExitCode))"
           }
