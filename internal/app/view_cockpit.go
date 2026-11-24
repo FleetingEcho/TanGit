@@ -563,29 +563,34 @@ func (a *app) cockpitCardWithActions(c *ui.Context, id, title string, icon *ui.S
 	})
 }
 
-// cockpitPeriodButton is a card's own time-range control: the toolkit's
-// drop-down listing the periods, the current one shown. Each card keeps its own
-// period. It returns the new period's index when the user picked another one. It returns the new
+// cockpitPeriodButton is a card's own time-range control: a clock icon and the
+// current period in words, as a button whose menu lists the periods, the
+// current one checked. Each card keeps its own period. It returns the new
 // period's index when the user picked another one.
 func cockpitPeriodButton(c *ui.Context, period int, label string) (int, bool) {
+	theme := c.Theme()
 	if period < 0 || period >= len(contributorRanges) {
 		period = 0
 	}
-	labels := make([]string, len(contributorRanges))
-	for index, spec := range contributorRanges {
-		labels[index] = tr(spec.label)
+	button := ui.ButtonBase(c).Padding(4, 8).Gap(6).AlignItems(ui.Center).Radius(theme.Radius).Shrink(0).
+		Label(label).Tooltip(label + " · " + tr(contributorRanges[period].label))
+	if button.Hovered() {
+		button.Background(theme.SurfaceHover)
 	}
-	chosen := labels[period]
-	ui.Select(c, &chosen, labels).Label(label).Tooltip(label)
-	if chosen == labels[period] {
-		return -1, false
-	}
-	for index, name := range labels {
-		if name == chosen {
-			return index, true
+	picked := -1
+	button.PopoverMenuButton(func(m *ui.Menu) {
+		for index, spec := range contributorRanges {
+			if m.Item(tr(spec.label)).Checked(index == period).Chosen() {
+				picked = index
+			}
 		}
-	}
-	return -1, false
+	})
+	// The icon is followed by the period in words, so the card says what it shows.
+	button.Children(func() {
+		ui.Icon(c, historyIcon).FontSize(15).TextColor(theme.TextMuted)
+		ui.Text(c, tr(contributorRanges[period].label)).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).SingleLine()
+	})
+	return picked, picked >= 0 && picked != period
 }
 
 // cockpitTextLink is a small underlined word acting as a button.
