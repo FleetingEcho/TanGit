@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -116,10 +117,12 @@ func TestWholeWindowDiffSwitchesFiles(t *testing.T) {
 	h.waitFor(t, "the first file's diff", func() bool {
 		return h.app.commitDiffState != nil && !h.app.commitDiffLoading
 	})
-	h.app.openDiffFullscreen()
+	if err := h.tester.Click("Expand diff"); err != nil {
+		t.Fatalf("review the diff in the whole window: %v", err)
+	}
 	h.tester.Frame()
 	if !h.app.diffFullscreen {
-		t.Fatal("the whole-window diff did not open")
+		t.Fatal("the restored maximize icon did not open the whole-window diff")
 	}
 	if len(h.app.diffFullscreenRows) != len(h.app.commitFiles) {
 		t.Fatalf("the whole-window diff lists %d files, the commit changed %d",
@@ -160,6 +163,140 @@ func TestWholeWindowDiffSwitchesFiles(t *testing.T) {
 	}
 	if h.app.selectedCommitFile != 1 {
 		t.Fatalf("the commit pane lost the file chosen in the diff: row %d", h.app.selectedCommitFile)
+	}
+}
+
+func TestWholeWindowDiffDetailsExpandBelowHeader(t *testing.T) {
+	h, _ := historyHarness(t)
+	h.waitFor(t, "the commit diff", func() bool {
+		return h.app.commitDiffState != nil && !h.app.commitDiffLoading
+	})
+	if err := h.tester.Click("Expand diff"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.diffFullscreenDetailsHeight != diffFullscreenDetailsMinHeight {
+		t.Fatalf("fullscreen details opened at %v, want the compact %v DIP",
+			h.app.diffFullscreenDetailsHeight, diffFullscreenDetailsMinHeight)
+	}
+	if _, found := h.tester.Find("Commit details"); found {
+		t.Fatal("whole-window diff opened with its commit details already expanded")
+	}
+
+	// The top island keeps its compact title-only height until this horizontal
+	// sash is dragged down. The expanded region is the shared commit renderer.
+	dragVerticalPaneGrip(t, h.tester, ui.Rect{W: 1280}, 0, 160)
+	details, found := h.tester.Find("Commit details")
+	if !found || details.H <= 0 {
+		t.Fatalf("dragging the fullscreen middle divider did not reveal commit details: %+v", details)
+	}
+	if !h.tester.HasText("Existing body") || !h.tester.HasText("Show raw commit message") {
+		t.Fatalf("the expanded pane did not reuse commit message rendering: %q", h.texts())
+	}
+	if !h.tester.HasText("Changed files") {
+		t.Fatal("the original fullscreen file list disappeared when details opened")
+	}
+
+	h.press(t, ui.KeyEscape)
+	if err := h.tester.Click("Expand diff"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if h.app.diffFullscreenDetailsHeight != diffFullscreenDetailsMinHeight {
+		t.Fatalf("reopening retained %v DIP instead of the compact details height", h.app.diffFullscreenDetailsHeight)
+	}
+	if _, found := h.tester.Find("Commit details"); found {
+		t.Fatal("reopening the fullscreen diff did not restore the minimum details height")
+	}
+}
+
+func TestWholeWindowDiffDividerUsesUserChosenHeight(t *testing.T) {
+	h, _ := historyHarness(t)
+	h.waitFor(t, "the commit diff", func() bool {
+		return h.app.commitDiffState != nil && !h.app.commitDiffLoading
+	})
+	if err := h.tester.Click("Expand diff"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+
+	dragVerticalPaneGrip(t, h.tester, ui.Rect{W: 1280}, 0, 160)
+	h.tester.Frame()
+	first := h.app.diffFullscreenDetailsHeight
+	if first <= diffFullscreenDetailsMinHeight {
+		t.Fatalf("the user could not expand the compact details card: %v", first)
+	}
+	if details, found := h.tester.Find("Commit details"); !found || details.H <= 0 {
+		t.Fatalf("the user's expanded details are missing: %+v", details)
+	}
+
+	dragVerticalPaneGrip(t, h.tester, ui.Rect{W: 1280}, 0, 160)
+	h.tester.Frame()
+	chosen := h.app.diffFullscreenDetailsHeight
+	if chosen <= first {
+		t.Fatalf("the user could not keep resizing beyond complete content: before=%v after=%v", first, chosen)
+	}
+	for range 3 {
+		h.tester.Frame()
+		if h.app.diffFullscreenDetailsHeight != chosen {
+			t.Fatalf("the settled divider changed the user's height without further input: chosen=%v after=%v", chosen, h.app.diffFullscreenDetailsHeight)
+		}
+	}
+}
+
+func TestWholeWindowDiffKeepsTwoHundredDIPForDiff(t *testing.T) {
+	h, _ := historyHarness(t)
+	h.waitFor(t, "the commit diff", func() bool {
+		return h.app.commitDiffState != nil && !h.app.commitDiffLoading
+	})
+	if err := h.tester.Click("Expand diff"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	dragVerticalPaneGrip(t, h.tester, ui.Rect{W: 1280}, 0, 10000)
+	diff, found := h.tester.Find("Diff")
+	if !found || diff.H < 199 {
+		t.Fatalf("fullscreen dragging gave the diff %.1f DIP, want at least 200: %+v", diff.H, diff)
+	}
+}
+
+func TestWholeWindowDiffLongDetailsKeepInternalScrolling(t *testing.T) {
+	h, _ := historyHarness(t)
+	h.waitFor(t, "the commit diff", func() bool {
+		return h.app.commitDiffState != nil && !h.app.commitDiffLoading
+	})
+	h.app.commitDetailMessage.message.Description = strings.Repeat("A long release note paragraph.\n\n", 80)
+	if err := h.tester.Click("Expand diff"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	dragVerticalPaneGrip(t, h.tester, ui.Rect{W: 1280}, 0, 10000)
+	h.tester.Frame()
+	h.tester.Frame()
+	if h.app.diffFullscreenDetailsHeight <= diffFullscreenDetailsMinHeight {
+		t.Fatal("a long body was collapsed to the compact header instead of using available space")
+	}
+	if h.app.diffFullscreenMessageScroll.MaxY <= 0 {
+		t.Fatalf("a long body lost internal scrolling after fitting the divider: maxY=%v",
+			h.app.diffFullscreenMessageScroll.MaxY)
+	}
+}
+
+func TestWholeWindowDiffDetailsUseBranchCommit(t *testing.T) {
+	h := branchPageHarness(t)
+	h.waitFor(t, "the branch commit diff", func() bool {
+		return h.app.branchCommitDiffState != nil && !h.app.branchCommitDiffLoading
+	})
+	if err := h.tester.Click("Expand diff"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	dragVerticalPaneGrip(t, h.tester, ui.Rect{W: 1280}, 0, 160)
+	if details, found := h.tester.Find("Commit details"); !found || details.H <= 0 {
+		t.Fatalf("branch commit details did not expand above the fullscreen diff: %+v", details)
+	}
+	if !h.tester.HasText("Existing body") || !h.tester.HasText("Changed files") {
+		t.Fatalf("branch fullscreen details lost the shared body or file list: %q", h.texts())
 	}
 }
 
