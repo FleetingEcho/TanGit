@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
@@ -56,13 +57,12 @@ type commandPaletteState struct {
 	target       *paletteCommitTarget
 	commitSearch paletteCommitSearch
 	historyPos   int
-	// filesAll makes the / list search every file of the repository; off, it
-	// lists the changed files only.
-	filesAll        bool
-	historyDraft    string
-	actionIndex     int
-	notice          string
-	revealSelection bool
+	// filesChangedOnly limits the / list to changed files.
+	filesChangedOnly bool
+	historyDraft     string
+	actionIndex      int
+	notice           string
+	revealSelection  bool
 }
 
 func (s *shell) commandContext() commandContext {
@@ -524,14 +524,14 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 						if mode == '/' {
 							// On: only the changed files. Off: any file, opened in the Editor.
 							toggle := func() {
-								s.palette.filesAll = !s.palette.filesAll
+								s.palette.filesChangedOnly = !s.palette.filesChangedOnly
 								s.palette.selected = 0
 								s.palette.revealSelection = true
 							}
-							if s.palette.filesAll {
-								flatToggleIconButton(c, "Changed files only", "Off: searching every file, which opens in the Editor. Turn on to list only the changed files.", switchIcon, 18, 3, false, toggle)
-							} else {
+							if s.palette.filesChangedOnly {
 								flatToggleIconButton(c, "Changed files only", "On: listing only the changed files. Turn off to search every file in the Editor.", switchIcon, 18, 3, true, toggle)
+							} else {
+								flatToggleIconButton(c, "Changed files only", "Off: searching every file, which opens in the Editor. Turn on to list only the changed files.", switchIcon, 18, 3, false, toggle)
 							}
 						}
 						if query := strings.TrimSpace(s.palette.query); query != "" {
@@ -639,9 +639,13 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 	row := ui.ButtonBase(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(10).
 		Padding(8, 10).Radius(theme.Radius).Role(ui.RoleOption).
 		Label(label).Selected(selected)
+	filePath := strings.HasPrefix(string(candidate.ID), "files/open/") ||
+		strings.HasPrefix(string(candidate.ID), "files/select/")
 	if candidate.Group == commandGroupCustom && candidate.Detail != "" {
 		// The whole command, which the row may have cut short.
 		row.Tooltip(candidate.Label + "\n" + candidate.Detail)
+	} else if filePath && c.Preferences().ReduceMotion {
+		row.Tooltip(candidate.Label)
 	}
 	if selected {
 		row.Background(theme.Accent.Alpha(0.12)).Border(1, theme.Accent.Alpha(0.55))
@@ -666,7 +670,10 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 			if !candidate.Enabled {
 				labelColor = theme.TextMuted
 			}
-			if spans := commandLabelSpans(candidate.Label, candidate.MatchRanges, labelColor, theme.Accent); len(candidate.MatchRanges) > 0 && len(spans) > 0 {
+			if filePath {
+				paletteFilePathLabel(c, row.Hovered() && !c.Preferences().ReduceMotion,
+					commandLabelSpans(candidate.Label, candidate.MatchRanges, labelColor, theme.Accent))
+			} else if spans := commandLabelSpans(candidate.Label, candidate.MatchRanges, labelColor, theme.Accent); len(candidate.MatchRanges) > 0 && len(spans) > 0 {
 				ui.RichText(c, spans...).SingleLine()
 			} else {
 				ui.Text(c, candidate.Label).Bold().SingleLine().TextColor(labelColor)
@@ -755,6 +762,27 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 	if row.Clicked() && candidate.Enabled {
 		invoke()
 	}
+}
+
+func paletteFilePathLabel(c *ui.Context, hovered bool, spans []ui.Span) {
+	viewport := ui.Row(c).FillWidth().MinWidth(0).Clip()
+	available := viewport.LayoutBounds().W
+	viewport.Children(func() {
+		label := ui.RichText(c, spans...).SingleLine().MinWidth(0)
+		if hovered && available > 0 {
+			width, _ := c.MeasureText(0, spans...)
+			if distance := width - available; distance > 1 {
+				const pixelsPerSecond = 55
+				label.Width(width+1).Shrink(0).AnimatePose(ui.Pose{X: -distance}, ui.Animation{
+					Duration: time.Duration(float64(distance) / pixelsPerSecond * float64(time.Second)),
+					Ease:     ui.Linear,
+					Delay:    350 * time.Millisecond,
+				})
+				return
+			}
+		}
+		label.AnimatePose(ui.Pose{}, ui.Animation{Duration: time.Nanosecond})
+	})
 }
 
 func commandModeLabel(mode byte) string {

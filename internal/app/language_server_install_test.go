@@ -120,6 +120,9 @@ func TestManagedLegacyTypeScriptServerIsDownloadRequired(t *testing.T) {
 }
 
 func TestOpeningTypeScriptFileShowsManagedInstallNotification(t *testing.T) {
+	originalLookPath := languageServerLookPath
+	t.Cleanup(func() { languageServerLookPath = originalLookPath })
+	languageServerLookPath = func(string) (string, error) { return "", exec.ErrNotFound }
 	stubCodeWorkspace(t, map[string]string{"src/main.ts": "const answer = 42\n"})
 	h := menuTestApp(t)
 	openCodePageForTest(t, h, 1)
@@ -274,6 +277,9 @@ func TestLanguageServerInstallNotificationsUseStableTranslationFormats(t *testin
 }
 
 func TestLanguageServerCatalogUsesCompactActionsSearchAndScroll(t *testing.T) {
+	originalLookPath := languageServerLookPath
+	t.Cleanup(func() { languageServerLookPath = originalLookPath })
+	languageServerLookPath = func(string) (string, error) { return "", exec.ErrNotFound }
 	h := menuTestApp(t)
 	h.app.settingsUI.page = settingsPageLSP
 	h.app.openSettings()
@@ -501,11 +507,12 @@ func TestCustomLanguageServerAppearsInEditorStatus(t *testing.T) {
 	}
 }
 
-func TestLanguageServerCardSwitchPrecedesDownload(t *testing.T) {
+func TestDefaultLanguageServerCardSwitchPrecedesInstallAction(t *testing.T) {
 	originalLookPath := languageServerLookPath
 	t.Cleanup(func() { languageServerLookPath = originalLookPath })
 	languageServerLookPath = func(program string) (string, error) { return "/tools/" + program, nil }
 	h := menuTestApp(t)
+	h.app.pathUserData = t.TempDir()
 	h.app.settingsUI.page = settingsPageLSP
 	h.app.openSettings()
 	h.tester.Frame()
@@ -513,23 +520,23 @@ func TestLanguageServerCardSwitchPrecedesDownload(t *testing.T) {
 	h.tester.Frame()
 	h.app.lsp.catalogQuery = "TypeScript"
 	h.tester.Frame()
-	toggle, toggleOK := h.tester.Find("Enable TypeScript Language Server")
-	download, downloadOK := h.tester.Find("Download TypeScript Language Server")
-	if !toggleOK || !downloadOK || toggle.X+toggle.W > download.X {
-		t.Fatalf("switch/download order: toggle=%+v found=%v download=%+v found=%v", toggle, toggleOK, download, downloadOK)
+	toggle, toggleOK := h.tester.Find("Disable TypeScript Language Server")
+	update, updateOK := h.tester.Find("Update TypeScript Language Server")
+	if !toggleOK || !updateOK || toggle.X+toggle.W > update.X {
+		t.Fatalf("switch/update order: toggle=%+v found=%v update=%+v found=%v", toggle, toggleOK, update, updateOK)
 	}
-	if err := h.tester.Click("Enable TypeScript Language Server"); err != nil {
-		t.Fatal(err)
-	}
-	if h.app.settings.LanguageServers["typescript"].Disabled {
-		t.Fatal("card switch did not enable TypeScript")
-	}
-	h.tester.Frame()
 	if err := h.tester.Click("Disable TypeScript Language Server"); err != nil {
 		t.Fatal(err)
 	}
-	if _, configured := h.app.settings.LanguageServers["typescript"]; configured {
-		t.Fatal("disabling a built-in left an enabled configuration")
+	if !loadAppSettings(h.app.pathUserData).LanguageServers["typescript"].Disabled {
+		t.Fatal("card switch did not save the TypeScript opt-out")
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Enable TypeScript Language Server"); err != nil {
+		t.Fatal(err)
+	}
+	if loadAppSettings(h.app.pathUserData).LanguageServers["typescript"].Disabled {
+		t.Fatal("card switch did not re-enable TypeScript")
 	}
 }
 

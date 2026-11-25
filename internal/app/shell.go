@@ -381,14 +381,20 @@ func (s *shell) updateAppChanged(a *app, fn func() bool) {
 	if t != nil {
 		repository, path, title = t.repository(), t.path(), t.title()
 	}
-	if !fn() {
-		return
-	}
+	filesWereLoading := a.code.filesLoading
+	changed := fn()
 	if s.activeApp() == a {
-		s.invalidate()
+		// File listing can finish while the palette is showing its results
+		// over a page other than the Editor.
+		mode, _ := commandQueryMode(s.palette.query)
+		paletteFilesReady := filesWereLoading && !a.code.filesLoading &&
+			s.palette.open && s.palette.target == nil && mode == '/' && !s.palette.filesChangedOnly
+		if changed || paletteFilesReady {
+			s.invalidate()
+		}
 		return
 	}
-	if t != nil && s.indexOf(t) >= 0 &&
+	if changed && t != nil && s.indexOf(t) >= 0 &&
 		(t.repository() != repository || t.path() != path || t.title() != title) {
 		s.refreshTitle()
 		s.invalidate()

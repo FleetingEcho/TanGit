@@ -70,6 +70,7 @@ func TestStashRemoteAndWorkspaceFileCommands(t *testing.T) {
 	h.app.snapshot.Stashes = []repository.Stash{{Index: 0, Name: "stash@{0}: WIP on main", Recency: "2 hours ago"}}
 	h.app.snapshot.Remotes = []repository.Remote{{Name: "origin", URLs: []string{"https://example.com/team/project.git"}}}
 	h.app.code.files = []string{"README.md", "internal/app/palette.go", "docs/guide.md"}
+	h.app.code.filesLoaded = true
 	ctx := commandContext{Shell: s, App: h.app}
 	for query, id := range map[string]commandID{
 		"apply stash":  "stash/apply/0",
@@ -83,19 +84,18 @@ func TestStashRemoteAndWorkspaceFileCommands(t *testing.T) {
 	}
 	s.palette.open = true
 	s.palette.query = "/palgo"
-	// By default only the changed files are listed, never the repository's others.
+	// The default search includes unchanged files and applies the query.
 	candidates := s.catalogFor(ctx).Search(ctx, s.palette.query, nil)
-	if _, ok := catalogCandidate(candidates, "files/open/internal/app/palette.go"); ok {
-		t.Fatalf("the changed-files list offered an unchanged file: %+v", candidates)
-	}
-	// With the switch off, every file is searched and opens in the Editor.
-	s.palette.filesAll = true
-	candidates = s.catalogFor(ctx).Search(ctx, s.palette.query, nil)
 	if _, ok := catalogCandidate(candidates, "files/open/internal/app/palette.go"); !ok {
 		t.Fatalf("workspace file search missed an unchanged file: %+v", candidates)
 	}
 	if _, ok := catalogCandidate(candidates, "files/open/README.md"); ok {
 		t.Fatal("workspace file search matched an unrelated file")
+	}
+	s.palette.filesChangedOnly = true
+	candidates = s.catalogFor(ctx).Search(ctx, s.palette.query, nil)
+	if _, ok := catalogCandidate(candidates, "files/open/internal/app/palette.go"); ok {
+		t.Fatalf("the changed-files list offered an unchanged file: %+v", candidates)
 	}
 }
 

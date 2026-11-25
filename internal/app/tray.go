@@ -20,7 +20,7 @@ import (
 var (
 	appTray    *mygo.Tray
 	mainWindow *mygo.Window
-	// appShell is the window's shell, which the tray reads for its status,
+	// appShell is the window's shell, which the tray reads for agent tasks,
 	// recent repositories and the page Settings opens on.
 	appShell *shell
 	// trayReady is false when the platform has no tray, as on Linux without
@@ -92,36 +92,23 @@ type trayRecent struct{ path, label string }
 // rebuilt only when it changes, so a frame that changes nothing never touches
 // the native menu.
 type trayState struct {
-	status    string
 	attention int
 	recent    []trayRecent
 }
 
 func (t trayState) signature() string {
 	var b strings.Builder
-	b.WriteString(currentLanguage + "|" + t.status + "|" + strconv.Itoa(t.attention))
+	b.WriteString(currentLanguage + "|" + strconv.Itoa(t.attention))
 	for _, r := range t.recent {
 		b.WriteString("|" + r.path + "=" + r.label)
 	}
 	return b.String()
 }
 
-// trayState reads the status line, the number of agent tasks waiting for the
-// user and the recent repositories. It runs on the main thread, where the
-// pages' state lives.
+// trayState reads agent tasks that need attention and recent repositories on
+// the main thread, where the pages' state lives.
 func (s *shell) trayState() trayState {
 	var state trayState
-	if t := s.activeTab(); t != nil && t.repository() && t.app != nil {
-		snapshot := t.app.snapshot
-		parts := []string{t.title()}
-		if snapshot.Branch != "" {
-			parts = append(parts, snapshot.Branch)
-		}
-		if n := len(snapshot.Files); n > 0 {
-			parts = append(parts, trf("%d changed", n))
-		}
-		state.status = strings.Join(parts, " · ")
-	}
 	var recents []recentRepository
 	for _, t := range s.tabs {
 		if t.app == nil {
@@ -162,9 +149,8 @@ func (s *shell) syncTrayMenu(force bool) {
 	appTray.SetMenu(trayMenu())
 }
 
-// trayMenu is the icon's menu: what the app is doing, a way into its recent
-// repositories, Settings and updates, and quitting. Before the window exists
-// it is only Open and Quit.
+// trayMenu shows agent task alerts and actions for the window, recent
+// repositories, settings, updates and quitting.
 func trayMenu() *mygo.Menu {
 	open := &mygo.MenuItem{Label: tr("Open lazygitGo"), Click: func(*mygo.MenuItem, *mygo.Window) {
 		showMainWindow()
@@ -178,14 +164,11 @@ func trayMenu() *mygo.Menu {
 	}
 	state := s.trayState()
 	var items []*mygo.MenuItem
-	if state.status != "" {
-		items = append(items, &mygo.MenuItem{Label: state.status, Disabled: true})
-	}
 	if state.attention > 0 {
-		items = append(items, &mygo.MenuItem{Label: trf("%d agent tasks need attention", state.attention), Disabled: true})
-	}
-	if len(items) > 0 {
-		items = append(items, mygo.Separator())
+		items = append(items,
+			&mygo.MenuItem{Label: trf("%d agent tasks need attention", state.attention), Disabled: true},
+			mygo.Separator(),
+		)
 	}
 	items = append(items, open)
 	if len(state.recent) > 0 {

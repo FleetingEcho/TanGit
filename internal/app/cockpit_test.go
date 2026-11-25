@@ -15,6 +15,35 @@ import (
 	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
+func TestCockpitLanguageLegendScrollsWithinCard(t *testing.T) {
+	a := newApp(nil)
+	a.cockpit.insights.langLoaded = true
+	stats := &a.cockpit.insights.languages
+	for _, name := range []string{"Go", "Python", "JavaScript", "TypeScript", "Rust", "Ruby", "PHP", "Java"} {
+		stats.Languages = append(stats.Languages, repository.LanguageShare{Name: name, Bytes: 100, Files: 1})
+		stats.TotalBytes += 100
+		stats.TotalFiles++
+	}
+	tester := ui.NewTester(a.cockpitLanguagesCard, 550, 195)
+	tester.Frame()
+	first, ok := tester.Find("Go")
+	if !ok {
+		t.Fatal("the first language is missing")
+	}
+	tester.Scroll(first.X+first.W/2, first.Y+first.H/2, 0, 400)
+	for range 12 {
+		tester.Advance(30 * time.Millisecond)
+		tester.Frame()
+	}
+	last, ok := tester.Find("Other")
+	if !ok || last.Y+last.H > 188 {
+		t.Fatalf("the last language row did not scroll fully into the card: %+v", last)
+	}
+	if after, ok := tester.Find("Go"); ok && after.Y >= first.Y {
+		t.Fatal("the legend did not scroll")
+	}
+}
+
 func TestCockpitSummaryCleanRepository(t *testing.T) {
 	summary := buildCockpitSummary(cockpitInput{Snapshot: repository.Snapshot{Root: "/work/clean", Branch: "main"}})
 	if !summary.Repository.Clean || len(summary.Attention) != 1 || summary.Attention[0].ID != "clean" {

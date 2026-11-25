@@ -293,6 +293,8 @@ type changeSections struct {
 	mergeBase              int
 	stagedBase             int
 	changesBase            int
+	// Header counts include matching files hidden by folds.
+	mergeCount, stagedCount, changesCount int
 }
 
 // splitChangeRows cuts the flat Changes rows into their sections. The rows are
@@ -306,10 +308,13 @@ func splitChangeRows(rows []changeRow) changeSections {
 			switch {
 			case row.merge:
 				sections.mergeBase, current = i+1, 0
+				sections.mergeCount = row.count
 			case row.staged:
 				sections.stagedBase, current = i+1, 1
+				sections.stagedCount = row.count
 			default:
 				sections.changesBase, current = i+1, 2
+				sections.changesCount = row.count
 			}
 			continue
 		}
@@ -362,7 +367,7 @@ func (a *app) filesView(c *ui.Context) {
 		} else if hasConflictedFiles(a.snapshot.Files) {
 			a.conflictBanner(c)
 		}
-		if len(a.snapshot.Files) > 0 && firstChangeFile(a.changeRows) < 0 {
+		if len(a.snapshot.Files) > 0 && sections.mergeCount+sections.stagedCount+sections.changesCount == 0 {
 			a.emptyChangesFilterResult(c)
 			return
 		}
@@ -383,15 +388,17 @@ func (a *app) filesView(c *ui.Context) {
 // file in it, or one folded shut, leaves the room to the changes: there is
 // nothing above them to resize.
 func (a *app) changeSectionsBody(c *ui.Context, sections changeSections) {
+	mergeShown := len(sections.merge) > 0 && a.mergeExpanded
+	stagedShown := len(sections.staged) > 0 && a.stagedExpanded
 	// A sole expanded section is the workspace the user is actually using.
 	// Give it all the room between the other sections' folded headers rather
 	// than keeping empty split panes or capping its list at a handful of rows.
 	sole := changeSectionChanges
 	expanded := 0
-	if sections.mergeBase >= 0 && a.mergeExpanded {
+	if mergeShown {
 		sole, expanded = changeSectionMerge, expanded+1
 	}
-	if a.stagedExpanded {
+	if stagedShown {
 		sole, expanded = changeSectionStaged, expanded+1
 	}
 	if a.changesExpanded {
@@ -409,8 +416,6 @@ func (a *app) changeSectionsBody(c *ui.Context, sections changeSections) {
 		return
 	}
 
-	mergeShown := len(sections.merge) > 0 && a.mergeExpanded
-	stagedShown := len(sections.staged) > 0 && a.stagedExpanded
 	if !a.changesExpanded && (mergeShown || stagedShown) {
 		// A folded Changes section must not leave an empty split pane at the
 		// bottom. Merge is the active recovery workspace, so it gets the
@@ -512,21 +517,11 @@ func (a *app) mergeSectionSplit(c *ui.Context, sections changeSections) {
 
 // mergeSectionView is the merge changes section, when the branch has one: it
 // is only there while files are conflicted.
-func changeSectionFileCount(rows []changeRow) int {
-	count := 0
-	for _, row := range rows {
-		if row.isFile() {
-			count++
-		}
-	}
-	return count
-}
-
 func (a *app) mergeSectionView(c *ui.Context, sections changeSections, fill bool) {
 	if sections.mergeBase < 0 {
 		return
 	}
-	merge := a.changeSectionView(c, "Merge Changes", conflictIcon, changeSectionFileCount(a.mergeRows),
+	merge := a.changeSectionView(c, "Merge Changes", conflictIcon, sections.mergeCount,
 		a.mergeRows, &a.mergeList, sections.mergeBase, a.mergeExpanded, changeSectionMerge, fill)
 	if a.keyboardListChanged(&a.mergeList, merge) && a.mergeSelected >= 0 {
 		a.selectedFile = sections.mergeBase + a.mergeSelected
@@ -536,7 +531,7 @@ func (a *app) mergeSectionView(c *ui.Context, sections changeSections, fill bool
 // stagedSectionView is the staged changes section, which always shows its
 // header even with no file.
 func (a *app) stagedSectionView(c *ui.Context, sections changeSections, fill bool) {
-	staged := a.changeSectionView(c, "Staged Changes", stageIcon, changeSectionFileCount(a.stagedRows),
+	staged := a.changeSectionView(c, "Staged Changes", stageIcon, sections.stagedCount,
 		a.stagedRows, &a.stagedList, sections.stagedBase, a.stagedExpanded, changeSectionStaged, fill)
 	if a.keyboardListChanged(&a.stagedList, staged) && a.stagedSelected >= 0 {
 		a.selectedFile = sections.stagedBase + a.stagedSelected
@@ -546,7 +541,7 @@ func (a *app) stagedSectionView(c *ui.Context, sections changeSections, fill boo
 // changesSectionView is the changes section, which always shows its header
 // even with no file.
 func (a *app) changesSectionView(c *ui.Context, sections changeSections, fill bool) {
-	changes := a.changeSectionView(c, "Changes", folderIcon, changeSectionFileCount(a.changesRows),
+	changes := a.changeSectionView(c, "Changes", folderIcon, sections.changesCount,
 		a.changesRows, &a.fileList, sections.changesBase, a.changesExpanded, changeSectionChanges, fill)
 	if a.keyboardListChanged(&a.fileList, changes) && a.changesSelected >= 0 {
 		a.selectedFile = sections.changesBase + a.changesSelected
@@ -867,31 +862,21 @@ func (a *app) reviewFilterRow(c *ui.Context) {
 	})
 }
 
-// changeHeaderRow is a section's title row: a click folds or unfolds the
-// section, and the badge counts its files. It sits outside the section's list,
-// so it stays put while the files scroll.
+// changeHeaderRow keeps the section chevron, title, file count and actions
+// visible while the list scrolls.
 func (a *app) changeHeaderRow(c *ui.Context, title string, icon *ui.SVG, count int, open bool, section changeSection) {
 	theme := c.Theme()
-	arrow := "▾"
+	arrow, toggleLabel := "▾", trf("Collapse %s", tr(title))
 	if !open {
-		arrow = "▸"
+		arrow, toggleLabel = "▸", trf("Expand %s", tr(title))
 	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(5, 8).
 		Background(theme.Surface).Radius(theme.Radius).Children(func() {
-		button := ui.ButtonBase(c).Grow(1).Padding(2, 0)
-		clicked := button.Label(tr(title)).Tooltip(tr("Show or hide this section")).Clicked()
-		button.Gap(8).Children(func() {
-			ui.Text(c, arrow).TextColor(theme.TextMuted).Width(12)
-			iconColor := theme.Accent
-			if section == changeSectionMerge {
-				iconColor = theme.Danger
-			}
-			ui.Icon(c, icon).FontSize(14).TextColor(iconColor)
-			ui.Text(c, tr(title)).Bold()
-			ui.Spacer(c).Grow(1)
-			ui.Badge(c, fmt.Sprintf("%d", count))
+		toggle := ui.ButtonBase(c).Size(16, 22).Padding(0).Center().Label(toggleLabel).Tooltip(toggleLabel)
+		toggle.Children(func() {
+			ui.Text(c, arrow).TextColor(theme.TextMuted)
 		})
-		if clicked {
+		toggle.OnClick(func() {
 			switch section {
 			case changeSectionMerge:
 				a.mergeExpanded = !a.mergeExpanded
@@ -900,7 +885,17 @@ func (a *app) changeHeaderRow(c *ui.Context, title string, icon *ui.SVG, count i
 			default:
 				a.changesExpanded = !a.changesExpanded
 			}
+		})
+		iconColor := theme.Accent
+		if section == changeSectionMerge {
+			iconColor = theme.Danger
 		}
+		// The title, icon and badge are informational. Only the chevron
+		// collapses the section.
+		ui.Icon(c, icon).FontSize(14).TextColor(iconColor)
+		ui.Text(c, tr(title)).Bold()
+		ui.Spacer(c).Grow(1)
+		ui.Badge(c, fmt.Sprintf("%d", count))
 		// The merge changes are resolved file by file, so their header has
 		// no action on them all. Each other section carries the action on
 		// its own files, as Source Control does: the staged list offers to
