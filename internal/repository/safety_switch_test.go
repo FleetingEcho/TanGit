@@ -23,9 +23,8 @@ func journalCounts(t *testing.T, session FullSession) (operations, snapshots int
 // With the safety journal off, the actions still do their work but take no
 // recovery point and add no journal entry.
 func TestActionsRunWithoutRecoveryPointsWhenTheSafetyJournalIsOff(t *testing.T) {
-	SetSafetyJournalEnabled(false)
-	t.Cleanup(func() { SetSafetyJournalEnabled(true) })
 	dir, session := recoveryRepository(t)
+	SetSafetyJournalEnabled(false)
 	ctx := context.Background()
 
 	if err := os.WriteFile(filepath.Join(dir, "note.txt"), []byte("note\n"), 0o600); err != nil {
@@ -79,6 +78,8 @@ func TestActionsRunWithoutRecoveryPointsWhenTheSafetyJournalIsOff(t *testing.T) 
 // With it on, the same actions are recorded, so turning it off is the only
 // thing that removes the safety net.
 func TestActionsKeepRecoveryPointsWhileTheSafetyJournalIsOn(t *testing.T) {
+	SetSafetyJournalEnabled(true)
+	t.Cleanup(func() { SetSafetyJournalEnabled(false) })
 	dir, session := recoveryRepository(t)
 	ctx := context.Background()
 	if err := os.WriteFile(filepath.Join(dir, "note.txt"), []byte("note\n"), 0o600); err != nil {

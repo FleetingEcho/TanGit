@@ -9,16 +9,17 @@ import (
 	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
-// restoreSafetyJournal puts the process-wide switch back after a test turns it
-// off, so no other test runs without recovery points.
+// restoreSafetyJournal selects the default for this test and restores it
+// afterward, so no other test inherits an explicit choice.
 func restoreSafetyJournal(t *testing.T) {
 	t.Helper()
-	t.Cleanup(func() { repository.SetSafetyJournalEnabled(true) })
+	repository.SetSafetyJournalEnabled(false)
+	t.Cleanup(func() { repository.SetSafetyJournalEnabled(false) })
 }
 
-// The Recovery & checkpoints dialog carries a switch that turns the journal
-// off and on at any time, and says so while it is off.
-func TestRecoveryDialogSwitchTurnsTheSafetyJournalOffAndOn(t *testing.T) {
+// The Recovery & checkpoints dialog starts with the journal off, and its
+// notice and switch turn the journal on and off while saving each choice.
+func TestRecoveryDialogSwitchTurnsTheSafetyJournalOnAndOff(t *testing.T) {
 	restoreSafetyJournal(t)
 	h, _ := changesTestApp(t, unstagedTrackedFile())
 	h.app.pathUserData = t.TempDir()
@@ -26,41 +27,44 @@ func TestRecoveryDialogSwitchTurnsTheSafetyJournalOffAndOn(t *testing.T) {
 	h.tester.Frame()
 	openRecoveryForTest(t, h)
 
-	if h.app.settings.DisableSafetyJournal || !repository.SafetyJournalEnabled() {
-		t.Fatal("the safety journal should start on")
+	if h.app.settings.EnableSafetyJournal || repository.SafetyJournalEnabled() {
+		t.Fatal("the safety journal should start off")
 	}
-	if h.tester.HasText("Turn on") {
-		t.Fatalf("the off notice shows while the journal is on: %q", h.texts())
+	if !h.tester.HasText("Turn on") {
+		t.Fatalf("the off notice is missing while the journal is off: %q", h.texts())
 	}
-	if err := h.tester.Click("Safety journal"); err != nil {
-		t.Fatalf("switch the journal off: %v; texts %q", err, h.texts())
+	if err := h.tester.Click("Turn the safety journal on"); err != nil {
+		t.Fatalf("turn the journal on from the notice: %v; texts %q", err, h.texts())
 	}
 	h.tester.Frame()
-	if !h.app.settings.DisableSafetyJournal || repository.SafetyJournalEnabled() {
-		t.Fatalf("the switch did not turn the journal off: setting off=%v enabled=%v",
-			h.app.settings.DisableSafetyJournal, repository.SafetyJournalEnabled())
+	if !h.app.settings.EnableSafetyJournal || !repository.SafetyJournalEnabled() {
+		t.Fatalf("the notice's button did not turn the journal on: setting on=%v enabled=%v",
+			h.app.settings.EnableSafetyJournal, repository.SafetyJournalEnabled())
 	}
-	if saved := loadAppSettings(h.app.pathUserData); !saved.DisableSafetyJournal {
+	if saved := loadAppSettings(h.app.pathUserData); !saved.EnableSafetyJournal {
+		t.Fatal("turning the journal on was not saved")
+	}
+	if h.tester.HasText("The safety journal is off. New actions are not backed up and cannot be undone.") {
+		t.Fatal("the off notice stayed after turning the journal on")
+	}
+
+	if err := h.tester.Click("Turn the safety journal off"); err != nil {
+		t.Fatalf("turn the journal back off from the switch: %v; texts %q", err, h.texts())
+	}
+	h.tester.Frame()
+	if h.app.settings.EnableSafetyJournal || repository.SafetyJournalEnabled() {
+		t.Fatal("the switch did not turn the journal back off")
+	}
+	if saved := loadAppSettings(h.app.pathUserData); saved.EnableSafetyJournal {
 		t.Fatal("turning the journal off was not saved")
 	}
 	if !h.tester.HasText("The safety journal is off. New actions are not backed up and cannot be undone.") {
 		t.Fatalf("the dialog does not say the journal is off: %q", h.texts())
 	}
-
-	if err := h.tester.Click("Turn the safety journal on"); err != nil {
-		t.Fatalf("turn the journal back on from the notice: %v; texts %q", err, h.texts())
-	}
-	h.tester.Frame()
-	if h.app.settings.DisableSafetyJournal || !repository.SafetyJournalEnabled() {
-		t.Fatal("the notice's button did not turn the journal back on")
-	}
-	if h.tester.HasText("The safety journal is off. New actions are not backed up and cannot be undone.") {
-		t.Fatal("the off notice stayed after turning the journal on")
-	}
 }
 
-// Settings has the same switch, on the Behavior page.
-func TestBehaviorSettingsCanTurnTheSafetyJournalOff(t *testing.T) {
+// Settings has the same opt-in switch, on the Behavior page.
+func TestBehaviorSettingsCanTurnTheSafetyJournalOn(t *testing.T) {
 	restoreSafetyJournal(t)
 	h := menuTestApp(t)
 	h.app.pathUserData = t.TempDir()
@@ -73,15 +77,18 @@ func TestBehaviorSettingsCanTurnTheSafetyJournalOff(t *testing.T) {
 	if !h.tester.HasText("Safety journal") {
 		t.Fatalf("the Behavior page has no Safety journal switch: %q", h.texts())
 	}
+	if h.app.settings.EnableSafetyJournal {
+		t.Fatal("the Settings switch should start off")
+	}
 	if err := h.tester.Click("Safety journal"); err != nil {
-		t.Fatalf("switch the journal off in Settings: %v", err)
+		t.Fatalf("switch the journal on in Settings: %v", err)
 	}
 	h.tester.Frame()
-	if !h.app.settings.DisableSafetyJournal || repository.SafetyJournalEnabled() {
-		t.Fatalf("the Settings switch did not turn the journal off: setting off=%v enabled=%v",
-			h.app.settings.DisableSafetyJournal, repository.SafetyJournalEnabled())
+	if !h.app.settings.EnableSafetyJournal || !repository.SafetyJournalEnabled() {
+		t.Fatalf("the Settings switch did not turn the journal on: setting on=%v enabled=%v",
+			h.app.settings.EnableSafetyJournal, repository.SafetyJournalEnabled())
 	}
-	if saved := loadAppSettings(h.app.pathUserData); !saved.DisableSafetyJournal {
+	if saved := loadAppSettings(h.app.pathUserData); !saved.EnableSafetyJournal {
 		t.Fatal("the Settings choice was not saved")
 	}
 }

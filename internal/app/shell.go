@@ -521,7 +521,7 @@ func (s *shell) pullSettings() {
 	s.settings = a.settings
 	s.settingsLoaded = a.settingsLoaded
 	// The safety journal switch is the window's, read by every tab's session.
-	repository.SetSafetyJournalEnabled(!a.settings.DisableSafetyJournal)
+	repository.SetSafetyJournalEnabled(a.settings.EnableSafetyJournal)
 }
 
 // pushSettings gives a page the window's preferences, with the toggles the
