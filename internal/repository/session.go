@@ -1407,15 +1407,6 @@ func (s *gitSession) discardFile(ctx context.Context, file File) error {
 	return nil
 }
 
-// captureDiscardSnapshot takes the recovery point for a discard. Discarding
-// only rewrites tracked and untracked files, never ignored ones, so the
-// snapshot skips the ignored tree. Hashing every ignored file (node_modules,
-// build output) made a single discard take many seconds. The narrower policy
-// is stored with the snapshot, so Undo and its guards use the same scope.
-func (s *gitSession) captureDiscardSnapshot(ctx context.Context, name string) (WorkSnapshot, error) {
-	return s.captureWorkSnapshotWithIgnored(ctx, RecoverySnapshotKind, name, nil, workspaceArchiveScope{AllIgnored: false})
-}
-
 func (s *gitSession) Discard(ctx context.Context, file File) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -1425,7 +1416,7 @@ func (s *gitSession) Discard(ctx context.Context, file File) error {
 	if file.HasMergeConflicts {
 		return fmt.Errorf("resolve merge conflicts before discarding %s", file.Path)
 	}
-	snapshot, err := s.captureDiscardSnapshot(ctx, "Discard "+file.Path)
+	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Discard "+file.Path)
 	if err != nil {
 		return err
 	}
@@ -1456,7 +1447,7 @@ func (s *gitSession) DiscardFiles(ctx context.Context, files []File) error {
 			return fmt.Errorf("resolve merge conflicts before discarding %s", file.Path)
 		}
 	}
-	snapshot, err := s.captureDiscardSnapshot(ctx, fmt.Sprintf("Discard %d changes", len(files)))
+	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, fmt.Sprintf("Discard %d changes", len(files)))
 	if err != nil {
 		return err
 	}
