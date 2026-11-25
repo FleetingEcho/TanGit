@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -681,7 +682,8 @@ func (a *app) branchCommitsKey(branch string) string {
 	if !commitFilterNarrows(a.branchFilter) {
 		return branch
 	}
-	return branch + "\x00" + a.branchFilter.Query + "\x00" + a.branchFilter.Author + "\x00" + a.branchFilter.Since
+	return branch + "\x00" + a.branchFilter.Query + "\x00" + a.branchFilter.Author + "\x00" + a.branchFilter.Since.Format(time.RFC3339) +
+		"\x00" + a.branchFilter.Until.Format(time.RFC3339)
 }
 
 // requestBranchCommits reads the commits of branch when another branch's are

@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"image/color"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -15,32 +17,41 @@ func TestCommitFilterTimeRangeDefaultsAndUpdatesState(t *testing.T) {
 	a := newApp(fakeOpener{})
 	a.filterTarget = sectionHistory
 	draft := repository.CommitFilter{}
-	tt := ui.NewTester(func(c *ui.Context) { a.commitFilterBody(c, &draft) }, 600, 600)
+	tt := ui.NewTester(func(c *ui.Context) { a.commitFilterBody(c, &draft) }, 600, 700)
 	tt.Frame()
-	if draft.Since != "" || !tt.HasText("All time") {
-		t.Fatalf("a new filter does not default to all time: %+v", draft)
+	if !draft.Since.IsZero() || !draft.Until.IsZero() || commitFilterNarrows(draft) {
+		t.Fatalf("a new filter has a time window: %+v", draft)
 	}
-	if err := tt.Click("Time range filter"); err != nil {
-		t.Fatal(err)
-	}
-	if err := tt.Click("Last 30 days"); err != nil {
+	if err := tt.Click("Set From time"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if draft.Since != repository.CommitTimeRange30Days || !commitFilterNarrows(draft) {
-		t.Fatalf("the time range did not narrow the draft: %+v", draft)
+	if draft.Since.IsZero() || draft.Since.Second() != 0 || !commitFilterNarrows(draft) {
+		t.Fatalf("opening the start did not set a minute and narrow the draft: %+v", draft)
 	}
-	withoutTime := draft
-	withoutTime.Since = ""
-	if commitFiltersEqual(draft, withoutTime) {
-		t.Fatal("filter equality ignored its time range")
+	if !tt.HasText("To") || !tt.HasText("Any time") {
+		t.Fatal("the end of the window should stay open")
 	}
-	if summary := commitFilterSummary(draft); summary != "Last 30 days" {
-		t.Fatalf("time-only filter summary = %q", summary)
+	draft.Until = draft.Since.Add(2 * time.Hour)
+	tt.Frame()
+	withoutUntil := draft
+	withoutUntil.Until = time.Time{}
+	if commitFiltersEqual(draft, withoutUntil) {
+		t.Fatal("filter equality ignored the end time")
+	}
+	if summary := commitFilterSummary(draft); !strings.Contains(summary, "→") {
+		t.Fatalf("window summary = %q, want from → to", summary)
+	}
+	if err := tt.Click("Clear From time"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !draft.Since.IsZero() || draft.Until.IsZero() {
+		t.Fatalf("clearing the start changed the wrong end: %+v", draft)
 	}
 	a.branchFilter = draft
 	before := a.branchCommitsKey("main")
-	a.branchFilter.Since = repository.CommitTimeRangeWeek
+	a.branchFilter.Until = a.branchFilter.Until.Add(time.Hour)
 	if after := a.branchCommitsKey("main"); after == before {
 		t.Fatal("changing time did not invalidate the branch commit read")
 	}

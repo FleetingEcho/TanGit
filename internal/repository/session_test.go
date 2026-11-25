@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	gitCommands "github.com/jesseduffield/lazygit/pkg/commands/git_commands"
 )
@@ -681,9 +682,9 @@ func TestSearchCommitsCombinesTimeWithMessageAndHashFilters(t *testing.T) {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("create old commit: %v: %s", err, output)
 	}
-	oldHash := gitOutput(t, dir, "rev-parse", "HEAD")
+	oldHash := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
 	runGit(t, dir, "commit", "--allow-empty", "-m", "new shared message")
-	newHash := gitOutput(t, dir, "rev-parse", "HEAD")
+	newHash := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
 
 	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
 	if err != nil {
@@ -694,25 +695,27 @@ func TestSearchCommitsCombinesTimeWithMessageAndHashFilters(t *testing.T) {
 		t.Fatalf("the default all-time message search = %+v, %v", all, err)
 	}
 	recent, err := session.SearchCommits(context.Background(), CommitFilter{
-		Query: "shared message", Since: CommitTimeRangeDay, Limit: 20,
+		Query: "shared message", Since: time.Now().Add(-24 * time.Hour), Limit: 20,
 	})
 	if err != nil || len(recent) != 1 || recent[0].Hash != newHash {
 		t.Fatalf("time and message search = %+v, %v; want only the new commit", recent, err)
 	}
 	byHash, err := session.SearchCommits(context.Background(), CommitFilter{
-		Query: newHash, Since: CommitTimeRangeDay, Limit: 20,
+		Query: newHash, Since: time.Now().Add(-24 * time.Hour), Limit: 20,
 	})
 	if err != nil || len(byHash) != 1 || byHash[0].Hash != newHash {
 		t.Fatalf("time and hash search = %+v, %v; want only the new commit", byHash, err)
 	}
 	oldByHash, err := session.SearchCommits(context.Background(), CommitFilter{
-		Query: oldHash, Since: CommitTimeRangeDay, Limit: 20,
+		Query: oldHash, Since: time.Now().Add(-24 * time.Hour), Limit: 20,
 	})
 	if err != nil || len(oldByHash) != 0 {
 		t.Fatalf("hash query bypassed the time filter: %+v, %v", oldByHash, err)
 	}
-	if _, err := session.SearchCommits(context.Background(), CommitFilter{Since: "unrecognized", Limit: 1}); err == nil {
-		t.Fatal("an unknown time range was accepted")
+	if _, err := session.SearchCommits(context.Background(), CommitFilter{
+		Since: time.Now(), Until: time.Now().Add(-time.Hour), Limit: 1,
+	}); err == nil {
+		t.Fatal("an end time before the start time was accepted")
 	}
 }
 
