@@ -129,6 +129,20 @@ func operationScopeDetail(record repository.OperationRecord) string {
 	return record.Worktree
 }
 
+// emptyJournalState is the centered note of a list with nothing in it.
+func emptyJournalState(c *ui.Context, theme *ui.Theme, title, hint string) {
+	ui.Column(c).FillWidth().Center().Gap(8).Padding(34, 20).Children(func() {
+		ui.Icon(c, softResetIcon).FontSize(26).TextColor(theme.TextMuted)
+		ui.Text(c, tr(title)).Bold()
+		if hint != "" {
+			ui.Text(c, tr(hint)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).
+				TextAlign(ui.Center).MaxWidth(440)
+		}
+	})
+}
+
+// safetyJournalBody lists what the journal recorded as cards: a dot for what
+// the entry means, the action and when it ran, and an Undo where one is safe.
 func (a *app) safetyJournalBody(c *ui.Context) {
 	theme := c.Theme()
 	reveal := a.journalReveal
@@ -137,58 +151,66 @@ func (a *app) safetyJournalBody(c *ui.Context) {
 		ui.Text(c, a.journalNotice).TextColor(theme.Warning).Selectable()
 	}
 	if len(a.snapshot.Operations) == 0 {
-		ui.Text(c, tr("Discards, resets, rebases, branch deletions, dropped stashes and patch applications appear here. Safe recovery is revalidated before every Undo.")).
-			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+		if !a.safetyJournalEnabled() {
+			emptyJournalState(c, theme, "Nothing recorded yet", "Nothing is recorded while the safety journal is off.")
+			return
+		}
+		emptyJournalState(c, theme, "Nothing recorded yet",
+			"Discards, resets, rebases, branch deletions, dropped stashes and patch applications appear here. Safe recovery is revalidated before every Undo.")
 		return
 	}
-	rows := min(len(a.snapshot.Operations), 5)
-	height := float32(rows*62 + max(0, rows-1)*5)
-	ui.Scroll(c).Height(height).FillWidth().TrackScroll(&a.journalScroll).Children(func() {
-		ui.Column(c).FillWidth().Gap(5).Children(func() {
-			for _, item := range a.snapshot.Operations {
-				record := item
-				c.Key("journal-entry:" + record.ID)
-				targeted := reveal != "" && record.ID == reveal
-				row := ui.Row(c).FillWidth().MinHeight(62).AlignItems(ui.Center).Gap(9).Padding(7, 8).
-					Background(theme.Surface).Radius(theme.Radius)
-				if targeted {
-					row = row.Border(2, theme.Accent).
-						ScrollIntoView(ui.ScrollIntoViewOptions{Block: ui.ScrollCenter})
+	for _, item := range a.snapshot.Operations {
+		record := item
+		c.Key("journal-entry:" + record.ID)
+		targeted := reveal != "" && record.ID == reveal
+		row := ui.Row(c).FillWidth().MinHeight(58).AlignItems(ui.Center).Gap(12).Padding(9, 12).
+			Background(theme.Surface).Radius(theme.Radius)
+		if targeted {
+			row = row.Border(2, theme.Accent).
+				ScrollIntoView(ui.ScrollIntoViewOptions{Block: ui.ScrollCenter})
+		}
+		row.Children(func() {
+			ui.Box(c).Size(8, 8).Radius(4).Background(journalStatusColor(theme, record))
+			ui.Column(c).Gap(3).Grow(1).MinWidth(0).Children(func() {
+				ui.Text(c, record.Summary).SingleLine().Ellipsis("…").Tooltip(record.Summary)
+				detail := time.Unix(record.CreatedAt, 0).Format("2006-01-02 15:04")
+				if scope := a.journalScopeDetail(record); scope != "" {
+					detail += " · " + scope
 				}
-				row.Children(func() {
-					ui.Column(c).Gap(3).Grow(1).Children(func() {
-						ui.Text(c, record.Summary).SingleLine().Tooltip(record.Summary)
-						detail := time.Unix(record.CreatedAt, 0).Format("2006-01-02 15:04")
-						if scope := operationScopeDetail(record); scope != "" {
-							detail += " · " + scope
-						}
-						if heads := operationHeadDetail(record); heads != "" {
-							detail += " · " + heads
-						}
-						ui.Text(c, detail).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2).
-							SingleLine().Ellipsis("…").Tooltip(detail)
-						if record.Error != "" {
-							ui.Text(c, record.Error).TextColor(theme.Danger).FontSize(theme.FontSize - 2).SingleLine().Tooltip(record.Error)
-						}
-					})
-					ui.Badge(c, operationStatusLabel(record))
-					if record.Snapshot != nil {
-						tooltip := tr("A recovery copy is also listed under Recovery & checkpoints.")
-						if record.UndoStartedAt != 0 && record.AfterSnapshot != nil {
-							tooltip = tr("Both before and after recovery points remain available for review.")
-						}
-						ui.Badge(c, tr("Saved work")).Tooltip(tooltip)
-					}
-					if record.CanUndo() {
-						if compactTextButton(ui.Button(c, tr("Undo…"))).Label(tr("Undo") + " " + record.ID).
-							Tooltip(tr("Recheck the repository, then undo this exact operation")).Disabled(a.actionBusy).Clicked() {
-							a.confirmUndoOperation(record)
-						}
-					}
+				if heads := operationHeadDetail(record); heads != "" {
+					detail += " · " + heads
+				}
+				ui.Text(c, detail).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2).
+					SingleLine().Ellipsis("…").Tooltip(detail)
+				if record.Error != "" {
+					ui.Text(c, record.Error).TextColor(theme.Danger).FontSize(theme.FontSize - 2).
+						SingleLine().Ellipsis("…").Tooltip(record.Error)
+				}
+			})
+			tooltip := tr("A recovery copy is also listed under Recovery & checkpoints.")
+			if record.Snapshot == nil {
+				tooltip = operationStatusLabel(record)
+			} else if record.UndoStartedAt != 0 && record.AfterSnapshot != nil {
+				tooltip = tr("Both before and after recovery points remain available for review.")
+			}
+			ui.Badge(c, operationStatusLabel(record)).Tooltip(tooltip)
+			if record.CanUndo() {
+				iconButton(c, tr("Undo")+" "+record.ID, "Recheck the repository, then undo this exact operation", undoIcon, a.actionBusy, func() {
+					a.confirmUndoOperation(record)
 				})
 			}
 		})
-	})
+	}
 	ui.Text(c, fmt.Sprintf(tr("%d journal entries"), len(a.snapshot.Operations))).
 		TextColor(theme.TextMuted).FontSize(theme.FontSize - 2)
+}
+
+// journalScopeDetail is where an entry ran. The checkout's path is shown only
+// when it is not the repository on screen, since it repeats on every row of
+// the usual single-repository list.
+func (a *app) journalScopeDetail(record repository.OperationRecord) string {
+	if record.Worktree == a.snapshot.Root {
+		record.Worktree = ""
+	}
+	return operationScopeDetail(record)
 }

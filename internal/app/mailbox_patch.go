@@ -56,7 +56,9 @@ func (a *app) beginExportPatches() {
 	}
 	a.showExportPatchForm = false
 	var paths []string
-	a.beginRepositoryActionMessage(tr("Exported mailbox patches"), "",
+	// The success callback reports the count and where the files went, so the
+	// action's own generic message would only stack a second toast on top.
+	a.beginRepositoryActionMessage("", "",
 		func(ctx context.Context, session repository.Session) error {
 			var err error
 			paths, err = requireHistorySession(session).ExportPatches(ctx, commits, directory)

@@ -41,14 +41,19 @@ func (a *app) beginStashChanges() {
 				default:
 					return requireStashSession(session).StashChanges(ctx, message, includeUntracked)
 				}
-			}, func() {
-				a.stashMessage = ""
-				a.stashIncludeUntracked = false
-				a.stashSelection = nil
-				a.stashPatch = ""
-				a.stashRemovalPatch = ""
-				a.showStashForm = false
-			})
+			}, nil)
+		// The work runs in the background and the Working card reports it, so
+		// the form closes now rather than sitting disabled until it finishes.
+		// The action holds its own copy of everything it needs. If it could
+		// not start, the form stays open with what the user typed.
+		if a.actionBusy {
+			a.stashMessage = ""
+			a.stashIncludeUntracked = false
+			a.stashSelection = nil
+			a.stashPatch = ""
+			a.stashRemovalPatch = ""
+			a.showStashForm = false
+		}
 	})
 }
 

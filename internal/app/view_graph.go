@@ -1,8 +1,6 @@
 package app
 
 import (
-	"fmt"
-
 	"github.com/egoist/mygo/ui"
 )
 
@@ -29,10 +27,10 @@ func (a *app) graphView(c *ui.Context) {
 							if a.graphFilter.loading {
 								ui.Spinner(c).Label(tr("Searching commits"))
 							} else if a.graphFilter.err == "" {
-								ui.Badge(c, fmt.Sprintf("%d", len(commits)))
+								commitCountBadge(c, len(commits), a.graphFilter.more)
 							}
 						} else if len(commits) > 0 {
-							ui.Badge(c, fmt.Sprintf("%d", len(commits)))
+							commitCountBadge(c, len(commits), a.commitsMore)
 						}
 						ui.Spacer(c).Grow(1)
 						a.commitSelectionModeButton(c)

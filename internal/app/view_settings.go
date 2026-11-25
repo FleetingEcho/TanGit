@@ -726,6 +726,8 @@ func (a *app) behaviorSettings(c *ui.Context) {
 			}
 			a.hotkeysSwitch(c)
 			ui.Divider(c)
+			a.safetyJournalSetting(c)
+			ui.Divider(c)
 			ui.Text(c, tr("Background fetch")).Bold()
 			ui.Text(c, tr("Fetches every remote while the window is open so branches, ahead/behind counts and tags stay current. Your working tree is not touched.")).
 				TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).MaxWidth(480)

@@ -107,7 +107,7 @@ func TestRealAppUndoCommitThroughSafetyJournal(t *testing.T) {
 	h.app.setWorkspaceTab(sectionStash)
 	h.tester.Frame()
 	openRecoveryForTest(t, h)
-	if err := h.tester.Click("Show safety journal"); err != nil {
+	if err := h.tester.Click("Safety Journal"); err != nil {
 		t.Fatalf("open Safety Journal: %v; texts=%q", err, h.texts())
 	}
 	h.tester.Frame()

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -690,7 +691,7 @@ func (a *app) openFormName(inline bool) string {
 		{a.showCommitTagForm, "showCommitTagForm"},
 		{a.showCommitBranchForm, "showCommitBranchForm"},
 		{a.showCommitRewordForm, "showCommitRewordForm"},
-		{a.rebasePlanEditorOpen, "rebasePlanEditorOpen"},
+		{a.rebasePlanEditorOpen || a.rebaseModalOpen, "rebase modal"},
 		{a.showRenameRecent, "showRenameRecent"},
 		{a.homeWorktrees.open && !a.homeWorktrees.dropdown, "homeWorktrees"},
 		{a.ssh.profileFormOpen, "ssh profile form"},
@@ -801,28 +802,45 @@ func commitHeaderButton(c *ui.Context, label, tooltip string, icon *ui.SVG, run 
 	}
 }
 
-// commitFilterButton opens a commit list's filter. It wears the accent while
-// a filter narrows the list, so a short list says why it is short without the
-// filter having to be opened first.
+// commitFilterButton opens a commit list's filter. While a filter narrows the
+// list it is filled with the accent, so a short list says why it is short at a
+// glance, without the filter having to be opened first.
 func commitFilterButton(c *ui.Context, tooltip string, active bool, run func()) {
 	theme := c.Theme()
-	button := ui.Button(c, "").Padding(2, 3)
-	clicked := button.Label(tr("Filter commits")).Tooltip(tr(tooltip)).Clicked()
+	button := ui.Button(c, "").Padding(3, 5)
+	// The applied state is exposed as a pressed toggle, so assistive
+	// technology reports it too, while the name stays "Filter commits".
+	clicked := button.Label(tr("Filter commits")).Tooltip(tr(tooltip)).Checked(active).Clicked()
 	button.Children(func() {
 		if active {
-			ui.Icon(c, filterIcon).FontSize(13).TextColor(theme.Accent)
+			ui.Icon(c, filterIcon).FontSize(14).TextColor(theme.AccentText)
 		} else {
 			ui.Icon(c, filterIcon).FontSize(13)
 		}
 	})
 	if active {
-		button.Background(theme.Accent.Alpha(0.14))
+		fill := theme.Accent
+		if button.Hovered() {
+			fill = theme.AccentHover
+		}
+		button.Background(fill).Border(1, theme.Accent)
 	} else if button.Hovered() {
 		button.Background(theme.SurfaceHover)
 	}
 	if clicked {
 		run()
 	}
+}
+
+// commitCountBadge shows how many commits a list holds. When another page is
+// waiting below, its tooltip says so, since the number is how far the list has
+// loaded, not how many commits there are.
+func commitCountBadge(c *ui.Context, count int, more bool) {
+	tooltip := trf("%d commits shown.", count)
+	if more {
+		tooltip = trf("%d commits loaded so far. Scroll down to load more, or use the filter to search the commit history.", count)
+	}
+	ui.Badge(c, fmt.Sprintf("%d", count)).Tooltip(tooltip)
 }
 
 // clearFilterButton clears every field of a commit list's filter. A list shows

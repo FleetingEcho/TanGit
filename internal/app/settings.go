@@ -14,6 +14,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
@@ -61,6 +62,10 @@ type appSettings struct {
 	// DisableShortcuts switches the window's keyboard shortcuts off. The
 	// header icons keep working, so every action stays reachable.
 	DisableShortcuts bool `json:"disableShortcuts"`
+	// DisableSafetyJournal runs actions without taking a recovery point first,
+	// so they are faster but cannot be undone. It is stored inverted so older
+	// settings files keep the journal on.
+	DisableSafetyJournal bool `json:"disableSafetyJournal,omitempty"`
 	// DisableShortcutToasts suppresses only shortcut acknowledgement notices.
 	// The audit log and operation results remain visible.
 	DisableShortcutToasts bool `json:"disableShortcutToasts,omitempty"`
@@ -604,6 +609,7 @@ func (a *app) saveSettings() {
 // applySettingsChange mirrors the toggles a settings change carries into the
 // running app and stores the new file.
 func (a *app) applySettingsChange() {
+	repository.SetSafetyJournalEnabled(!a.settings.DisableSafetyJournal)
 	a.diffSplit = a.settings.DiffSplit
 	a.diffWrap = a.settings.DiffWrap
 	a.commitDetailsLayout = a.settings.CommitDetailsLayout

@@ -511,10 +511,6 @@ func (a *app) filteredCommitFooter(c *ui.Context, theme *ui.Theme, target int, q
 }
 
 func (a *app) historyView(c *ui.Context) {
-	if a.rebaseWorkspaceVisible() {
-		a.rebaseHistoryView(c)
-		return
-	}
 	theme := c.Theme()
 	a.collapsibleContentPaneSplit(c, &a.filePaneWidth, &a.workspacePaneCollapsed[sectionHistory],
 		"Expand list pane", func() {
@@ -585,11 +581,11 @@ func (a *app) historyListHeader(c *ui.Context) {
 				if a.historyFilter.loading {
 					ui.Spinner(c).Label(tr("Searching commits"))
 				} else if a.historyFilter.err == "" {
-					ui.Badge(c, fmt.Sprintf("%d", len(a.historyFilter.matches)))
+					commitCountBadge(c, len(a.historyFilter.matches), a.historyFilter.more)
 				}
 			}
 			ui.Spacer(c).Grow(1)
-			commitHeaderButton(c, "Open Rebase TODO workspace", "Start or inspect a real Git rebase plan", rebaseIcon, a.openRebaseWorkspace)
+			commitHeaderButton(c, "Open Rebase TODO", "Start or inspect a real Git rebase plan", rebaseIcon, a.openRebaseWorkspace)
 			a.commitSelectionModeButton(c)
 			commitFilterButton(c, "Search and filter the commit list", filtered, func() {
 				a.openCommitFilter(sectionHistory)

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const workspaceMetadataMarker = "Tangit-Workspace-Metadata: 1\n"
@@ -59,6 +61,10 @@ func (s *gitSession) writeWorkspaceTree(node *workspaceTreeNode) (string, error)
 		var batch []*workspaceTreeNode
 		for _, n := range levels[depth] {
 			records := n.treeRecords(oids)
+			if oid, ok := s.memoizedObject("tree", records); ok {
+				oids[n] = oid
+				continue
+			}
 			if records == "" {
 				// A batch cannot tell an empty tree from a separator.
 				tree, err := s.mktree("")
@@ -66,6 +72,7 @@ func (s *gitSession) writeWorkspaceTree(node *workspaceTreeNode) (string, error)
 					return "", err
 				}
 				oids[n] = tree
+				s.rememberObject("tree", records, tree)
 				continue
 			}
 			input.WriteString(records)
@@ -86,6 +93,7 @@ func (s *gitSession) writeWorkspaceTree(node *workspaceTreeNode) (string, error)
 		}
 		for i, n := range batch {
 			oids[n] = trees[i]
+			s.rememberObject("tree", n.treeRecords(oids), trees[i])
 		}
 	}
 	return oids[node], nil
@@ -269,6 +277,7 @@ func (s *gitSession) captureWorkspaceTreeFiles(listing string, entries []workspa
 		info     os.FileInfo
 	}
 	files := make(map[string]workspaceFile, len(sortedPaths))
+	hashed := make(map[string]string, len(sortedPaths))
 	var batch []string
 	for _, name := range sortedPaths {
 		filename, err := s.worktreeFilePath(s.git.RepoPaths.WorktreePath(), name)
@@ -284,26 +293,36 @@ func (s *gitSession) captureWorkspaceTreeFiles(listing string, entries []workspa
 		}
 		files[name] = workspaceFile{filename: filename, info: info}
 		if info.Mode().IsRegular() && !strings.ContainsAny(filename, "\n\"") {
+			if oid, ok := s.cachedFileHash(filename, info); ok {
+				hashed[name] = oid
+				continue
+			}
 			batch = append(batch, name)
 		}
 	}
-	hashed := make(map[string]string, len(batch))
 	if len(batch) > 0 {
 		var input strings.Builder
 		for _, name := range batch {
 			input.WriteString(files[name].filename)
 			input.WriteByte('\n')
 		}
-		output, err := s.cmd.New([]string{"git", "hash-object", "-w", "--no-filters", "--stdin-paths"}).SetStdin(input.String()).RunWithOutput()
+		oids, err := s.hashWorktreeBatch(input.String(), len(batch))
 		if err != nil {
-			return nil, nil, fmt.Errorf("capture raw worktree files: %w: %s", err, strings.TrimSpace(output))
-		}
-		oids := strings.Fields(output)
-		if len(oids) != len(batch) {
-			return nil, nil, fmt.Errorf("capture raw worktree files: expected %d object IDs, got %d", len(batch), len(oids))
+			// One file that keeps changing fails the whole batch. Hash the files
+			// one at a time, retrying each, so the busy one is named and retried
+			// alone.
+			oids = make([]string, len(batch))
+			for i, name := range batch {
+				oid, singleErr := s.hashWorktreeFile(files[name].filename)
+				if singleErr != nil {
+					return nil, nil, fmt.Errorf("capture raw worktree file %q: %w", name, singleErr)
+				}
+				oids[i] = oid
+			}
 		}
 		for i, name := range batch {
 			hashed[name] = oids[i]
+			s.rememberFileHash(files[name].filename, files[name].info, oids[i])
 		}
 	}
 	for _, name := range sortedPaths {
@@ -364,15 +383,158 @@ func (s *gitSession) captureRawWorkspaceFile(name, filename string, info os.File
 	oid := known
 	if oid == "" {
 		var err error
-		oid, err = s.cmd.New([]string{"git", "hash-object", "-w", "--no-filters", filename}).RunWithOutput()
+		oid, err = s.hashWorktreeFile(filename)
 		if err != nil {
-			return workspaceTreeEntry{}, fmt.Errorf("capture raw worktree file %q: %w: %s", name, err, strings.TrimSpace(oid))
+			return workspaceTreeEntry{}, fmt.Errorf("capture raw worktree file %q: %w", name, err)
 		}
 	}
 	if info.Mode().Perm()&0o111 != 0 {
 		mode = "100755"
 	}
 	return workspaceTreeEntry{mode: mode, oid: strings.TrimSpace(oid)}, nil
+}
+
+// objectMemoEntry is one remembered object ID and when it was learned.
+type objectMemoEntry struct {
+	oid string
+	at  time.Time
+}
+
+const objectMemoLimit = 100_000
+
+// memoKey separates trees from blobs, which could share input text.
+func memoKey(kind, input string) [32]byte {
+	return sha256.Sum256([]byte(kind + "\x00" + input))
+}
+
+func (s *gitSession) memoizedObject(kind, input string) (string, bool) {
+	key := memoKey(kind, input)
+	s.objectMemoMu.Lock()
+	defer s.objectMemoMu.Unlock()
+	entry, ok := s.objectMemo[key]
+	if !ok {
+		return "", false
+	}
+	if time.Since(entry.at) > fileHashLifetime {
+		delete(s.objectMemo, key)
+		return "", false
+	}
+	return entry.oid, true
+}
+
+func (s *gitSession) rememberObject(kind, input, oid string) {
+	if oid == "" {
+		return
+	}
+	key := memoKey(kind, input)
+	s.objectMemoMu.Lock()
+	defer s.objectMemoMu.Unlock()
+	if s.objectMemo == nil || len(s.objectMemo) >= objectMemoLimit {
+		s.objectMemo = make(map[[32]byte]objectMemoEntry)
+	}
+	s.objectMemo[key] = objectMemoEntry{oid: oid, at: time.Now()}
+}
+
+// fileHashEntry is one remembered hash: the file's state when it was hashed,
+// and the object ID that came out.
+type fileHashEntry struct {
+	size     int64
+	mode     os.FileMode
+	modTime  time.Time
+	oid      string
+	cachedAt time.Time
+}
+
+const (
+	// fileHashRacyWindow is how recent a modification must not be for its hash
+	// to be trusted: a file written within the timestamp's resolution can change
+	// again without changing its size or time, as Git's own index also notes.
+	fileHashRacyWindow = 2 * time.Second
+	// fileHashLifetime bounds how long a remembered hash is believed, so an
+	// object that Git pruned meanwhile is eventually hashed and written again.
+	fileHashLifetime = 10 * time.Minute
+	fileHashLimit    = 200_000
+)
+
+// cachedFileHash returns the remembered object ID of a regular file that has
+// not changed since it was hashed.
+func (s *gitSession) cachedFileHash(filename string, info os.FileInfo) (string, bool) {
+	s.fileHashMu.Lock()
+	defer s.fileHashMu.Unlock()
+	entry, ok := s.fileHashes[filename]
+	if !ok {
+		return "", false
+	}
+	if time.Since(entry.cachedAt) > fileHashLifetime || entry.size != info.Size() ||
+		entry.mode != info.Mode() || !entry.modTime.Equal(info.ModTime()) {
+		delete(s.fileHashes, filename)
+		return "", false
+	}
+	return entry.oid, true
+}
+
+// rememberFileHash records a hash taken from info's state. A file modified
+// moments ago is not remembered, since another write could still follow
+// within the same timestamp.
+func (s *gitSession) rememberFileHash(filename string, info os.FileInfo, oid string) {
+	if time.Since(info.ModTime()) < fileHashRacyWindow || oid == "" {
+		return
+	}
+	s.fileHashMu.Lock()
+	defer s.fileHashMu.Unlock()
+	if s.fileHashes == nil || len(s.fileHashes) >= fileHashLimit {
+		s.fileHashes = make(map[string]fileHashEntry)
+	}
+	s.fileHashes[filename] = fileHashEntry{
+		size: info.Size(), mode: info.Mode(), modTime: info.ModTime(), oid: oid, cachedAt: time.Now(),
+	}
+}
+
+// hashAttempts is how often a file that changes while Git reads it is hashed
+// again. Other programs keep rewriting files in a checkout (an editor index, a
+// build, a database under an ignored folder), and one write mid-read is not
+// worth failing the whole action over.
+const hashAttempts = 4
+
+// hashWorktreeBatch hashes the newline-separated absolute paths in one Git
+// process, hashing them again when a file changed underneath it.
+func (s *gitSession) hashWorktreeBatch(paths string, count int) ([]string, error) {
+	var lastErr error
+	for attempt := 0; attempt < hashAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * 40 * time.Millisecond)
+		}
+		output, err := s.cmd.New([]string{"git", "hash-object", "-w", "--no-filters", "--stdin-paths"}).SetStdin(paths).RunWithOutput()
+		if err != nil {
+			// Git's reason is not always in the error text, and a file read
+			// can fail for one-off reasons, so every failure is tried again.
+			lastErr = fmt.Errorf("capture raw worktree files: %w: %s", err, strings.TrimSpace(output))
+			continue
+		}
+		oids := strings.Fields(output)
+		if len(oids) != count {
+			return nil, fmt.Errorf("capture raw worktree files: expected %d object IDs, got %d", count, len(oids))
+		}
+		return oids, nil
+	}
+	return nil, lastErr
+}
+
+// hashWorktreeFile hashes one file, hashing it again when it changed while
+// Git read it.
+func (s *gitSession) hashWorktreeFile(filename string) (string, error) {
+	var lastErr error
+	for attempt := 0; attempt < hashAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * 40 * time.Millisecond)
+		}
+		output, err := s.cmd.New([]string{"git", "hash-object", "-w", "--no-filters", filename}).RunWithOutput()
+		if err == nil {
+			return strings.TrimSpace(output), nil
+		}
+		lastErr = fmt.Errorf("%w: %s", err, strings.TrimSpace(output))
+	}
+	return "", fmt.Errorf("the file kept changing while it was being saved: %w", lastErr)
 }
 
 func sortedWorkspacePaths(paths map[string]bool) []string {
@@ -457,11 +619,16 @@ func (s *gitSession) captureWorkspaceArchive(listing string, scope workspaceArch
 }
 
 func workspaceMetadataBlob(s *gitSession, data []byte) (string, error) {
+	if oid, ok := s.memoizedObject("blob", string(data)); ok {
+		return oid, nil
+	}
 	oid, err := s.cmd.New([]string{"git", "hash-object", "-w", "--stdin"}).SetStdin(string(data)).RunWithOutput()
 	if err != nil {
 		return "", fmt.Errorf("write workspace metadata: %w: %s", err, strings.TrimSpace(oid))
 	}
-	return strings.TrimSpace(oid), nil
+	oid = strings.TrimSpace(oid)
+	s.rememberObject("blob", string(data), oid)
+	return oid, nil
 }
 
 func (s *gitSession) restoreRawWorkspacePaths(snapshotHash string, paths []string) error {

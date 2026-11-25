@@ -974,7 +974,7 @@ func (a *app) branchCommitsView(c *ui.Context, branch repository.Branch) {
 			if a.branchCommitsLoading && len(a.branchCommits) > 0 {
 				ui.Spinner(c).Label(tr("Loading commits"))
 			} else if len(a.branchCommits) > 0 {
-				ui.Badge(c, fmt.Sprintf("%d", len(a.branchCommits)))
+				commitCountBadge(c, len(a.branchCommits), a.branchCommitsMore)
 			}
 			if filtered {
 				ui.Badge(c, commitFilterSummary(a.branchFilter))
