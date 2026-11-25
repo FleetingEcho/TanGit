@@ -779,22 +779,27 @@ type app struct {
 	// Reword has its own modal because, unlike amending HEAD from Changes, it
 	// edits only the message of the selected historical commit. The token drops
 	// a slower message read after the form closes or switches to another commit.
-	showCommitRewordForm   bool
-	showBisectForm         bool
-	bisectBadCommit        repository.Commit
-	showExportPatchForm    bool
-	exportPatchDir         string
-	exportPatchCommits     []repository.Commit
-	bisectGoodRef          string
-	bisectFormError        string
-	commitRewordCommit     repository.Commit
-	commitRewordSummary    string
-	commitRewordBody       string
-	commitRewordLoading    bool
-	commitRewordError      string
-	commitRewordToken      uint64
-	blameState             *editor.State
-	blameLoading           bool
+	showCommitRewordForm bool
+	showBisectForm       bool
+	bisectBadCommit      repository.Commit
+	showExportPatchForm  bool
+	exportPatchDir       string
+	exportPatchCommits   []repository.Commit
+	bisectGoodRef        string
+	bisectFormError      string
+	commitRewordCommit   repository.Commit
+	commitRewordSummary  string
+	commitRewordBody     string
+	commitRewordLoading  bool
+	commitRewordError    string
+	commitRewordToken    uint64
+	blameState           *editor.State
+	blameLoading         bool
+	// blameNewFile says the blame on screen is of a file HEAD does not have yet,
+	// whose every line is new work.
+	blameNewFile bool
+	// blamePath is the file the blame on screen, or being read, is of.
+	blamePath              string
 	blameError             string
 	blameGeneration        uint64
 	codeBlameHover         codeBlameHoverState

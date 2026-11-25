@@ -642,17 +642,28 @@ func (a *app) beginBlame() {
 	a.blameGeneration++
 	blameGeneration := a.blameGeneration
 	blameLabel := tr("Git blame output")
+	// A file HEAD does not have yet (newly added, staged or not) has no history
+	// to blame, so its saved lines are read as the new work they are.
+	newFile := !file.Tracked
+	a.blameNewFile = newFile
+	a.blamePath = file.Path
 	a.blameLoading = true
 	a.blameError = ""
 	a.blameState = nil
 	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		lines, err := requireHistorySession(session).BlameFile(ctx, file)
+		var lines []repository.BlameLine
+		var err error
+		if newFile {
+			lines, err = requireHistorySession(session).BlameWorkingTreeFile(ctx, file.Path)
+		} else {
+			lines, err = requireHistorySession(session).BlameFile(ctx, file)
+		}
 		var state *editor.State
 		if err == nil {
 			buffer := editor.NewBuffer(formatBlame(lines))
-			state = &editor.State{Buffer: buffer, ReadOnly: true, SoftWrap: false, NoIndentGuides: true, Label: blameLabel}
+			state = &editor.State{Buffer: buffer, ReadOnly: true, SoftWrap: false, NoIndentGuides: true, NoActiveLine: true, NoAutoClose: true, NoFolding: true, Label: blameLabel}
 		}
 		a.updateChanged(func() bool {
 			if repositoryGeneration != a.generation || blameGeneration != a.blameGeneration {

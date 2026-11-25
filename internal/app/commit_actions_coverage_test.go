@@ -521,3 +521,49 @@ func TestCommitFilterButtonShowsWhetherAFilterIsApplied(t *testing.T) {
 		}
 	}
 }
+
+// The reflog's count says how far the list has loaded; hovering it says how to
+// reach the older entries, and does not promise more once the whole reflog is
+// here.
+func TestReflogCountTooltipExplainsHowToSeeMore(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		more bool
+		want string
+		not  string
+	}{
+		{"older entries wait", true, "Scroll down to load more, or use the filter to search by operation, hash or author.", ""},
+		{"the whole reflog is here", false, "This is the whole reflog.", "Scroll down"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			a := newApp(fakeOpener{})
+			a.reflogMore = test.more
+			var query string
+			var handle ui.Handle
+			tt := ui.NewTester(func(c *ui.Context) {
+				ui.Row(c).Padding(20).Children(func() {
+					listSearchFieldTip(c, &handle, &query, "Search reflog", "Filter by operation, hash, or author",
+						"Clear reflog search", a.reflogCountTooltip(50), 50, 50, func() {})
+				})
+			}, 900, 120)
+			tt.Frame()
+			badge, ok := tt.Find("50")
+			if !ok {
+				t.Fatalf("no count showing 50: %q", tt.Texts())
+			}
+			tt.Move(badge.X+badge.W/2, badge.Y+badge.H/2)
+			tt.Advance(time.Second)
+			tt.Frame()
+			if !tt.HasText(test.want) {
+				t.Fatalf("hovering the reflog count did not show %q: %q", test.want, tt.Texts())
+			}
+			if test.not != "" {
+				for _, text := range tt.Texts() {
+					if strings.Contains(text, test.not) {
+						t.Fatalf("the tooltip %q should not mention %q", text, test.not)
+					}
+				}
+			}
+		})
+	}
+}

@@ -565,7 +565,7 @@ func (a *app) fileRowMenu(m *ui.Menu, index int, services ui.Services) {
 				a.beginStageFile(file, true)
 			}
 		}
-		if file.Tracked && !file.Deleted {
+		if !file.Deleted {
 			if m.Item(tr("Blame")).Shortcut(0, ui.KeyB).Disabled(a.actionBusy).Chosen() {
 				a.beginBlame()
 			}
@@ -743,6 +743,7 @@ func (a *app) fileDetailsView(c *ui.Context) {
 			return
 		}
 		a.requestFileDiff()
+		a.followBlame()
 		a.changedFileAndHunkNavigationControls(c)
 		if file.HasMergeConflicts {
 			a.conflictPane(c, theme)
@@ -758,10 +759,13 @@ func (a *app) fileDetailsView(c *ui.Context) {
 		if a.blameState != nil {
 			closed := false
 			ui.Row(c).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, tr("Blame at HEAD")).Bold().Grow(1)
+				title := tr("Blame at HEAD")
+				if a.blameNewFile {
+					title = tr("Blame · new file, not committed yet")
+				}
+				ui.Text(c, title).Bold().Grow(1)
 				if ui.Button(c, tr("Close blame")).Clicked() {
-					a.blameGeneration++
-					a.blameState = nil
+					a.closeBlame()
 					closed = true
 				}
 			})
@@ -770,7 +774,12 @@ func (a *app) fileDetailsView(c *ui.Context) {
 			if !closed {
 				// Blame is read-only, as a diff is: a click keeps the keyboard
 				// where it is rather than putting a caret in its text.
-				a.keyboardPane(c, "blame", editor.View(c, a.blameState).Grow(1)).Label(tr("Blame"))
+				pane := a.keyboardPane(c, "blame", editor.View(c, a.blameState).Grow(1)).Label(tr("Blame"))
+				// The focused editor takes Escape itself, so the pane claims it
+				// to close the report, as a dialog does.
+				a.onElementShortcut(pane, 0, ui.KeyEscape, shortcutDefinition{
+					id: "git/Changes/Close blame", chord: "Esc", label: tr("Close blame"),
+				}, a.closeBlame)
 			}
 			return
 		}
@@ -835,7 +844,7 @@ func (a *app) fileActionsMenu(c *ui.Context, theme *ui.Theme, file repository.Fi
 				a.beginFileAction(false)
 			}
 		}
-		if file.Tracked && !file.Deleted {
+		if !file.Deleted {
 			if m.Item(tr("Blame")).Shortcut(0, ui.KeyB).Disabled(a.actionBusy).Chosen() {
 				a.beginBlame()
 			}

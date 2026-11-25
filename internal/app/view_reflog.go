@@ -150,8 +150,9 @@ func (a *app) reflogView(c *ui.Context) {
 					return
 				}
 				visible := a.visibleReflog()
-				listSearchField(c, &a.sectionSearch[sectionReflog], &a.reflogFilter,
+				listSearchFieldTip(c, &a.sectionSearch[sectionReflog], &a.reflogFilter,
 					"Search reflog", "Filter by operation, hash, or author", "Clear reflog search",
+					a.reflogCountTooltip(len(a.snapshot.Reflog)),
 					len(visible), len(a.snapshot.Reflog), func() { a.selectReflogRow(0) }, a.navigateReflogSearch)
 				visible = a.visibleReflog()
 				if len(visible) == 0 {
@@ -188,4 +189,13 @@ func (a *app) reflogView(c *ui.Context) {
 				a.reflogActionIcons(c, entry)
 			})
 		})
+}
+
+// reflogCountTooltip explains the reflog's count: how far the list has loaded,
+// and how to reach older entries.
+func (a *app) reflogCountTooltip(loaded int) string {
+	if a.reflogMore {
+		return trf("%d reflog entries loaded so far. Scroll down to load more, or use the filter to search by operation, hash or author.", loaded)
+	}
+	return trf("%d reflog entries shown. This is the whole reflog.", loaded)
 }

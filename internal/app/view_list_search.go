@@ -91,7 +91,22 @@ func normalizeFilteredRow(rows []int, selectedRow, selectedSource *int) {
 func listSearchField(c *ui.Context, handle *ui.Handle, query *string,
 	label, placeholder, clearLabel string, matches, total int, onChange func(), onNavigate ...func(int),
 ) {
+	listSearchFieldTip(c, handle, query, label, placeholder, clearLabel, "", matches, total, onChange, onNavigate...)
+}
+
+// listSearchFieldTip is listSearchField with a tooltip on the count, for a list
+// whose number is how far it has loaded and not how many entries there are: the
+// tooltip says how to reach the rest.
+func listSearchFieldTip(c *ui.Context, handle *ui.Handle, query *string,
+	label, placeholder, clearLabel, countTip string, matches, total int, onChange func(), onNavigate ...func(int),
+) {
 	theme := c.Theme()
+	badge := func(text string) {
+		element := ui.Badge(c, text)
+		if countTip != "" {
+			element.Tooltip(countTip)
+		}
+	}
 	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 		ui.Icon(c, searchIcon).FontSize(14).TextColor(theme.TextMuted)
 		input := ui.TextInput(c, query).Bind(handle).
@@ -100,10 +115,10 @@ func listSearchField(c *ui.Context, handle *ui.Handle, query *string,
 			onChange()
 		}
 		if strings.TrimSpace(*query) == "" {
-			ui.Badge(c, fmt.Sprintf("%d", total))
+			badge(fmt.Sprintf("%d", total))
 			return
 		}
-		ui.Badge(c, fmt.Sprintf("%d / %d", matches, total))
+		badge(fmt.Sprintf("%d / %d", matches, total))
 		if matches > 0 && len(onNavigate) > 0 && onNavigate[0] != nil {
 			commitHeaderButton(c, tr(label)+": "+tr("previous result"), "Shift+F3", chevronUpIcon, func() {
 				onNavigate[0](-1)
