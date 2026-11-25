@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -84,13 +86,93 @@ func (a *app) themeButton(c *ui.Context) {
 // theme, and applies a pick. The picker's theme button and the workspace
 // header's share it, so both list the same themes.
 func (a *app) themeMenuItems(m *ui.Menu, c *ui.Context) {
-	for _, name := range themeNames {
-		if m.Item(name).Radio(a.settings.Theme == name).Chosen() {
-			a.settings.Theme = name
-			a.saveSettings()
-			c.Invalidate()
+	choose := func(name string) {
+		a.settings.Theme = name
+		a.saveSettings()
+		c.Invalidate()
+	}
+	// Not a radio item: a radio mark reserves a wide column that the group
+	// entries below cannot use. The active entry carries the same small dot.
+	system := m.Item(tr("System"))
+	if a.settings.Theme == "System" {
+		system.Icon(activeGroupDot())
+	}
+	if system.Chosen() {
+		choose("System")
+	}
+	m.Separator()
+	light, dark := themeNamesByBrightness()
+	custom := make([]string, 0, len(a.settings.CustomThemes))
+	for _, t := range a.settings.CustomThemes {
+		custom = append(custom, t.Name)
+	}
+	groups := []struct {
+		label  string
+		names  []string
+		prefix string
+	}{{"Light themes", light, ""}, {"Dark themes", dark, ""}, {"Custom themes", custom, customThemePrefix}}
+	for _, group := range groups {
+		group := group
+		if len(group.names) == 0 {
+			continue
+		}
+		// The group that holds the active theme carries a dot, since the
+		// submenu hides which entry is chosen.
+		holdsActive := slices.Contains(group.names, strings.TrimPrefix(a.settings.Theme, group.prefix)) &&
+			isCustomThemeValue(a.settings.Theme) == (group.prefix != "")
+		item := m.Submenu(tr(group.label), func(sub *ui.Menu) {
+			for _, name := range group.names {
+				value := group.prefix + name
+				item := sub.Item(name).Radio(a.settings.Theme == value)
+				if group.prefix != "" {
+					name := name
+					// A saved theme carries its own delete button at the right
+					// of its name; the button takes its press, so choosing the
+					// row still applies the theme.
+					item.ID(value).Content(func(x ui.MenuItemContent) {
+						ui.Row(x.Context).AlignItems(ui.Center).Gap(10).Children(func() {
+							ui.Text(x.Context, name).Grow(1).SingleLine()
+							button := ui.ButtonBase(x.Context).Padding(3).Radius(x.Context.Theme().Radius)
+							clicked := button.Label(trf("Delete %s", name)).Tooltip(tr("Delete this custom theme")).Clicked()
+							button.Children(func() {
+								ui.Icon(x.Context, trashIcon).FontSize(13).TextColor(x.Muted)
+							})
+							if clicked {
+								a.confirmDeleteCustomTheme(name)
+							}
+						})
+					})
+				}
+				if item.Chosen() {
+					choose(value)
+				}
+			}
+		})
+		if holdsActive {
+			item.Icon(activeGroupDot())
 		}
 	}
+	m.Separator()
+	if m.Item(tr("Customize theme…")).Chosen() {
+		a.openThemeEditor()
+	}
+}
+
+// themeNamesByBrightness splits the built-in palettes, in menu order, into
+// those with a light page and those with a dark one. System is left out: it
+// follows the desktop and has its own entry.
+func themeNamesByBrightness() (light, dark []string) {
+	for _, name := range themeNames {
+		if name == "System" {
+			continue
+		}
+		if themeChoices[name].build().Dark {
+			dark = append(dark, name)
+		} else {
+			light = append(light, name)
+		}
+	}
+	return light, dark
 }
 
 func (a *app) closeSettings() {
@@ -105,6 +187,11 @@ func (a *app) closeSettings() {
 // showing, applies every change to the next frame, and stores it at once.
 func (a *app) settingsModal(c *ui.Context) {
 	if !a.settingsUI.open {
+		return
+	}
+	// The theme editor, like cache management, is a child modal: Settings
+	// stays mounted but does not compete for input.
+	if a.settingsUI.themeEditorOpen {
 		return
 	}
 	// Keep cache management as a child modal without competing parent input.
@@ -435,10 +522,11 @@ func (a *app) appearanceSettings(c *ui.Context) {
 			a.languageSelect(c)
 		})
 		settingRow(c, "Theme", "Palettes for the whole window", func() {
-			selects := ui.Select(c, &a.settings.Theme, themeNames).Grow(1)
+			selects := ui.Select(c, &a.settings.Theme, a.themeSelectOptions()).Grow(1)
 			if selects.Changed() {
 				a.settingsChanged(c)
 			}
+			iconTextButton(c, "Customize…", "Build your own theme with a color picker", themeIcon, false, a.openThemeEditor)
 		})
 		a.themePreview(c)
 		settingRow(c, "Accent color", "Buttons and highlights", func() {
@@ -1353,4 +1441,29 @@ func (a *app) settingsFooter(c *ui.Context) {
 			a.closeSettings()
 		}
 	})
+}
+
+// themeSelectOptions lists the built-in themes; custom themes are chosen from
+// the theme menu, where they are grouped by name.
+func (a *app) themeSelectOptions() []string {
+	return append([]string(nil), themeNames...)
+}
+
+var (
+	activeGroupDotOnce sync.Once
+	activeGroupDotIcon *mygo.MenuIcon
+)
+
+// activeGroupDot is the small dot shown at the left of a theme group that
+// holds the active theme: the same mark a radio item gets, which a submenu
+// item cannot show. It is made once, as menu icons are meant to be.
+func activeGroupDot() ui.MenuIcon {
+	activeGroupDotOnce.Do(func() {
+		dot := ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.4" fill="#000"/></svg>`))
+		activeGroupDotIcon, _ = mygo.NewMenuIconSVG(dot, true)
+	})
+	if activeGroupDotIcon == nil {
+		return nil
+	}
+	return activeGroupDotIcon
 }

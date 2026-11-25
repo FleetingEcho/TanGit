@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	pathpkg "path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -620,6 +621,10 @@ func (s *gitSession) Snapshot(ctx context.Context) (Snapshot, error) {
 // CoreSnapshot reads only what the first Changes screen needs: the current
 // branch, an operation in progress, and the working tree. In particular it
 // does not wait for history, tags, remotes or the reflog.
+// MaxLineStatsFiles is the changed-file count above which a snapshot leaves
+// per-file line counts at zero rather than computing them.
+const MaxLineStatsFiles = 5000
+
 func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return Snapshot{}, err
@@ -690,7 +695,14 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 	unstagedStats := map[string]commitLineStats{}
 	needsTrackedStats := false
 	needsSideStats := false
+	// The counters are decoration, but producing them diffs every changed file
+	// and reads every untracked one before the first screen can show. A huge
+	// working tree skips them so the list opens as fast as git status answers.
+	skipLineStats := len(modelFiles) > MaxLineStatsFiles
 	for _, modelFile := range modelFiles {
+		if skipLineStats {
+			break
+		}
 		file := snapshotFile(modelFile)
 		if file.Tracked || file.Staged {
 			needsTrackedStats = true
@@ -720,6 +732,10 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 	files := make([]File, 0, len(modelFiles))
 	for _, modelFile := range modelFiles {
 		file := snapshotFile(modelFile)
+		if skipLineStats {
+			files = append(files, file)
+			continue
+		}
 		if !file.Tracked && !file.Staged {
 			stat, err := s.untrackedLineStats(file.Path)
 			if err != nil {
@@ -1146,7 +1162,9 @@ func (s *gitSession) untrackedLineStats(path string) (commitLineStats, error) {
 		return commitLineStats{}, nil
 	}
 	s.untrackedMu.Lock()
-	if s.untrackedStatsCache == nil || len(s.untrackedStatsCache) >= 512 {
+	// The cache holds at most the number of files a snapshot counts, so a
+	// working tree under that limit is read once, not on every refresh.
+	if s.untrackedStatsCache == nil || len(s.untrackedStatsCache) >= MaxLineStatsFiles {
 		s.untrackedStatsCache = make(map[string]untrackedStatsCacheEntry)
 	}
 	s.untrackedStatsCache[fullPath] = untrackedStatsCacheEntry{size: size, modTime: modTime, stats: stats}
@@ -3840,7 +3858,7 @@ func (s *gitSession) FileCommits(ctx context.Context, path string, limit, skip i
 	if skip < 0 {
 		skip = 0
 	}
-	modelCommits, err := s.fileCommits(path, limit+skip)
+	modelCommits, err := s.fileCommitsWithin(ctx, path, limit+skip)
 	if err != nil {
 		return nil, fmt.Errorf("read the history of %s: %w", path, err)
 	}
@@ -3852,7 +3870,68 @@ func (s *gitSession) FileCommits(ctx context.Context, path string, limit, skip i
 	for _, commit := range modelCommits {
 		commits = append(commits, snapshotCommit(commit))
 	}
-	return s.withCommitLineStats(ctx, commits)
+	return s.withCommitStatsWithin(ctx, commits), nil
+}
+
+const (
+	// fileHistoryReadTimeout bounds `git log -- <path>`, which on a huge
+	// history can walk every commit to find a few that touched the file.
+	fileHistoryReadTimeout = 60 * time.Second
+	// fileHistoryStatsGrace is how long the +/- counts may delay the list.
+	// They are decoration; the list shows without them if they are slow, for
+	// example behind a History read holding the same lock.
+	fileHistoryStatsGrace = 3 * time.Second
+)
+
+// fileCommitsWithin reads the commits of a file, giving up after
+// fileHistoryReadTimeout or when ctx ends. Git is not interruptible here, so
+// a read that times out finishes in the background and its result is dropped.
+func (s *gitSession) fileCommitsWithin(ctx context.Context, path string, limit int) ([]*models.Commit, error) {
+	type result struct {
+		commits []*models.Commit
+		err     error
+	}
+	done := make(chan result, 1)
+	go func() {
+		commits, err := s.fileCommits(path, limit)
+		done <- result{commits, err}
+	}()
+	timer := time.NewTimer(fileHistoryReadTimeout)
+	defer timer.Stop()
+	select {
+	case r := <-done:
+		return r.commits, r.err
+	case <-timer.C:
+		return nil, fmt.Errorf("Git took longer than %d seconds. This repository is large: turn on the commit-graph in Optimize repository performance, then try again", int(fileHistoryReadTimeout/time.Second))
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// withCommitStatsWithin adds line counts to commits, but returns them as they
+// are, without counts, when the counts are slow to arrive. The read continues
+// and caches its result for the next time.
+func (s *gitSession) withCommitStatsWithin(ctx context.Context, commits []Commit) []Commit {
+	type result struct{ commits []Commit }
+	done := make(chan result, 1)
+	input := slices.Clone(commits)
+	go func() {
+		counted, err := s.withCommitLineStats(ctx, input)
+		if err != nil {
+			counted = input
+		}
+		done <- result{counted}
+	}()
+	timer := time.NewTimer(fileHistoryStatsGrace)
+	defer timer.Stop()
+	select {
+	case r := <-done:
+		return r.commits
+	case <-timer.C:
+		return commits
+	case <-ctx.Done():
+		return commits
+	}
 }
 
 func (s *gitSession) worktreeFilePath(root string, filePath string) (string, error) {

@@ -28,6 +28,22 @@ type settingsUIState struct {
 	searchExcludedDirectoryDraft string
 	customAccent                 ui.Color
 
+	// The theme editor is its own dialog over the window (and over Settings).
+	themeEditorOpen bool
+	// themeEditorIndex is the saved theme being edited, or -1 for a new one
+	// that is saved on its first edit (themeEditorDraft holds it until then).
+	themeEditorIndex    int
+	themeEditorDraft    namedCustomTheme
+	themeEditorPrevious string
+	themeEditorCreated  bool
+	themeEditorName     string
+	themeEditorNameErr  string
+	// themeEditorNamed is set once the user typed a usable name for a theme
+	// that is not saved yet: closing the editor then saves it.
+	themeEditorNamed  bool
+	themeEditorStart  string
+	themeEditorColors [themeColorCount]ui.Color
+
 	homeBackground             *ui.Bitmap
 	homeBackgroundPath         string
 	homeBackgroundPending      string

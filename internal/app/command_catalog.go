@@ -676,6 +676,11 @@ func buildStaticCommandSpecs() []commandSpec {
 		state.ContextScore = 0
 		return state
 	}, Run: func(ctx commandContext) { ctx.App.openSettingsSection(settingsPageCommands) }})
+	specs = append(specs, commandSpec{ID: "theme/customize", Label: "Customize theme…", Detail: "Build your own theme with a color picker", Keywords: []string{"theme", "appearance", "color", "custom", "palette"}, Group: commandGroupApplication, Glyph: themeIcon, Resolve: func(ctx commandContext) commandState {
+		state := appState(ctx)
+		state.ContextScore = 0
+		return state
+	}, Run: func(ctx commandContext) { ctx.App.openThemeEditor(); ctx.Shell.invalidate() }})
 	for _, name := range themeNames {
 		name := name
 		specs = append(specs, commandSpec{ID: commandID("theme/" + name), Label: "Switch theme: " + name, Format: "Switch theme: %s", FormatArgs: []string{name}, Keywords: []string{"theme", "appearance", "color", "dark", "light", name}, Group: commandGroupApplication, Glyph: themeIcon, Resolve: func(ctx commandContext) commandState {

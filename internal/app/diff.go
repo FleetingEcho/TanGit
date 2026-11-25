@@ -880,6 +880,10 @@ func (a *app) diffFullscreenFilesView(c *ui.Context, theme *ui.Theme, target sho
 func (a *app) diffFullscreenDiff(c *ui.Context, theme *ui.Theme, target shownDiff) {
 	switch {
 	case target.state != nil:
+		// Scroll bars of a diff appear only while the pointer is over it, which
+		// leaves a whole-window diff of thousands of lines with no sign of its
+		// length or position. Keep them showing here.
+		target.state.KeepScrollbars = true
 		a.keyboardDiffViewerWithID(c, target.state, "fullscreen-diff")
 	case target.media != nil:
 		mediaReviewView(c, target.media, target.path)

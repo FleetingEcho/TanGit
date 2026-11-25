@@ -37,6 +37,9 @@ type CommandEntry struct {
 	InvocationSource string
 	// Running reports commands accepted but not yet completed.
 	Running bool
+	// Duration is how long the command ran, set when it completes. Commands
+	// the Git library logs only at their start have none.
+	Duration time.Duration
 	// id binds streams and completions to this particular entry even when
 	// newer commands start or older commands are trimmed.
 	id uint64
@@ -431,6 +434,7 @@ func (l *CommandLog) beginOrigin(command string, origin CommandOrigin) (uint64, 
 		if index >= 0 && l.entries[index].Running {
 			entry := &l.entries[index]
 			entry.Running = false
+			entry.Duration = time.Since(entry.At)
 			entry.Failed = failed
 			delete(l.streams, id)
 			entry.Output = RedactSecrets(output)
