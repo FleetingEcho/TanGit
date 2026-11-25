@@ -577,10 +577,6 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 
 				}
 				s.paletteShellOutput(c)
-				if a := s.activeApp(); a != nil {
-					ui.Divider(c)
-					a.hotkeysSwitch(c)
-				}
 				ui.Divider(c)
 				ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
 					footerHint := tr("↑↓ Navigate · PgUp/PgDn Jump · Tab Actions · Enter Run · Ctrl+B Pin · Escape Close")

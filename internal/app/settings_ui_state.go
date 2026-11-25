@@ -11,6 +11,8 @@ type settingsUIState struct {
 	conflictActionStyleChoice int
 	autoFetchChoice           int
 	indexLimitChoice          string
+	searchQuery               string
+	searchInput               ui.Handle
 
 	customEditorFormOpen    bool
 	customEditorFormName    string
@@ -65,6 +67,8 @@ func (s *settingsUIState) closeCustomEditorForm() {
 func (s *settingsUIState) close() {
 	s.open = false
 	s.revealShortcuts = false
+	s.searchQuery = ""
+	s.searchInput.CancelFocus()
 	s.closeCustomEditorForm()
 }
 

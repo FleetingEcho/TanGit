@@ -53,6 +53,11 @@ func (a *app) clearCommandLogFilters() {
 	a.resetCommandLogPaging()
 }
 
+func (a *app) commandLogFiltersActive() bool {
+	return strings.TrimSpace(a.commandLogQuery) != "" || a.commandLogStatus != "" ||
+		a.commandLogSource != "" || (a.commandLogRange != "" && a.commandLogRange != commandLogRangeAll)
+}
+
 func (a *app) commandLogTime() time.Time {
 	if a.commandLogClock != nil {
 		return a.commandLogClock()
@@ -268,10 +273,10 @@ func (a *app) commandLogTools(c *ui.Context) {
 		a.commandLogFilterSelect(c, "Time range filter", a.commandLogRange, commandLogTimeRangeLabel(a.commandLogRange), timeOptions, func(value string) {
 			a.commandLogRange = value
 		})
-		filtered := strings.TrimSpace(a.commandLogQuery) != "" || a.commandLogStatus != "" || a.commandLogSource != "" ||
-			(a.commandLogRange != "" && a.commandLogRange != commandLogRangeAll)
-		if ui.Button(c, tr("Clear filters")).Disabled(!filtered).Clicked() {
-			a.clearCommandLogFilters()
+		if a.commandLogFiltersActive() {
+			if ui.Button(c, tr("Clear filters")).Clicked() {
+				a.clearCommandLogFilters()
+			}
 		}
 	})
 }

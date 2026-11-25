@@ -12,6 +12,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
 )
 
@@ -428,6 +429,28 @@ func (a *app) beginCodeFileOperation(kind codeFileOperationKind, source, destina
 			a.notify("success", title, destination)
 		})
 	}()
+}
+
+// syncDiscardedCodeFiles applies untracked-file deletions accepted in Changes
+// to the independent Code browser. Complete the tabs without autosaving them,
+// invalidate any older index read, and fetch the now-current paths at once.
+func (a *app) syncDiscardedCodeFiles(files []repository.File) {
+	deleted := false
+	for _, file := range files {
+		if file.Tracked {
+			continue
+		}
+		a.completeCodeFileOperation(codeFileDelete, file.Path, file.Path, false)
+		deleted = true
+	}
+	if !deleted {
+		return
+	}
+	a.code.filesToken++
+	a.code.filesLoading = false
+	a.code.filesLoaded = false
+	a.code.filesOperationRefresh = true
+	a.requestCodeFiles()
 }
 
 // completeCodeFileOperation opens new files and carries editor state through

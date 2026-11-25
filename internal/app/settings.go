@@ -1107,6 +1107,9 @@ func themeForSettings(s appSettings, systemDark bool) *ui.Theme {
 	if color, ok := accentColor(s.Accent); ok {
 		applyAccent(t, color)
 	}
+	// Preserve selected rows and the active navigation when another app owns
+	// the keyboard. MyGo otherwise replaces the accent with a neutral gray.
+	t.InactiveAccent = t.Accent
 	return t
 }
 

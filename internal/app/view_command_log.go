@@ -94,8 +94,8 @@ func (a *app) commandLogBody(c *ui.Context, entries []repository.CommandEntry) {
 				break
 			}
 		}
-		if hasSectionEntries && (strings.TrimSpace(a.commandLogQuery) != "" || a.commandLogStatus != "" || a.commandLogSource != "" ||
-			(a.commandLogRange != "" && a.commandLogRange != commandLogRangeAll)) {
+		filteredEmpty := hasSectionEntries && a.commandLogFiltersActive()
+		if filteredEmpty {
 			message = tr("No commands match your search.")
 			hint = tr("Try a different search, status, source or time range.")
 		}
@@ -103,7 +103,7 @@ func (a *app) commandLogBody(c *ui.Context, entries []repository.CommandEntry) {
 			ui.Icon(c, logIcon).FontSize(26).TextColor(theme.TextMuted)
 			ui.Text(c, message).Bold()
 			ui.Text(c, hint).TextColor(theme.TextMuted).TextAlign(ui.Center).MaxWidth(360)
-			if ui.Button(c, tr("Clear filters")).Clicked() {
+			if filteredEmpty && ui.Button(c, tr("Clear filters")).Clicked() {
 				a.clearCommandLogFilters()
 			}
 		})

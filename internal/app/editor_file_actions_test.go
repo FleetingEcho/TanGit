@@ -27,6 +27,15 @@ type codeTestSession struct {
 	root string
 }
 
+type discardRealCodeSession struct {
+	codeTestSession
+	repository.ChangesSession
+}
+
+func (s discardRealCodeSession) Discard(_ context.Context, file repository.File) error {
+	return os.Remove(filepath.Join(s.root, filepath.FromSlash(file.Path)))
+}
+
 func (s codeTestSession) Snapshot(ctx context.Context) (repository.Snapshot, error) {
 	snapshot, err := s.Session.Snapshot(ctx)
 	snapshot.Root = s.root
@@ -684,6 +693,41 @@ func TestCodeDeleteDiscardsWithoutRecreatingLateEdits(t *testing.T) {
 	assertCodeFileMissing(t, root, "source/note.txt")
 	if !h.app.code.extraDirectories["source"] {
 		t.Fatal("the real parent folder disappeared after its last file was deleted")
+	}
+}
+
+func TestChangesDiscardOfEditorCreatedFileClosesTabAndRefreshesTree(t *testing.T) {
+	h := menuTestApp(t)
+	root := useRealCodeWorkspace(t, h, map[string]string{"existing.txt": "existing\n"})
+	h.app.beginCodeFileOperation(codeFileCreateFile, "", "created.txt")
+	waitForCodeFileOperation(t, h)
+	openRealCodeDocument(t, h, "created.txt")
+	current := h.app.session.(codeTestSession)
+	h.app.session = discardRealCodeSession{
+		codeTestSession: current,
+		ChangesSession:  current.Session.(repository.ChangesSession),
+	}
+
+	h.app.confirmDiscardFile(repository.File{Path: "created.txt", Unstaged: true})
+	h.app.acceptConfirm()
+	h.updates.waitForUpdate(t)
+	h.tester.Frame()
+	if h.app.actionError != "" {
+		t.Fatalf("the discard action failed: %s", h.app.actionError)
+	}
+	h.waitFor(t, "the untracked discard and Editor synchronization", func() bool {
+		return !h.app.actionBusy && h.app.code.filesLoaded && !h.app.code.filesLoading && h.app.actionError == "" &&
+			h.app.code.documents["created.txt"] == nil
+	})
+	h.tester.Frame()
+	if h.app.code.documents["created.txt"] != nil || len(h.app.code.tabs) != 0 {
+		t.Fatal("the deleted Editor document or tab stayed open")
+	}
+	if strings.Contains(strings.Join(h.app.code.files, "\n"), "created.txt") {
+		t.Fatalf("the deleted path stayed in the Code file tree: %v", h.app.code.files)
+	}
+	if _, err := os.Stat(filepath.Join(root, "created.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the discarded file was recreated or never deleted: %v", err)
 	}
 }
 

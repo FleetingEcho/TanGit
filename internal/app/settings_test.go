@@ -932,6 +932,25 @@ func TestSettingsAccentRowPicksAColor(t *testing.T) {
 	}
 }
 
+func TestSettingsResetAsksForConfirmationBeforeChangingAnything(t *testing.T) {
+	a := newApp(fakeOpener{})
+	a.pathUserData = t.TempDir()
+	a.settings.Accent = "Teal"
+	a.confirmResetSettingsToDefaults()
+	if a.confirm == nil {
+		t.Fatal("reset did not ask for confirmation")
+	}
+	a.cancelConfirm()
+	if a.settings.Accent != "Teal" {
+		t.Fatal("cancelling reset changed a setting")
+	}
+	a.confirmResetSettingsToDefaults()
+	a.acceptConfirm()
+	if a.confirm != nil || a.settings.Accent != defaultSettings().Accent {
+		t.Fatal("accepting reset did not restore defaults and dismiss the dialog")
+	}
+}
+
 // normalizeSettings keeps an explicit notification preference verbatim, and
 // upgrades older files that predate the default-off behavior.
 func TestShortcutNotificationDefaultAndConfigured(t *testing.T) {

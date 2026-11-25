@@ -124,7 +124,7 @@ func TestRecentReflogBoundsTheGitRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page) != 1 || page[0].Hash != entries[1].Hash {
+	if len(page) != 1 || page[0].Hash != entries[1].Hash() {
 		t.Fatalf("reflog page = %+v, want the second entry", page)
 	}
 	found = false

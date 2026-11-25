@@ -11,6 +11,41 @@ import (
 	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
+func TestCommitFilterTimeRangeDefaultsAndUpdatesState(t *testing.T) {
+	a := newApp(fakeOpener{})
+	a.filterTarget = sectionHistory
+	draft := repository.CommitFilter{}
+	tt := ui.NewTester(func(c *ui.Context) { a.commitFilterBody(c, &draft) }, 600, 600)
+	tt.Frame()
+	if draft.Since != "" || !tt.HasText("All time") {
+		t.Fatalf("a new filter does not default to all time: %+v", draft)
+	}
+	if err := tt.Click("Time range filter"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("Last 30 days"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if draft.Since != repository.CommitTimeRange30Days || !commitFilterNarrows(draft) {
+		t.Fatalf("the time range did not narrow the draft: %+v", draft)
+	}
+	withoutTime := draft
+	withoutTime.Since = ""
+	if commitFiltersEqual(draft, withoutTime) {
+		t.Fatal("filter equality ignored its time range")
+	}
+	if summary := commitFilterSummary(draft); summary != "Last 30 days" {
+		t.Fatalf("time-only filter summary = %q", summary)
+	}
+	a.branchFilter = draft
+	before := a.branchCommitsKey("main")
+	a.branchFilter.Since = repository.CommitTimeRangeWeek
+	if after := a.branchCommitsKey("main"); after == before {
+		t.Fatal("changing time did not invalidate the branch commit read")
+	}
+}
+
 // The History list's filter icon opens a modal that narrows the list through
 // Git. The list opens on the branch checked out, and the Graph keeps its own
 // filter while History is narrowed.

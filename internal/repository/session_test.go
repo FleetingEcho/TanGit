@@ -671,6 +671,51 @@ func TestSearchCommitsPrefersLocalBranchOverSameNamedTag(t *testing.T) {
 	}
 }
 
+func TestSearchCommitsCombinesTimeWithMessageAndHashFilters(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	runGit(t, dir, "config", "user.name", "Time Test")
+	runGit(t, dir, "config", "user.email", "time@example.com")
+	cmd := exec.Command("git", "-C", dir, "commit", "--allow-empty", "-m", "old shared message")
+	cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE=2001-01-01T00:00:00Z", "GIT_COMMITTER_DATE=2001-01-01T00:00:00Z")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("create old commit: %v: %s", err, output)
+	}
+	oldHash := gitOutput(t, dir, "rev-parse", "HEAD")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "new shared message")
+	newHash := gitOutput(t, dir, "rev-parse", "HEAD")
+
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	all, err := session.SearchCommits(context.Background(), CommitFilter{Query: "shared message", Limit: 20})
+	if err != nil || len(all) != 2 {
+		t.Fatalf("the default all-time message search = %+v, %v", all, err)
+	}
+	recent, err := session.SearchCommits(context.Background(), CommitFilter{
+		Query: "shared message", Since: CommitTimeRangeDay, Limit: 20,
+	})
+	if err != nil || len(recent) != 1 || recent[0].Hash != newHash {
+		t.Fatalf("time and message search = %+v, %v; want only the new commit", recent, err)
+	}
+	byHash, err := session.SearchCommits(context.Background(), CommitFilter{
+		Query: newHash, Since: CommitTimeRangeDay, Limit: 20,
+	})
+	if err != nil || len(byHash) != 1 || byHash[0].Hash != newHash {
+		t.Fatalf("time and hash search = %+v, %v; want only the new commit", byHash, err)
+	}
+	oldByHash, err := session.SearchCommits(context.Background(), CommitFilter{
+		Query: oldHash, Since: CommitTimeRangeDay, Limit: 20,
+	})
+	if err != nil || len(oldByHash) != 0 {
+		t.Fatalf("hash query bypassed the time filter: %+v, %v", oldByHash, err)
+	}
+	if _, err := session.SearchCommits(context.Background(), CommitFilter{Since: "unrecognized", Limit: 1}); err == nil {
+		t.Fatal("an unknown time range was accepted")
+	}
+}
+
 // SearchCommits narrows Git's history by message, hash, author and branch,
 // and treats the message as literal text rather than a regular expression.
 func TestSearchCommitsFilters(t *testing.T) {
