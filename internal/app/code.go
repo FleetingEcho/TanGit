@@ -175,6 +175,7 @@ type codeState struct {
 	paneWidth           float32
 	list                ui.ListState
 	files               []string
+	paletteFiles        paletteFileMatches
 	visiblePaths        []string
 	rows                []fileTreeRow
 	selectedRow         int
@@ -315,7 +316,7 @@ func (a *app) resetCode() {
 		invalidateCodeBlame(document)
 	}
 	a.closeCodeBlameDetails()
-	a.code.files = nil
+	a.code.replaceFiles(nil)
 	a.code.visiblePaths = nil
 	a.code.rows = nil
 	a.code.selectedRow, a.code.selectedSource = -1, -1
@@ -464,6 +465,11 @@ func (a *app) refreshCodeAfterCheckout(old, current repository.Snapshot) bool {
 	return true
 }
 
+func (s *codeState) replaceFiles(paths []string) {
+	s.files = paths
+	s.paletteFiles = paletteFileMatches{}
+}
+
 func (a *app) requestCodeFiles() {
 	if a.snapshot.Root == "" || a.code.filesLoading {
 		return
@@ -518,7 +524,7 @@ func (a *app) requestCodeFiles() {
 				a.code.filesError = safeError(err)
 				return a.workspaceTab == sectionCode
 			}
-			a.code.files = paths
+			a.code.replaceFiles(paths)
 			for _, directory := range emptyDirectories {
 				if a.code.extraDirectories == nil {
 					a.code.extraDirectories = make(map[string]bool)

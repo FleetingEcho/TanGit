@@ -315,16 +315,28 @@ func workspaceObjectSpecs(a *app) []commandSpec {
 
 const workspaceFileMatchLimit = 100
 
+type paletteFileMatches struct {
+	query string
+	specs []commandSpec
+}
+
 // workspaceFileSpecs searches every file the Editor has indexed for the '/'
-// mode when it is not limited to the changed files. Matching happens here,
-// before any spec exists, to keep large workspaces from building a spec per file.
+// mode. Keep just the latest ranked results so scrolling and hover redraws
+// reuse the same matches. Command availability is still evaluated on each read.
 func workspaceFileSpecs(a *app, query string) []commandSpec {
+	query = strings.TrimSpace(query)
+	if cached := a.code.paletteFiles; cached.specs != nil && cached.query == query {
+		return cached.specs
+	}
 	if len(a.code.files) == 0 {
 		return nil
 	}
 	// fzf's ranking, the same as the Editor's quick open; an empty query lists
 	// the files in order.
-	paths := filterCodePathsFzf(a.code.files, query)
+	paths := a.code.files
+	if query != "" {
+		paths = filterCodePathsFzf(paths, query)
+	}
 	if len(paths) > workspaceFileMatchLimit {
 		paths = paths[:workspaceFileMatchLimit]
 	}
@@ -346,6 +358,7 @@ func workspaceFileSpecs(a *app, query string) []commandSpec {
 			},
 		})
 	}
+	a.code.paletteFiles = paletteFileMatches{query: query, specs: specs}
 	return specs
 }
 

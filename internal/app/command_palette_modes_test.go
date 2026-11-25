@@ -62,6 +62,23 @@ func TestPinnedCommandsLeadTheEmptyList(t *testing.T) {
 	}
 }
 
+func TestPaletteFileMatchesAreReusedUntilQueryOrFileIndexChanges(t *testing.T) {
+	a := newApp(nil)
+	a.code.replaceFiles([]string{"src/login.jsx", "src/settings.jsx"})
+	first := workspaceFileSpecs(a, "login")
+	again := workspaceFileSpecs(a, "login")
+	if len(first) != 1 || len(again) != 1 || &first[0] != &again[0] {
+		t.Fatal("the same query rebuilt its ranked file commands")
+	}
+	if changed := workspaceFileSpecs(a, "settings"); len(changed) != 1 || changed[0].Label != "src/settings.jsx" {
+		t.Fatalf("changing the query did not update the matches: %v", changed)
+	}
+	a.code.replaceFiles([]string{"src/settings-new.tsx", "src/login.jsx"})
+	if refreshed := workspaceFileSpecs(a, "settings"); len(refreshed) != 1 || refreshed[0].Label != "src/settings-new.tsx" {
+		t.Fatalf("replacing the file index did not update the matches: %v", refreshed)
+	}
+}
+
 func TestStashRemoteAndWorkspaceFileCommands(t *testing.T) {
 	h, _ := menuTestAppWithCalls(t)
 	s := newShell(nil)
