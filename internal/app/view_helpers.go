@@ -749,6 +749,7 @@ func (a *app) paletteBlockReason() string {
 		{a.commandPromptOpen, tr("the command line")},
 		{a.patchPreviewOpen, tr("the patch preview")},
 		{a.stackSync.open, tr("the stack sync")},
+		{a.performance.open, tr("Repository performance")},
 		{a.customPatch.open, tr("the custom patch")},
 		{a.courier.open, tr("the change courier")},
 		{a.ssh.workspaceOpen || a.ssh.hostKeyPrompt != nil, tr("the SSH dialog")},
@@ -773,6 +774,7 @@ func (a *app) dialogOpen(includeDiffFullscreen, inline bool) bool {
 		a.assistance.conflict.open ||
 		a.assistance.splitter.open ||
 		a.stackSync.open ||
+		a.performance.open ||
 		a.customPatch.open ||
 		a.courier.open ||
 		a.ssh.workspaceOpen ||

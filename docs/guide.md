@@ -712,6 +712,29 @@ to search them.
 
 ## Large repositories and refresh
 
+### Repository performance settings
+
+Run **Optimize repository performance** from the Command Palette. When a
+repository with at least 20,000 tracked files opens without the recommended
+settings, a notice offers the same dialog once per window. The tracked-file
+count comes from the index header, so the check stays instant in very large
+repositories.
+
+| Setting | What it changes |
+| --- | --- |
+| File system monitor | `core.fsmonitor=true`. Git's built-in daemon reports changed files, so status no longer checks every file. Available on macOS and Windows with Git 2.37 or later; not on Linux or in SSH workspaces. |
+| Untracked cache | `core.untrackedCache=true`. Status skips folders that had no new files. |
+| Commit-graph | `fetch.writeCommitGraph=true` and `git commit-graph write --reachable --changed-paths`. History, Graph, file history and blame read commits and changed paths faster. |
+| Background maintenance | `git maintenance start`: scheduled prefetch, commit-graph, loose-object and pack maintenance through the system scheduler. Never preselected, and not available in SSH workspaces. |
+
+Each setting is plain repository configuration that Git and other clients
+also honor. Turning one off writes `false` locally, which also overrides a
+global value; turning off maintenance runs `git maintenance unregister`. The
+repository watcher ignores the monitor's cookie folder
+(`.git/fsmonitor--daemon`), so status queries do not trigger more refreshes.
+
+### Refresh
+
 No separate mode or setting is required. Open **History**, **Graph**, and
 **Changes** normally. The shared numstat reader advances through each
 NUL-delimited record instead of splitting the entire output into temporary

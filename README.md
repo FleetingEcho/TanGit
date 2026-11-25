@@ -103,6 +103,7 @@ command layer, wrapped in a native window with visual tools where they help.
 - Create pull requests and read checks with the GitHub CLI (`gh`) or GitLab CLI (`glab`).
 - **Agent tasks** give each task an isolated branch and worktree, with durable state and review. Drive them from a local `lazygitGo agent …` CLI or RPC. See [Agent workspaces](docs/agent-workspaces.md) and [automation](docs/agent-automation.md).
 - Add **custom commands** with placeholders such as `{{branch}}` and `{{file}}`, and optional shortcuts.
+- **Optimize repository performance** turns on Git's file system monitor, untracked cache, commit-graph and, if you choose, background maintenance. Large repositories get a one-time suggestion.
 - Configurable background fetch and prune, 20 colour palettes, custom fonts and signed in-app updates.
 - **Six interface languages**: English, 简体中文, 繁體中文, 日本語, Español and Français. Menus, dialogs, tooltips, errors and the command palette are all translated. See the screenshot below.
 

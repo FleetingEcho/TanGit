@@ -493,6 +493,7 @@ type app struct {
 	branchCommitsWidth         float32
 	branchCommitsCollapsed     bool
 	stackSync                  stackSyncUIState
+	performance                performanceUIState
 	branchFullscreen           bool
 	branchHeaderHeight         float32
 	remoteList                 ui.ListState
