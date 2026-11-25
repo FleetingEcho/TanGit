@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -80,7 +81,7 @@ func TestCloneFormSuccessUsesExistingOpenPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	attempt := <-opener.started
-	if attempt.options != options {
+	if !reflect.DeepEqual(attempt.options, options) {
 		t.Fatalf("clone options = %+v, want %+v", attempt.options, options)
 	}
 	h.waitFor(t, "real parsed progress", func() bool { return h.app.cloneProgress.Fraction == 0.25 })
@@ -120,7 +121,7 @@ func TestCloneThroughProductionWorkspaceOpener(t *testing.T) {
 		t.Fatalf("the production window rejected cloning before Git started: %q", h.app.cloneError)
 	}
 	attempt := <-opener.started
-	if attempt.options != options {
+	if !reflect.DeepEqual(attempt.options, options) {
 		t.Fatalf("clone options = %+v, want %+v", attempt.options, options)
 	}
 	opener.release <- nil
@@ -352,5 +353,45 @@ func TestCloneFormAndProgressIntegrateWithFormLifecycle(t *testing.T) {
 	case <-ctx.Done():
 	default:
 		t.Fatal("canceling clone did not cancel its Git context")
+	}
+}
+
+func TestCloneFormPassesSpeedOptionsToGit(t *testing.T) {
+	options, destination := cloneOptionsFixture()
+	opener := &cloneTestOpener{
+		fakeOpener: fakeOpener{result: openResult{snapshot: repository.Snapshot{Root: destination, Branch: "topic"}}},
+		started:    make(chan cloneAttempt, 1),
+	}
+	h := cloneTestApp(t, opener)
+	h.app.openCloneForm()
+	h.tester.Frame()
+	if !h.tester.HasText("Clone mode") || h.tester.HasText("Commits to fetch") {
+		t.Fatal("clone form should show the mode and hide the depth until Shallow is chosen")
+	}
+	h.app.cloneURL, h.app.cloneDestination, h.app.cloneBranch = options.URL, options.Destination, options.Branch
+	h.app.cloneModeChoice = tr(cloneModeLabels[repository.CloneShallow])
+	h.app.cloneDepth = "0"
+	h.tester.Frame()
+	if !h.tester.HasText("Commits to fetch") {
+		t.Fatal("Shallow mode did not show the depth field")
+	}
+	h.app.beginClone()
+	if h.app.cloneDepthError == "" || h.app.state == stateCloning {
+		t.Fatal("a zero shallow depth started a clone")
+	}
+	h.app.cloneDepth = "25"
+	h.app.cloneSingleBranch = true
+	h.app.cloneSparse = "../outside"
+	h.app.beginClone()
+	if h.app.cloneSparseError == "" || h.app.state == stateCloning {
+		t.Fatal("an unsafe sparse folder started a clone")
+	}
+	h.app.cloneSparse = "app, docs/api"
+	h.app.beginClone()
+	attempt := <-opener.started
+	options.Mode, options.Depth, options.SingleBranch = repository.CloneShallow, 25, true
+	options.SparsePaths = []string{"app", "docs/api"}
+	if !reflect.DeepEqual(attempt.options, options) {
+		t.Fatalf("clone options = %+v, want %+v", attempt.options, options)
 	}
 }

@@ -151,7 +151,7 @@ command layer, wrapped in a native window with visual tools where they help.
 | Windows (AMD64, ARM64) | setup executable |
 | Linux (AMD64, ARM64) | `.deb` or archive. Debian: `sudo apt install ./lazygitgo_*.deb` |
 
-3. Open a local repository, choose **Open SSH** for a remote Linux repository, or choose **Clone** on Home to clone an HTTPS or SSH URL with real progress. Cloning uses your existing Git credential helpers or SSH agent.
+3. Open a local repository, choose **Open SSH** for a remote Linux repository, or choose **Clone** on Home to clone an HTTPS or SSH URL with real progress. Cloning uses your existing Git credential helpers or SSH agent. Large repositories can clone blobless, treeless or shallow, for one branch, or with only some folders checked out.
 
 **Upgrading from TanGit?** Open **Settings → Updates → Check for updates**. Your
 settings, recent repositories and workspaces carry over. Debian users install the
