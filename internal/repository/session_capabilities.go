@@ -268,12 +268,20 @@ type HostingSession interface {
 	PullRequestChecks(context.Context, string) (string, error)
 }
 
+// ReflogSession pages through the reference log without exposing its other
+// history-writing operations to the read-only Reflog pane.
+type ReflogSession interface {
+	// Reflog reads up to limit entries after skipping the newest skip.
+	Reflog(context.Context, int, int) ([]Commit, error)
+}
+
 // FullSession is the complete repository adapter used while callers and test
 // doubles migrate to individual capabilities. New consumers should accept the
 // narrowest capability instead of adding another dependency on this aggregate.
 type FullSession interface {
 	Session
 	HistorySession
+	ReflogSession
 	ChangesSession
 	BranchRemoteSession
 	StashSession

@@ -318,7 +318,7 @@ func (a *app) finishKeyboardFrame(c *ui.Context) {
 	}
 	if a.keyboardModalWasOpen && !a.modalOpen() {
 		a.keyboardModalWasOpen = false
-		if a.focusedKeyboardPane(c) == "" {
+		if a.keyboardFocus == "" && a.focusedKeyboardPane(c) == "" {
 			a.keyboardFocus = a.keyboardModalReturn
 		}
 	}

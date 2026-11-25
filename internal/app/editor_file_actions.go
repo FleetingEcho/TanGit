@@ -430,12 +430,14 @@ func (a *app) beginCodeFileOperation(kind codeFileOperationKind, source, destina
 	}()
 }
 
-// completeCodeFileOperation keeps open buffers and view state attached to a
-// renamed path without saving or losing any unsaved edits.
+// completeCodeFileOperation opens new files and carries editor state through
+// filesystem changes.
 func (a *app) completeCodeFileOperation(kind codeFileOperationKind, source, destination string, directory bool) {
 	switch kind {
 	case codeFileCreateFile:
 		a.revealCodeFile(destination)
+		a.openPinnedCodeFile(destination, 0)
+		a.keyboardFocus = "code-editor"
 		return
 	case codeFileCreateFolder:
 		if a.code.extraDirectories == nil {

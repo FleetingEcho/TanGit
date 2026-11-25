@@ -125,7 +125,7 @@ func (a *app) openSelectedWorktreeInTab() {
 	if !ok || worktree.Missing || worktree.Current || a.openTab == nil {
 		return
 	}
-	a.openTab(a.worktreeOpenPath(worktree.Path))
+	a.openTab(a.worktreeOpenPath(worktree.Path), openGitOnly)
 }
 
 func (a *app) selectedWorktreeValue() (repository.Worktree, bool) {

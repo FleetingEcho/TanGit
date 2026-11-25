@@ -5,6 +5,8 @@ import "github.com/egoist/mygo/ui"
 // The switch is on when shortcuts are enabled. Keep the stored inverse flag
 // for compatibility with existing settings files, with no confirmation for
 // ordinary preference changes.
+// hotkeysSwitch is shared by Settings and the Command Palette footer, so
+// both surfaces edit the same preferences and produce the same feedback.
 func (a *app) hotkeysSwitch(c *ui.Context) {
 	enabled := !a.settings.DisableShortcuts
 	notifications := !a.settings.DisableShortcutToasts

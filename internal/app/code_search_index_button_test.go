@@ -1,6 +1,9 @@
 package app
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -36,6 +39,82 @@ func TestCodeSearchIndexButtonShowsStateAndBuilds(t *testing.T) {
 	if !h.app.code.filesLoading && !h.app.code.filesLoaded {
 		t.Fatal("starting the index did not read the file list first")
 	}
+}
+
+func TestTruncatedPlainFolderSkipsCodeSearchIndex(t *testing.T) {
+	h := menuTestApp(t)
+	a := h.app
+	a.session = nil
+	a.snapshot.Root = t.TempDir()
+	a.pathCache = t.TempDir()
+	previous := listPlainCodeFiles
+	t.Cleanup(func() { listPlainCodeFiles = previous })
+	listPlainCodeFiles = func(string) (plainFileList, error) {
+		return plainFileList{Paths: []string{"first.txt"}, Truncated: true}, nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a.code.searchIndex = codeSearchIndexState{status: codeSearchIndexChecking, busy: true, cancel: cancel}
+	a.setWorkspaceTab(sectionCode)
+	a.ensureCodeFiles()
+	h.waitFor(t, "the truncated file list", func() bool { return a.code.filesLoaded })
+	a.startCodeSearchIndex()
+	a.invalidateCodeSearchIndex()
+	h.tester.Frame()
+	state := a.code.searchIndex
+	if !a.code.filesTruncated || ctx.Err() == nil || state.busy || state.requested || state.rebuildScheduled || state.refreshScheduled {
+		t.Fatalf("the truncated listing left indexing active: truncated=%v, state=%+v", a.code.filesTruncated, state)
+	}
+	if _, found := h.tester.Find("Building the code search index"); found {
+		t.Fatal("the truncated listing still appears to be indexing")
+	}
+}
+
+func TestCodeSearchIndexDoubleClickStopsAndRestarts(t *testing.T) {
+	if !codeSearchIndexingSupported() {
+		t.Skip("Zoekt is unavailable on this platform")
+	}
+	h := menuTestApp(t)
+	a := h.app
+	a.snapshot.Root = t.TempDir()
+	a.pathCache = t.TempDir()
+	if err := os.WriteFile(filepath.Join(a.snapshot.Root, "main.txt"), []byte("searchable content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.code.replaceFiles([]string{"main.txt"})
+	a.code.filesLoaded = true
+	t.Cleanup(a.resetCodeSearchIndex)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a.code.searchIndex = codeSearchIndexState{status: codeSearchIndexChecking, busy: true, cancel: cancel}
+	a.setWorkspaceTab(sectionCode)
+	h.tester.Frame()
+	doubleClick := func(label string) {
+		t.Helper()
+		if err := h.tester.Click(label); err != nil {
+			t.Fatal(err)
+		}
+		h.tester.Frame()
+		if err := h.tester.Click(label); err != nil {
+			t.Fatal(err)
+		}
+		h.tester.Frame()
+	}
+	doubleClick("Building the code search index")
+	if !a.code.searchIndexPaused || ctx.Err() == nil {
+		t.Fatal("double-click did not stop the active index build")
+	}
+	a.resumeCodeSearchIndex()
+	a.invalidateCodeSearchIndex()
+	if state := a.code.searchIndex; state.busy || state.refreshScheduled || state.rebuildScheduled {
+		t.Fatalf("background refresh restarted a paused index: %+v", state)
+	}
+	h.tester.Advance(time.Second)
+	doubleClick("Code search indexing paused")
+	if a.code.searchIndexPaused {
+		t.Fatal("double-click did not resume indexing")
+	}
+	h.waitFor(t, "the restarted index", func() bool { return a.codeSearchIndexDirectory() != "" })
 }
 
 // Opening a local repository reads its file list in the background, a moment

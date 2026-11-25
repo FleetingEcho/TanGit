@@ -15,7 +15,7 @@ var indexIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" 
 // is the answer: green for an index that is ready, amber for one that is too
 // large, the text color while there is none.
 func (a *app) codeSearchIndexButton(c *ui.Context) {
-	if a.currentZoektRepositoryRoot() == "" || !codeSearchIndexingSupported() {
+	if a.code.filesTruncated || a.currentZoektRepositoryRoot() == "" || !codeSearchIndexingSupported() {
 		return
 	}
 	theme := c.Theme()
@@ -23,16 +23,29 @@ func (a *app) codeSearchIndexButton(c *ui.Context) {
 	color := theme.TextMuted
 	var label, tooltip string
 	var run func()
-	disabled := false
+	building := state.busy || state.status == codeSearchIndexChecking
+	var togglePause func()
 	switch {
 	case !a.zoektCodeSearchEnabled():
 		label = tr("Code search index is off")
 		tooltip = tr("Code search index is off for this repository. Click to turn it on and build it.")
 		run = func() { a.enableZoekt(c) }
-	case state.busy || state.status == codeSearchIndexChecking:
+	case a.code.searchIndexPaused:
+		color = theme.Warning
+		label = tr("Code search indexing paused")
+		tooltip = tr("Double-click to restart indexing.")
+		togglePause = func() {
+			a.code.searchIndexPaused = false
+			a.startCodeSearchIndex()
+		}
+	case building:
 		color = theme.Warning
 		label = tr("Building the code search index")
-		tooltip = tr("Building the code search index… Search uses ripgrep until it is ready.")
+		tooltip = tr("Building the code search index… Search uses ripgrep until it is ready.") + "\n" + tr("Double-click to stop indexing.")
+		togglePause = func() {
+			a.code.searchIndexPaused = true
+			a.resetCodeSearchIndex()
+		}
 	case state.status == codeSearchIndexReady:
 		color = theme.Success
 		label = tr("Code search index is ready")
@@ -51,11 +64,10 @@ func (a *app) codeSearchIndexButton(c *ui.Context) {
 	if len(a.code.smartSkips) > 0 && !a.settings.SmartSearchSkipDisabled {
 		tooltip += "\n" + trf("Skipping %d folders: %s", len(a.code.smartSkips), shorten(strings.Join(a.code.smartSkips, ", "), 160))
 	}
-	button := ui.ButtonBase(c).Padding(4).Radius(theme.Radius).Label(label).Tooltip(tooltip).Disabled(disabled)
-	if button.Hovered() && !disabled {
+	button := ui.ButtonBase(c).Padding(4).Radius(theme.Radius).Label(label).Tooltip(tooltip)
+	if button.Hovered() {
 		button.Background(theme.SurfaceHover)
 	}
-	building := state.busy || state.status == codeSearchIndexChecking
 	button.Children(func() {
 		const size = 18
 		if !building {
@@ -73,7 +85,9 @@ func (a *app) codeSearchIndexButton(c *ui.Context) {
 			})
 		})
 	})
-	if button.Clicked() && run != nil {
+	if togglePause != nil && button.DoubleClicked() {
+		togglePause()
+	} else if button.Clicked() && run != nil {
 		run()
 	}
 }
@@ -112,6 +126,9 @@ func (a *app) startCodeSearchIndexOnOpen() {
 // startCodeSearchIndex builds the index now, or checks that the one on disk is
 // current: it reads the file list first when that is not done yet.
 func (a *app) startCodeSearchIndex() {
+	if a.code.filesTruncated || a.code.searchIndexPaused {
+		return
+	}
 	state := &a.code.searchIndex
 	if !a.code.filesLoaded {
 		a.requestCodeFiles()

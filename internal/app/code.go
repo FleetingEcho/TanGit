@@ -250,6 +250,7 @@ type codeState struct {
 	searchRegularExpr      bool
 	searchNativeOnly       bool
 	searchIndex            codeSearchIndexState
+	searchIndexPaused      bool
 	// searchIndexActive is installed by the shell. Nil means a standalone
 	// window is active; otherwise it checks visibility, focus and tab identity.
 	searchIndexActive      func() bool
@@ -307,6 +308,7 @@ func (a *app) resetCode() {
 		a.code.searchCancel()
 	}
 	a.resetCodeSearchIndex()
+	a.code.searchIndexPaused = false
 	a.code.filesToken++
 	a.code.searchToken++
 	a.code.searchDebounceSeq++
@@ -323,6 +325,7 @@ func (a *app) resetCode() {
 	a.code.treeDirty = false
 	a.code.filter, a.code.appliedFilter = "", ""
 	a.code.filesLoading, a.code.filesLoaded = false, false
+	a.code.filesTruncated = false
 	a.code.filesError = ""
 	a.code.filesOperationRefresh = false
 	a.code.pendingReveal = ""
@@ -489,7 +492,7 @@ func (a *app) requestCodeFiles() {
 	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		var paths, emptyDirectories []string
+		var paths, extraDirectories []string
 		var plainSkipped int
 		filesTruncated := false
 		var err error
@@ -498,19 +501,19 @@ func (a *app) requestCodeFiles() {
 			if err == nil {
 				paths, err = listRemoteCodeFiles(ctx, remoteClient, root)
 				if err == nil {
-					emptyDirectories = listRemoteCodeEmptyDirectories(ctx, remoteClient, root)
+				extraDirectories = listRemoteCodeEmptyDirectories(ctx, remoteClient, root)
 				}
 			}
 		} else if plain {
 			var found plainFileList
 			found, err = listPlainCodeFiles(root)
-			paths, emptyDirectories = found.Paths, found.EmptyDirectories
+			paths, extraDirectories = found.Paths, found.ExtraDirectories
 			plainSkipped = found.Skipped
 			filesTruncated = found.Truncated
 		} else {
 			paths, err = listCodeFiles(root)
 			if err == nil {
-				emptyDirectories = listCodeEmptyDirectories(root)
+				extraDirectories = listCodeEmptyDirectories(root)
 			}
 		}
 		a.updateChanged(func() bool {
@@ -519,13 +522,16 @@ func (a *app) requestCodeFiles() {
 			}
 			a.code.filesLoading = false
 			a.code.filesLoaded = true
+			if filesTruncated && !a.code.filesTruncated {
+				a.resetCodeSearchIndex()
+			}
 			a.code.filesTruncated = filesTruncated
 			if err != nil {
 				a.code.filesError = safeError(err)
 				return a.workspaceTab == sectionCode
 			}
 			a.code.replaceFiles(paths)
-			for _, directory := range emptyDirectories {
+			for _, directory := range extraDirectories {
 				if a.code.extraDirectories == nil {
 					a.code.extraDirectories = make(map[string]bool)
 				}

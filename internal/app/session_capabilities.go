@@ -39,6 +39,10 @@ func requireHistorySession(session repository.Session) repository.HistorySession
 	return session.(repository.HistorySession)
 }
 
+func requireReflogSession(session repository.Session) repository.ReflogSession {
+	return session.(repository.ReflogSession)
+}
+
 func requireChangesSession(session repository.Session) repository.ChangesSession {
 	return session.(repository.ChangesSession)
 }

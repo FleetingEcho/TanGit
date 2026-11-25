@@ -149,7 +149,7 @@ func TestPickerShowsOnlyTheLoadingPageWhileOpening(t *testing.T) {
 
 func TestRecentCardMoreMenuKeepsRepositoryActions(t *testing.T) {
 	a, tt, _ := recentTester(t, recentRepository{Path: "/work/project", LastOpened: timeNow()})
-	a.openTab = func(string) {}
+	a.openTab = func(string, openPolicy) {}
 	tt.Frame()
 	if err := tt.Click("More actions /work/project"); err != nil {
 		t.Fatal(err)
@@ -196,24 +196,21 @@ func TestRecentCardMoreMenuRemovesTheEntry(t *testing.T) {
 	}
 }
 
-// A folder with no Git repository gets an offer to create one there, and the
-// offer works: initialize, then open the repository just made.
-func TestPlainFolderOffersInitialization(t *testing.T) {
+// A Git-only open still offers initialization and can open the new repository.
+func TestGitOnlyPlainFolderOffersInitialization(t *testing.T) {
 	opener := &recordedOpener{
 		notRepository: true,
 		snapshot:      repository.Snapshot{Root: "/w/plain", Branch: "main"},
 	}
 	a := newApp(opener)
 	a.state = stateEmpty
-	a.recentRepositories = []recentRepository{{Path: "/w/plain", LastOpened: timeNow()}}
+	a.path = "/w/plain"
 	updated := newUpdates()
 	a.update = updated.update
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
 
-	if err := tt.Click("/w/plain"); err != nil {
-		t.Fatal(err)
-	}
+	a.beginOpen()
 	for range 8 {
 		if a.state == stateEmpty && a.offerInitPath != "" {
 			break
@@ -344,7 +341,12 @@ func TestClosingRepositoryReturnsToThePicker(t *testing.T) {
 func TestPickerOffersNewTab(t *testing.T) {
 	a, tt, _ := recentTester(t, recentRepository{Path: "/w/one", LastOpened: timeNow()})
 	var opened []string
-	a.openTab = func(path string) { opened = append(opened, path) }
+	a.openTab = func(path string, policy openPolicy) {
+		if policy != openHomeWithEditorFallback {
+			t.Errorf("Home opened a new tab using policy %v", policy)
+		}
+		opened = append(opened, path)
+	}
 	tt.Frame()
 
 	if tt.HasText("New window") {

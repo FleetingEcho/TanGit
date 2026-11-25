@@ -769,7 +769,7 @@ func (a *app) recentCardMenu(m *ui.Menu, repo recentRepository, services ui.Serv
 		a.launchEditor(repo.Path, 0)
 	}
 	if !repo.EditorOnly && a.openTab != nil && m.Item(tr("Open in new tab")).Chosen() {
-		a.openTab(repo.Path)
+		a.openTab(repo.Path, a.pickerOpenPolicy())
 	}
 	if !repo.EditorOnly && m.Item(tr("Open worktree")).Chosen() {
 		a.openHomeWorktrees(repo.Path)

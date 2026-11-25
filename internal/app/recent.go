@@ -634,11 +634,17 @@ func (a *app) recentWorktree(path string) bool {
 	return false
 }
 
-// openRecent fills the path field with the repository and opens it through
-// the same path beginOpen takes.
+func (a *app) pickerOpenPolicy() openPolicy {
+	if a.pickerOpenMode == int(openAllowPlainEditor) {
+		return openAllowPlainEditor
+	}
+	return openHomeWithEditorFallback
+}
+
+// openRecent fills the Home path field and opens the selected workspace.
 func (a *app) openRecent(path string) {
 	a.path = path
-	a.beginOpenWithPolicy(openPolicy(a.pickerOpenMode))
+	a.beginOpenWithPolicy(a.pickerOpenPolicy())
 }
 
 // openFromPicker opens what the path field holds, or, while the field is
@@ -653,7 +659,7 @@ func (a *app) openFromPicker() {
 			return
 		}
 	}
-	a.beginOpenWithPolicy(openPolicy(a.pickerOpenMode))
+	a.beginOpenWithPolicy(a.pickerOpenPolicy())
 }
 
 // applyPendingRecent applies a context menu's deferred removal at the top of

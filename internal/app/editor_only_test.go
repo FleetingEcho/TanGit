@@ -29,6 +29,52 @@ func waitForEditorOnlyOpen(t *testing.T, a *app, tt *ui.Tester, updated *updates
 	}
 }
 
+func TestHomeAutomaticallyOpensPlainFolderAndExplainsEditorMode(t *testing.T) {
+	for _, source := range []string{"path field", "Browse", "recent card"} {
+		t.Run(source, func(t *testing.T) {
+			opener := &recordedOpener{notRepository: true}
+			a := newApp(opener)
+			root := t.TempDir()
+			if source == "recent card" {
+				a.recentRepositories = []recentRepository{{Path: root, LastOpened: timeNow()}}
+			}
+			updated := newUpdates()
+			a.update = updated.update
+			tt := ui.NewTester(a.view, 1280, 800)
+			tt.Frame()
+			switch source {
+			case "Browse":
+				started, release := holdRepositoryFolderDialog(t)
+				if err := tt.Click("Browse…"); err != nil {
+					t.Fatal(err)
+				}
+				<-started
+				release <- []string{root}
+			case "recent card":
+				if err := tt.Click(root); err != nil {
+					t.Fatal(err)
+				}
+			default:
+				if err := tt.Click("Repository folder"); err != nil {
+					t.Fatal(err)
+				}
+				tt.Type(root)
+				tt.Key(0, ui.KeyEnter)
+			}
+			waitForEditorOnlyOpen(t, a, tt, updated)
+			if a.snapshot.Root != cleanRepoPath(root) || !slices.Equal(a.visibleSections(), []int{sectionCode}) ||
+				len(opener.inited) != 0 || a.offerInitPath != "" {
+				t.Fatalf("unexpected Home fallback: root=%q, sections=%v, initialized=%v, offer=%q",
+					a.snapshot.Root, a.visibleSections(), opener.inited, a.offerInitPath)
+			}
+			if !tt.HasText("Opened in Editor mode") ||
+				!tt.HasText("This folder is outside a Git repository. Git features are unavailable.") {
+				t.Fatalf("Home opened a plain folder without explaining the fallback: %q", tt.Texts())
+			}
+		})
+	}
+}
+
 func TestHomeEditorModeOpensPlainFolderWithoutInitialization(t *testing.T) {
 	opener := &recordedOpener{notRepository: true}
 	a := newApp(opener)
@@ -51,6 +97,9 @@ func TestHomeEditorModeOpensPlainFolderWithoutInitialization(t *testing.T) {
 	a.path = root
 	a.openFromPicker()
 	waitForEditorOnlyOpen(t, a, tt, updated)
+	if tt.HasText("Opened in Editor mode") {
+		t.Fatal("the automatic fallback notification appeared in explicit Editor mode")
+	}
 
 	if got, want := a.snapshot.Root, cleanRepoPath(root); got != want {
 		t.Fatalf("plain root = %q, want %q", got, want)

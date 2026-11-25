@@ -73,7 +73,8 @@ func (a *app) graphView(c *ui.Context) {
 					commit := commits[row.Index]
 					rowGraph := rows[row.Index]
 					services := row.Context.Services()
-					line := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(5, 6)
+					line := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).
+						Padding(5, 6+scrollbarGutter(theme), 5, 6)
 					// The lanes are painted on the row itself, so they run the
 					// row's full height and meet the rows above and below.
 					line.Draw(func(p *ui.Painter, r ui.Rect) {

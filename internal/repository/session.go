@@ -940,6 +940,32 @@ func (s *gitSession) RecentCommits(ctx context.Context, limit, skip int) ([]Comm
 	return s.withCommitLineStats(ctx, commits)
 }
 
+// Reflog reads a display page of HEAD's reference log, newest first. Git
+// performs both the skip and limit, so opening an old page remains bounded.
+func (s *gitSession) Reflog(ctx context.Context, limit, skip int) ([]Commit, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		return nil, fmt.Errorf("read reflog: no limit chosen")
+	}
+	if skip < 0 {
+		skip = 0
+	}
+	modelEntries, err := s.recentReflogPage(limit, skip)
+	if err != nil {
+		return nil, fmt.Errorf("read reflog: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	entries := make([]Commit, 0, len(modelEntries))
+	for _, entry := range modelEntries {
+		entries = append(entries, snapshotCommit(entry))
+	}
+	return entries, nil
+}
+
 // diffOptionArgs gives every patch read the same explicit whitespace and
 // context behavior. Context zero is meaningful and must not become Git's
 // default merely because the options' other field is false.

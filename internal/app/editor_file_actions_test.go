@@ -268,6 +268,10 @@ func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 			h.app.code.fileForm, h.app.code.fileFormName, h.app.code.fileFormError, h.app.code.fileOperationBusy, err, h.texts())
 	}
 	assertCodeFileContent(t, root, "source/created.txt", "")
+	document := waitForCodeDocument(t, h, "source/created.txt")
+	if h.app.activeCodeDocument() != document || h.app.code.preview == document.path || !h.tester.Focused("Code editor") {
+		t.Fatal("the new file did not open as a focused editor tab")
+	}
 	if _, ok := h.tester.Find("Open source/old.txt"); !ok {
 		t.Fatalf("old file is not visible after creation: form=%v rows=%+v texts=%q", h.app.code.fileForm, h.app.code.rows, h.texts())
 	}

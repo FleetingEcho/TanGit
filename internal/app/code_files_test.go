@@ -148,7 +148,7 @@ func TestListPlainCodeFilesIncludesRegularFilesAndEmptyDirectories(t *testing.T)
 	}
 
 	found, err := listPlainCodeFiles(root)
-	files, empty, skipped := found.Paths, found.EmptyDirectories, found.Skipped
+	files, empty, skipped := found.Paths, found.ExtraDirectories, found.Skipped
 	if skipped != 0 {
 		t.Fatalf("readable folder reported %d skipped entries, want 0", skipped)
 	}
@@ -199,7 +199,7 @@ func TestListPlainCodeFilesSkipsUnreadableSubtrees(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(unreadable, 0o755) })
 
 	found, err := listPlainCodeFiles(root)
-	files, empty, skipped := found.Paths, found.EmptyDirectories, found.Skipped
+	files, empty, skipped := found.Paths, found.ExtraDirectories, found.Skipped
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,8 +225,39 @@ func TestListPlainCodeFilesSkipsUnreadableSubtrees(t *testing.T) {
 	_ = empty
 }
 
-// A plain-folder root that holds far more files than the explorer index
-// limit stops at the limit, in lexical order, and reports truncation.
+func TestTruncatedPlainFolderKeepsShallowFilesAndDirectories(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{
+		"linuxbrew/cellar/first.txt",
+		"linuxbrew/cellar/second.txt",
+		"linuxbrew/cellar/third.txt",
+		"user/projects/src/main.go",
+		"user/notes.txt",
+		"welcome.txt",
+	} {
+		filename := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(filename), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filename, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	found, err := scanPlainCodeFolder(root, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"linuxbrew/cellar/first.txt", "user/notes.txt", "welcome.txt"}
+	if !found.Truncated || !reflect.DeepEqual(found.Paths, want) {
+		t.Fatalf("truncated paths = %v, want %v", found.Paths, want)
+	}
+	rows := buildFileTreeRowsWithDirectories(found.Paths, found.ExtraDirectories, true, nil, codeFileTreeScope)
+	if fileTreeDirectoryIndex(rows, "user/projects") < 0 {
+		t.Fatalf("the Explorer lost a known directory with unlisted contents: %v", rows)
+	}
+}
+
+// A folder over the explorer file limit returns a sorted, capped listing.
 func TestListPlainCodeFilesStopsAtTheLimit(t *testing.T) {
 	root := t.TempDir()
 	for index := range plainFileLimit + 3 {

@@ -32,17 +32,18 @@ type settingsUIState struct {
 	themeEditorOpen bool
 	// themeEditorIndex is the saved theme being edited, or -1 for a new one
 	// that is saved on its first edit (themeEditorDraft holds it until then).
-	themeEditorIndex    int
-	themeEditorDraft    namedCustomTheme
-	themeEditorPrevious string
-	themeEditorCreated  bool
-	themeEditorName     string
-	themeEditorNameErr  string
-	// themeEditorNamed is set once the user typed a usable name for a theme
-	// that is not saved yet: closing the editor then saves it.
-	themeEditorNamed  bool
-	themeEditorStart  string
-	themeEditorColors [themeColorCount]ui.Color
+	themeEditorIndex     int
+	themeEditorDraft     namedCustomTheme
+	themeEditorPrevious  string
+	themeEditorCreated   bool
+	themeEditorName      string
+	themeEditorNameErr   string
+	themeEditorNameInput ui.Handle
+	themeEditorRenaming  bool
+	themeEditorStart     string
+	themeEditorColors    [themeColorCount]ui.Color
+	themeEditorMode      int
+	themeEditorJSON      themeJSONDraft
 
 	homeBackground             *ui.Bitmap
 	homeBackgroundPath         string
