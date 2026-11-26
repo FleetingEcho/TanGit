@@ -3982,6 +3982,26 @@ func (s *gitSession) Authors(ctx context.Context) ([]string, error) {
 // drawer scrolls. Git is asked for the skipped and wanted commits together,
 // since its log takes a count from the newest commit and no offset.
 func (s *gitSession) FileCommits(ctx context.Context, path string, limit, skip int) ([]Commit, error) {
+	return s.fileCommitsPage(ctx, path, []string{"HEAD"}, limit, skip)
+}
+
+// FileCommitsIncluding lets Git order the union of the checkout's file
+// history and the history at hash. In particular, it must not concatenate or
+// timestamp-sort two logs: either loses Git's order on non-linear history.
+// --show-pulls keeps a selected merge in the path history when its changed
+// file list includes path.
+func (s *gitSession) FileCommitsIncluding(ctx context.Context, path, hash string, limit, skip int) ([]Commit, error) {
+	if !fullRevisionObjectID(hash) {
+		return nil, fmt.Errorf("read file history: invalid commit ID")
+	}
+	refs := []string{hash}
+	if s.headHasCommit() {
+		refs = []string{"HEAD", hash}
+	}
+	return s.fileCommitsPage(ctx, path, refs, limit, skip)
+}
+
+func (s *gitSession) fileCommitsPage(ctx context.Context, path string, refs []string, limit, skip int) ([]Commit, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -3995,17 +4015,12 @@ func (s *gitSession) FileCommits(ctx context.Context, path string, limit, skip i
 	if skip < 0 {
 		skip = 0
 	}
-	modelCommits, err := s.fileCommitsWithin(ctx, path, limit+skip)
+	commits, err := s.fileCommitsWithin(ctx, path, refs, limit+skip, skip)
 	if err != nil {
 		return nil, fmt.Errorf("read the history of %s: %w", path, err)
 	}
-	if skip >= len(modelCommits) {
+	if len(commits) == 0 {
 		return nil, nil
-	}
-	modelCommits = modelCommits[skip:]
-	commits := make([]Commit, 0, len(modelCommits))
-	for _, commit := range modelCommits {
-		commits = append(commits, snapshotCommit(commit))
 	}
 	return commits, nil
 }
@@ -4017,14 +4032,14 @@ const fileHistoryReadTimeout = 60 * time.Second
 // fileCommitsWithin reads the commits of a file, giving up after
 // fileHistoryReadTimeout or when ctx ends. Git is not interruptible here, so
 // a read that times out finishes in the background and its result is dropped.
-func (s *gitSession) fileCommitsWithin(ctx context.Context, path string, limit int) ([]*models.Commit, error) {
+func (s *gitSession) fileCommitsWithin(ctx context.Context, path string, refs []string, limit, skip int) ([]Commit, error) {
 	type result struct {
-		commits []*models.Commit
+		commits []Commit
 		err     error
 	}
 	done := make(chan result, 1)
 	go func() {
-		commits, err := s.fileCommits(path, limit)
+		commits, err := s.readFileHistory(ctx, path, refs, limit, skip)
 		done <- result{commits, err}
 	}()
 	timer := time.NewTimer(fileHistoryReadTimeout)
@@ -4037,6 +4052,69 @@ func (s *gitSession) fileCommitsWithin(ctx context.Context, path string, limit i
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+func (s *gitSession) readFileHistory(ctx context.Context, path string, refs []string, limit, skip int) ([]Commit, error) {
+	var commits []Commit
+	if len(refs) == 1 {
+		modelCommits, err := s.fileCommits(path, refs[0], limit)
+		if err != nil {
+			return nil, err
+		}
+		commits = make([]Commit, 0, len(modelCommits))
+		for _, commit := range modelCommits {
+			commits = append(commits, snapshotCommit(commit))
+		}
+	} else {
+		var err error
+		commits, err = s.readFileHistoryLog(path, refs, limit, true, true)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if len(commits) > 0 {
+		return commits[min(skip, len(commits)):], nil
+	}
+	if slices.Equal(refs, []string{"HEAD"}) && !s.headHasCommit() {
+		return nil, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// --follow can lose the path entirely on non-linear history. The
+	// exact-path log can still show edits and merges that introduced it.
+	commits, err := s.readFileHistoryLog(path, refs, limit, false, true)
+	if err != nil {
+		return nil, err
+	}
+	return commits[min(skip, len(commits)):], nil
+}
+
+func (s *gitSession) readFileHistoryLog(path string, refs []string, limit int, follow, showPulls bool) ([]Commit, error) {
+	args := []string{
+		"git", "--literal-pathspecs", "log", "--no-patch", "--no-show-signature",
+		fmt.Sprintf("--max-count=%d", limit), commitLogFormat,
+	}
+	if follow {
+		args = append(args, "--follow")
+	} else {
+		args = append(args, "--no-follow")
+	}
+	if showPulls {
+		args = append(args, "--show-pulls")
+	}
+	// Match CommitLoader's configured history order rather than introducing
+	// another ordering rule just because this path has multiple starting refs.
+	if order := s.git.Loaders.CommitLoader.UserConfig().Git.Log.Order; order != "" && order != "default" {
+		args = append(args, "--"+order)
+	}
+	args = append(args, refs...)
+	args = append(args, "--", path)
+	output, err := s.cmd.New(args).RunWithOutput()
+	if err != nil {
+		return nil, err
+	}
+	return parseCommitLog(output), nil
 }
 
 func (s *gitSession) worktreeFilePath(root string, filePath string) (string, error) {

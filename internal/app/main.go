@@ -855,16 +855,16 @@ type app struct {
 	// chosen from those.
 	fileHistoryOpen     bool
 	fileHistoryPath     string
+	fileHistoryOrigin   repository.Commit
 	fileHistoryCommits  []repository.Commit
 	fileHistoryList     ui.ListState
 	fileHistorySelected int
 	fileHistoryLoading  bool
 	fileHistoryError    string
 	fileHistoryToken    uint64
-	// more says the last page filled, so scrolling to the end reads
-	// another; loadingMore and moreError are that read's own state, and
-	// read counts the commits fetched from Git, which leads the commits
-	// shown when a page repeated one the history had shifted under it.
+	// more says the last page filled, so scrolling to the end reads another;
+	// loadingMore and moreError are that read's own state. read counts rows
+	// fetched from Git, including duplicates dropped from the keyed list.
 	fileHistoryMore        bool
 	fileHistoryLoadingMore bool
 	fileHistoryMoreError   string

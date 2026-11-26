@@ -807,6 +807,10 @@ func (f fakeSession) FileCommits(_ context.Context, path string, limit, skip int
 	return commits, nil
 }
 
+func (f fakeSession) FileCommitsIncluding(ctx context.Context, path, _ string, limit, skip int) ([]repository.Commit, error) {
+	return f.FileCommits(ctx, path, limit, skip)
+}
+
 // RecentCommits pages the snapshot's commits the way a repository does, so a
 // test can describe a history longer than the first page.
 func (f fakeSession) RecentCommits(_ context.Context, limit, skip int) ([]repository.Commit, error) {
