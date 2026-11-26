@@ -124,25 +124,17 @@ type Commit struct {
 	Parents       []string
 }
 
-// Commit time-range identifiers stay stable independently of their
-// translated labels. The empty Since value means all time.
-const (
-	CommitTimeRangeDay    = "24h"
-	CommitTimeRangeWeek   = "7d"
-	CommitTimeRange30Days = "30d"
-	CommitTimeRange90Days = "90d"
-	CommitTimeRangeYear   = "365d"
-)
-
 // CommitFilter narrows the commits History and a branch's commit list show.
 // Query matches the commit message or hash, Author the author's name or email,
-// Branch the history read, and Since a recent time range; an empty field does
-// not narrow. Limit bounds the result, which pages in as the list scrolls.
+// Branch the history read, and Since and Until an inclusive time window: a
+// zero time leaves that end open, and both are taken to the minute. Limit
+// bounds the result, which pages in as the list scrolls.
 type CommitFilter struct {
 	Query  string
 	Author string
 	Branch string
-	Since  string
+	Since  time.Time
+	Until  time.Time
 	Limit  int
 }
 
@@ -3671,27 +3663,20 @@ func (s *gitSession) qualifyCommitFilterBranch(branch string) string {
 	return branch
 }
 
-// commitFilterSinceTime turns a stable UI range into one absolute instant,
-// so Git receives a portable RFC3339 cutoff rather than locale-specific text.
-func commitFilterSinceTime(value string, now time.Time) (time.Time, error) {
-	duration := time.Duration(0)
-	switch value {
-	case "":
-		return time.Time{}, nil
-	case CommitTimeRangeDay:
-		duration = 24 * time.Hour
-	case CommitTimeRangeWeek:
-		duration = 7 * 24 * time.Hour
-	case CommitTimeRange30Days:
-		duration = 30 * 24 * time.Hour
-	case CommitTimeRange90Days:
-		duration = 90 * 24 * time.Hour
-	case CommitTimeRangeYear:
-		duration = 365 * 24 * time.Hour
-	default:
-		return time.Time{}, fmt.Errorf("search commits: unknown time range %q", value)
+// commitFilterBounds reads the filter's time window. Both ends are taken to
+// the minute the user chose, and Until includes that whole minute, so a commit
+// made at 14:30:45 matches an end time of 14:30. A zero time leaves an end open.
+func commitFilterBounds(filter CommitFilter) (since, until time.Time, err error) {
+	if !filter.Since.IsZero() {
+		since = filter.Since.Truncate(time.Minute)
 	}
-	return now.Add(-duration), nil
+	if !filter.Until.IsZero() {
+		until = filter.Until.Truncate(time.Minute).Add(time.Minute - time.Second)
+	}
+	if !since.IsZero() && !until.IsZero() && until.Before(since) {
+		return time.Time{}, time.Time{}, fmt.Errorf("search commits: the end time is before the start time")
+	}
+	return since, until, nil
 }
 
 // SearchCommits reads up to filter.Limit commits matching the filter with
@@ -3710,7 +3695,7 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 	if strings.HasPrefix(branch, "-") {
 		return nil, fmt.Errorf("search commits: invalid branch %q", branch)
 	}
-	since, err := commitFilterSinceTime(strings.TrimSpace(filter.Since), time.Now())
+	since, until, err := commitFilterBounds(filter)
 	if err != nil {
 		return nil, err
 	}
@@ -3722,10 +3707,11 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 		if err != nil {
 			return nil, err
 		}
-		if !since.IsZero() {
+		if !since.IsZero() || !until.IsZero() {
 			matching := commits[:0]
 			for _, commit := range commits {
-				if !time.Unix(commit.UnixTimestamp, 0).Before(since) {
+				made := time.Unix(commit.UnixTimestamp, 0)
+				if (since.IsZero() || !made.Before(since)) && (until.IsZero() || !made.After(until)) {
 					matching = append(matching, commit)
 				}
 			}
@@ -3745,6 +3731,9 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 	}
 	if !since.IsZero() {
 		args = append(args, "--since="+since.UTC().Format(time.RFC3339))
+	}
+	if !until.IsZero() {
+		args = append(args, "--until="+until.UTC().Format(time.RFC3339))
 	}
 	if branch != "" {
 		args = append(args, branch)

@@ -947,9 +947,11 @@ func newApp(opener repositoryOpener) *app {
 		branchListWidth:    240,
 		branchCommitsWidth: 360,
 		branchHeaderHeight: 160,
-		// The Graph list and commit details start with equal shares. Its
-		// percentage splitter stays draggable and follows window resizing.
-		graphListPercent: 50,
+		// The Graph list starts at about a third of the workspace, wider than
+		// History's list so subjects and stats read well, and leaves the rest
+		// to the commit details. Its percentage splitter stays draggable and
+		// follows window resizing.
+		graphListPercent: 36,
 		// Both changes sections show their files until a click folds them.
 		mergeExpanded:   true,
 		stagedExpanded:  true,
