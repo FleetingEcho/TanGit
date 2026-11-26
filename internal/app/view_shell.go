@@ -45,9 +45,11 @@ var workspaceSectionIDs = []string{
 	"worktrees", "agents", "submodules", "reflog", "compare", "overview",
 }
 
-// defaultVisibleSections shows every workspace section on a fresh install.
-// Users can still hide specialist sections in Settings.
-var defaultVisibleSections = slices.Clone(workspaceSectionIDs)
+// defaultVisibleSections shows every workspace section on a fresh install
+// except Agents, a specialist task workbench that Settings turns on. Users can
+// still hide other specialist sections in Settings.
+var defaultVisibleSections = slices.DeleteFunc(slices.Clone(workspaceSectionIDs),
+	func(id string) bool { return id == "agents" })
 
 // defaultSectionOrder places the new Overview first without renumbering or
 // rewriting any pre-existing section enum. Non-empty legacy orders append it
