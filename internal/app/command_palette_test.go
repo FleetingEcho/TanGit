@@ -520,6 +520,29 @@ func TestCommandPaletteFilesSwitch(t *testing.T) {
 	}
 }
 
+func TestFileSearchShortcutPrefillsSlash(t *testing.T) {
+	for _, page := range []int{sectionChanges, sectionCode} {
+		t.Run(workspaceSections[page], func(t *testing.T) {
+			s, tt, a := readyPaletteShell(t)
+			a.workspaceTab = page
+			a.code.files = []string{"README.md", "internal/app/palette.go"}
+			a.code.filesLoaded = true
+			s.palette.filesChangedOnly = true
+			tt.Frame()
+			tt.Key(ui.Cmd, ui.KeyP)
+			tt.Frame()
+			if !s.palette.open || s.palette.query != "/" || !tt.Focused("Search commands") || s.palette.filesChangedOnly {
+				t.Fatalf("Ctrl+P did not focus the all-files palette with a slash: %+v", s.palette.query)
+			}
+			tt.Type("palette")
+			tt.Frame()
+			if s.palette.query != "/palette" || !tt.HasText("internal/app/palette.go") || tt.HasText("README.md") {
+				t.Fatalf("typed file search = %q, results = %q", s.palette.query, tt.Texts())
+			}
+		})
+	}
+}
+
 func TestCommandPaletteFilePathPansOnlyWhenTruncatedAndHovered(t *testing.T) {
 	for _, test := range []struct {
 		name         string

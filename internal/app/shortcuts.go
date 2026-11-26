@@ -233,7 +233,9 @@ func (a *app) registerShortcuts(c *ui.Context) {
 		a.onShortcut(c, 0, ui.KeyF5, shortcut("repository/refresh", "F5", tr("Refresh the repository")), a.beginRefresh)
 	}
 	if a.workspaceTab == sectionCode {
-		a.onShortcut(c, ui.Cmd, ui.KeyP, shortcut("code/quick-open", cmdShortcutChord()+"+P", tr("Search files")), a.focusCodeQuickOpen)
+		if a.shellOverlayOpen == nil {
+			a.onShortcut(c, ui.Cmd, ui.KeyP, shortcut("code/quick-open", cmdShortcutChord()+"+P", tr("Search files")), a.focusCodeQuickOpen)
+		}
 		a.onShortcut(c, ui.Cmd|ui.Shift, ui.KeyF, shortcut("code/search", cmdShortcutChord()+"+Shift+F", tr("Search files")), a.focusCodeSearch)
 		a.onShortcut(c, ui.Cmd|ui.Shift, ui.KeyH, shortcut("code/replace", cmdShortcutChord()+"+Shift+H", tr("Search files")), a.focusCodeReplace)
 		a.onShortcut(c, ui.Cmd, ui.KeyW, shortcut("code/close-file", cmdShortcutChord()+"+W", tr("Close the active tab")), func() { a.closeCodeFile(a.code.active) })
