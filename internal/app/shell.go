@@ -67,6 +67,20 @@ func (t *tab) repository() bool {
 	return t.app.state == stateReady || t.app.state == stateLoading
 }
 
+// isOverview reports whether the tab is the cross-repository Overview page.
+// It holds no repository, yet it is not the picker either: the picker's
+// bookkeeping (one per window, replaced by the repository it opens) must not
+// apply to it.
+func (t *tab) isOverview() bool {
+	return t != nil && t.app != nil && t.app.overview != nil
+}
+
+// isHome reports whether the tab is the picker: neither a repository nor the
+// Overview.
+func (t *tab) isHome() bool {
+	return t != nil && !t.repository() && !t.isOverview()
+}
+
 // path is the repository the tab reads, or the folder its picker points at:
 // the folder lets a failed open keep its name and its way back.
 func (t *tab) path() string {
@@ -104,6 +118,9 @@ func (a *app) openedLinkedWorktree() bool {
 // its folder while it has none, or Home. A linked checkout says so in the
 // title itself rather than relying on an ambiguous icon alone.
 func (t *tab) title() string {
+	if t.isOverview() {
+		return tr("Overview")
+	}
 	title := tr("Home")
 	if path := t.path(); path != "" {
 		title = repoName(path)
@@ -122,6 +139,9 @@ func (t *tab) title() string {
 // tooltip names the page under the pointer, so a pinned tab, which hides its
 // title, still says where it goes.
 func (t *tab) tooltip() string {
+	if t.isOverview() {
+		return tr("Overview — recent changes across your repositories")
+	}
 	if !t.repository() {
 		if path := strings.TrimSpace(t.path()); path != "" {
 			return path + " · " + tr("not open")
@@ -306,11 +326,17 @@ func (s *shell) newTab(path string) *tab {
 	a.openTab = func(path string, policy openPolicy) {
 		s.request(func() { s.openTabWithPolicy(path, policy) })
 	}
+	a.openOverviewCommitTab = func(path string, commit repository.Commit) {
+		s.request(func() { s.openOverviewCommitTab(path, commit) })
+	}
 	a.openTerminalTab = func(path string) {
 		s.request(func() { s.openTabWithPolicyAndTerminal(path, openGitOnly, true) })
 	}
 	a.openHomeTab = func() {
 		s.request(s.showHome)
+	}
+	a.openOverviewTab = func(id string, intent overviewIntent) {
+		s.request(func() { s.showOverview(id, intent) })
 	}
 	a.claimOpen = func(path string) bool {
 		if s.claimOpen(a, path) {
@@ -587,7 +613,7 @@ func (s *shell) tabOf(a *app) *tab {
 // + button shows instead of adding a second one.
 func (s *shell) hasHome() bool {
 	for _, t := range s.tabs {
-		if !t.repository() {
+		if t.isHome() {
 			return true
 		}
 	}
@@ -799,7 +825,7 @@ func (s *shell) tabForPath(path string, except *app) *tab {
 // isPicker reports whether a page is the picker: not reading a repository, and
 // not on its way to one.
 func (s *shell) isPicker(a *app) bool {
-	return a != nil && a.state != stateReady && a.state != stateLoading
+	return a != nil && a.overview == nil && a.state != stateReady && a.state != stateLoading
 }
 
 // claimOpen is the hook beginOpen calls first. It reports whether the window
@@ -830,7 +856,7 @@ func (s *shell) claimOpen(from *app, path string) bool {
 // the window has room. The + button and Ctrl+T lead here.
 func (s *shell) showHome() {
 	for i, t := range s.tabs {
-		if !t.repository() {
+		if t.isHome() {
 			s.activate(i)
 			return
 		}
@@ -842,6 +868,25 @@ func (s *shell) showHome() {
 	t := s.newTab("")
 	s.tabs = append(s.tabs, t)
 	s.activate(s.indexOf(t))
+}
+
+// showOverview shows the Overview page: the tab that already holds it, or a
+// new one. id names the Overview to show ("" keeps the last one) and intent
+// what to do on arrival. It reads no repository itself, so the repository cap
+// does not apply.
+func (s *shell) showOverview(id string, intent overviewIntent) {
+	for i, t := range s.tabs {
+		if t.isOverview() {
+			s.activate(i)
+			t.app.applyOverviewRequest(id, intent)
+			return
+		}
+	}
+	t := s.newTab("")
+	t.app.overview = newOverviewState()
+	s.tabs = append(s.tabs, t)
+	s.activate(s.indexOf(t))
+	t.app.applyOverviewRequest(id, intent)
 }
 
 // openSecondInstance handles a command forwarded to the running app. A plain
@@ -865,6 +910,30 @@ func (s *shell) openTab(path string) {
 
 func (s *shell) openTabWithPolicy(path string, policy openPolicy) {
 	s.openTabWithPolicyAndTerminal(path, policy, false)
+}
+
+func (s *shell) openOverviewCommitTab(path string, commit repository.Commit) {
+	existing := s.tabForPath(path, nil)
+	if existing != nil && existing.app.editorOnlyWorkspace() {
+		existing = s.tabForPath(path, existing.app)
+	}
+	if existing != nil && !existing.app.editorOnlyWorkspace() {
+		a := existing.app
+		a.overviewCommitTarget = commit
+		s.activateTab(existing)
+		if a.state == stateReady {
+			a.openOverviewCommitInHistory(commit)
+		}
+		return
+	}
+	if s.repositoryCount() >= maxRepositoryTabs {
+		s.notifyTabLimit(s.activeApp())
+		return
+	}
+	t := s.newTab(path)
+	s.tabs = append(s.tabs, t)
+	s.activate(s.indexOf(t))
+	t.app.beginOpenWithCommit(openGitOnly, commit)
 }
 
 // openTabWithPolicyAndTerminal applies a terminal request to the actual
@@ -939,7 +1008,7 @@ func (s *shell) closeTabFor(a *app) {
 // canClose reports whether closing a page would leave the window with a page:
 // the last picker stays, and a lone repository leaves a fresh picker behind.
 func (s *shell) canClose(t *tab) bool {
-	return len(s.tabs) > 1 || t.repository()
+	return len(s.tabs) > 1 || t.repository() || t.isOverview()
 }
 
 // closeTab closes a page. The last page is never dropped to nothing: a lone
@@ -969,7 +1038,7 @@ func (s *shell) closeTabConfirmed(t *tab) {
 	if s.indexOf(t) < 0 {
 		return
 	}
-	if len(s.tabs) == 1 && !t.repository() {
+	if len(s.tabs) == 1 && !t.repository() && !t.isOverview() {
 		return
 	}
 	s.prepareTabsShutdown([]*tab{t}, func() {
@@ -1429,11 +1498,17 @@ func (s *shell) tabView(c *ui.Context, i int, width float32) {
 			if t.linkedWorktree() {
 				icon = worktreesIcon
 			}
+			if t.isOverview() {
+				icon = overviewIcon
+			}
 			ui.Icon(c, icon).FontSize(11).TextColor(foreground)
 			return
 		}
 		if t.linkedWorktree() && !narrow {
 			ui.Icon(c, worktreesIcon).FontSize(12).TextColor(linked)
+		}
+		if t.isOverview() && !narrow {
+			ui.Icon(c, overviewIcon).FontSize(12).TextColor(linked)
 		}
 		showClose := (active || hovered) && s.canClose(t) && !tiny
 		if showClose && narrow {

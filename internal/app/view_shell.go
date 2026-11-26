@@ -113,6 +113,8 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	if a.state == stateReady {
 		a.flushEdits()
 		a.appView(c, overlayTopInset)
+	} else if a.overview != nil {
+		a.overviewView(c)
 	} else {
 		a.welcomeView(c)
 	}
@@ -138,6 +140,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.worktreePruneFormModal(c)
 	a.submoduleFormModal(c)
 	a.homeWorktreesModal(c)
+	a.overviewPickerModal(c)
 	a.recentRenameModal(c)
 	a.codeFileFormModal(c)
 	a.codeWorkspaceFolderModal(c)
@@ -384,6 +387,10 @@ func (a *app) pickerHeroView(c *ui.Context) {
 			})
 			if !editorMode {
 				ui.Row(c).Justify(ui.End).AlignItems(ui.Center).Gap(4).Wrap().Children(func() {
+					if a.openOverviewTab != nil {
+						pickerRemoteAction(c, "Overview",
+							"Follow recent changes across several repositories", overviewIcon, a.openOverviewPicker)
+					}
 					pickerRemoteAction(c, "Open SSH",
 						"Open a Git folder through a saved SSH profile", remotesIcon, a.openSSHWorkspacePicker)
 					pickerRemoteAction(c, "Clone",
@@ -1079,6 +1086,9 @@ func (a *app) sectionVisible(section int) bool {
 	}
 	if a.editorOnlyWorkspace() {
 		return section == sectionCode
+	}
+	if section == sectionHistory && a.overviewCommitTarget.Hash != "" {
+		return true
 	}
 	return slices.Contains(a.settings.VisibleSections, workspaceSectionIDs[section])
 }

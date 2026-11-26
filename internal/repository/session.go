@@ -3759,6 +3759,130 @@ func (s *gitSession) SearchCommitsProgressively(ctx context.Context, filter Comm
 	return s.withCommitLineStats(ctx, commits)
 }
 
+// CommitHistoryHead captures the checked-out branch and the revision to page
+// from. An unborn branch has a name but no revision.
+func (s *gitSession) CommitHistoryHead(ctx context.Context) (branch, revision string, err error) {
+	command, err := s.commandContext(ctx, []string{"git", "symbolic-ref", "--quiet", "HEAD"})
+	if err != nil {
+		return "", "", err
+	}
+	output, err := s.runWithOutputContext(ctx, command)
+	ref := "HEAD"
+	if err == nil {
+		ref = strings.TrimSpace(output)
+		branch = strings.TrimPrefix(ref, "refs/heads/")
+	} else if code, ok := commandExitCode(err); !ok || code != 1 {
+		return "", "", err
+	}
+	revision, err = s.ResolveCommit(ctx, ref)
+	if err != nil && branch != "" && ctx.Err() == nil && s.isUnbornBranch(ref) {
+		return branch, "", nil
+	}
+	return branch, revision, err
+}
+
+// CommitHistorySearch matches literal message terms and an optional author.
+type CommitHistorySearch struct {
+	Terms  []string
+	Author string
+}
+
+// CommitHistoryOrder indexes the captured revision by committer time, so later
+// pages can read metadata without traversing history again. Bounds are inclusive
+// at second precision.
+func (s *gitSession) CommitHistoryOrder(ctx context.Context, revision string, from, to time.Time, search CommitHistorySearch) ([]string, error) {
+	if revision == "" {
+		return nil, nil
+	}
+	if !from.IsZero() && !to.IsZero() && from.After(to) {
+		return nil, fmt.Errorf("invalid commit history period")
+	}
+	args := []string{"git", "rev-list", "--timestamp"}
+	if len(search.Terms) == 1 && from.IsZero() && to.IsZero() {
+		commits, matchedHash, err := s.searchCommitHash(ctx, CommitFilter{}, search.Terms[0], revision)
+		if matchedHash {
+			author := strings.ToLower(search.Author)
+			var hashes []string
+			for _, commit := range commits {
+				if strings.Contains(strings.ToLower(commit.AuthorName), author) ||
+					strings.Contains(strings.ToLower(commit.AuthorEmail), author) {
+					hashes = append(hashes, commit.Hash)
+				}
+			}
+			return hashes, err
+		}
+	}
+	if len(search.Terms) > 0 || search.Author != "" {
+		args = append(args, "--fixed-strings", "--regexp-ignore-case", "--all-match")
+		for _, term := range search.Terms {
+			args = append(args, "--grep="+term)
+		}
+		if search.Author != "" {
+			args = append(args, "--author="+search.Author)
+		}
+	}
+	if !from.IsZero() {
+		// Keep walking when a parent has a newer clock than its child.
+		args = append(args, "--since-as-filter="+from.UTC().Format(time.RFC3339))
+	}
+	if !to.IsZero() {
+		args = append(args, "--until="+to.UTC().Format(time.RFC3339))
+	}
+	args = append(args, "--end-of-options", revision, "--")
+	command, err := s.commandContext(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	output, err := s.runWithOutputContext(ctx, command)
+	if err != nil {
+		return nil, err
+	}
+	type entry struct {
+		hash string
+		time int64
+	}
+	var entries []entry
+	for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
+		seconds, hash, ok := strings.Cut(line, " ")
+		if !ok {
+			continue
+		}
+		timestamp, err := strconv.ParseInt(seconds, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("read commit history timestamp: %w", err)
+		}
+		entries = append(entries, entry{hash: hash, time: timestamp})
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].time > entries[j].time
+	})
+	hashes := make([]string, len(entries))
+	for i, entry := range entries {
+		hashes[i] = entry.hash
+	}
+	return hashes, nil
+}
+
+// CommitHistoryPage reads the requested hashes in the order supplied by
+// CommitHistoryOrder. The timeline displays committer, rather than author, time.
+func (s *gitSession) CommitHistoryPage(ctx context.Context, hashes []string) ([]Commit, error) {
+	if len(hashes) == 0 {
+		return nil, nil
+	}
+	format := strings.Replace(commitLogFormat, "%at", "%ct", 1)
+	args := []string{"git", "log", "--no-walk=unsorted", "--no-show-signature", format, "--end-of-options"}
+	args = append(args, hashes...)
+	command, err := s.commandContext(ctx, append(args, "--"))
+	if err != nil {
+		return nil, err
+	}
+	output, err := s.runWithOutputContext(ctx, command)
+	if err != nil {
+		return nil, err
+	}
+	return parseCommitLog(output), nil
+}
+
 func (s *gitSession) searchCommits(ctx context.Context, filter CommitFilter) ([]Commit, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

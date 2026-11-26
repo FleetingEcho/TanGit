@@ -150,7 +150,11 @@ func (a *app) applyDefaultCommitFilters(snapshot repository.Snapshot) {
 }
 
 func (a *app) openDefaultCommitFilters(branch string) {
-	for _, target := range [...]int{sectionHistory, sectionGraph} {
+	targets := []int{sectionHistory, sectionGraph}
+	if a.overviewCommitTarget.Hash != "" {
+		targets = targets[1:]
+	}
+	for _, target := range targets {
 		query := a.commitQueryFor(target)
 		query.applied = repository.CommitFilter{Branch: branch}
 		query.draft = query.applied
@@ -159,7 +163,7 @@ func (a *app) openDefaultCommitFilters(branch string) {
 		query.matches = nil
 		query.more = false
 	}
-	a.runCommitFilterQueries("", true, sectionHistory, sectionGraph)
+	a.runCommitFilterQueries("", true, targets...)
 }
 
 // keepCommitFilterDefault holds a commit page's filter on the branch checked

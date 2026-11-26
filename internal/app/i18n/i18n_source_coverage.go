@@ -5,6 +5,13 @@ package i18n
 // future additions to be translated in the same change.
 var sourceCoverageTranslations = map[string]map[string]string{
 	"zh-Hans": {
+		"Remove %s":                     "移除 %s",
+		"Remove repository":             "移除仓库",
+		"Remove %s from this Overview?": "要从当前概览移除 %s 吗？",
+		"The repository and its files will remain on disk.": "仓库及其文件会保留在磁盘上。",
+		"+%d more":        "另有 %d 项",
+		"Repository name": "仓库名称",
+
 		"Checking stacked branches…":      "正在检查堆叠分支…",
 		"Undo Conflict Resolution":        "撤销冲突解决",
 		"Undo the last resolution in %s?": "要撤销 %s 中的上一次解决操作吗？",
@@ -531,6 +538,13 @@ var sourceCoverageTranslations = map[string]map[string]string{
 		"lazygitGo saves the current WIP first, then restores the checkpoint's staged, unstaged, and untracked files. Newer commits prevent restoration.": "lazygitGo 会先保存当前的未完成工作，再恢复检查点中已暂存、未暂存和未跟踪的文件。存在更新的提交时无法恢复。",
 	},
 	"zh-Hant": {
+		"Remove %s":                     "移除 %s",
+		"Remove repository":             "移除儲存庫",
+		"Remove %s from this Overview?": "要從目前的概覽移除 %s 嗎？",
+		"The repository and its files will remain on disk.": "儲存庫及其檔案會保留在磁碟上。",
+		"+%d more":        "另有 %d 項",
+		"Repository name": "儲存庫名稱",
+
 		"Checking stacked branches…":      "正在檢查堆疊分支…",
 		"Undo Conflict Resolution":        "撤銷衝突解決",
 		"Undo the last resolution in %s?": "要撤銷 %s 中的上一次解決操作嗎？",
@@ -1057,6 +1071,13 @@ var sourceCoverageTranslations = map[string]map[string]string{
 		"lazygitGo saves the current WIP first, then restores the checkpoint's staged, unstaged, and untracked files. Newer commits prevent restoration.": "lazygitGo 會先儲存目前的未完成工作，再還原檢查點中已暫存、未暫存和未追蹤的檔案。存在較新的提交時無法還原。",
 	},
 	"ja": {
+		"Remove %s":                     "%s を削除",
+		"Remove repository":             "リポジトリを一覧から削除",
+		"Remove %s from this Overview?": "この概要から %s を削除しますか？",
+		"The repository and its files will remain on disk.": "リポジトリとそのファイルはディスクに残ります。",
+		"+%d more":        "ほか %d 件",
+		"Repository name": "リポジトリ名",
+
 		"Checking stacked branches…":      "スタックされたブランチを確認しています…",
 		"Undo Conflict Resolution":        "競合解決を元に戻す",
 		"Undo the last resolution in %s?": "%s の直前の解決を元に戻しますか？",
@@ -1583,6 +1604,13 @@ var sourceCoverageTranslations = map[string]map[string]string{
 		"lazygitGo saves the current WIP first, then restores the checkpoint's staged, unstaged, and untracked files. Newer commits prevent restoration.": "lazygitGo は現在の作業中の変更を先に保存してから、チェックポイントのステージ済み、未ステージ、未追跡のファイルを復元します。新しいコミットがある場合は復元できません。",
 	},
 	"es": {
+		"Remove %s":                     "Quitar %s",
+		"Remove repository":             "Quitar repositorio",
+		"Remove %s from this Overview?": "¿Quitar %s de este resumen?",
+		"The repository and its files will remain on disk.": "El repositorio y sus archivos permanecerán en el disco.",
+		"+%d more":        "%d más",
+		"Repository name": "Nombre del repositorio",
+
 		"Checking stacked branches…":      "Comprobando ramas apiladas…",
 		"Undo Conflict Resolution":        "Deshacer resolución de conflictos",
 		"Undo the last resolution in %s?": "¿Deshacer la última resolución en %s?",
@@ -2109,6 +2137,13 @@ var sourceCoverageTranslations = map[string]map[string]string{
 		"lazygitGo saves the current WIP first, then restores the checkpoint's staged, unstaged, and untracked files. Newer commits prevent restoration.": "lazygitGo guarda primero el trabajo en curso actual y después restaura los archivos preparados, sin preparar y sin seguimiento del punto de control. La existencia de commits posteriores impide la restauración.",
 	},
 	"fr": {
+		"Remove %s":                     "Retirer %s",
+		"Remove repository":             "Retirer le dépôt",
+		"Remove %s from this Overview?": "Retirer %s de cette vue d’ensemble ?",
+		"The repository and its files will remain on disk.": "Le dépôt et ses fichiers resteront sur le disque.",
+		"+%d more":        "%d de plus",
+		"Repository name": "Nom du dépôt",
+
 		"Checking stacked branches…":      "Vérification des branches empilées…",
 		"Undo Conflict Resolution":        "Annuler la résolution du conflit",
 		"Undo the last resolution in %s?": "Annuler la dernière résolution dans %s ?",

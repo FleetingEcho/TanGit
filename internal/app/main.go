@@ -130,11 +130,21 @@ type app struct {
 	// openHomeTab shows the picker in one, claimOpen reports that an open was
 	// taken over by an existing page or the window's cap, and closeTab gives
 	// this app's page up.
-	openTab         func(path string, policy openPolicy)
-	openTerminalTab func(path string)
-	openHomeTab     func()
-	claimOpen       func(path string) bool
-	closeTab        func()
+	openTab               func(path string, policy openPolicy)
+	openOverviewCommitTab func(path string, commit repository.Commit)
+	overviewCommitTarget  repository.Commit
+	openTerminalTab       func(path string)
+	openHomeTab           func()
+	claimOpen             func(path string) bool
+	closeTab              func()
+	// openOverviewTab shows the cross-repository Overview page in a tab of its
+	// own. overview is non-nil only on that tab's app: it is what marks the page
+	// as the Overview rather than the picker, since neither holds a repository.
+	openOverviewTab func(id string, intent overviewIntent)
+	overview        *overviewState
+	// overviewPicker is the home page's list of saved Overviews, shown when its
+	// Overview entry is clicked.
+	overviewPicker overviewPickerState
 	// Shell-owned workflows are hooked rather than stored MyGo elements or
 	// contexts, keeping standalone app tests independent of window chrome.
 	shellOverlayOpen    func() bool

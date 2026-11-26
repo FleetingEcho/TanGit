@@ -720,6 +720,132 @@ func TestSearchCommitsCombinesTimeWithMessageAndHashFilters(t *testing.T) {
 	}
 }
 
+func TestCommitHistoryPagesFollowCapturedCheckout(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	runGit(t, dir, "config", "user.name", "Desktop Test")
+	runGit(t, dir, "config", "user.email", "desktop@example.com")
+	opened, err := (Opener{}).Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := opened.(*gitSession)
+	branch, revision, err := session.CommitHistoryHead(ctx)
+	if err != nil || branch != "main" || revision != "" {
+		t.Fatalf("unborn checkout = %q, %q, %v", branch, revision, err)
+	}
+	runGit(t, dir, "commit", "--allow-empty", "-m", "base")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "main tip")
+	branch, revision, err = session.CommitHistoryHead(ctx)
+	if err != nil || branch != "main" || revision == "" {
+		t.Fatalf("main checkout = %q, %q, %v", branch, revision, err)
+	}
+	order, err := session.CommitHistoryOrder(ctx, revision, time.Time{}, time.Time{}, CommitHistorySearch{})
+	if err != nil || len(order) != 2 {
+		t.Fatalf("captured checkout order = %v, %v", order, err)
+	}
+	first, err := session.CommitHistoryPage(ctx, order[:1])
+	if err != nil || len(first) != 1 || first[0].Subject != "main tip" {
+		t.Fatalf("first page = %+v, %v", first, err)
+	}
+	runGit(t, dir, "checkout", "-b", "feature", "HEAD~1")
+	runGit(t, dir, "commit", "--allow-empty", "-m", "feature tip")
+	second, err := session.CommitHistoryPage(ctx, order[1:])
+	if err != nil || len(second) != 1 || second[0].Subject != "base" {
+		t.Fatalf("old checkout second page = %+v, %v", second, err)
+	}
+	branch, revision, err = session.CommitHistoryHead(ctx)
+	if err != nil || branch != "feature" || revision == "" {
+		t.Fatalf("refreshed checkout = %q, %q, %v", branch, revision, err)
+	}
+	order, err = session.CommitHistoryOrder(ctx, revision, time.Time{}, time.Time{}, CommitHistorySearch{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refreshed, err := session.CommitHistoryPage(ctx, order)
+	if err != nil || len(refreshed) != 2 || refreshed[0].Subject != "feature tip" {
+		t.Fatalf("refreshed history = %+v, %v", refreshed, err)
+	}
+	runGit(t, dir, "checkout", "--detach", "HEAD")
+	if branch, detached, err := session.CommitHistoryHead(ctx); err != nil || branch != "" || detached != revision {
+		t.Fatalf("detached checkout = %q, %q, %v", branch, detached, err)
+	}
+}
+
+func TestCommitHistoryOrderUsesInclusiveCommitterTimes(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	runGit(t, dir, "config", "user.name", "Desktop Test")
+	runGit(t, dir, "config", "user.email", "desktop@example.com")
+	commit := func(subject, timestamp string) {
+		cmd := exec.Command("git", "-C", dir, "commit", "--allow-empty", "-m", subject)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE=2000-01-01T00:00:00Z", "GIT_COMMITTER_DATE="+timestamp)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("create commit: %v: %s", err, out)
+		}
+	}
+	commit("end", "2026-10-01T12:30:59Z")
+	commit("too old", "2026-10-01T12:29:59Z")
+	commit("start", "2026-10-01T12:30:00Z")
+	commit("too new", "2026-10-01T12:31:00Z")
+	opened, err := (Opener{}).Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := opened.(*gitSession)
+	_, revision, err := session.CommitHistoryHead(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := time.Date(2026, 10, 1, 12, 30, 0, 0, time.UTC)
+	to := from.Add(59 * time.Second)
+	order, err := session.CommitHistoryOrder(ctx, revision, from, to, CommitHistorySearch{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commits, err := session.CommitHistoryPage(ctx, order)
+	if err != nil || len(commits) != 2 ||
+		commits[0].Subject != "end" || commits[0].UnixTimestamp != to.Unix() ||
+		commits[1].Subject != "start" || commits[1].UnixTimestamp != from.Unix() {
+		t.Fatalf("committer-time order = %+v, %v", commits, err)
+	}
+}
+
+func TestCommitHistorySearchMatchesOldMessagesAuthorsAndHashes(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	runGit(t, dir, "config", "user.name", "Build Bot+One")
+	runGit(t, dir, "config", "user.email", "bot@example.com")
+	cmd := exec.Command("git", "-C", dir, "commit", "--allow-empty", "-m", "Old record", "-m", "Needs retry [urgent]")
+	cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE=2010-01-01T00:00:00Z", "GIT_COMMITTER_DATE=2010-01-01T00:00:00Z")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("create old commit: %v: %s", err, output)
+	}
+	old := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
+	runGit(t, dir, "commit", "--allow-empty", "-m", "Retry another record")
+	opened, err := (Opener{}).Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := opened.(*gitSession)
+	_, revision, err := session.CommitHistoryHead(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, search := range []CommitHistorySearch{
+		{Terms: []string{"retry", "[urgent]"}, Author: "bot+one"},
+		{Terms: []string{old[:9]}, Author: "bot+one"},
+	} {
+		order, err := session.CommitHistoryOrder(ctx, revision, time.Time{}, time.Time{}, search)
+		if err != nil || !slices.Equal(order, []string{old}) {
+			t.Fatalf("matches for %+v = %v, %v", search, order, err)
+		}
+	}
+}
+
 // SearchCommits narrows Git's history by message, hash, author and branch,
 // and treats the message as literal text rather than a regular expression.
 func TestSearchCommitsFilters(t *testing.T) {

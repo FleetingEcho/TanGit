@@ -31,6 +31,10 @@ func (a *app) beginOpen() {
 }
 
 func (a *app) beginOpenWithPolicy(policy openPolicy) {
+	a.beginOpenWithCommit(policy, repository.Commit{})
+}
+
+func (a *app) beginOpenWithCommit(policy openPolicy, commit repository.Commit) {
 	a.openTerminalOnReady = false
 	path := strings.TrimSpace(a.path)
 	if path == "" {
@@ -53,10 +57,11 @@ func (a *app) beginOpenWithPolicy(policy openPolicy) {
 	// A window with tabs takes the open over when the repository already has
 	// a page, or when the window is full: the hook reports it, and nothing of
 	// this page's own read starts.
-	if a.claimOpen != nil && a.claimOpen(path) {
+	if commit.Hash == "" && a.claimOpen != nil && a.claimOpen(path) {
 		return
 	}
 
+	a.overviewCommitTarget = commit
 	a.repositoryWork.Cancel()
 	if a.cancelOpen != nil {
 		a.cancelOpen()
@@ -147,7 +152,7 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 		}
 		a.installOpenedRepository(session, core)
 		a.repositoryDetailsLoading = true
-		if branchFromCore && !a.historyFilter.defaulted {
+		if branchFromCore && !a.graphFilter.defaulted {
 			a.openDefaultCommitFilters(core.Branch)
 		}
 		coreReady <- a.snapshotSeq
@@ -244,6 +249,7 @@ func (a *app) setOpenError(path string, generation uint64, err error) {
 		return
 	}
 	a.openTerminalOnReady = false
+	a.overviewCommitTarget = repository.Commit{}
 	a.cancelOpen = nil
 	if errors.Is(err, os.ErrNotExist) && a.recentWorktree(path) {
 		a.showMissingRecentWorktree(path)
@@ -313,9 +319,11 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 		a.syncNavSelection()
 		a.stopRepositoryWatch()
 	} else {
-		switch start := a.repositoryStartSection(); start {
-		case sectionCode:
-		case sectionOverview:
+		switch start := a.repositoryStartSection(); {
+		case a.overviewCommitTarget.Hash != "":
+			a.openOverviewCommitInHistory(a.overviewCommitTarget)
+		case start == sectionCode:
+		case start == sectionOverview:
 			a.workspaceTab = sectionOverview
 			a.syncNavSelection()
 			a.prepareCockpit()
@@ -1309,6 +1317,7 @@ func (a *app) prepareShutdown(done func(bool)) {
 // the picker, so another repository can be opened without restarting.
 func (a *app) shutdown() {
 	a.openTerminalOnReady = false
+	a.stopOverview()
 	a.generation++
 	a.repositoryWork.Cancel()
 	a.shutdownContinuePreflight()
