@@ -291,8 +291,12 @@ func TestTerminalPlusCreatesIndependentTabsAndRetainsTheirSplits(t *testing.T) {
 	if _, found := h.tester.Find("Select terminal 1"); found {
 		t.Fatal("Plus split the first terminal instead of giving it a separate tab")
 	}
-	if _, found := h.tester.Find("Select terminal 2"); !found {
-		t.Fatal("the new terminal tab is not selected")
+	// A lone shell is named by its toolbar tab; only splits keep a card header.
+	if _, found := h.tester.Find("Terminal tab 2"); !found {
+		t.Fatal("the new terminal tab is missing from the toolbar")
+	}
+	if _, found := h.tester.Find("Select terminal 2"); found {
+		t.Fatal("a lone shell repeated its toolbar tab in a card header")
 	}
 
 	third := splitMonitoredTerminal(t, h, peers, false)
@@ -679,6 +683,73 @@ func TestTerminalTopLevelTabRenameAndContextMenu(t *testing.T) {
 	requireTerminalClosed(t, second)
 }
 
+func TestTerminalBottomDockKeepsItsLayoutWhileShellStarts(t *testing.T) {
+	original := newTerminal
+	peers := make(chan monitoredTerminalPeer, 1)
+	newTerminal = func(options terminal.Options) (*terminal.Terminal, error) {
+		return newMonitoredTerminal(options, peers)
+	}
+	t.Cleanup(func() { newTerminal = original })
+	h := menuTestApp(t)
+	if err := h.tester.Click("Toggle terminal"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	initial, visible := h.tester.Find("Terminal pane")
+	for range 5 {
+		h.tester.Advance(16 * time.Millisecond)
+		h.tester.Frame()
+		if current, found := h.tester.Find("Terminal pane"); found != visible || current != initial {
+			t.Errorf("terminal bounds changed during startup: before=%+v after=%+v", initial, current)
+		}
+	}
+	h.waitFor(t, "the first terminal", func() bool {
+		active := h.app.activeTerminal()
+		return active != nil && active.pane != nil
+	})
+	peer := <-peers
+	t.Cleanup(func() { _ = peer.Close() })
+	h.tester.Advance(250 * time.Millisecond)
+	h.tester.Frame()
+	if settled, found := h.tester.Find("Terminal pane"); !visible || !found || settled != initial {
+		t.Fatalf("bottom dock should show its final layout from its first frame: initial=%+v visible=%t settled=%+v", initial, visible, settled)
+	}
+}
+
+func TestTerminalRightDockReopensAtItsRestoredSize(t *testing.T) {
+	h, _, first := monitoredTerminalTestApp(t)
+	h.app.setTerminalDock(terminalDockRight)
+	h.tester.Frame()
+	before, found := h.tester.Find("Terminal pane")
+	if !found {
+		t.Fatal("right terminal dock is missing before hiding")
+	}
+	dragTo(t, h.tester, before.X-islandGap/2, before.Y+100, -60, 0)
+	resized, found := h.tester.Find("Terminal pane")
+	if !found || resized.W <= before.W {
+		t.Fatalf("could not resize the right terminal dock: before=%+v after=%+v", before, resized)
+	}
+	shell := h.app.activeTerminal().pane
+	if err := h.tester.Click("Hide terminal"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if _, found := h.tester.Find("Terminal pane"); found {
+		t.Fatal("hiding the terminal left its pane visible")
+	}
+	if err := h.tester.Click("Toggle terminal"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if restored, found := h.tester.Find("Terminal pane"); !found || restored != resized {
+		t.Fatalf("reopened right dock should show its terminal immediately at %+v, got %+v (visible=%t)", resized, restored, found)
+	}
+	if h.app.activeTerminal().pane != shell {
+		t.Fatal("reopening replaced the terminal")
+	}
+	requireTerminalRunning(t, first)
+}
+
 func TestTerminalHideAndRestoreKeepShellDimensionsStable(t *testing.T) {
 	for _, dock := range terminalDockChoices {
 		t.Run(dock, func(t *testing.T) {
@@ -712,16 +783,14 @@ func TestTerminalHideAndRestoreKeepShellDimensionsStable(t *testing.T) {
 				}
 				requireTerminalRunning(t, first)
 				h.app.openTerminal()
+				h.tester.Frame()
+				if _, mounted := h.tester.Find("Terminal pane"); !mounted {
+					t.Fatalf("restore cycle %d did not immediately remount the terminal", cycle)
+				}
 				for step := 0; step < 14; step++ {
 					h.tester.Advance(20 * time.Millisecond)
 					h.tester.Frame()
 					requireSize(fmt.Sprintf("restore cycle %d frame %d", cycle, step))
-					if _, mounted := h.tester.Find("Terminal pane"); step < 8 && mounted {
-						t.Fatalf("restore cycle %d frame %d mounted the terminal in an animated dock", cycle, step)
-					}
-				}
-				if _, mounted := h.tester.Find("Terminal pane"); !mounted {
-					t.Fatalf("restore cycle %d did not remount the settled terminal", cycle)
 				}
 				requireTerminalRunning(t, first)
 			}
@@ -760,6 +829,9 @@ func TestTerminalMaximizeRestoresPanelHeightAndSessions(t *testing.T) {
 	})
 	second := <-peers
 	t.Cleanup(func() { _ = second.Close() })
+	// Panes of a split keep a card header to tell them apart; a lone shell has
+	// none, so split the second tab to have headers to maximize away.
+	third := splitMonitoredTerminal(t, h, peers, false)
 	secondPane := h.app.activeTerminal().pane
 	h.tester.Advance(250 * time.Millisecond)
 	h.tester.Frame()
@@ -818,7 +890,7 @@ func TestTerminalMaximizeRestoresPanelHeightAndSessions(t *testing.T) {
 	if _, found := h.tester.Find("Select terminal 2"); !found {
 		t.Fatal("restoring the dock did not restore its per-shell title bar")
 	}
-	for _, peer := range []monitoredTerminalPeer{first, second} {
+	for _, peer := range []monitoredTerminalPeer{first, second, third} {
 		requireTerminalRunning(t, peer)
 	}
 }
@@ -835,7 +907,7 @@ func TestTerminalIndividualCloseNeverRequiresConfirmation(t *testing.T) {
 	second := <-peers
 	t.Cleanup(func() { _ = second.Close() })
 
-	if err := h.tester.Click("Close terminal 2"); err != nil {
+	if err := h.tester.Click("Close terminal tab 2"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
@@ -848,7 +920,7 @@ func TestTerminalIndividualCloseNeverRequiresConfirmation(t *testing.T) {
 	requireTerminalRunning(t, first)
 	requireTerminalClosed(t, second)
 
-	if err := h.tester.Click("Close terminal 1"); err != nil {
+	if err := h.tester.Click("Close terminal tab 1"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
@@ -1050,21 +1122,29 @@ func TestTerminalDragBackDoesNotBindAShellTwice(t *testing.T) {
 
 func TestTerminalTabsRenameAndContainTheirActions(t *testing.T) {
 	h, _, _ := monitoredTerminalTestApp(t)
-	tab, ok := h.tester.Find("Select terminal 1")
-	if !ok {
+	// A lone shell is named, renamed and closed from its toolbar tab; it has no
+	// card header of its own repeating those controls.
+	if _, found := h.tester.Find("Terminal tab 1"); !found {
 		t.Fatal("the terminal tab is missing")
 	}
-	for _, label := range []string{"Rename terminal 1", "Close terminal 1"} {
+	if _, found := h.tester.Find("Select terminal 1"); found {
+		t.Fatal("a lone shell repeated its toolbar tab in a card header")
+	}
+	tabs, found := h.tester.Find("Terminal tabs")
+	if !found {
+		t.Fatal("the terminal tab row is missing")
+	}
+	for _, label := range []string{"Rename tab 1", "Close terminal tab 1"} {
 		action, found := h.tester.Find(label)
 		if !found {
 			t.Fatalf("%q is missing", label)
 		}
-		if action.X < tab.X || action.Y < tab.Y || action.X+action.W > tab.X+tab.W || action.Y+action.H > tab.Y+tab.H {
-			t.Fatalf("%q lies outside the tab: tab=%+v action=%+v", label, tab, action)
+		if action.X < tabs.X || action.Y < tabs.Y || action.X+action.W > tabs.X+tabs.W || action.Y+action.H > tabs.Y+tabs.H {
+			t.Fatalf("%q lies outside the tab row: row=%+v action=%+v", label, tabs, action)
 		}
 	}
 
-	if err := h.tester.Click("Rename terminal 1"); err != nil {
+	if err := h.tester.Click("Rename tab 1"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
@@ -1077,19 +1157,19 @@ func TestTerminalTabsRenameAndContainTheirActions(t *testing.T) {
 	if !h.tester.HasText("Build shell") {
 		t.Fatalf("the renamed terminal is not shown: %q", h.texts())
 	}
-	h.rightClick(t, "Focus terminal 1")
-	h.chooseMenuItem(t, "Rename terminal")
-	if h.app.term.renameID != h.app.term.sessions[0].id {
-		t.Fatal("the split context menu targeted another shell")
+	h.rightClick(t, "Terminal tab 1")
+	h.chooseMenuItem(t, "Rename tab")
+	if h.app.term.renameGroup != h.app.term.sessions[0].groupID {
+		t.Fatal("the tab context menu targeted another tab")
 	}
 	if err := h.tester.Click("Cancel"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	h.rightClick(t, "Focus terminal 1")
-	h.chooseMenuItem(t, "Close terminal")
+	h.rightClick(t, "Terminal tab 1")
+	h.chooseMenuItem(t, "Close terminal tab")
 	if h.app.terminalSessionCount() != 0 || h.app.term.panelOpen {
-		t.Fatalf("the split context menu did not close its shell: %+v", h.app.term)
+		t.Fatalf("the tab context menu did not close its shell: %+v", h.app.term)
 	}
 }
 
@@ -1143,16 +1223,18 @@ func TestTerminalTopLevelAndSplitNamesAreIndependent(t *testing.T) {
 	requireTerminalRunning(t, second)
 }
 
-func TestTerminalLimitIsSixAndAnotherSplitReportsAnError(t *testing.T) {
+func TestTerminalLimitReportsAnErrorForAnotherSplit(t *testing.T) {
 	h, peers, first := monitoredTerminalTestApp(t)
 	opened := []monitoredTerminalPeer{first}
 	for i := 1; i < terminalSessionLimit; i++ {
 		opened = append(opened, splitMonitoredTerminal(t, h, peers, i%2 == 0))
 	}
-	if got := h.app.terminalSessionCount(); got != 6 {
-		t.Fatalf("terminal count = %d, want 6", got)
+	if got := h.app.terminalSessionCount(); got != terminalSessionLimit {
+		t.Fatalf("terminal count = %d, want %d", got, terminalSessionLimit)
 	}
-	for number := 1; number <= terminalSessionLimit; number++ {
+	// One tab cannot show dozens of split panes in a test-sized window; the
+	// first few cards being laid out is what this checks.
+	for number := 1; number <= min(terminalSessionLimit, 6); number++ {
 		tab, found := h.tester.Find(fmt.Sprintf("Select terminal %d", number))
 		if !found || tab.W <= 0 || tab.H <= 0 {
 			t.Fatalf("terminal %d has no visible card", number)
@@ -1165,7 +1247,7 @@ func TestTerminalLimitIsSixAndAnotherSplitReportsAnError(t *testing.T) {
 	if !h.tester.HasText("Terminal limit reached") {
 		t.Fatalf("the extra split did not report its limit: %q", h.texts())
 	}
-	if got := h.app.terminalSessionCount(); got != 6 {
+	if got := h.app.terminalSessionCount(); got != terminalSessionLimit {
 		t.Fatalf("the rejected split changed the terminal count to %d", got)
 	}
 	for _, peer := range opened {

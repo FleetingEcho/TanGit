@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 // CommitVolume is how much one commit changed, from Git's --shortstat.
@@ -40,26 +42,90 @@ func (s *gitSession) CodeVolume(ctx context.Context, branch string, since int64,
 	if maxCommits <= 0 {
 		maxCommits = 20000
 	}
-	args := []string{"git", "log", "--no-merges", fmt.Sprintf("--max-count=%d", maxCommits+1), "--format=%x1e%at", "--shortstat"}
-	if since > 0 {
-		args = append(args, fmt.Sprintf("--since=@%d", since))
-	}
+	scopes := []string{s.qualifyCommitFilterBranch(branch)}
 	if branch == "" {
-		args = append(args, "--all")
-	} else {
-		args = append(args, s.qualifyCommitFilterBranch(branch))
+		scopes = overviewHistoryScope
 	}
-	args = append(args, "--")
-	output, err := s.cmd.New(args).RunWithOutput()
-	if err != nil {
-		return CodeVolume{}, fmt.Errorf("read code changes: %w", err)
+	// The time is spent in the per-commit diffstat, not in walking history, and
+	// the commits are independent. A bounded period is read as a few windows at
+	// once, which keeps a busy repository's week or month from being one long
+	// serial read.
+	windows := codeVolumeWindows(since, time.Now().Unix()+1, codeVolumeParallelism)
+	results := make([]CodeVolume, len(windows))
+	errs := make([]error, len(windows))
+	var wg sync.WaitGroup
+	for index, window := range windows {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[index], errs[index] = s.codeVolumeWindow(scopes, window[0], window[1], maxCommits+1)
+		}()
 	}
-	volume := parseCodeVolume(output)
+	wg.Wait()
+	var volume CodeVolume
+	// Windows run oldest first; git log lists newest first, so join them that way.
+	for index := len(results) - 1; index >= 0; index-- {
+		if errs[index] != nil {
+			return CodeVolume{}, fmt.Errorf("read code changes: %w", errs[index])
+		}
+		volume.Commits = append(volume.Commits, results[index].Commits...)
+	}
+	if err := ctx.Err(); err != nil {
+		return CodeVolume{}, err
+	}
 	if len(volume.Commits) > maxCommits {
 		volume.Commits = volume.Commits[:maxCommits]
 		volume.Limited = true
 	}
 	return volume, nil
+}
+
+// overviewHistoryScope is "every branch" for the Overview's statistics: local and
+// remote branches and a detached HEAD. It is not --all, which also walks the
+// app's own recovery and journal snapshot refs: those commits are not the
+// user's work, are whole-tree snapshots, and made this read take 26s here.
+var overviewHistoryScope = []string{"--branches", "--remotes", "HEAD"}
+
+// codeVolumeParallelism is how many windows a bounded period is split into.
+const codeVolumeParallelism = 4
+
+// codeVolumeWindows splits [since, until) into n windows, oldest first. An
+// unbounded period (since 0) stays one read: its commit limit applies to the
+// newest commits, which a split would not preserve cheaply.
+func codeVolumeWindows(since, until int64, n int) [][2]int64 {
+	if since <= 0 || n <= 1 || until-since < int64(n) {
+		return [][2]int64{{since, 0}}
+	}
+	step := (until - since) / int64(n)
+	windows := make([][2]int64, 0, n)
+	for index := 0; index < n; index++ {
+		from, to := since+int64(index)*step, since+int64(index+1)*step
+		if index == n-1 {
+			to = 0 // the last window has no upper bound
+		}
+		windows = append(windows, [2]int64{from, to})
+	}
+	return windows
+}
+
+// codeVolumeWindow reads one window: commits at or after from and before to
+// (0 for no bound). Rename detection is capped, because it is quadratic in the
+// files of a commit and a very large one would otherwise dominate the read.
+func (s *gitSession) codeVolumeWindow(scopes []string, from, to int64, limit int) (CodeVolume, error) {
+	args := []string{"git", "log", "--no-merges", "-l200", fmt.Sprintf("--max-count=%d", limit), "--format=%x1e%at", "--shortstat"}
+	if from > 0 {
+		args = append(args, fmt.Sprintf("--since=@%d", from))
+	}
+	if to > 0 {
+		args = append(args, fmt.Sprintf("--until=@%d", to-1))
+	}
+	args = append(args, scopes...)
+	args = append(args, "--")
+	output, err := s.cmd.New(args).RunWithOutput()
+	if err != nil {
+		return CodeVolume{}, err
+	}
+	return parseCodeVolume(output), nil
 }
 
 // parseCodeVolume reads `git log --format=%x1e%at --shortstat`: each commit is

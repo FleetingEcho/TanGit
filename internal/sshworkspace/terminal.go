@@ -18,6 +18,10 @@ type TerminalOptions struct {
 	Rows        uint32
 	PixelWidth  uint32
 	PixelHeight uint32
+	// Command, when set, runs in place of the login shell through an exec
+	// request on the PTY, so nothing is typed into the shell and nothing lands
+	// in its history. The remote user's shell parses it.
+	Command string
 }
 
 // Terminal is one bidirectional SSH shell channel. It implements net.Conn;
@@ -104,7 +108,11 @@ func (c *Client) OpenTerminal(ctx context.Context, options TerminalOptions) (*Te
 		}
 		return nil, fmt.Errorf("request terminal PTY: %w", err)
 	}
-	accepted, err = channel.SendRequest("shell", true, nil)
+	request, payload := "shell", []byte(nil)
+	if options.Command != "" {
+		request, payload = "exec", ssh.Marshal(&struct{ Command string }{options.Command})
+	}
+	accepted, err = channel.SendRequest(request, true, payload)
 	if err != nil || !accepted {
 		_ = channel.Close()
 		if ctxErr := ctx.Err(); ctxErr != nil {

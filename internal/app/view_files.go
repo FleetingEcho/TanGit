@@ -757,21 +757,16 @@ func (a *app) fileDetailsView(c *ui.Context) {
 			ui.Text(c, a.blameError).TextColor(theme.Danger)
 		}
 		if a.blameState != nil {
-			closed := false
 			ui.Row(c).AlignItems(ui.Center).Children(func() {
 				title := tr("Blame at HEAD")
 				if a.blameNewFile {
 					title = tr("Blame · new file, not committed yet")
 				}
 				ui.Text(c, title).Bold().Grow(1)
-				if ui.Button(c, tr("Close blame")).Clicked() {
-					a.closeBlame()
-					closed = true
-				}
+				iconButton(c, "Close blame", "Close blame", closeIcon, false, a.closeBlame)
 			})
-			// The click runs while this pass builds, so the state it just
-			// cleared is nil here; drawing it would crash the editor.
-			if !closed {
+			// The close button can clear the editor during this build.
+			if a.blameState != nil {
 				// Blame is read-only, as a diff is: a click keeps the keyboard
 				// where it is rather than putting a caret in its text.
 				pane := a.keyboardPane(c, "blame", editor.View(c, a.blameState).Grow(1)).Label(tr("Blame"))

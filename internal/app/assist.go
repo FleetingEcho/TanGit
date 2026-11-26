@@ -17,7 +17,6 @@ type assistUIState struct {
 	advisor        agentassist.Advisor
 	advisorFactory func(string) (agentassist.Advisor, error)
 	conflict       conflictAssistUIState
-	splitter       changeSplitUIState
 }
 
 func newAssistAdvisor(injected agentassist.Advisor, factory func(string) (agentassist.Advisor, error), command string) (agentassist.Advisor, string, error) {
@@ -60,9 +59,8 @@ func (a *app) assistSourceBeforeRequest() string {
 	return "Not configured"
 }
 
-// cancelAssistance retires both suggestion jobs without applying or accepting
+// cancelAssistance retires the suggestion job without applying or accepting
 // anything. Repository replacement uses this in addition to each close button.
 func (a *app) cancelAssistance() {
 	a.closeConflictAssistant()
-	a.closeChangeSplitter()
 }

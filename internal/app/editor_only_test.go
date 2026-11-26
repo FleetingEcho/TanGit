@@ -271,8 +271,8 @@ func TestHomeEditorModeStillOpensGitRepositoryWorkspace(t *testing.T) {
 	if a.state != stateReady || a.session == nil || a.editorOnlyWorkspace() {
 		t.Fatalf("Editor request discarded a real Git session: state=%v session=%T", a.state, a.session)
 	}
-	if got := a.visibleSections(); len(got) != len(workspaceSectionIDs) {
-		t.Fatalf("Git workspace lost its sections: %v", got)
+	if got := a.visibleSections(); len(got) != len(defaultVisibleSections) || slices.Contains(got, sectionAgents) {
+		t.Fatalf("Git workspace did not show the default sections: %v", got)
 	}
 }
 

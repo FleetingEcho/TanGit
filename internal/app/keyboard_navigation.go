@@ -88,6 +88,10 @@ func (a *app) keyboardListID(s *ui.ListState) string {
 		return "file-history-files"
 	case &a.compare.list:
 		return "comparison-files"
+	case &a.compare.commits.list:
+		return "comparison-commits"
+	case &a.compare.commits.fileList:
+		return "comparison-commit-files"
 	case &a.diffFullscreenFileList:
 		return "fullscreen-files"
 	}
@@ -483,9 +487,9 @@ func keyboardPaneLabel(id string) string {
 		return "Merge Changes"
 	case "fullscreen-files":
 		return "Changed files"
-	case "commits", "branch-commits", "file-history":
+	case "commits", "branch-commits", "file-history", "comparison-commits":
 		return "Commits"
-	case "commit-files", "branch-files", "stash-files", "comparison-files", "file-history-files":
+	case "commit-files", "branch-files", "stash-files", "comparison-files", "file-history-files", "comparison-commit-files":
 		return "Commit files"
 	case "branches":
 		return "Branches"
@@ -665,6 +669,12 @@ func (a *app) keyboardToggleDirectory(id string) bool {
 	case "comparison-files":
 		if dir := selectedFileTreeDirectory(a.compare.fileRows, a.compare.selectedRow); dir != "" {
 			a.toggleFileTreeDirectory(fileTreeCompareScope, dir)
+			return true
+		}
+	case "comparison-commit-files":
+		state := &a.compare.commits
+		if dir := selectedFileTreeDirectory(state.fileRows, state.selectedFileRow); dir != "" {
+			a.toggleFileTreeDirectory(fileTreeCompareCommitScope, dir)
 			return true
 		}
 	}

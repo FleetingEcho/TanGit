@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"path"
 	"strings"
@@ -36,19 +35,16 @@ func openRemoteTerminal(ctx context.Context, client remoteWorkspaceClient, root 
 	if !ok {
 		return nil, errors.New("SSH workspace does not provide interactive terminals")
 	}
-	terminal, err := opener.OpenTerminal(ctx, sshworkspace.TerminalOptions{Columns: 80, Rows: 24})
+	// The login shell is started in the repository directly by an exec request:
+	// no line is typed into a shell, so it cannot reach the remote history, be
+	// swallowed by a startup file's prompt, or flash on screen. -l keeps the
+	// environment a login shell would have had.
+	command := "cd -- " + sshworkspace.ShellQuote(root) + " && exec ${SHELL:-/bin/sh} -l"
+	terminal, err := opener.OpenTerminal(ctx, sshworkspace.TerminalOptions{Columns: 80, Rows: 24, Command: command})
 	if err != nil {
 		return nil, err
 	}
 	connection := &remoteTerminalConn{terminal: terminal}
-	// OpenTerminal starts the user's login shell. Enter the repository through
-	// that shell's own quoting rules, then replace it with a fresh shell rooted
-	// there so no lazygitGo process or local working directory is involved.
-	command := "cd -- " + sshworkspace.ShellQuote(root) + " && exec ${SHELL:-/bin/sh}\n"
-	if _, err := connection.Write([]byte(command)); err != nil {
-		_ = connection.Close()
-		return nil, fmt.Errorf("enter remote repository: %w", err)
-	}
 	return connection, nil
 }
 

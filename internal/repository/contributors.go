@@ -69,7 +69,7 @@ func (s *gitSession) ContributorSummarySince(ctx context.Context, branch string,
 		args = append(args, fmt.Sprintf("--since=%d", since))
 	}
 	if branch == "" {
-		args = append(args, "--all")
+		args = append(args, overviewHistoryScope...)
 	} else {
 		args = append(args, s.qualifyCommitFilterBranch(branch))
 	}

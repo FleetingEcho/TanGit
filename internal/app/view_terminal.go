@@ -50,7 +50,14 @@ func normalizeTerminalDock(dock string) string {
 	}
 }
 
-const terminalSessionLimit = 6
+// terminalSessionLimit only guards against a runaway script or a stuck key:
+// a shell costs one pty and one process, so it is high enough for ordinary use.
+const terminalSessionLimit = 32
+
+// agentTerminalLimit is how many agent test or run commands may hold a
+// terminal at once, so a queued batch never fills the dock or starts every
+// test process together.
+const agentTerminalLimit = 6
 
 // terminalSessionState is one independent shell. Its attempt rejects startup
 // and exit callbacks after Close, including a Close while the shell starts.
@@ -457,15 +464,11 @@ func (a *app) startTerminalAt(index int) {
 						return false
 					}
 					visible := a.terminalVisible()
-					operationID := current.agentTaskID
-					// Closing is also a terminal-finalization path. Clear the operation
-					// here so this natural exit is recorded exactly once, with its real
-					// exit code rather than as a later manual close.
-					current.agentTaskID = ""
-					a.closeTerminalAt(currentIndex)
-					if operationID != "" {
+					// A natural exit is recorded once, with its real exit code, by the
+					// same close path a manual close uses.
+					a.closeTerminalReporting(currentIndex, func(operationID string, generation uint64) {
 						a.agentTerminalExitedAtGeneration(operationID, generation, code)
-					}
+					})
 					return visible || a.workspaceTab == sectionAgents
 				})
 			},
@@ -507,15 +510,18 @@ func (a *app) startTerminalAt(index int) {
 					// terminal construction failed. Remove the failed session, then
 					// record a failure with no invented process exit code.
 					visible := a.terminalVisible()
-					operationID := current.agentTaskID
-					current.agentTaskID = ""
-					a.closeTerminalAt(currentIndex)
-					a.agentTerminalFailedAtGeneration(operationID, generation, trf("Terminal startup failed: %s", safeError(err)))
+					failure := trf("Terminal startup failed: %s", safeError(err))
+					a.closeTerminalReporting(currentIndex, func(operationID string, generation uint64) {
+						a.agentTerminalFailedAtGeneration(operationID, generation, failure)
+					})
 					return visible || a.workspaceTab == sectionAgents
 				}
 				return a.terminalVisible()
 			}
 			current.pane = pane
+			if !remote && len(current.command) == 0 {
+				a.trackTerminalShell(sessionID, attempt, generation, pane)
+			}
 			if current.pendingInput != "" {
 				pane.Send([]byte(current.pendingInput))
 				current.pendingInput = ""
@@ -592,10 +598,35 @@ func (a *app) splitTerminal(below bool) {
 // the last Close hides the empty panel, but Hide never terminates a process.
 func (a *app) closeTerminal() { a.closeTerminalAt(a.term.active) }
 
+// closeTerminalAt is a manual or structural close. An agent operation still
+// attached to the shell is finished as failed, since no exit code was seen.
 func (a *app) closeTerminalAt(index int) {
+	a.closeTerminalReporting(index, func(operationID string, generation uint64) {
+		a.agentTerminalFailedAtGeneration(operationID, generation, tr("Terminal closed before the process reported an exit code."))
+	})
+}
+
+// closeTerminalReporting is the single path that ends a shell. The session
+// gives up its agent operation before anything is torn down, so exactly one
+// outcome is reported for it: the caller's report, run after the shell is
+// gone. Queued work is pumped last, once the released capacity exists.
+func (a *app) closeTerminalReporting(index int, report func(operationID string, generation uint64)) {
 	if index < 0 || index >= len(a.term.sessions) {
 		return
 	}
+	session := &a.term.sessions[index]
+	operationID, generation := session.agentTaskID, session.generation
+	session.agentTaskID = ""
+	defer func() {
+		if operationID != "" && report != nil {
+			report(operationID, generation)
+		}
+		a.pumpAgentTestBatch()
+	}()
+	a.removeTerminalSession(index)
+}
+
+func (a *app) removeTerminalSession(index int) {
 	a.storeTerminalLayout()
 	a.endTerminalSearch(&a.term.sessions[index])
 	if cancel := a.term.sessions[index].startCancel; cancel != nil {
@@ -603,15 +634,6 @@ func (a *app) closeTerminalAt(index int) {
 		a.term.sessions[index].startCancel = nil
 	}
 	session := a.term.sessions[index]
-	// Close cleanup must finish before a completion can pump queued work into
-	// the released capacity. Natural exits clear agentTaskID first, so a manual
-	// close and its eventual late OnExit cannot finalize one operation twice.
-	defer func() {
-		if session.agentTaskID != "" {
-			a.agentTerminalFailedAtGeneration(session.agentTaskID, session.generation, tr("Terminal closed before the process reported an exit code."))
-		}
-		a.pumpAgentTestBatch()
-	}()
 	activeID := uint64(0)
 	if active := a.activeTerminal(); active != nil {
 		activeID = active.id
@@ -635,14 +657,7 @@ func (a *app) closeTerminalAt(index int) {
 		}
 	}
 	if len(a.term.sessions) == 0 {
-		a.term.active = 0
-		a.term.pendingMoveID = 0
-		a.term.pendingMoveTarget = 0
-		a.term.pendingGroup = 0
-		a.term.layout = nil
-		a.term.layouts = nil
-		a.term.activeSessions = nil
-		a.term.groupNames = nil
+		a.clearTerminalGroups()
 		a.term.panelOpen = false
 		a.leaveTerminal()
 		return
@@ -773,6 +788,13 @@ func (a *app) resetTerminal() {
 	}
 	a.leaveTerminal()
 	a.term.panelOpen = false
+	a.clearTerminalGroups()
+	a.closeTerminalRename()
+}
+
+// clearTerminalGroups forgets every tab, split and queued move once no shell
+// remains, so the next one starts from a clean dock.
+func (a *app) clearTerminalGroups() {
 	a.term.active = 0
 	a.term.pendingMoveID = 0
 	a.term.pendingMoveTarget = 0
@@ -781,11 +803,9 @@ func (a *app) resetTerminal() {
 	a.term.layouts = nil
 	a.term.activeSessions = nil
 	a.term.groupNames = nil
-	a.closeTerminalRename()
 }
 
-// terminalButton is the status-bar entry to the application's only terminal
-// presentation, the persistent bottom dock.
+// terminalButton toggles the terminal dock from the status bar.
 func (a *app) terminalButton(c *ui.Context) {
 	var button ui.Element
 	if a.term.panelOpen {
@@ -860,6 +880,12 @@ func (a *app) terminalPaneView(c *ui.Context) {
 			flatIconButton(c, "New terminal tab", "Open an independent terminal in a new tab", plusIcon, 15, 5, false, a.newTerminalTab)
 			flatIconButton(c, "Split terminal right", "Open another independent terminal to the right", splitIcon, 15, 5, splitDisabled, a.splitTerminalRight)
 			flatIconButton(c, "Split terminal below", "Open another independent terminal below", splitBelowIcon, 15, 5, splitDisabled, a.splitTerminalBelow)
+			flatIconButton(c, "Search terminal", "Search terminal scrollback", searchIcon, 15, 5,
+				active == nil || active.pane == nil, func() {
+					if active := a.activeTerminal(); active != nil {
+						a.openTerminalSearchByID(active.id)
+					}
+				})
 			toolbarSeparator(c)
 			a.terminalDockButton(c)
 			maximizeLabel, maximizeButtonIcon := "Maximize terminal", expandIcon
@@ -966,9 +992,9 @@ func (a *app) terminalSessionView(c *ui.Context, index int) {
 		card.Border(1, theme.Accent)
 	}
 	card.Children(func() {
-		// The maximized dock already names its shells in the main toolbar. Drop
-		// this redundant card header so the terminal buffer gets the extra rows.
-		if !a.term.panelMaximized {
+		// The toolbar tab already names a lone shell (and the maximized dock names
+		// all of them), so only a split keeps a header, to tell its panes apart.
+		if !a.term.panelMaximized && a.terminalGroupSize(session.groupID) > 1 {
 			ui.Row(c).AlignItems(ui.Center).Children(func() {
 				tab := ui.Row(c).Grow(1).AlignItems(ui.Center).Gap(2).Padding(2, 4).Radius(theme.Radius).
 					Drag(terminalTabDrag{id: session.id})

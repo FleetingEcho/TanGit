@@ -131,7 +131,7 @@ func (a *app) pumpAgentTestBatch() {
 			result.Detail = tr("The task or its test command is no longer available.")
 			continue
 		}
-		if a.terminalSessionCount() >= terminalSessionLimit {
+		if a.terminalSessionCount() >= terminalSessionLimit || a.agentTerminalCount() >= agentTerminalLimit {
 			result.Detail = tr("Waiting for terminal capacity; no process has started.")
 			return
 		}
@@ -273,4 +273,15 @@ func agentBatchReviewCounts(state agentBatchUIState, taskID string) (current, to
 		return 0, 0
 	}
 	return state.reviewPosition + 1, len(state.reviews)
+}
+
+// agentTerminalCount is the number of shells currently held by agent commands.
+func (a *app) agentTerminalCount() int {
+	count := 0
+	for index := range a.term.sessions {
+		if a.term.sessions[index].agentTaskID != "" {
+			count++
+		}
+	}
+	return count
 }

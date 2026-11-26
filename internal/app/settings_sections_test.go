@@ -43,9 +43,10 @@ func TestWorkspaceSectionDragReordersSidebar(t *testing.T) {
 	h.app.settingsUI.page = settingsPageWorkspace
 	h.app.openSettings()
 	h.tester.Frame()
-	for _, name := range workspaceSections {
-		if chip, ok := h.tester.AccessByRole(ui.RoleCheckBox, "Show "+name); !ok || !chip.Checked {
-			t.Fatalf("%s should be enabled by default", name)
+	for section, name := range workspaceSections {
+		wantChecked := section != sectionAgents
+		if chip, ok := h.tester.AccessByRole(ui.RoleCheckBox, "Show "+name); !ok || chip.Checked != wantChecked {
+			t.Fatalf("%s chip exists=%t, checked=%t, want checked=%t", name, ok, chip.Checked, wantChecked)
 		}
 	}
 	drag := func(source, target string) {
@@ -66,7 +67,7 @@ func TestWorkspaceSectionDragReordersSidebar(t *testing.T) {
 
 	// Move across wrapped rows; a drag must never toggle the dragged page.
 	drag("Tags", "Editor")
-	if h.app.visibleSections()[0] != sectionTags || !slices.Equal(h.app.settings.VisibleSections, workspaceSectionIDs) {
+	if h.app.visibleSections()[0] != sectionTags || !slices.Equal(h.app.settings.VisibleSections, defaultVisibleSections) {
 		t.Fatalf("drag changed visibility or missed the first position: %+v", h.app.settings)
 	}
 	if saved := loadAppSettings(h.app.pathUserData); !slices.Equal(saved.SectionOrder, h.app.settings.SectionOrder) {
@@ -106,16 +107,16 @@ func TestWorkspaceSectionDragReordersSidebar(t *testing.T) {
 	}
 }
 
-// A fresh workspace lists every section, using the editor's new display name
-// while retaining its stable "code" settings id.
-func TestDefaultSectionsShowEveryWorkspaceTab(t *testing.T) {
+func TestDefaultSectionsHideAgentTasks(t *testing.T) {
 	h := menuTestApp(t)
-	if !slices.Equal(h.app.settings.VisibleSections, workspaceSectionIDs) {
-		t.Fatalf("default sections = %q, want %q", h.app.settings.VisibleSections, workspaceSectionIDs)
+	if !slices.Equal(h.app.settings.VisibleSections, defaultVisibleSections) {
+		t.Fatalf("default sections = %q, want %q", h.app.settings.VisibleSections, defaultVisibleSections)
 	}
-	for _, shown := range workspaceSections {
-		if !slices.Contains(h.texts(), shown) {
-			t.Errorf("the default sidebar is missing %q: %q", shown, h.texts())
+	texts := h.texts()
+	for section, name := range workspaceSections {
+		wantVisible := section != sectionAgents
+		if shown := slices.Contains(texts, name); shown != wantVisible {
+			t.Errorf("%q sidebar visibility = %t, want %t", name, shown, wantVisible)
 		}
 	}
 }
@@ -231,11 +232,18 @@ func TestSettingsSectionPickerTogglesTabs(t *testing.T) {
 		t.Fatalf("open Workspace settings: %v", err)
 	}
 	h.tester.Frame()
-	if !slices.Contains(h.texts(), "Show Tags") {
-		t.Fatalf("the picker does not offer every section: %q", h.texts())
+	if chip, ok := h.tester.AccessByRole(ui.RoleCheckBox, "Show Agent tasks"); !ok || chip.Checked {
+		t.Fatal("the picker should offer Agent tasks as an unchecked option")
+	}
+	if err := h.tester.Click("Show Agent tasks"); err != nil {
+		t.Fatalf("show Agent tasks: %v", err)
+	}
+	h.tester.Frame()
+	if !h.app.sectionVisible(sectionAgents) {
+		t.Fatal("the picker did not show Agent tasks")
 	}
 
-	// Every section starts visible: hide Tags, then show it again.
+	// Hide Tags, then show it again.
 	if err := h.tester.Click("Show Tags"); err != nil {
 		t.Fatalf("hide Tags: %v", err)
 	}

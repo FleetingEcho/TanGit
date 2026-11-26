@@ -309,17 +309,7 @@ func (a *app) activeDiff() (shownDiff, bool) {
 			media:    a.branchCommitDiffMedia,
 		}, true
 	case sectionCompare:
-		if a.compare.selected < 0 || a.compare.selected >= len(a.compare.files) {
-			return shownDiff{}, false
-		}
-		file := a.compare.files[a.compare.selected]
-		return shownDiff{
-			title:    file.Path,
-			subtitle: a.compare.appliedFrom + " → " + a.compare.appliedTo,
-			path:     file.Path,
-			patch:    a.compare.diffPatch,
-			state:    a.compare.diffState,
-		}, true
+		return a.compareShownDiff()
 	case sectionStash:
 		if a.selectedStash < 0 || a.selectedStash >= len(a.snapshot.Stashes) ||
 			a.selectedStashFile < 0 || a.selectedStashFile >= len(a.stashFiles) {
@@ -355,6 +345,9 @@ func (a *app) activeDiffLoading() bool {
 	case sectionStash:
 		return a.stashDiffLoading
 	case sectionCompare:
+		if a.compareEffectiveTab() != compareTabFiles {
+			return a.compare.commits.diffLoading
+		}
 		return a.compare.diffLoading
 	}
 	return false
@@ -378,6 +371,9 @@ func (a *app) activeDiffError() string {
 	case sectionStash:
 		return a.stashDiffError
 	case sectionCompare:
+		if a.compareEffectiveTab() != compareTabFiles {
+			return a.compare.commits.diffError
+		}
 		return a.compare.diffError
 	}
 	return ""
@@ -453,8 +449,11 @@ func (a *app) diffViewOptionsWith(c *ui.Context, leading func(*ui.Context), incl
 	})
 }
 
+// compareDiffControlsActive says the diff options on screen are Compare's own:
+// its file diffs read with them. A commit chosen on the commit tabs is an
+// ordinary commit diff, read with the options every other commit shares.
 func (a *app) compareDiffControlsActive() bool {
-	return a.workspaceTab == sectionCompare && !a.fileHistoryOpen
+	return a.workspaceTab == sectionCompare && !a.fileHistoryOpen && a.compareEffectiveTab() == compareTabFiles
 }
 
 // toggleDiffWhitespace changes the patch, rather than just its presentation.
@@ -517,6 +516,8 @@ func (a *app) reloadOrdinaryDiffs() {
 	a.branchCommitDiffState = nil
 	a.branchCommitDiffMedia = nil
 	a.branchCommitDiffLoading = false
+
+	a.resetCompareCommitDiff()
 
 	a.stashDiffHash, a.stashDiffPath = "", ""
 	a.stashDiffPatch, a.stashDiffError = "", ""
@@ -591,6 +592,11 @@ func (a *app) fullscreenCommitDetail() (repository.Commit, commitDetailViewState
 			return repository.Commit{}, commitDetailViewState{}, false
 		}
 		return a.branchCommits[a.selectedBranchCommit], a.branchCommitDetailViewState(), true
+	case sectionCompare:
+		if commit, ok := a.compareCommitsSelected(); ok {
+			return commit, a.compareCommitDetailViewState(), true
+		}
+		return repository.Commit{}, commitDetailViewState{}, false
 	default:
 		return repository.Commit{}, commitDetailViewState{}, false
 	}
@@ -803,6 +809,20 @@ func (a *app) fullscreenDiffFiles() []fullscreenFile {
 		}
 		return files
 	case sectionCompare:
+		if a.compareEffectiveTab() != compareTabFiles {
+			state := &a.compare.commits
+			files := make([]fullscreenFile, 0, len(state.files))
+			for i, file := range state.files {
+				files = append(files, fullscreenFile{
+					id:      "compare-commit\x00" + file.Path,
+					label:   file.Path,
+					status:  file.Status,
+					current: i == state.selectedFile,
+					choose:  func() { state.selectedFile = i },
+				})
+			}
+			return files
+		}
 		files := make([]fullscreenFile, 0, len(a.compare.files))
 		for i, file := range a.compare.files {
 			files = append(files, fullscreenFile{

@@ -157,29 +157,16 @@ func readyPaletteShell(t *testing.T) (*shell, *ui.Tester, *app) {
 	return s, tt, tab.app
 }
 
-func TestCommandPalettePickerOpensAndCloses(t *testing.T) {
+// The Home picker has no workspace to search, so neither shortcut opens the
+// palette there.
+func TestCommandPaletteStaysClosedOnThePicker(t *testing.T) {
 	s, tt, _ := newShellTester(t, repository.Snapshot{})
-	tt.Key(ui.Cmd|ui.Shift, ui.KeyP)
-	tt.Frame()
-	if !s.palette.open {
-		t.Fatal("Cmd/Ctrl+Shift+P did not open the palette on the picker")
-	}
-	if !tt.Focused("Search commands") {
-		t.Fatal("palette did not focus its search field")
-	}
-	tt.Type("terminal")
-	tt.Frame()
-	if s.palette.query != "terminal" {
-		t.Fatalf("palette query did not receive text: %q", s.palette.query)
-	}
-	tt.Key(0, ui.KeyEscape)
-	tt.Frame()
-	tt.Frame()
-	if s.palette.open {
-		t.Fatalf("Escape did not close the palette: query=%q crash=%q focused=%v", s.palette.query, s.crash, tt.Focused("Search commands"))
-	}
-	if _, ok := tt.AccessByRole(ui.RoleDialog, "Command Palette"); ok {
-		t.Fatal("closed palette remained in the accessibility tree")
+	for _, mods := range []ui.Modifiers{ui.Cmd | ui.Shift, ui.Cmd} {
+		tt.Key(mods, ui.KeyP)
+		tt.Frame()
+		if s.palette.open {
+			t.Fatalf("the palette opened on the picker with modifiers %v", mods)
+		}
 	}
 }
 

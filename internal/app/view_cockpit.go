@@ -456,9 +456,18 @@ func cockpitSeverityGlyph(severity attentionSeverity) *ui.SVG {
 
 // cockpitChip is a small rounded label: a status the eye can read in passing.
 func cockpitChip(c *ui.Context, text string, color ui.Color, icon *ui.SVG) {
+	cockpitChipTip(c, text, "", color, icon)
+}
+
+// cockpitChipTip is a chip that explains itself on hover when tip is not empty.
+func cockpitChipTip(c *ui.Context, text, tip string, color ui.Color, icon *ui.SVG) {
 	theme := c.Theme()
-	ui.Row(c).AlignItems(ui.Center).Gap(5).Padding(2, 9).Radius(999).Shrink(0).
-		Background(color.Alpha(0.14)).Children(func() {
+	chip := ui.Row(c).AlignItems(ui.Center).Gap(5).Padding(2, 9).Radius(999).Shrink(0).
+		Background(color.Alpha(0.14))
+	if tip != "" {
+		chip.Tooltip(tip)
+	}
+	chip.Children(func() {
 		if icon != nil {
 			ui.Icon(c, icon).FontSize(12).TextColor(color)
 		}

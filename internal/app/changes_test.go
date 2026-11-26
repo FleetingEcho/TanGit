@@ -1188,6 +1188,16 @@ func TestSectionBarsCarryTheirOwnActions(t *testing.T) {
 	h.waitFor(t, "every file to be unstaged", func() bool { return calls.has("unstage-all") })
 }
 
+func TestDiscardAllChangesDisabledWhenOnlyStagedFilesRemain(t *testing.T) {
+	h, _ := changesTestApp(t, []repository.File{
+		{Path: "staged.txt", Status: "M ", Staged: true, Tracked: true},
+	})
+	button, found := h.tester.AccessByRole(ui.RoleButton, "Discard all changes")
+	if !found || !button.Disabled {
+		t.Fatalf("Discard all changes button found=%t disabled=%t with an empty Changes section", found, button.Disabled)
+	}
+}
+
 // Discarding all changes asks first and then throws away every changed file,
 // staged ones included.
 func TestDiscardAllChangesConfirmsAndDiscardsEveryFile(t *testing.T) {

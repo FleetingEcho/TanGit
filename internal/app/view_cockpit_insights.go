@@ -190,7 +190,9 @@ func (a *app) cockpitCodeChangesCard(c *ui.Context) {
 			if net < 0 {
 				sign = "−"
 			}
-			cockpitChip(c, trf("net %s lines", sign+groupedNumber(max(net, -net))), theme.TextMuted, nil)
+			cockpitChipTip(c, trf("net change %s lines", sign+groupedNumber(max(net, -net))),
+				trf("%s added − %s deleted", groupedNumber(volume.Added), groupedNumber(volume.Deleted)),
+				theme.TextMuted, nil)
 			cockpitChip(c, contributorCountLabel(volume.Commits), theme.TextMuted, nil)
 		})
 		most := 1

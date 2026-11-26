@@ -2066,11 +2066,36 @@ func TestTagLifecycle(t *testing.T) {
 	if len(snapshot.Tags) != 2 {
 		t.Fatalf("unexpected tags %#v", snapshot.Tags)
 	}
+	if got := strings.TrimSpace(gitOutput(t, dir, "cat-file", "-t", "refs/tags/v1.0.0")); got != "commit" {
+		t.Fatalf("lightweight tag points to a %q object, want commit", got)
+	}
+	if got := strings.TrimSpace(gitOutput(t, dir, "for-each-ref", "--format=%(objecttype) %(contents:subject)", "refs/tags/v1.1.0")); got != "tag Version 1.1" {
+		t.Fatalf("annotated tag type and message = %q, want tag Version 1.1", got)
+	}
 	if err := session.PushTag(context.Background(), "origin", "v1.0.0"); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.TrimSpace(gitOutput(t, remote, "rev-parse", "refs/tags/v1.0.0")); got == "" {
 		t.Fatal("pushed tag missing")
+	}
+	if err := session.DeleteRemoteTag(context.Background(), "origin", "v1.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	tagNames := func(repo string) string {
+		return strings.TrimSpace(gitOutput(t, repo, "tag", "--list", "--sort=refname"))
+	}
+	if names := tagNames(remote); names != "" {
+		t.Fatalf("remote tags after deletion = %q, want none", names)
+	}
+	const bothTags = "v1.0.0\nv1.1.0"
+	if names := tagNames(dir); names != bothTags {
+		t.Fatalf("local tags after remote deletion = %q, want %q", names, bothTags)
+	}
+	if err := session.PushAllTags(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if names := tagNames(remote); names != bothTags {
+		t.Fatalf("remote tags after bulk push = %q, want %q", names, bothTags)
 	}
 	if err := session.DeleteTag(context.Background(), "v1.0.0"); err != nil {
 		t.Fatal(err)
@@ -2084,6 +2109,9 @@ func TestTagLifecycle(t *testing.T) {
 	}
 	if len(snapshot.Tags) != 0 {
 		t.Fatalf("tags still present after delete: %#v", snapshot.Tags)
+	}
+	if names := tagNames(remote); names != bothTags {
+		t.Fatalf("remote tags after local deletion = %q, want %q", names, bothTags)
 	}
 }
 

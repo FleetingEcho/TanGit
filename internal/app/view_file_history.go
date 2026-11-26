@@ -274,6 +274,15 @@ func (a *app) openFileHistoryCommitInHistory(hash string) {
 		return
 	}
 	a.closeFileHistory()
+	a.showCommitInHistory(hash)
+}
+
+// showCommitInHistory opens History on a commit, searching for it by hash when
+// the loaded page or the active filter does not contain it.
+func (a *app) showCommitInHistory(hash string) {
+	if !a.sectionVisible(sectionHistory) {
+		return
+	}
 	a.setWorkspaceTab(sectionHistory)
 	for index, commit := range a.visibleCommits() {
 		if commit.Hash == hash {

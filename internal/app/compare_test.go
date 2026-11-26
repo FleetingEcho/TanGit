@@ -13,6 +13,47 @@ import (
 	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
+func TestCompareModeTabsAboveRefsWithIndividualTooltips(t *testing.T) {
+	h := menuTestApp(t)
+	h.press(t, ui.KeyW)
+
+	from, found := h.tester.Access("From ref")
+	if !found {
+		t.Fatal("missing From ref input")
+	}
+	modes := []struct{ label, tooltip string }{
+		{"Branch changes", "Compare the common ancestor with the To ref to see what changed on that side since the refs diverged."},
+		{"Exact difference", "Compare the current contents of the From and To refs, including changes made on either side."},
+	}
+	for index, mode := range modes {
+		tab, found := h.tester.AccessByRole(ui.RoleTab, mode.label)
+		if !found {
+			t.Fatalf("missing %q tab", mode.label)
+		}
+		bounds := tab.Bounds
+		if index == 0 && bounds.X != from.Bounds.X {
+			t.Fatalf("the first tab starts at x=%v, want alignment with the From ref at x=%v", bounds.X, from.Bounds.X)
+		}
+		if bounds.Y+bounds.H > from.Bounds.Y {
+			t.Fatalf("%q tab overlaps or follows the From ref input", mode.label)
+		}
+		h.tester.Move(bounds.X+bounds.W/2, bounds.Y+bounds.H/2)
+		h.tester.Advance(time.Second)
+		if !h.tester.HasText(mode.tooltip) || h.tester.HasText(modes[1-index].tooltip) {
+			t.Fatalf("hovering over %q did not show its individual tooltip", mode.label)
+		}
+	}
+	if h.app.compare.mode != compareModeBranch {
+		t.Fatal("hovering changed the comparison mode")
+	}
+	if err := h.tester.Click("Exact difference"); err != nil {
+		t.Fatal(err)
+	}
+	if h.app.compare.mode != compareModeExact {
+		t.Fatal("clicking Exact difference did not change the comparison mode")
+	}
+}
+
 func TestCompareRefsUsesWorkspacePage(t *testing.T) {
 	h := menuTestApp(t)
 	h.press(t, ui.KeyW)

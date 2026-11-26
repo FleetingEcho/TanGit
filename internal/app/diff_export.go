@@ -72,7 +72,7 @@ func (a *app) exportCompareDiff() {
 	}
 	a.compare.wholeDiffLoading = true
 	session := a.session
-	from, to, options := a.compare.appliedFrom, a.compare.appliedTo, a.compare.appliedOptions
+	from, to, options := a.compareFilesFrom(), a.compare.appliedTo, a.compare.appliedOptions
 	generation, token := a.generation, a.compare.token
 	opts := mygo.SaveDialogOptions{
 		Parent:      a.window,

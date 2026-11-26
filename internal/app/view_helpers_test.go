@@ -18,11 +18,6 @@ func TestAssistantPreviewEditorsOwnModalAndQuietRefreshLifecycle(t *testing.T) {
 			open: (*app).openConflictAssistant, close: (*app).closeConflictAssistant,
 			isOpen: func(a *app) bool { return a.assistance.conflict.open },
 		},
-		{
-			name: "Change Splitter patch previews and AssistCommand editor",
-			open: (*app).openChangeSplitter, close: (*app).closeChangeSplitter,
-			isOpen: func(a *app) bool { return a.assistance.splitter.open },
-		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

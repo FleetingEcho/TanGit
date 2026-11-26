@@ -79,6 +79,10 @@ func (s *shell) openCommandPaletteWithQuery(c *ui.Context, query string) {
 	if s == nil || s.palette.open || s.activity.open {
 		return
 	}
+	// The Home picker has no workspace to search, so the palette stays closed.
+	if t := s.activeTab(); t != nil && !t.repository() {
+		return
+	}
 	a := s.activeApp()
 	if a != nil && a.paletteBlocked() {
 		// Say why nothing opened, rather than ignoring the click or the key.
@@ -485,7 +489,8 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 				ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
 					ui.Icon(c, searchIcon).FontSize(20).TextColor(theme.Accent)
 					ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
-						ui.Text(c, tr("Command Palette")).FontSize(19).Bold()
+						title := paletteTitle(s.palette.query, s.palette.target != nil)
+						ui.Text(c, title).FontSize(19).Bold()
 						subtitle := tr("Search navigation and actions for the current workspace") + " · " + cmdShortcutChord() + "+Shift+P"
 						if target := s.palette.target; target != nil {
 							subtitle = trf("Actions for %s — %s", target.commit.ShortHash, target.commit.Subject)
@@ -947,4 +952,27 @@ func searchPlaceholder(actions bool) string {
 		return tr("Filter the actions")
 	}
 	return tr("Search commands — paste a commit hash, or type > @ # / ~ !")
+}
+
+// paletteTitle names what the window does in the current mode, so a query that
+// starts with a mode character is not still headed "Command Palette".
+func paletteTitle(query string, actions bool) string {
+	if actions {
+		return tr("Command Palette")
+	}
+	switch mode, _ := commandQueryMode(query); mode {
+	case '>':
+		return tr("Run Command")
+	case '@':
+		return tr("Search Branches")
+	case '#':
+		return tr("Search Commits")
+	case '/':
+		return tr("Search File")
+	case '~':
+		return tr("Switch Repository")
+	case '!':
+		return tr("Execute Command")
+	}
+	return tr("Command Palette")
 }

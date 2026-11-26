@@ -132,7 +132,6 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.worktreeFormModal(c)
 	a.agentTaskFormModal(c)
 	a.conflictAssistantModal(c)
-	a.changeSplitterModal(c)
 	a.worktreeMoveFormModal(c)
 	a.worktreeLockFormModal(c)
 	a.worktreeRepairFormModal(c)
@@ -832,96 +831,37 @@ func (a *app) appView(c *ui.Context, overlayTopInset float32) {
 // mainArea docks the terminal on any workspace edge. Maximizing temporarily
 // gives it the whole content area without changing the size restored later.
 func (a *app) mainArea(c *ui.Context) {
-	target := float32(0)
-	if a.term.panelOpen {
-		target = a.term.percent
-		if a.term.panelMaximized {
-			target = 100
-		}
-	}
-	box := ui.Box(c)
-	size := target
-	if a.term.panelOpen && !a.term.panelMaximized {
-		size = box.Animate("terminal-size", target, 200*time.Millisecond)
-	} else {
-		// Hiding and maximizing switch directly between layouts; their targets
-		// are not rendered as fractional sizes, so animating would only rebuild.
-		box.Jump("terminal-size", target)
-	}
-	dock := a.terminalDock()
-	terminalFirst := dock == terminalDockTop || dock == terminalDockLeft
-
-	switch {
-	case !a.term.panelOpen || size <= 0.5:
-		// Hiding must not shrink the live shell along with the animation. Once
-		// its view is gone MyGo retains the last grid until it is shown again.
+	if !a.term.panelOpen {
 		a.workspaceView(c)
-	case a.term.panelMaximized:
-		// Maximization is a layout switch, not a resize animation. Waiting for
-		// the spring leaves the workspace visible while its terminal is gone.
-		a.terminalPaneView(c)
-	case box.Settled("terminal-size"):
-		if terminalFirst {
-			a.term.shown = a.term.percent
-		} else {
-			a.term.shown = 100 - a.term.percent
-		}
-		workspace := func() { a.workspaceView(c) }
-		terminal := func() { a.terminalPaneView(c) }
-		first, second := workspace, terminal
-		if terminalFirst {
-			first, second = terminal, workspace
-		}
-		if dock == terminalDockLeft || dock == terminalDockRight {
-			paneSplitPercent(c, &a.term.shown, first, second).Grow(1)
-		} else {
-			paneSplitVerticalPercent(c, &a.term.shown, first, second).Grow(1)
-		}
-		restored := 100 - a.term.shown
-		if terminalFirst {
-			restored = a.term.shown
-		}
-		if a.term.percent != restored {
-			a.term.percent = restored
-			box.Jump("terminal-size", a.term.percent)
-		}
-	default:
-		// Animate an empty dock on the way in. Mounting terminal.View at every
-		// fractional size would make fish/zsh redraw prompts for each PTY resize.
-		a.terminalDockOpeningView(c, dock, size)
-	}
-}
-
-// terminalDockOpeningView reserves the animated edge before mounting the live
-// terminal. Empty sizing keeps hidden and intermediate PTY dimensions stable.
-func (a *app) terminalDockOpeningView(c *ui.Context, dock string, size float32) {
-	horizontal := dock == terminalDockLeft || dock == terminalDockRight
-	terminalFirst := dock == terminalDockTop || dock == terminalDockLeft
-	if horizontal {
-		ui.Row(c).Grow(1).Children(func() {
-			if terminalFirst {
-				ui.Row(c).FillHeight().WidthPercent(size)
-				ui.Divider(c)
-			}
-			ui.Column(c).Grow(1).Children(func() { a.workspaceView(c) })
-			if !terminalFirst {
-				ui.Divider(c)
-				ui.Row(c).FillHeight().WidthPercent(size)
-			}
-		})
 		return
 	}
-	ui.Column(c).Grow(1).Children(func() {
-		if terminalFirst {
-			ui.Column(c).FillWidth().HeightPercent(size)
-			ui.Divider(c)
-		}
-		ui.Column(c).Grow(1).Children(func() { a.workspaceView(c) })
-		if !terminalFirst {
-			ui.Divider(c)
-			ui.Column(c).FillWidth().HeightPercent(size)
-		}
-	})
+	if a.term.panelMaximized {
+		a.terminalPaneView(c)
+		return
+	}
+
+	// Mount the real split at its final size, including while a shell starts,
+	// so the workspace doesn't reflow through an empty intermediate dock.
+	dock := a.terminalDock()
+	terminalFirst := dock == terminalDockTop || dock == terminalDockLeft
+	workspace := func() { a.workspaceView(c) }
+	terminal := func() { a.terminalPaneView(c) }
+	first, second := workspace, terminal
+	a.term.shown = 100 - a.term.percent
+	if terminalFirst {
+		first, second = terminal, workspace
+		a.term.shown = a.term.percent
+	}
+	if dock == terminalDockLeft || dock == terminalDockRight {
+		paneSplitPercent(c, &a.term.shown, first, second).Grow(1)
+	} else {
+		paneSplitVerticalPercent(c, &a.term.shown, first, second).Grow(1)
+	}
+	if terminalFirst {
+		a.term.percent = a.term.shown
+	} else {
+		a.term.percent = 100 - a.term.shown
+	}
 }
 
 // workspaceView is the section sidebar beside the active section, its width
@@ -1434,7 +1374,7 @@ func (a *app) repositoryPathView(c *ui.Context) {
 
 func (a *app) statusBar(c *ui.Context) {
 	theme := c.Theme()
-	islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(4, 12)).Children(func() {
+	islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(4, 12)).PopoverMenu(a.statusBarMenu).Children(func() {
 		a.repositoryPathView(c)
 		if a.actionError != "" {
 			// The error is one line here, whatever Git printed: a long

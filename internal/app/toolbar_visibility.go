@@ -1,6 +1,10 @@
 package app
 
-import "slices"
+import (
+	"slices"
+
+	"github.com/egoist/mygo/ui"
+)
 
 // toolbarAction describes one optional global action. IDs are persisted;
 // labels follow the button's existing translation.
@@ -73,4 +77,24 @@ func setToolbarActionVisible(hidden []string, actions []toolbarAction, id string
 		hidden = append(slices.Clone(hidden), id)
 	}
 	return normalizeHiddenToolbarActions(hidden, actions)
+}
+
+// statusBarMenu is the status bar's right-click menu: one check item per
+// optional button, like an editor's status bar, so a button is shown or hidden
+// where it is. It edits the same list as Settings.
+func (a *app) statusBarMenu(m *ui.Menu) {
+	for _, action := range statusToolbarActions {
+		visible := toolbarActionVisible(a.settings.HiddenStatusActions, action.id)
+		if m.Item(tr(action.label)).Checked(visible).Chosen() {
+			a.settings.HiddenStatusActions = setToolbarActionVisible(a.settings.HiddenStatusActions, statusToolbarActions, action.id, !visible)
+			a.settingsChanged(nil)
+		}
+	}
+	if len(a.settings.HiddenStatusActions) > 0 {
+		m.Separator()
+		if m.Item(tr("Show all status bar buttons")).Chosen() {
+			a.settings.HiddenStatusActions = nil
+			a.settingsChanged(nil)
+		}
+	}
 }

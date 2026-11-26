@@ -733,7 +733,6 @@ func (a *app) changesHeader(c *ui.Context) {
 		a.fileMutationIndicator(c)
 		c.Key("changes-header-actions")
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
-			flatIconButton(c, "Commit staged changes", "Ctrl+Enter", commitIcon, 15, 5, !a.canCommit(), a.beginCommit)
 			treeLabel, treeTooltip := "Show files as tree", "Group files by directory"
 			if a.fileTreeMode {
 				treeLabel, treeTooltip = "Show files as a flat list", "Show every full file path"
@@ -756,10 +755,6 @@ func (a *app) changesHeader(c *ui.Context) {
 			more.PopoverMenuButton(func(m *ui.Menu) {
 				if m.Item(tr("Apply patch…")).Disabled(a.actionBusy || a.session == nil).Chosen() {
 					a.beginPatchImport()
-				}
-				_, canSplit := a.selectedChangeSplitFile()
-				if m.Item(tr("Change Splitter…")).Tooltip(tr("Group original diff identities and stage only an explicitly applied group")).Disabled(a.actionBusy || a.session == nil || !canSplit).Chosen() {
-					a.openChangeSplitter()
 				}
 				if m.Item(tr("Apply mailbox patch…")).Disabled(a.actionBusy || a.session == nil).Chosen() {
 					a.beginMailboxPatchImport()
@@ -922,7 +917,7 @@ func (a *app) changeHeaderRow(c *ui.Context, title string, icon *ui.SVG, count i
 				}, nil)
 			})
 		flatIconButton(c, "Discard all changes", "Discard every change", undoIcon, 14, 4,
-			a.actionBusy || len(a.snapshot.Files) == 0, a.confirmDiscardAllChanges)
+			a.actionBusy || count == 0, a.confirmDiscardAllChanges)
 	})
 }
 

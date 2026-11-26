@@ -18,13 +18,19 @@ type comparisonState struct {
 	to      string
 	context string
 	options repository.DiffOptions
+	mode    compareMode
+	tab     compareTab
 
 	appliedFrom    string
 	appliedTo      string
 	appliedOptions repository.DiffOptions
-	files          []repository.CommitFile
-	filesLoading   bool
-	filesError     string
+	// appliedBase is the revision the file view starts from when it is not the
+	// typed ref: the merge base of a branch-changes comparison.
+	appliedBase  string
+	commits      compareCommitsState
+	files        []repository.CommitFile
+	filesLoading bool
+	filesError   string
 
 	fileSearch  string
 	fileRows    []fileTreeRow
@@ -84,6 +90,8 @@ func (a *app) resetComparison() {
 	a.compare.options = repository.DiffOptions{ContextLines: 3}
 	a.compare.appliedFrom = ""
 	a.compare.appliedTo = ""
+	a.compare.appliedBase = ""
+	a.resetCompareCommits()
 	a.compare.appliedOptions = repository.DiffOptions{}
 	a.compare.files = nil
 	a.compare.filesError = ""
@@ -129,6 +137,8 @@ func (a *app) beginCompare() {
 	a.compare.appliedFrom, a.compare.appliedTo = from, to
 	a.compare.appliedOptions = options
 	a.compare.files = nil
+	a.compare.appliedBase = ""
+	a.resetCompareCommits()
 	a.compare.filesLoading = true
 	a.compare.filesError = ""
 	a.compare.selected = -1
@@ -144,10 +154,25 @@ func (a *app) beginCompare() {
 	session := a.session
 	generation := a.generation
 	token := a.compare.token
+	mode := a.compare.mode
 	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		files, err := requireHistorySession(session).CompareFiles(ctx, from, to, options)
+		// The commits only one side has, and where the two diverged. A session
+		// that cannot list them, or a read that fails, still compares files:
+		// the file read below reports any real problem with the refs.
+		var comparison repository.CommitComparison
+		haveCommits := false
+		if lister, ok := session.(commitComparisonSession); ok {
+			if result, commitErr := lister.CompareCommits(ctx, from, to, repository.CompareCommitsLimit); commitErr == nil {
+				comparison, haveCommits = result, true
+			}
+		}
+		base := from
+		if mode == compareModeBranch && haveCommits && comparison.MergeBase != "" {
+			base = comparison.MergeBase
+		}
+		files, err := requireHistorySession(session).CompareFiles(ctx, base, to, options)
 		a.updateChanged(func() bool {
 			if generation != a.generation || token != a.compare.token {
 				return false
@@ -161,6 +186,12 @@ func (a *app) beginCompare() {
 				files = []repository.CommitFile{}
 			}
 			a.compare.files = files
+			if base != from {
+				a.compare.appliedBase = base
+			}
+			if haveCommits {
+				a.setCompareCommits(comparison)
+			}
 			if len(files) > 0 {
 				a.compare.selected = 0
 			}
@@ -267,44 +298,7 @@ func (a *app) requestCompareFileDiff() {
 		return
 	}
 	file := a.compare.files[a.compare.selected]
-	if a.compare.diffKey == file.Path {
-		return
-	}
-	a.compare.diffKey = file.Path
-	a.compare.diffPatch = ""
-	a.compare.diffState = nil
-	a.compare.diffLoading = true
-	a.compare.diffError = ""
-
-	session := a.session
-	generation := a.generation
-	token := a.compare.token
-	from, to := a.compare.appliedFrom, a.compare.appliedTo
-	options := a.compare.appliedOptions
-	layout, wrap := a.diffLayout(), a.diffWrap
-	ctx := a.repositoryWork.Context()
-	go func() {
-		defer a.recoverBackground()
-		diff, err := requireHistorySession(session).CompareFileDiff(ctx, from, to, file, options)
-		var state *editor.DiffState
-		if err == nil && (diff.Patch != "" || diff.OldText != "" || diff.NewText != "") {
-			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
-		}
-		a.updateChanged(func() bool {
-			if generation != a.generation || token != a.compare.token ||
-				a.compare.diffKey != file.Path {
-				return false
-			}
-			a.compare.diffLoading = false
-			if err != nil {
-				a.compare.diffError = safeError(err)
-				return a.workspaceTab == sectionCompare
-			}
-			a.compare.diffPatch = diff.Patch
-			a.compare.diffState = state
-			return a.workspaceTab == sectionCompare
-		})
-	}()
+	a.startCompareDiff(file.Path, a.compareFilesFrom(), a.compare.appliedTo, file)
 }
 
 // comparePage puts display options beside the title and both refs in one
@@ -397,6 +391,7 @@ func (a *app) comparePage(c *ui.Context) {
 				ui.Icon(c, compareIcon).FontSize(16).TextColor(theme.Accent)
 				ui.Text(c, tr("Compare refs")).FontSize(16).Bold()
 			})
+			a.compareModeTabs(c)
 			ui.Row(c).AlignItems(ui.End).Gap(8).Children(func() {
 				from := a.compareRefInput(c, "From ref", "main or HEAD~1", &a.compare.from).Grow(1)
 				to := a.compareRefInput(c, "To ref", "feature or HEAD", &a.compare.to).Grow(1)
@@ -526,13 +521,31 @@ func (a *app) compareResults(c *ui.Context, theme *ui.Theme) {
 				TextColor(theme.TextMuted)
 		})
 		return
-	case len(a.compare.files) == 0:
+	case len(a.compare.files) == 0 && !a.compareCommitsAvailable():
 		ui.Column(c).Grow(1).Center().Children(func() {
 			ui.Text(c, tr("No changes between these refs.")).TextColor(theme.TextMuted)
 		})
 		return
 	}
 
+	ui.Column(c).Grow(1).FillHeight().Gap(8).Children(func() {
+		a.compareSummary(c)
+		a.compareResultTabs(c)
+		switch {
+		case a.compareEffectiveTab() != compareTabFiles:
+			a.compareCommitsView(c, theme)
+		case len(a.compare.files) == 0:
+			ui.Column(c).Grow(1).Center().Children(func() {
+				ui.Text(c, tr("No changes between these refs.")).TextColor(theme.TextMuted)
+			})
+		default:
+			a.compareFilesView(c, theme)
+		}
+	})
+}
+
+// compareFilesView is the file tab: the changed files and the chosen diff.
+func (a *app) compareFilesView(c *ui.Context, theme *ui.Theme) {
 	a.compare.fileRows = a.syncCompareFileRows()
 	a.collapsibleContentPaneSplit(c, &a.compare.listWidth, &a.workspacePaneCollapsed[sectionCompare],
 		"Expand list pane", func() {
@@ -613,4 +626,47 @@ func (a *app) compareResults(c *ui.Context, theme *ui.Theme) {
 				}
 			})
 		})
+}
+
+// startCompareDiff reads one file's diff between two revisions with the
+// options that produced the file list. key names what is being read, so a
+// slower response for another file is dropped; token and generation reject
+// responses for a previous comparison or repository.
+func (a *app) startCompareDiff(key, from, to string, file repository.CommitFile) {
+	if a.compare.diffKey == key {
+		return
+	}
+	a.compare.diffKey = key
+	a.compare.diffPatch = ""
+	a.compare.diffState = nil
+	a.compare.diffLoading = true
+	a.compare.diffError = ""
+
+	session := a.session
+	generation := a.generation
+	token := a.compare.token
+	options := a.compare.appliedOptions
+	layout, wrap := a.diffLayout(), a.diffWrap
+	ctx := a.repositoryWork.Context()
+	go func() {
+		defer a.recoverBackground()
+		diff, err := requireHistorySession(session).CompareFileDiff(ctx, from, to, file, options)
+		var state *editor.DiffState
+		if err == nil && (diff.Patch != "" || diff.OldText != "" || diff.NewText != "") {
+			state, err = buildDiffState(layout, wrap, repository.File{Path: file.Path}, diff, options)
+		}
+		a.updateChanged(func() bool {
+			if generation != a.generation || token != a.compare.token || a.compare.diffKey != key {
+				return false
+			}
+			a.compare.diffLoading = false
+			if err != nil {
+				a.compare.diffError = safeError(err)
+				return a.workspaceTab == sectionCompare
+			}
+			a.compare.diffPatch = diff.Patch
+			a.compare.diffState = state
+			return a.workspaceTab == sectionCompare
+		})
+	}()
 }

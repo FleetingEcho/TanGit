@@ -3,8 +3,6 @@ package app
 import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
-
-	"github.com/FleetingEcho/lazygitGo/internal/agentassist"
 )
 
 // assistDialog shares the existing read-only patch dialog's bounded frame.
@@ -51,7 +49,7 @@ func (a *app) assistDialog(c *ui.Context, open bool, title, subtitle string, ico
 func (a *app) assistProfileEditor(c *ui.Context) {
 	ui.Column(c).Gap(6).FillWidth().Children(func() {
 		ui.TextInput(c, &a.agents.assistCommand).Label(tr("AssistCommand (optional)")).Placeholder(tr("advisor {requestFile} {responseFile} {artifactDir}"))
-		ui.Text(c, tr("Conflict Assistant and Change Splitter run this JSON-file helper only after an explicit request. It receives only isolated request, response, and artifact paths; it never returns a Git patch.")).
+		ui.Text(c, tr("Conflict Assistant runs this JSON-file helper only after an explicit request. It receives only isolated request, response, and artifact paths; it never returns a Git patch.")).
 			TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1)
 	})
 }
@@ -156,145 +154,4 @@ func (a *app) conflictAssistantModal(c *ui.Context) {
 				}
 			})
 		})
-}
-
-func (a *app) changeSplitExclusionPath(exclusion agentassist.Exclusion) string {
-	assist := &a.assistance.splitter
-	for _, artifact := range assist.request.Artifacts {
-		if artifact.ID != exclusion.ArtifactID {
-			continue
-		}
-		for _, file := range artifact.Files {
-			if file.ID == exclusion.FileID {
-				return file.Path
-			}
-		}
-	}
-	return assist.file.Path
-}
-
-func (a *app) changeSplitterModal(c *ui.Context) {
-	assist := &a.assistance.splitter
-	a.assistDialog(c, assist.open, "Change Splitter", "Group original diff identities, preview lazygitGo-generated patches, and stage only one explicitly applied group.", diffSplitIcon,
-		a.closeChangeSplitter, func() {
-			assist = &a.assistance.splitter
-			theme := c.Theme()
-			ui.Column(c).Gap(12).FillWidth().Children(func() {
-				a.assistProfileEditor(c)
-				assistStatus(c, assist.sourceAgent, assist.status)
-				if assist.file.Path != "" {
-					ui.Textf(c, "%s %s", tr("Unstaged source:"), assist.file.Path).Selectable()
-				}
-				if assist.running {
-					ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(10).Children(func() {
-						ui.Spinner(c).Label(tr("Preparing split previews…"))
-						ui.Text(c, tr("Git is checking generated patches only; the index and working tree stay untouched.")).TextColor(theme.TextMuted)
-					})
-				}
-				if assist.err != "" {
-					ui.Column(c).Gap(5).Padding(10).Background(theme.Danger.Alpha(0.08)).Border(1, theme.Danger.Alpha(0.4)).Radius(theme.Radius).Children(func() {
-						ui.Text(c, tr("Split suggestions unavailable")).Bold().TextColor(theme.Danger)
-						ui.Text(c, assist.err).Selectable()
-					})
-				}
-				if len(assist.groups) == 0 && !assist.running && assist.err == "" {
-					ui.Column(c).Gap(6).Padding(20).Center().Children(func() {
-						ui.Text(c, tr("No change groups yet")).Bold()
-						ui.Text(c, tr("Request suggestions explicitly. No default AI runs, and uncovered identities must have visible exclusion reasons.")).TextColor(theme.TextMuted).TextAlign(ui.Center)
-					})
-				}
-				for index := range assist.groups {
-					group := &assist.groups[index]
-					summary := group.summary
-					if group.local {
-						summary = tr(summary)
-					}
-					ui.Column(c).Gap(7).Padding(10).Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius).Children(func() {
-						ui.Text(c, summary).Bold().Selectable()
-						if group.local {
-							ui.Text(c, tr("Binary content is never sent to the text helper and can only be applied as a whole file.")).TextColor(theme.Warning)
-						}
-						switch {
-						case group.previewError != "":
-							ui.Text(c, group.previewError).TextColor(theme.Danger).Selectable()
-						case group.preview == nil:
-							ui.Text(c, tr("No CAS preview is available; Apply is disabled.")).TextColor(theme.Warning)
-						case !group.preview.Clean:
-							ui.Text(c, tr("Git rejected this group against the reviewed state; Apply is disabled.")).TextColor(theme.Danger)
-							if group.preview.Diagnostic != "" {
-								ui.Text(c, group.preview.Diagnostic).Selectable()
-							}
-						default:
-							ui.Text(c, tr("Git CAS preview is clean · destination: index only")).TextColor(theme.Success)
-						}
-						if group.preview != nil {
-							for _, file := range group.preview.Files {
-								ui.Text(c, patchFileLabel(file)).TextColor(theme.TextMuted)
-							}
-							if group.preview.Text != "" {
-								ui.Text(c, tr("lazygitGo-generated patch preview")).Bold()
-								ui.Text(c, group.preview.Text).Selectable().FontSize(theme.FontSize - 1)
-								if group.preview.TextTruncated {
-									ui.Text(c, tr("The display is truncated; Apply still revalidates the complete internally generated patch.")).TextColor(theme.TextMuted)
-								}
-							}
-						}
-						applyDisabled := a.actionBusy || group.previewError != "" || group.preview == nil || !group.preview.Clean
-						ui.Row(c).Justify(ui.End).Children(func() {
-							if ui.PrimaryButton(c, tr("Apply group to index")).Tooltip(tr("Revalidate the reviewed preview and stage only this group; keep the working tree unchanged and never commit automatically")).Disabled(applyDisabled).Clicked() {
-								a.applyChangeSplitGroup(index)
-							}
-						})
-					})
-				}
-				if len(assist.exclusions) > 0 {
-					ui.Column(c).Gap(6).Children(func() {
-						ui.Text(c, tr("Explicitly excluded source identities")).Bold()
-						for _, exclusion := range assist.exclusions {
-							ui.Column(c).Gap(2).Padding(7, 9).Background(theme.Surface).Radius(theme.Radius).Children(func() {
-								ui.Text(c, a.changeSplitExclusionPath(exclusion)).TextColor(theme.TextMuted)
-								ui.Text(c, exclusion.Reason).Selectable()
-							})
-						}
-					})
-				}
-			})
-		}, func() {
-			assist = &a.assistance.splitter
-			ui.Row(c).Justify(ui.End).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
-				if ui.Button(c, tr("Close")).Tooltip(tr("Cancel and discard every unapplied group preview")).Disabled(a.actionBusy).Clicked() {
-					a.closeChangeSplitter()
-				}
-				if assist.running {
-					if ui.Button(c, tr("Cancel request")).Tooltip(tr("Retire this generation; late groups cannot become applicable")).Clicked() {
-						a.cancelChangeSplitRequest()
-					}
-					return
-				}
-				needsConfiguredHelper := !a.assistCommandConfigured() && !a.changeSplitMayBeLocalBinary()
-				getTooltip := tr("Load the original canonical diff and request identity groups explicitly")
-				if !a.assistCommandConfigured() {
-					getTooltip = tr("No external AI is configured. Binary whole-file preview remains available without a command.")
-				}
-				// A binary file needs no helper at all, so leave the explicit local
-				// preview action enabled even with the default empty configuration.
-				if ui.Button(c, tr("Get split suggestions")).Tooltip(getTooltip).
-					Disabled(a.actionBusy || assist.file.Path == "" || needsConfiguredHelper).Clicked() {
-					a.beginChangeSplitAdvice()
-				}
-			})
-		})
-}
-
-// changeSplitMayBeLocalbinary determines enablement from an already loaded
-// textual diff without doing I/O or invoking an advisor during rendering.
-// Unknown/binary sources may always try the explicit canonical read; a known
-// textual source still requires configuration.
-func (a *app) changeSplitMayBeLocalBinary() bool {
-	change, ok := a.selectedChange()
-	if !ok || a.diffPatch == "" || change.file.Path != a.assistance.splitter.file.Path {
-		return true
-	}
-	binary, err := binaryDiffPatch(a.diffPatch)
-	return err == nil && binary
 }

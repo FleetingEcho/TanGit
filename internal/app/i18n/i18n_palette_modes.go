@@ -3,6 +3,7 @@ package i18n
 // Command palette modes, sections and paging hints.
 var paletteModeTranslations = map[string]map[string]string{
 	"zh-Hans": {
+		"Show all status bar buttons":     "显示所有状态栏按钮",
 		"added":                           "新增",
 		"deleted":                         "删除",
 		"Branch groups":                   "分支分组",
@@ -38,6 +39,8 @@ var paletteModeTranslations = map[string]map[string]string{
 		"longest streak %d days":                                  "最长连续 %d 天",
 		"merged — safe to delete":                                 "已合并 — 可安全删除",
 		"net %s lines":                                            "净增 %s 行",
+		"net change %s lines":                                     "净变化 %s 行",
+		"%s added − %s deleted":                                   "新增 %s 行 − 删除 %s 行",
 		"Nothing in this group — the branches are in good shape.": "此分组为空 — 分支状态良好。",
 		"only the newest commits are counted":                     "仅统计最新的提交",
 		"Open Branches":                                           "打开分支页",
@@ -445,6 +448,7 @@ var paletteModeTranslations = map[string]map[string]string{
 		"Commands":      "命令",
 	},
 	"zh-Hant": {
+		"Show all status bar buttons":     "顯示所有狀態列按鈕",
 		"added":                           "新增",
 		"deleted":                         "刪除",
 		"Branch groups":                   "分支分組",
@@ -480,6 +484,8 @@ var paletteModeTranslations = map[string]map[string]string{
 		"longest streak %d days":                                  "最長連續 %d 天",
 		"merged — safe to delete":                                 "已合併 — 可安全刪除",
 		"net %s lines":                                            "淨增 %s 行",
+		"net change %s lines":                                     "淨變化 %s 行",
+		"%s added − %s deleted":                                   "新增 %s 行 − 刪除 %s 行",
 		"Nothing in this group — the branches are in good shape.": "此分組為空 — 分支狀態良好。",
 		"only the newest commits are counted":                     "僅統計最新的提交",
 		"Open Branches":                                           "開啟分支頁",
@@ -887,6 +893,7 @@ var paletteModeTranslations = map[string]map[string]string{
 		"Commands":      "命令",
 	},
 	"ja": {
+		"Show all status bar buttons":     "ステータスバーのボタンをすべて表示",
 		"added":                           "追加",
 		"deleted":                         "削除",
 		"Branch groups":                   "ブランチのグループ",
@@ -922,6 +929,8 @@ var paletteModeTranslations = map[string]map[string]string{
 		"longest streak %d days":                                  "最長の連続 %d 日",
 		"merged — safe to delete":                                 "マージ済み — 削除しても安全",
 		"net %s lines":                                            "差し引き %s 行",
+		"net change %s lines":                                     "正味の変化 %s 行",
+		"%s added − %s deleted":                                   "追加 %s 行 − 削除 %s 行",
 		"Nothing in this group — the branches are in good shape.": "このグループは空です — ブランチは良好な状態です。",
 		"only the newest commits are counted":                     "最新のコミットのみ集計",
 		"Open Branches":                                           "ブランチを開く",
@@ -1329,6 +1338,7 @@ var paletteModeTranslations = map[string]map[string]string{
 		"Commands":      "コマンド",
 	},
 	"es": {
+		"Show all status bar buttons":     "Mostrar todos los botones de la barra de estado",
 		"added":                           "añadidas",
 		"deleted":                         "eliminadas",
 		"Branch groups":                   "Grupos de ramas",
@@ -1364,6 +1374,8 @@ var paletteModeTranslations = map[string]map[string]string{
 		"longest streak %d days":                                  "racha más larga %d días",
 		"merged — safe to delete":                                 "fusionadas — se pueden eliminar",
 		"net %s lines":                                            "neto %s líneas",
+		"net change %s lines":                                     "cambio neto %s líneas",
+		"%s added − %s deleted":                                   "%s líneas añadidas − %s eliminadas",
 		"Nothing in this group — the branches are in good shape.": "Nada en este grupo: las ramas están en buen estado.",
 		"only the newest commits are counted":                     "solo se cuentan los commits más recientes",
 		"Open Branches":                                           "Abrir Ramas",
@@ -1771,6 +1783,7 @@ var paletteModeTranslations = map[string]map[string]string{
 		"Commands":      "Comandos",
 	},
 	"fr": {
+		"Show all status bar buttons":     "Afficher tous les boutons de la barre d’état",
 		"added":                           "ajoutées",
 		"deleted":                         "supprimées",
 		"Branch groups":                   "Groupes de branches",
@@ -1806,6 +1819,8 @@ var paletteModeTranslations = map[string]map[string]string{
 		"longest streak %d days":                                  "plus longue série %d jours",
 		"merged — safe to delete":                                 "fusionnées — suppression sans risque",
 		"net %s lines":                                            "net %s lignes",
+		"net change %s lines":                                     "variation nette %s lignes",
+		"%s added − %s deleted":                                   "%s lignes ajoutées − %s supprimées",
 		"Nothing in this group — the branches are in good shape.": "Rien dans ce groupe — les branches sont en bon état.",
 		"only the newest commits are counted":                     "seuls les commits les plus récents sont comptés",
 		"Open Branches":                                           "Ouvrir Branches",

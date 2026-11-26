@@ -685,7 +685,6 @@ func (a *app) openFormName(inline bool) string {
 		{a.showWorktreeRepairForm, "showWorktreeRepairForm"},
 		{a.showWorktreePruneForm, "showWorktreePruneForm"},
 		{a.assistance.conflict.open, "conflict assistance"},
-		{a.assistance.splitter.open, "commit splitter"},
 		{a.agents.formOpen, "agent task form"},
 		{a.showSubmoduleForm, "showSubmoduleForm"},
 		{a.showCommitTagForm, "showCommitTagForm"},
@@ -773,7 +772,6 @@ func (a *app) dialogOpen(includeDiffFullscreen, inline bool) bool {
 		a.commandPromptOpen ||
 		a.patchPreviewOpen ||
 		a.assistance.conflict.open ||
-		a.assistance.splitter.open ||
 		a.stackSync.open ||
 		a.performance.open ||
 		a.customPatch.open ||
