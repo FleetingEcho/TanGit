@@ -3,9 +3,9 @@ package i18n
 // Plain-folder opening shares the Home launcher and local Editor wording.
 var editorOnlyTranslations = map[string]map[string]string{
 	"zh-Hans": {
-		"Open a folder": "打开文件夹",
+		"Open a folder":         "打开文件夹",
 		"Opened in Editor mode": "已在编辑器模式下打开",
-		"This folder is outside a Git repository. Git features are unavailable.": "此文件夹不在 Git 仓库中，无法使用 Git 功能。",
+		"This folder is outside a Git repository. Git features are unavailable.":       "此文件夹不在 Git 仓库中，无法使用 Git 功能。",
 		"Browse, search, edit files, and use a terminal — no Git repository required.": "浏览、搜索、编辑文件并使用终端，无需 Git 仓库。",
 		"Open mode":                       "打开模式",
 		"Git repository":                  "Git 仓库",
@@ -21,9 +21,9 @@ var editorOnlyTranslations = map[string]map[string]string{
 		"Terminal: open a Git repository or folder path directly in lazygitGo": "终端：直接在 lazygitGo 中打开 Git 仓库或文件夹路径",
 	},
 	"zh-Hant": {
-		"Open a folder": "開啟資料夾",
+		"Open a folder":         "開啟資料夾",
 		"Opened in Editor mode": "已在編輯器模式下開啟",
-		"This folder is outside a Git repository. Git features are unavailable.": "此資料夾不在 Git 儲存庫中，無法使用 Git 功能。",
+		"This folder is outside a Git repository. Git features are unavailable.":       "此資料夾不在 Git 儲存庫中，無法使用 Git 功能。",
 		"Browse, search, edit files, and use a terminal — no Git repository required.": "瀏覽、搜尋、編輯檔案並使用終端機，無需 Git 儲存庫。",
 		"Open mode":                       "開啟模式",
 		"Git repository":                  "Git 儲存庫",
@@ -39,9 +39,9 @@ var editorOnlyTranslations = map[string]map[string]string{
 		"Terminal: open a Git repository or folder path directly in lazygitGo": "終端機：直接在 lazygitGo 中開啟 Git 儲存庫或資料夾路徑",
 	},
 	"ja": {
-		"Open a folder": "フォルダーを開く",
+		"Open a folder":         "フォルダーを開く",
 		"Opened in Editor mode": "エディターモードで開きました",
-		"This folder is outside a Git repository. Git features are unavailable.": "このフォルダーは Git リポジトリの外にあるため、Git 機能は利用できません。",
+		"This folder is outside a Git repository. Git features are unavailable.":       "このフォルダーは Git リポジトリの外にあるため、Git 機能は利用できません。",
 		"Browse, search, edit files, and use a terminal — no Git repository required.": "ファイルの参照、検索、編集とターミナルを Git リポジトリなしで利用できます。",
 		"Open mode":                       "オープンモード",
 		"Git repository":                  "Git リポジトリ",
@@ -57,9 +57,9 @@ var editorOnlyTranslations = map[string]map[string]string{
 		"Terminal: open a Git repository or folder path directly in lazygitGo": "ターミナル：Git リポジトリまたはフォルダーのパスを lazygitGo で直接開く",
 	},
 	"es": {
-		"Open a folder": "Abrir una carpeta",
+		"Open a folder":         "Abrir una carpeta",
 		"Opened in Editor mode": "Abierta en modo Editor",
-		"This folder is outside a Git repository. Git features are unavailable.": "Esta carpeta está fuera de un repositorio Git. Las funciones de Git no están disponibles.",
+		"This folder is outside a Git repository. Git features are unavailable.":       "Esta carpeta está fuera de un repositorio Git. Las funciones de Git no están disponibles.",
 		"Browse, search, edit files, and use a terminal — no Git repository required.": "Explora, busca y edita archivos y usa una terminal sin necesidad de un repositorio Git.",
 		"Open mode":                       "Modo de apertura",
 		"Git repository":                  "Repositorio Git",
@@ -75,9 +75,9 @@ var editorOnlyTranslations = map[string]map[string]string{
 		"Terminal: open a Git repository or folder path directly in lazygitGo": "Terminal: abre directamente una ruta de repositorio Git o carpeta en lazygitGo",
 	},
 	"fr": {
-		"Open a folder": "Ouvrir un dossier",
+		"Open a folder":         "Ouvrir un dossier",
 		"Opened in Editor mode": "Dossier ouvert en mode Éditeur",
-		"This folder is outside a Git repository. Git features are unavailable.": "Ce dossier se trouve hors d’un dépôt Git. Les fonctionnalités Git sont indisponibles.",
+		"This folder is outside a Git repository. Git features are unavailable.":       "Ce dossier se trouve hors d’un dépôt Git. Les fonctionnalités Git sont indisponibles.",
 		"Browse, search, edit files, and use a terminal — no Git repository required.": "Parcourez, recherchez et modifiez des fichiers et utilisez un terminal, sans dépôt Git.",
 		"Open mode":                       "Mode d’ouverture",
 		"Git repository":                  "Dépôt Git",
