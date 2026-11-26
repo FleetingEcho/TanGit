@@ -286,22 +286,14 @@ func TestStaleStashGenerationRepaintsRetryCleanup(t *testing.T) {
 
 type controlledChangePublicationSession struct {
 	fakeSession
-	diffStarted  chan struct{}
-	diffRelease  chan struct{}
-	blameStarted chan struct{}
-	blameRelease chan struct{}
+	diffStarted chan struct{}
+	diffRelease chan struct{}
 }
 
 func (s *controlledChangePublicationSession) Diff(context.Context, repository.File, repository.DiffOptions) (repository.Diff, error) {
 	close(s.diffStarted)
 	<-s.diffRelease
 	return repository.Diff{}, nil
-}
-
-func (s *controlledChangePublicationSession) BlameFile(context.Context, repository.File) ([]repository.BlameLine, error) {
-	close(s.blameStarted)
-	<-s.blameRelease
-	return nil, nil
 }
 
 func TestStaleWorkingTreeDiffDoesNotRepaint(t *testing.T) {
@@ -315,20 +307,6 @@ func TestStaleWorkingTreeDiffDoesNotRepaint(t *testing.T) {
 	close(session.diffRelease)
 	if <-acknowledged {
 		t.Fatal("a stale working-tree diff requested a repaint")
-	}
-}
-
-func TestStaleWorkingTreeBlameDoesNotRepaint(t *testing.T) {
-	h := menuTestApp(t)
-	session := &controlledChangePublicationSession{blameStarted: make(chan struct{}), blameRelease: make(chan struct{})}
-	h.app.session = session
-	acknowledged := acknowledgeAsyncPublications(h.app)
-	h.app.beginBlame()
-	<-session.blameStarted
-	h.app.blameGeneration++
-	close(session.blameRelease)
-	if <-acknowledged {
-		t.Fatal("a stale working-tree blame requested a repaint")
 	}
 }
 

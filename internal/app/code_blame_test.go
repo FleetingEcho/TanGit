@@ -136,8 +136,8 @@ func TestCodeBlameAnnotationsOpenCommitAndJumpToHistory(t *testing.T) {
 		}},
 	}
 	h, document := openCodeBlameDocument(t, session)
-	if h.tester.HasText("Git Blame") {
-		t.Fatal("always-on editor blame still shows a toolbar toggle")
+	if !h.tester.HasText("Git Blame") {
+		t.Fatal("the editor title bar has no Git Blame control")
 	}
 	if !document.blameEnabled {
 		t.Fatal("Git Blame is not enabled for a newly opened editable document")
@@ -378,6 +378,72 @@ func TestCodeBlameRefreshesAfterSameBranchRepositoryMutation(t *testing.T) {
 	})
 }
 
+func TestCodeBlameFullGutterGroupsRangesAndKeepsActiveLine(t *testing.T) {
+	firstHash := strings.Repeat("a", 40)
+	secondHash := strings.Repeat("b", 40)
+	session := &codeBlameTestSession{
+		lines: []repository.BlameLine{
+			{Hash: firstHash, Author: "Ada", Subject: "First change", Date: "2026-01-02", Text: "one"},
+			{Hash: firstHash, Author: "Ada", Subject: "First change", Date: "2026-01-02", Text: "two"},
+			{Hash: secondHash, Author: "Grace", Subject: "Second change", Date: "2026-02-03", Text: "three"},
+			{Hash: secondHash, Author: "Grace", Subject: "Second change", Date: "2026-02-03", Text: "four"},
+		},
+		commits: []repository.Commit{
+			{Hash: firstHash, ShortHash: "aaaaaaa", Subject: "First change", AuthorName: "Ada"},
+			{Hash: secondHash, ShortHash: "bbbbbbb", Subject: "Second change", AuthorName: "Grace"},
+		},
+	}
+	h, document := openCodeBlameTextDocument(t, session, "one\ntwo\nthree\nfour\n")
+	h.waitFor(t, "selected-line blame before the full gutter", func() bool { return document.blameLoaded })
+	if document.blameFull || len(document.blameInlays) != 1 || len(document.state.LineAnnotations()) != 0 {
+		t.Fatalf("default blame mode = full %v inlays %#v annotations %#v", document.blameFull, document.blameInlays, document.state.LineAnnotations())
+	}
+
+	h.clickAndSettle(t, "Git Blame")
+	annotations := document.state.LineAnnotations()
+	if !document.blameFull || len(annotations) != 2 || len(document.blameGutterOffsets) != 2 {
+		t.Fatalf("full gutter annotations = %#v offsets = %#v", annotations, document.blameGutterOffsets)
+	}
+	if annotations[0].Line != 0 || annotations[0].Text != "Ada • First change" || annotations[0].Detail != "2026-01-02" ||
+		annotations[1].Line != 2 || annotations[1].Text != "Grace • Second change" || annotations[1].Detail != "2026-02-03" {
+		t.Fatalf("blame ranges were not grouped by commit: %#v", annotations)
+	}
+	if annotations[0].Click == nil || annotations[1].Click == nil {
+		t.Fatalf("range starts should own summary click handlers: %#v", annotations)
+	}
+	if len(document.blameInlays) != 1 {
+		t.Fatal("the full gutter removed the selected-line blame")
+	}
+	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+		saveScreenshot(t, dir, "code-blame-full-gutter", h.tester)
+	}
+
+	annotations[1].Click()
+	h.waitFor(t, "the full-gutter commit details", func() bool {
+		return h.app.codeBlameHover.open && !h.app.codeBlameHover.loading
+	})
+	if h.app.codeBlameHover.line != 3 || h.app.codeBlameHover.blame.Hash != secondHash ||
+		h.app.codeBlameHover.commit.Hash != secondHash {
+		t.Fatalf("full-gutter click opened the wrong commit: %#v", h.app.codeBlameHover)
+	}
+	h.app.closeCodeBlameDetails()
+
+	document.state.GoTo(editor.Pos{Line: 3})
+	h.app.syncCodeBlameActiveLine(document)
+	if document.blameActiveLine != 3 || len(document.blameInlays) != 1 ||
+		!strings.Contains(document.blameInlays[0].Text, "Second change") || len(document.state.LineAnnotations()) != 2 {
+		t.Fatalf("moving the selection disturbed full or selected-line blame: active=%d inlays=%#v annotations=%#v",
+			document.blameActiveLine, document.blameInlays, document.state.LineAnnotations())
+	}
+
+	h.clickAndSettle(t, "Git Blame")
+	if document.blameFull || !document.blameEnabled || !document.blameLoaded ||
+		len(document.blameInlays) != 1 || len(document.state.LineAnnotations()) != 0 {
+		t.Fatalf("hiding the full gutter did not preserve selected-line blame: full=%v enabled=%v loaded=%v inlays=%#v annotations=%#v",
+			document.blameFull, document.blameEnabled, document.blameLoaded, document.blameInlays, document.state.LineAnnotations())
+	}
+}
+
 func TestCodeBlameRejectsLateLoadAfterDisable(t *testing.T) {
 	hash := strings.Repeat("b", 40)
 	started, release := make(chan struct{}), make(chan struct{})
@@ -388,7 +454,11 @@ func TestCodeBlameRejectsLateLoadAfterDisable(t *testing.T) {
 	}
 	h, document := openCodeBlameDocument(t, session)
 	<-started
-	h.app.toggleCodeBlame(document)
+	// Simulate disabling blame at the document boundary. The toolbar's
+	// full-file toggle intentionally no longer performs this disabling.
+	document.blameEnabled = false
+	document.state.HoverDelay = 0
+	invalidateCodeBlame(document)
 	close(release)
 	h.settle(t)
 	if document.blameEnabled || document.blameLoaded || document.blameLoading || len(document.blameInlays) != 0 {

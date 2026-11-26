@@ -12,7 +12,10 @@ import (
 	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
-const codeBlameHoverDelay = time.Second
+const (
+	codeBlameHoverDelay  = time.Second
+	codeBlameGutterWidth = float32(400)
+)
 
 // codeBlameHoverState owns the asynchronous details behind MyGo's native
 // editor hover. The hover itself remains editor-owned, so moving into the card
@@ -55,8 +58,11 @@ func clearCodeBlameAnnotations(document *codeDocument) {
 	document.blameLines = nil
 	document.blameInlays = nil
 	document.blameOffsets = nil
+	document.blameGutterOffsets = nil
 	document.blameAnnotationSet = false
 	if document.state != nil {
+		document.state.LineAnnotationWidth = 0
+		document.state.SetLineAnnotations(nil)
 		syncCodeDocumentInlays(document)
 	}
 }
@@ -125,6 +131,48 @@ func (a *app) syncCodeBlameActiveLine(document *codeDocument) {
 	syncCodeDocumentInlays(document)
 }
 
+// syncCodeBlameGutter shows a compact commit summary at the first line of
+// every contiguous blamed range. Continuation lines stay blank without
+// allocating invisible gutter entries; selecting any line still reveals its
+// own trailing annotation and hover target.
+func (a *app) syncCodeBlameGutter(document *codeDocument) {
+	if document == nil || document.state == nil {
+		return
+	}
+	document.blameGutterOffsets = nil
+	if !codeBlameAvailable(document) || !document.blameEnabled || !document.blameFull ||
+		!document.blameLoaded || document.state.Buffer.Modified() {
+		document.state.LineAnnotationWidth = 0
+		document.state.SetLineAnnotations(nil)
+		return
+	}
+	snapshot := document.state.Buffer.Snapshot()
+	lineCount := min(len(document.blameLines), snapshot.LineCount())
+	annotations := make([]editor.LineAnnotation, 0)
+	offsets := make(map[int]int)
+	previousHash := ""
+	for line := 0; line < lineCount; line++ {
+		blame := document.blameLines[line]
+		if !committedBlameHash(blame.Hash) && !uncommittedBlameHash(blame.Hash) {
+			previousHash = ""
+			continue
+		}
+		if line != 0 && blame.Hash == previousHash {
+			continue
+		}
+		offsets[snapshot.LineEnd(line)] = line
+		line := line
+		annotation := editor.LineAnnotation{Line: line}
+		annotation.Text, annotation.Detail = formatCodeBlameGutter(blame)
+		annotation.Click = func() { a.openCodeBlameDetails(document, line) }
+		annotations = append(annotations, annotation)
+		previousHash = blame.Hash
+	}
+	document.blameGutterOffsets = offsets
+	document.state.LineAnnotationWidth = codeBlameGutterWidth
+	document.state.SetLineAnnotations(annotations)
+}
+
 func syncCodeDocumentInlays(document *codeDocument) {
 	if document == nil || document.state == nil {
 		return
@@ -140,15 +188,19 @@ func (a *app) toggleCodeBlame(document *codeDocument) {
 		return
 	}
 	a.closeCodeBlameDetailsFor(document)
-	if document.blameEnabled {
-		document.blameEnabled = false
-		document.state.HoverDelay = 0
-		invalidateCodeBlame(document)
-		return
-	}
 	document.blameEnabled = true
 	document.state.HoverDelay = codeBlameHoverDelay
-	a.requestCodeBlame(document)
+	if document.blameError != "" {
+		a.requestCodeBlame(document)
+		return
+	}
+	document.blameFull = !document.blameFull
+	if !document.blameLoaded && !document.blameLoading {
+		a.requestCodeBlame(document)
+		return
+	}
+	a.syncCodeBlameGutter(document)
+	a.syncCodeBlameActiveLine(document)
 }
 
 func (a *app) requestCodeBlame(document *codeDocument) {
@@ -213,6 +265,7 @@ func (a *app) requestCodeBlame(document *codeDocument) {
 			document.blameLoaded = true
 			document.blameError = ""
 			a.syncCodeBlameActiveLine(document)
+			a.syncCodeBlameGutter(document)
 			return a.workspaceTab == sectionCode && a.activeCodeDocument() == document
 		})
 	}()
@@ -243,6 +296,31 @@ func formatCodeBlame(line repository.BlameLine) string {
 		subject = shortBlameHash(line.Hash)
 	}
 	return fmt.Sprintf("  %s, %s • %s", author, when, subject)
+}
+
+func formatCodeBlameGutter(line repository.BlameLine) (string, string) {
+	if uncommittedBlameHash(line.Hash) {
+		return tr("Uncommitted changes"), ""
+	}
+	author := line.Author
+	if author == "" {
+		author = line.AuthorEmail
+	}
+	if line.Current {
+		author = tr("You")
+	}
+	if author == "" {
+		author = shortBlameHash(line.Hash)
+	}
+	subject := line.Subject
+	if subject == "" {
+		subject = shortBlameHash(line.Hash)
+	}
+	when := codeBlameRelativeTime(line.UnixTimestamp)
+	if when == "" {
+		when = line.Date
+	}
+	return author + " • " + subject, when
 }
 
 func codeBlameRelativeTime(unix int64) string {
@@ -317,6 +395,9 @@ func codeBlameAt(document *codeDocument, request editor.HoverRequest) (int, bool
 		return 0, false
 	}
 	line, ok := document.blameOffsets[request.Offset]
+	if !ok && document.blameFull {
+		line, ok = document.blameGutterOffsets[request.Offset]
+	}
 	return line, ok
 }
 

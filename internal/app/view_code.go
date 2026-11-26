@@ -724,6 +724,7 @@ func (a *app) codeEditorPane(c *ui.Context) {
 			flatIconButton(c, "Outline", "Symbols in the current document", fileBracesIcon, 14, 4, false, func() {
 				a.openLanguageSymbols(document)
 			})
+			a.codeBlameButton(c, document)
 			a.codeLanguageServersButton(c)
 			if isMarkdownDocument(document.path) {
 				tooltip := "Show Markdown preview"
@@ -747,6 +748,27 @@ func (a *app) codeEditorPane(c *ui.Context) {
 		ui.Box(c).Height(1).Background(theme.Border)
 		a.codeDocumentView(c, document)
 	})
+}
+
+// codeBlameButton switches between the selected-line annotation and a full
+// file blame gutter. The selected-line annotation stays visible in both modes.
+func (a *app) codeBlameButton(c *ui.Context, document *codeDocument) {
+	if !codeBlameAvailable(document) {
+		return
+	}
+	tooltip := tr("Show full-file Git blame; keep the selected-line annotation")
+	switch {
+	case document.state.Buffer.Modified():
+		tooltip = tr("Save changes to refresh Git blame")
+	case document.blameError != "":
+		tooltip = trf("Git blame failed: %s. Click to retry.", document.blameError)
+	case document.blameLoading:
+		tooltip = tr("Loading Git blame…")
+	case document.blameFull:
+		tooltip = tr("Hide full-file Git blame; keep the selected-line annotation")
+	}
+	flatToggleIconButton(c, tr("Git Blame"), tooltip, personIcon, 15, 4,
+		document.blameFull, func() { a.toggleCodeBlame(document) })
 }
 
 func (a *app) codeTabs(c *ui.Context) {

@@ -674,51 +674,35 @@ func samePatchlessDiffText(state *editor.DiffState, oldText, newText string) boo
 
 func (a *app) beginBlame() {
 	change, ok := a.selectedChange()
-	if a.session == nil || !ok {
+	if a.session == nil || !ok || change.file.Deleted {
 		return
 	}
-	file := change.file
-	session := a.session
-	repositoryGeneration := a.generation
-	a.blameGeneration++
-	blameGeneration := a.blameGeneration
-	blameLabel := tr("Git blame output")
-	// A file HEAD does not have yet (newly added, staged or not) has no history
-	// to blame, so its saved lines are read as the new work they are.
-	newFile := !file.Tracked
-	a.blameNewFile = newFile
-	a.blamePath = file.Path
-	a.blameLoading = true
-	a.blameError = ""
-	a.blameState = nil
-	ctx := a.repositoryWork.Context()
-	go func() {
-		defer a.recoverBackground()
-		var lines []repository.BlameLine
-		var err error
-		if newFile {
-			lines, err = requireHistorySession(session).BlameWorkingTreeFile(ctx, file.Path)
-		} else {
-			lines, err = requireHistorySession(session).BlameFile(ctx, file)
-		}
-		var state *editor.State
-		if err == nil {
-			buffer := editor.NewBuffer(formatBlame(lines))
-			state = &editor.State{Buffer: buffer, ReadOnly: true, SoftWrap: false, NoIndentGuides: true, NoActiveLine: true, NoAutoClose: true, NoFolding: true, Label: blameLabel}
-		}
-		a.updateChanged(func() bool {
-			if repositoryGeneration != a.generation || blameGeneration != a.blameGeneration {
-				return false
-			}
-			a.blameLoading = false
-			if err != nil {
-				a.blameError = safeError(err)
-				return true
-			}
-			a.blameState = state
-			return true
-		})
-	}()
+
+	// Blame belongs beside the source it describes. Open the working-tree file
+	// in Code, pin its tab, and turn on the editor's active-line annotation and
+	// commit-details hover. This is the same surface used by an editor tab opened
+	// directly, so blame no longer replaces the diff with a second text editor.
+	a.closeBlame()
+	path := change.file.Path
+	a.openGitFileInBuiltInEditor(a.snapshot.Root, path)
+	if a.workspaceTab != sectionCode || a.code.active != path {
+		return
+	}
+	document := a.code.documents[path]
+	if document == nil {
+		return
+	}
+	if a.code.preview == path {
+		a.code.preview = ""
+	}
+	document.blameEnabled = true
+	if document.state != nil {
+		document.state.HoverDelay = codeBlameHoverDelay
+	}
+	if document.loaded {
+		a.requestCodeBlame(document)
+	}
+	a.keyboardFocus = "code-editor"
 }
 
 func (a *app) beginFileAction(stage bool) {

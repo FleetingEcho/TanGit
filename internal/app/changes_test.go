@@ -590,36 +590,6 @@ func TestCommitCardButtonCommitsTheInlineMessage(t *testing.T) {
 	}
 }
 
-// Closing blame clears the viewer while the frame that drew it is still
-// building; the pane must stop drawing the state it just dropped instead of
-// handing a nil state to the editor.
-func TestCloseBlame(t *testing.T) {
-	h, _ := changesTestApp(t, sectionedFiles())
-	h.app.selectedFile = 2 // staged.txt
-	h.app.beginBlame()
-	h.waitFor(t, "the blame", func() bool { return h.app.blameState != nil })
-	if !h.app.blameState.NoIndentGuides {
-		t.Fatal("blame metadata indentation must not draw a grid beside the source")
-	}
-
-	if err := h.tester.Click("Close blame"); err != nil {
-		t.Fatal(err)
-	}
-	h.tester.Frame()
-	h.settle(t)
-	if h.app.blameState != nil {
-		t.Fatal("Close blame left the blame viewer open")
-	}
-	if h.app.blameLoading || h.app.blameError != "" {
-		t.Fatalf("Close blame left blame in a loading or failed state: loading=%v error=%q",
-			h.app.blameLoading, h.app.blameError)
-	}
-	h.waitFor(t, "the file diff again", func() bool { return h.app.diffState != nil })
-	if h.app.diffError != "" {
-		t.Fatalf("the pane did not fall back to the diff: %s", h.app.diffError)
-	}
-}
-
 // The detail pane follows the chosen side of a partially staged file: the
 // staged section reads the index, the changes section the working tree.
 func TestDiffFollowsTheChosenSide(t *testing.T) {

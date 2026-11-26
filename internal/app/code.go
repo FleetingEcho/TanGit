@@ -111,6 +111,8 @@ type codeDocument struct {
 	blameLines           []repository.BlameLine
 	blameInlays          []editor.Inlay
 	blameOffsets         map[int]int
+	blameGutterOffsets   map[int]int
+	blameFull            bool
 	blameActiveLine      int
 	blameAnnotationSet   bool
 	// breadcrumbMemo and stickyMemo cache this frame's symbol-breadcrumb
