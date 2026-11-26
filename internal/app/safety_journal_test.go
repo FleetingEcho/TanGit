@@ -121,6 +121,44 @@ func TestRepositorySuccessUndoUsesNewSafetyJournalID(t *testing.T) {
 	}
 }
 
+func TestSafetyJournalDeleteConfirmsExactEntry(t *testing.T) {
+	keep := recoverableJournalRecord("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "Keep this operation")
+	remove := recoverableJournalRecord("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "Remove this operation")
+	remove.Status = repository.OperationInterrupted
+	h, calls, _ := safetyJournalTestApp(t, keep, remove)
+	h.app.openActivityRecovery()
+	h.tester.Frame()
+	openDelete := func() {
+		t.Helper()
+		if err := h.tester.Click("Delete " + remove.ID); err != nil {
+			t.Fatal(err)
+		}
+		h.tester.Frame()
+		if h.app.confirm == nil || h.app.confirm.message != "Delete Remove this operation?" {
+			t.Fatalf("unexpected delete confirmation: %+v", h.app.confirm)
+		}
+	}
+	openDelete()
+	if err := h.tester.Click("Cancel"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	if calls.has("delete-operation:"+remove.ID) || !h.tester.HasText(remove.Summary) {
+		t.Fatal("canceling the confirmation removed the entry")
+	}
+	openDelete()
+	if err := h.tester.Click("Delete"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor(t, "journal entry deletion", func() bool {
+		return !h.app.actionBusy && calls.has("delete-operation:"+remove.ID)
+	})
+	_, removedRowVisible := h.tester.Find("Delete " + remove.ID)
+	if calls.has("delete-operation:"+keep.ID) || !h.tester.HasText(keep.Summary) || removedRowVisible {
+		t.Fatalf("delete did not affect only the confirmed row: %q", h.texts())
+	}
+}
+
 func TestRepositorySuccessWithoutNewJournalRecordHasNoUndo(t *testing.T) {
 	h, _, _ := safetyJournalTestApp(t)
 

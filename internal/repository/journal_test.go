@@ -854,3 +854,49 @@ func TestRebaseJournalUndoRefusesDeletedRecoverySnapshotBeforeMovingHead(t *test
 	}
 	assertDeletedJournalSnapshotStopsUndo(t, dir, session, onlyOperation(t, session))
 }
+func TestDeleteOperationKeepsRecoverySnapshots(t *testing.T) {
+	dir, session := recoveryRepository(t)
+	ctx := context.Background()
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("changed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Discard(ctx, File{Path: "a.txt", Tracked: true, Unstaged: true}); err != nil {
+		t.Fatal(err)
+	}
+	record := onlyOperation(t, session)
+	if record.Snapshot == nil {
+		t.Fatal("discard did not create a recovery snapshot")
+	}
+	s := session.(*gitSession)
+	name, err := s.operationPath(record.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := record
+	active.ActiveOperation = OperationTypeRebase
+	if err := s.writeOperationRecord(name, active); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.DeleteOperation(ctx, record.ID); err == nil {
+		t.Fatal("deleted an active operation")
+	}
+	if err := s.writeOperationRecord(name, record); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := session.DeleteOperation(ctx, record.ID); err != nil {
+		t.Fatal(err)
+	}
+	if records, err := session.Operations(ctx); err != nil || len(records) != 0 {
+		t.Fatalf("journal after deletion = %+v, %v", records, err)
+	}
+	if err := session.UndoOperation(ctx, record.ID); err == nil {
+		t.Fatal("deleted journal entry still supports Undo")
+	}
+	if err := session.RestoreWorkSnapshot(ctx, *record.Snapshot); err != nil {
+		t.Fatalf("deleting the journal entry affected its recovery snapshot: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(dir, "a.txt")); err != nil || string(data) != "changed\n" {
+		t.Fatalf("restored file = %q, %v", data, err)
+	}
+}

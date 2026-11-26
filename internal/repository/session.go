@@ -317,6 +317,7 @@ type Session interface {
 	RestoreWorkSnapshot(context.Context, WorkSnapshot) error
 	DeleteWorkSnapshot(context.Context, WorkSnapshot) error
 	Operations(context.Context) ([]OperationRecord, error)
+	DeleteOperation(context.Context, string) error
 	UndoOperation(context.Context, string) error
 	CreateTag(context.Context, string, string, string, bool) error
 	DeleteTag(context.Context, string) error

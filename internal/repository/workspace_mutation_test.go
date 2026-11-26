@@ -10,6 +10,7 @@ import (
 )
 
 func TestUndoFirstCommitRestoresUnbornHeadAndStagedFiles(t *testing.T) {
+	enableSafetyJournalForTest(t)
 	dir := t.TempDir()
 	runGit(t, dir, "init", "-b", "main")
 	runGit(t, dir, "config", "user.name", "lazygitGo Test")

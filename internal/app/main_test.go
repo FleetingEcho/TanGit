@@ -352,6 +352,10 @@ func (f fakeSession) DeleteWorkSnapshot(_ context.Context, snapshot repository.W
 func (f fakeSession) Operations(context.Context) ([]repository.OperationRecord, error) {
 	return f.snapshot.Operations, nil
 }
+func (f fakeSession) DeleteOperation(_ context.Context, id string) error {
+	f.calls.record("delete-operation:" + id)
+	return nil
+}
 func (f fakeSession) UndoOperation(_ context.Context, id string) error {
 	f.calls.record("undo-operation:" + id)
 	return nil

@@ -48,7 +48,7 @@ func TestRecoveryDialogSwitchTurnsTheSafetyJournalOnAndOff(t *testing.T) {
 		t.Fatal("the off notice stayed after turning the journal on")
 	}
 
-	if err := h.tester.Click("Turn the safety journal off"); err != nil {
+	if err := h.tester.Click("Safety journal"); err != nil {
 		t.Fatalf("turn the journal back off from the switch: %v; texts %q", err, h.texts())
 	}
 	h.tester.Frame()

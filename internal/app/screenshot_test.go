@@ -253,6 +253,7 @@ func (s screenshotSession) DeleteWorkSnapshot(context.Context, repository.WorkSn
 func (s screenshotSession) Operations(context.Context) ([]repository.OperationRecord, error) {
 	return nil, nil
 }
+func (s screenshotSession) DeleteOperation(context.Context, string) error      { return nil }
 func (s screenshotSession) UndoOperation(context.Context, string) error        { return nil }
 func (s screenshotSession) StageAll(context.Context) error                     { return nil }
 func (s screenshotSession) UnstageAll(context.Context) error                   { return nil }
