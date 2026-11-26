@@ -175,6 +175,8 @@ type shell struct {
 	windowFocused bool
 	// refreshStop ends the auto-refresh timer when the window closes.
 	refreshStop chan struct{}
+	// traySignature is what the tray menu last showed.
+	traySignature string
 	// availableUpdate is the version the updater's last automatic check
 	// found. checkForUpdates opens its native window; both are seams so the
 	// shell's UI tests do not need a running MyGo application.
@@ -647,6 +649,7 @@ func (s *shell) startAutoRefresh() {
 // autoRefreshTick reads the active page's repository again if the user can
 // see the window. It runs on the main thread, where the state lives.
 func (s *shell) autoRefreshTick() {
+	s.syncTrayMenu(false)
 	if !s.windowVisible || !s.windowFocused {
 		return
 	}
@@ -684,6 +687,7 @@ func (s *shell) handleWindowBlurred() {
 // handleWindowHidden records that the window went to the tray.
 func (s *shell) handleWindowHidden() {
 	s.windowVisible = false
+	s.syncTrayMenu(false)
 	s.windowFocused = false
 	if s.authorAvatars != nil {
 		s.authorAvatars.beginFrame(false)
@@ -731,6 +735,8 @@ func (s *shell) refreshTitle() {
 			title = name + " — " + appName
 		}
 	}
+	// The tray shows the same repository state, so it follows the same hook.
+	s.syncTrayMenu(false)
 	if title == s.title {
 		return
 	}
@@ -1377,15 +1383,17 @@ func (s *shell) tabView(c *ui.Context, i int, width float32) {
 		}
 	case hovered:
 		if hasTabColor {
-			pill.Background(tabColor.Mix(ui.Hex("#ffffff"), 0.18)).Border(1, ui.Transparent)
+			pill.Background(tabColor.Mix(ui.Hex("#ffffff"), 0.18)).Border(1, tabColor.Mix(ui.Hex("#000000"), 0.2))
 		} else {
-			pill.Background(theme.SurfaceHover.Alpha(0.6)).Border(1, ui.Transparent)
+			pill.Background(theme.SurfaceHover.Alpha(0.6)).Border(1, theme.Border.Alpha(0.8))
 		}
 	default:
 		if hasTabColor {
-			pill.Background(tabColor.Alpha(0.82)).Border(1, ui.Transparent)
+			pill.Background(tabColor.Alpha(0.82)).Border(1, tabColor.Mix(ui.Hex("#000000"), 0.2).Alpha(0.6))
 		} else {
-			pill.Background(ui.Transparent).Border(1, ui.Transparent)
+			// A quiet outline, lighter than the active tab's, so every tab
+			// reads as a tab rather than loose text.
+			pill.Background(ui.Transparent).Border(1, theme.Border.Alpha(0.5))
 		}
 	}
 	pill.Tooltip(t.tooltip())

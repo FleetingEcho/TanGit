@@ -156,6 +156,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.commandPromptModal(c)
 	a.continueReviewModal(c)
 	a.settingsModal(c)
+	a.themeEditorModal(c)
 	a.keybindingsModal(c)
 	a.commitFilterModal(c)
 	a.confirmModal(c)

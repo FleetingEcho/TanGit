@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +20,7 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 	"github.com/jesseduffield/lazygit/pkg/app/daemon"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/term"
 
 	"github.com/FleetingEcho/lazygitGo/internal/agentcli"
 	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
@@ -1253,6 +1255,22 @@ func newApp(opener repositoryOpener) *app {
 // launchPath is the repository a launch from the terminal opens: the first
 // argument that is not a flag, since a bundle on macOS passes -psn_… and
 // other platforms pass their own switches.
+// argsWithTerminalDefault adds "." to a command line that names no
+// repository when it was typed in a terminal, so `lazygitGo` alone opens the
+// current directory. Flags alone do not name one, and neither does any other
+// launch.
+func argsWithTerminalDefault(args []string, fromTerminal bool) []string {
+	if !fromTerminal || len(args) == 0 {
+		return args
+	}
+	for _, arg := range args[1:] {
+		if arg != "" && !strings.HasPrefix(arg, "-") {
+			return args
+		}
+	}
+	return append(slices.Clone(args), ".")
+}
+
 func launchPath(args []string) string {
 	workingDir, _ := os.Getwd()
 	return launchPathFrom(workingDir, args)
@@ -1308,6 +1326,12 @@ func Main() {
 		daemon.Handle(logrus.New().WithField("component", "git-editor"))
 		return
 	}
+
+	// Typing the bare command in a terminal means "here", as `lazygitGo .`
+	// does. A desktop shortcut or the Dock has no terminal on stdin and keeps
+	// opening the picker. This runs before the launcher detaches, which
+	// removes the terminal the check needs.
+	os.Args = argsWithTerminalDefault(os.Args, term.IsTerminal(int(os.Stdin.Fd())))
 
 	launched, err := launch.LaunchInBackground()
 	if err != nil {
@@ -1379,6 +1403,7 @@ func openAppWindow(opener repositoryOpener, path string) {
 	s.invalidate = win.Invalidate
 	watchUpdater(s)
 	mainWindow = win
+	appShell = s
 	mygo.App.OnSecondInstance(s.openSecondInstance)
 	resumeQuit := mygo.App.Quit
 	stopQuitWatch := mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {

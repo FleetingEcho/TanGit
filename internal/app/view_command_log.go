@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -214,6 +215,12 @@ func (a *app) commandLogEntry(c *ui.Context, entry repository.CommandEntry, reve
 			})
 			ui.Badge(c, status).Background(statusColor.Alpha(0.14)).TextColor(statusColor).
 				FontSize(theme.FontSize - 2).Tooltip(tr("Command status"))
+			// Only a command that took a noticeable time shows how long: it is
+			// what tells a slow repository from a slow command.
+			if entry.Duration >= time.Second {
+				ui.Text(c, commandLogDuration(entry.Duration)).TextColor(theme.Warning).
+					FontSize(theme.FontSize - 1).Tooltip(tr("How long the command ran"))
+			}
 			if !entry.At.IsZero() {
 				absolute := entry.At.Local().Format(commandLogTimestampLayout)
 				ui.Text(c, entry.At.Local().Format("15:04")).TextColor(theme.TextMuted).
@@ -336,11 +343,24 @@ func formatCommandLog(entries []repository.CommandEntry) string {
 		if !entry.At.IsZero() {
 			fmt.Fprintf(&text, "[%s] ", entry.At.Format(commandLogTimestampLayout))
 		}
-		fmt.Fprintf(&text, "%s\n", commandLogEntryText(entry))
+		fmt.Fprintf(&text, "%s", commandLogEntryText(entry))
+		if entry.Duration >= time.Second {
+			fmt.Fprintf(&text, " (%s)", commandLogDuration(entry.Duration))
+		}
+		text.WriteString("\n")
 		if output := strings.TrimRight(entry.Output, "\n"); output != "" {
 			text.WriteString(output)
 			text.WriteString("\n")
 		}
 	}
 	return text.String()
+}
+
+// commandLogDuration writes a duration the way the log shows it: seconds with
+// one decimal under a minute, minutes and seconds beyond.
+func commandLogDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	}
+	return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
 }

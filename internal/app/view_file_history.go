@@ -77,6 +77,7 @@ func (a *app) openFileHistory(path string) {
 	a.fileHistoryPath = path
 	a.fileHistoryCommits = nil
 	a.fileHistorySelected = 0
+	a.fileHistoryList.Choose(0)
 	a.fileHistoryError = ""
 	a.fileHistoryLoading = true
 	a.fileHistoryMore = true
@@ -114,6 +115,11 @@ func (a *app) openFileHistory(path string) {
 				return true
 			}
 			a.fileHistorySelected = 0
+			// Select through the list, not only the index: it tracks the
+			// chosen row by key, so a stale choice from an earlier open
+			// would otherwise leave the first commit unhighlighted.
+			a.fileHistoryList.Choose(0)
+			a.fileHistoryList.ScrollTo(0, ui.Start)
 			a.loadFileHistoryCommit(commits[0], true)
 			return true
 		})
@@ -255,6 +261,8 @@ func (a *app) loadFileHistoryCommit(commit repository.Commit, force bool) {
 				}
 			}
 			a.fileHistoryFileList.Choose(choice)
+			// Choose does not scroll: bring the file this drawer is about into view.
+			a.fileHistoryFileList.ScrollTo(choice, ui.Center)
 			a.loadFileHistoryDiff(commit, files[choice], true)
 			return true
 		})
@@ -307,6 +315,11 @@ func (a *app) loadFileHistoryDiff(commit repository.Commit, file repository.Comm
 				return true
 			}
 			a.fileHistoryDiffPatch = diff.Patch
+			// Bring the first change into view, as the Changes diff does,
+			// so a hunk far down the file doesn't need a manual scroll.
+			if state != nil && len(state.Hunks()) > 0 {
+				state.GoToHunk(0)
+			}
 			a.fileHistoryDiffState = state
 			a.fileHistoryDiffMedia = media
 			return true
@@ -337,7 +350,7 @@ func (a *app) fileHistoryDrawer(c *ui.Context, overlayTopInset float32) {
 				ui.Box(c).Fill().Tooltip(tr("Close the file history")).
 					OnClick(a.closeFileHistory)
 			}, func() {
-				panel := ui.Column(c).FillHeight().Padding(islandGap / 2).Gap(islandGap).
+				panel := ui.Column(c).FillHeight().Padding(islandGap / 2).Gap(0).
 					Background(islandBackdrop(theme)).
 					Role(ui.RoleDialog).Label(tr("File history")).
 					Children(func() {
@@ -378,10 +391,14 @@ func (a *app) fileHistoryPanel(c *ui.Context) {
 			}
 			iconButton(c, "Close file history", "Escape", closeIcon, false, a.closeFileHistory)
 		})
+		services := c.Services()
 		ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
 			fileTypeMark(c, a.fileHistoryPath, 13, false)
 			ui.Text(c, a.fileHistoryPath).TextColor(theme.TextMuted).SingleLine().
 				Tooltip(a.fileHistoryPath).Selectable()
+			path := a.fileHistoryPath
+			flatIconButton(c, "Copy file path", "Copy the file path", copyIcon, 14, 3, false,
+				func() { a.notifyCopied(services, "relative path", path) })
 		})
 	})
 	collapsiblePaneSplitPercent(c, &a.fileHistoryCommitPercent, &a.fileHistoryCommitsCollapsed,

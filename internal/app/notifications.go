@@ -11,6 +11,9 @@ import (
 	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
+// toastLifetime is how long a notification shows when nobody is pointing at it.
+const toastLifetime = 3 * time.Second
+
 // appToast is a notification queued by an action. Actions run while the
 // window is neither building nor holding a context, so they queue the toast
 // and the next frame adds it to MyGo's list, which owns its time and place.
@@ -167,6 +170,14 @@ func shorten(text string, limit int) string {
 // end of the build pass that has a context to add them with.
 func (a *app) flushToasts(c *ui.Context) {
 	for _, pending := range a.pendingToasts {
+		// Every notification goes away after the same short time, whatever
+		// asked for longer. The toolkit stops the clock while the pointer is
+		// on it or focus is in it, so a notification being read stays. Only
+		// a progress notification, which asks to stay until it is replaced
+		// (a negative timeout), keeps showing.
+		if pending.timeout >= 0 {
+			pending.timeout = toastLifetime
+		}
 		a.toastSeq++
 		id := pending.id
 		if id == "" {

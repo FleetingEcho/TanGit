@@ -26,9 +26,70 @@ func languageServerToolDirectories(goos, home string) []string {
 	return dirs
 }
 
+// languageServerPackageManagerDirectories lists where Node package managers
+// put global executables (pnpm, npm, yarn, volta, bun). A window launched from
+// a desktop shortcut often lacks the shell PATH that adds them, so a global
+// typescript-language-server would otherwise look uninstalled.
+func languageServerPackageManagerDirectories(goos, home string, getenv func(string) string) []string {
+	var dirs []string
+	add := func(dir string) {
+		if dir != "" && !slices.Contains(dirs, dir) {
+			dirs = append(dirs, dir)
+		}
+	}
+	// pnpm 10 and later keep executables in a bin folder inside PNPM_HOME;
+	// earlier versions used PNPM_HOME itself. Offer both.
+	if pnpmHome := getenv("PNPM_HOME"); pnpmHome != "" {
+		add(filepath.Join(pnpmHome, "bin"))
+		add(pnpmHome)
+	}
+	if home != "" {
+		switch goos {
+		case "darwin":
+			add(filepath.Join(home, "Library", "pnpm", "bin"))
+			add(filepath.Join(home, "Library", "pnpm"))
+		case "windows":
+		default:
+			add(filepath.Join(home, ".local", "share", "pnpm", "bin"))
+			add(filepath.Join(home, ".local", "share", "pnpm"))
+			add(filepath.Join(home, ".local", "bin"))
+			// Node itself is often a Homebrew install on Linux, and the
+			// package managers' shims run it through PATH.
+			add("/home/linuxbrew/.linuxbrew/bin")
+			add(filepath.Join(home, ".linuxbrew", "bin"))
+		}
+		// nvm keeps one bin folder per Node version; offer each, newest first.
+		if versions, _ := filepath.Glob(filepath.Join(home, ".nvm", "versions", "node", "*", "bin")); len(versions) > 0 {
+			for i := len(versions) - 1; i >= 0; i-- {
+				add(versions[i])
+			}
+		}
+		for _, relative := range []string{".npm-global/bin", ".npm/bin", ".yarn/bin", ".config/yarn/global/node_modules/.bin",
+			".volta/bin", ".bun/bin", ".asdf/shims", ".local/share/mise/shims", ".local/share/fnm/aliases/default/bin"} {
+			add(filepath.Join(home, filepath.FromSlash(relative)))
+		}
+	}
+	if goos == "windows" {
+		if local := getenv("LOCALAPPDATA"); local != "" {
+			add(filepath.Join(local, "pnpm", "bin"))
+			add(filepath.Join(local, "pnpm"))
+		}
+		if roaming := getenv("APPDATA"); roaming != "" {
+			add(filepath.Join(roaming, "npm"))
+		}
+	}
+	return dirs
+}
+
 func currentLanguageServerToolDirectories() []string {
 	home, _ := os.UserHomeDir()
-	return languageServerToolDirectories(runtime.GOOS, home)
+	dirs := languageServerToolDirectories(runtime.GOOS, home)
+	for _, dir := range languageServerPackageManagerDirectories(runtime.GOOS, home, os.Getenv) {
+		if !slices.Contains(dirs, dir) {
+			dirs = append(dirs, dir)
+		}
+	}
+	return dirs
 }
 
 func lookPathLanguageServerProgram(program string) (string, error) {
@@ -56,9 +117,6 @@ func findLanguageServerProgram(program string, directories []string) (string, er
 // executable discovery, including the selected executable's own directory.
 func languageServerCommandEnvironment(base []string, program string, overrides []string) []string {
 	environment := append(slices.Clone(base), overrides...)
-	if runtime.GOOS != "darwin" {
-		return environment
-	}
 	var path string
 	for _, entry := range environment {
 		if value, ok := strings.CutPrefix(entry, "PATH="); ok {

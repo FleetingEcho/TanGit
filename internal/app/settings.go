@@ -34,6 +34,9 @@ type appSettings struct {
 	// Accent is a name from accentNames or a custom #rrggbb color, painting
 	// buttons and highlights in place of the palette's own; empty keeps it.
 	Accent string `json:"accent"`
+	// CustomThemes are the palettes saved from the theme editor; Theme names
+	// one of them as "custom:<name>".
+	CustomThemes []namedCustomTheme `json:"customThemes,omitempty"`
 	// FontSize, Spacing and Radius are the theme metrics; 0 keeps the
 	// palette's own value (except Radius, where 0 is a sharp corner).
 	FontSize float64 `json:"fontSize"`
@@ -258,7 +261,8 @@ func normalizeSettings(s appSettings) appSettings {
 		s.DisableShortcutToasts = true
 		s.ShortcutToastsConfigured = true
 	}
-	if _, ok := themeChoices[s.Theme]; !ok {
+	s.CustomThemes = normalizeCustomThemes(s.CustomThemes)
+	if _, ok := themeChoices[s.Theme]; !ok && customThemeIndex(s.CustomThemes, s.Theme) < 0 {
 		s.Theme = defaultTheme
 	}
 	if _, ok := accentChoices[s.Accent]; !ok {
@@ -1039,7 +1043,11 @@ var themeCache = map[string]*ui.Theme{}
 // differ on. The buffer font is deliberately absent: it does not reach the
 // window theme.
 func themeSignature(s appSettings) string {
-	return s.Theme + "|" +
+	custom := ""
+	if i := customThemeIndex(s.CustomThemes, s.Theme); i >= 0 {
+		custom = customThemeSignature(s.CustomThemes[i].customThemeSetting)
+	}
+	return s.Theme + "|" + custom + "|" +
 		strconv.FormatFloat(s.FontSize, 'f', -1, 64) + "|" +
 		s.Font + "|" +
 		strconv.FormatFloat(s.Spacing, 'f', -1, 64) + "|" +
@@ -1076,7 +1084,9 @@ func themeForSettingsCached(s appSettings, systemDark bool) *ui.Theme {
 func themeForSettings(s appSettings, systemDark bool) *ui.Theme {
 	var t *ui.Theme
 	choice, ok := themeChoices[s.Theme]
-	if !ok || s.Theme == "System" {
+	if i := customThemeIndex(s.CustomThemes, s.Theme); i >= 0 {
+		t = buildCustomTheme(s.CustomThemes[i].customThemeSetting)
+	} else if !ok || s.Theme == "System" {
 		t = systemLightTheme()
 		if systemDark {
 			t = ui.DarkTheme()
