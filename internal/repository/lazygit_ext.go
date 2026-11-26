@@ -40,6 +40,13 @@ func newGitCommand(
 	return commands.NewGitCommandAux(cmn, version, osCommand, gitConfig, repoPaths, diffConfig), nil
 }
 
+const internalHistoryRefExclusion = "--exclude=refs/tangit/*"
+
+// allUserHistoryArgs includes every ordinary ref except this app's private
+// recovery snapshots. Keep plain History, search, hash reachability and author
+// discovery on the same scope so none can expose or repeatedly walk snapshots.
+var allUserHistoryArgs = []string{internalHistoryRefExclusion, "--all"}
+
 // recentCommits reads up to limit commits reachable from any ref, newest
 // first. A repository whose HEAD has no commit yet has nothing to read, and
 // the log command would fail on the unborn HEAD, so it reports an empty list.
@@ -55,7 +62,7 @@ func (s *gitSession) recentCommits(limit int) ([]*models.Commit, error) {
 		IncludeRebaseCommits: s.sshClient == nil,
 		// Internal recovery objects are reachable from refs, but are not user
 		// history. Git's exclusion applies together with --all below.
-		RefName:      "--exclude=refs/tangit/*",
+		RefName:      internalHistoryRefExclusion,
 		All:          true,
 		MainBranches: s.commitMainBranches,
 		HashPool:     s.hashPool,
@@ -147,24 +154,6 @@ func (s *gitSession) branchCommits(branch string, limit int) ([]*models.Commit, 
 	return s.git.Loaders.CommitLoader.GetCommits(git_commands.GetCommitsOptions{
 		Limit:        limit,
 		RefName:      branch,
-		MainBranches: s.commitMainBranches,
-		HashPool:     s.hashPool,
-	})
-}
-
-// fileCommits reads the commits that changed path, newest first, following
-// the file across renames.
-func (s *gitSession) fileCommits(path, ref string, limit int) ([]*models.Commit, error) {
-	if limit <= 0 {
-		return nil, nil
-	}
-	if ref == "HEAD" && !s.headHasCommit() {
-		return nil, nil
-	}
-	return s.git.Loaders.CommitLoader.GetCommits(git_commands.GetCommitsOptions{
-		Limit:        limit,
-		FilterPath:   path,
-		RefName:      ref,
 		MainBranches: s.commitMainBranches,
 		HashPool:     s.hashPool,
 	})

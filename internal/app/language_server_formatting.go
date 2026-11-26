@@ -86,6 +86,8 @@ type codeFormattingRequest struct {
 	start     int
 	end       int
 	text      string
+	filename  string
+	root      string
 	version   uint64
 	sequence  uint64
 }
@@ -97,6 +99,7 @@ func (a *app) prepareCodeFormatting(document *codeDocument, selection bool) (cod
 	}
 	request := codeFormattingRequest{
 		document: document, selection: selection, text: document.state.Buffer.String(),
+		filename: a.workingFilePath(document.path), root: a.snapshot.Root,
 		version: document.state.Buffer.Version(), end: document.state.Buffer.Len(),
 	}
 	if selection {
@@ -136,7 +139,7 @@ func (a *app) formatCodeRange(request codeFormattingRequest) {
 		go func() {
 			defer a.recoverBackground()
 			input := request.text[request.start:request.end]
-			output, err := runCodeFormatter(formatter.command, a.workingFilePath(document.path), a.snapshot.Root, input)
+			output, err := runCodeFormatter(formatter.command, request.filename, request.root, input)
 			var edits []editor.Edit
 			if err == nil && input != "" && output == "" {
 				err = errCodeFormatterEmptyOutput

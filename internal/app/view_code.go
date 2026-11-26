@@ -64,7 +64,9 @@ func (a *app) codeFileExplorer(c *ui.Context) {
 	explorer.Children(func() {
 		field := ui.SearchField(c, &a.code.filter).Bind(&a.sectionSearch[sectionCode]).
 			Label(tr("Quick open")).Placeholder(tr("Filter files (Ctrl+P)"))
-		if field.Changed() {
+		if field.Changed() && (a.code.treeDirty || a.code.appliedFilter != a.code.filter) {
+			// codeView may already have consumed this bound edit earlier in the
+			// same build pass. Do not rank and rebuild the entire tree twice.
 			a.syncCodeTree()
 		}
 		if field.Submitted() {

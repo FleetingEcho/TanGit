@@ -5,7 +5,7 @@ package i18n
 var compareCommitsTranslations = []struct {
 	English, ZhHans, ZhHant, Japanese, Spanish, French string
 }{
-	{"Compare as", "对比方式", "比較方式", "比較方法", "Comparar como", "Comparer en tant que"},
+	{"Compare as", "对比方式", "比較方式", "比較方法", "Comparar como", "Mode de comparaison"},
 	{"Branch changes", "分支改动", "分支變更", "ブランチの変更", "Cambios de la rama", "Changements de la branche"},
 	{"Exact difference", "精确差异", "精確差異", "厳密な差分", "Diferencia exacta", "Différence exacte"},
 	{"Compare the common ancestor with the To ref to see what changed on that side since the refs diverged.",
@@ -24,9 +24,9 @@ var compareCommitsTranslations = []struct {
 	{"The latest commit %s and %s have in common", "%[1]s 与 %[2]s 共有的最新提交", "%[1]s 與 %[2]s 共有的最新提交", "%[1]s と %[2]s に共通する最新のコミット", "El último commit que %[1]s y %[2]s tienen en común", "Le dernier commit commun à %[1]s et %[2]s"},
 	{"no common history", "没有共同历史", "沒有共同歷史", "共通の履歴なし", "sin historial común", "aucun historique commun"},
 	{"These refs share no commits; Branch changes compares them directly.", "这两个引用没有共同的提交；“分支改动”会直接对比它们。", "這兩個引用沒有共同的提交；「分支變更」會直接比較它們。", "これらの参照には共通のコミットがありません。「ブランチの変更」は両者を直接比較します。", "Estas referencias no comparten commits; «Cambios de la rama» las compara directamente.", "Ces références ne partagent aucun commit ; « Changements de la branche » les compare directement."},
-	{"%d files changed", "%d 个文件有改动", "%d 個檔案有變更", "%d 個のファイルが変更", "%d archivos cambiados", "%d fichiers modifiés"},
+	{"%d files changed", "%d 个文件有改动", "%d 個檔案有變更", "変更されたファイル %d 個", "%d archivos cambiados", "%d fichiers modifiés"},
 	{"Only in %s", "仅在 %s", "僅在 %s", "%s のみ", "Solo en %s", "Uniquement dans %s"},
-	{"No commits only in %s.", "%s 中没有独有的提交。", "%s 中沒有獨有的提交。", "%s だけにあるコミットはありません。", "No hay commits solo en %s.", "Aucun commit uniquement dans %s."},
+	{"No commits only in %s.", "%s 中没有独有的提交。", "%s 中沒有獨有的提交。", "%s だけにあるコミットはありません。", "No hay commits solo en %s.", "Aucun commit n’est propre à %s."},
 	{"Showing the newest %d commits.", "仅显示最新的 %d 个提交。", "僅顯示最新的 %d 個提交。", "最新の %d 件のコミットのみ表示しています。", "Se muestran solo los %d commits más recientes.", "Seuls les %d commits les plus récents sont affichés."},
 }
 

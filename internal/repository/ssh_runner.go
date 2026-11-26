@@ -182,16 +182,20 @@ func (r *sshCmdObjRunner) Run(command *oscommands.CmdObj) error {
 }
 
 func (r *sshCmdObjRunner) RunWithOutput(command *oscommands.CmdObj) (string, error) {
+	return r.runWithOutputContext(context.Background(), command)
+}
+
+func (r *sshCmdObjRunner) runWithOutputContext(ctx context.Context, command *oscommands.CmdObj) (string, error) {
 	if command.Mutex() != nil {
 		command.Mutex().Lock()
 		defer command.Mutex().Unlock()
 	}
 	r.prepare(command)
 	if command.ShouldStreamOutput() {
-		return "", r.runAndStream(command)
+		return "", r.runAndStreamContext(ctx, command)
 	}
 	var stdout, stderr bytes.Buffer
-	err := r.execute(context.Background(), command, command.GetCmd().Stdin, &stdout, &stderr)
+	err := r.execute(ctx, command, command.GetCmd().Stdin, &stdout, &stderr)
 	output := append(stdout.Bytes(), stderr.Bytes()...)
 	return sanitisedRemoteOutput(output, err)
 }
@@ -212,6 +216,10 @@ func (r *sshCmdObjRunner) RunWithOutputs(command *oscommands.CmdObj) (string, st
 }
 
 func (r *sshCmdObjRunner) runAndStream(command *oscommands.CmdObj) error {
+	return r.runAndStreamContext(context.Background(), command)
+}
+
+func (r *sshCmdObjRunner) runAndStreamContext(ctx context.Context, command *oscommands.CmdObj) error {
 	writer := r.newWriter()
 	var suppressed lockedRemoteBuffer
 	if command.ShouldSuppressOutputUnlessError() {
@@ -221,7 +229,7 @@ func (r *sshCmdObjRunner) runAndStream(command *oscommands.CmdObj) error {
 	stream.writer = writer
 	var stderr lockedRemoteBuffer
 	var stdout lockedRemoteBuffer
-	err := r.execute(context.Background(), command, command.GetCmd().Stdin,
+	err := r.execute(ctx, command, command.GetCmd().Stdin,
 		io.MultiWriter(&stream, &stdout), io.MultiWriter(&stream, &stderr))
 	if err == nil || command.ShouldIgnoreEmptyError() && stderr.String() == "" {
 		return nil

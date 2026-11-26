@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FleetingEcho/lazygitGo/internal/app/i18n"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -174,7 +175,7 @@ func activityTimeLabel(at, now time.Time) string {
 	if at.Year() == now.Year() && at.YearDay() == now.YearDay() {
 		return at.Format("15:04")
 	}
-	return at.Format("Jan 2 15:04")
+	return i18n.DateTimeLabel(at, currentLanguage)
 }
 
 func (s *shell) activityCenterView(c *ui.Context) {

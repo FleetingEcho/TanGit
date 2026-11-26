@@ -46,6 +46,17 @@ func (a *app) notifyToast(toast appToast) {
 	for index := range toast.moreActions {
 		toast.moreActions[index].label = tr(toast.moreActions[index].label)
 	}
+	// Hidden tabs may publish progress for a long time without building a
+	// frame. Coalesce here as well as in MyGo so those updates cannot grow an
+	// unbounded pending queue while no flushToasts call can run.
+	if toast.id != "" && toast.timeout < 0 {
+		for index := range a.pendingToasts {
+			if a.pendingToasts[index].id == toast.id && a.pendingToasts[index].timeout < 0 {
+				a.pendingToasts[index] = toast
+				return
+			}
+		}
+	}
 	a.pendingToasts = append(a.pendingToasts, toast)
 }
 

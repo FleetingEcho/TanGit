@@ -218,8 +218,9 @@ func parseLanguageServerInlayHints(raw json.RawMessage, text string) []editor.In
 		return nil
 	}
 	inlays := make([]editor.Inlay, 0, len(hints))
+	offsets := indexLanguageServerLines(text)
 	for _, hint := range hints {
-		offset, ok := languageServerExactOffsetAt(text, hint.Position)
+		offset, ok := offsets.exactOffsetAt(hint.Position)
 		if !ok {
 			continue
 		}
@@ -257,6 +258,7 @@ func parseLanguageServerSemanticTokens(raw json.RawMessage, text string, tokenTy
 		return nil
 	}
 	line, character := 0, 0
+	offsets := indexLanguageServerLines(text)
 	tokens := make([]editor.SemanticToken, 0, len(response.Data)/5)
 	for i := 0; i < len(response.Data); i += 5 {
 		deltaLine, deltaStart, length, tokenType := int(response.Data[i]), int(response.Data[i+1]), int(response.Data[i+2]), int(response.Data[i+3])
@@ -266,8 +268,8 @@ func parseLanguageServerSemanticTokens(raw json.RawMessage, text string, tokenTy
 		} else {
 			character = deltaStart
 		}
-		start, okStart := languageServerExactOffsetAt(text, languageServerPosition{Line: line, Character: character})
-		end, okEnd := languageServerExactOffsetAt(text, languageServerPosition{Line: line, Character: character + length})
+		start, okStart := offsets.exactOffsetAt(languageServerPosition{Line: line, Character: character})
+		end, okEnd := offsets.exactOffsetAt(languageServerPosition{Line: line, Character: character + length})
 		if !okStart || !okEnd || tokenType < 0 || tokenType >= len(tokenTypes) {
 			continue
 		}

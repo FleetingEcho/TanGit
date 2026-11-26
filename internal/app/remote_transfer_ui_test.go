@@ -231,9 +231,9 @@ func TestRemoteTransferProgressCoalescesLatestSnapshot(t *testing.T) {
 	pending = nil
 	run()
 	updated.waitForUpdate(t)
-	if len(a.pendingToasts) != 2 || !strings.Contains(a.pendingToasts[1].description, "30 B") ||
-		strings.Contains(a.pendingToasts[1].description, "20 B") {
-		t.Fatalf("coalesced progress = %+v, want only 30 bytes", a.pendingToasts)
+	if len(a.pendingToasts) != 1 || !strings.Contains(a.pendingToasts[0].description, "30 B") ||
+		strings.Contains(a.pendingToasts[0].description, "20 B") {
+		t.Fatalf("coalesced progress = %+v, want only the latest 30-byte snapshot", a.pendingToasts)
 	}
 
 	a.queueRemoteTransferSnapshot(manager, generation, progress(40))
@@ -248,7 +248,7 @@ func TestRemoteTransferProgressCoalescesLatestSnapshot(t *testing.T) {
 	if cancels == 0 {
 		t.Fatal("terminal completion did not cancel delayed progress")
 	}
-	if len(a.pendingToasts) != 3 || !strings.Contains(a.pendingToasts[2].description, "1 completed") {
+	if len(a.pendingToasts) != 2 || !strings.Contains(a.pendingToasts[1].description, "1 completed") {
 		t.Fatalf("terminal completion was not published immediately: %+v", a.pendingToasts)
 	}
 	pending[0].run() // A canceled timer that still fires is stale and harmless.
@@ -423,7 +423,7 @@ func TestRemoteTransferToastsUseRealCatalogsAcrossStates(t *testing.T) {
 
 func TestRemoteTransferCollisionIsAsynchronousNativeBatchChoice(t *testing.T) {
 	a, updated := newRemoteTransferUITestApp(t)
-	manager, _, _, err := a.remoteTransferManager()
+	manager, generation, _, err := a.remoteTransferManager()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +447,7 @@ func TestRemoteTransferCollisionIsAsynchronousNativeBatchChoice(t *testing.T) {
 			return nil
 		},
 		OnCollision: func(prompt transfer.CollisionPrompt) {
-			a.presentRemoteTransferCollision(manager, a.generation, prompt)
+			a.presentRemoteTransferCollision(manager, generation, prompt)
 		},
 	})
 	if err != nil {
@@ -481,7 +481,12 @@ collisionShown:
 	if err != nil || result.Status != transfer.StatusSucceeded {
 		t.Fatalf("collision result = %+v, %v", result, err)
 	}
-	updated.waitForUpdate(t) // Retire the answered collision on the UI goroutine.
+	// Retire the answered collision on the UI goroutine. The retire callback may
+	// already have run while the loop above waited for the question, so wait on
+	// the state rather than for one more wakeup that may never come.
+	for len(a.remoteTransfers.prompts) != 0 {
+		updated.waitForUpdate(t)
+	}
 }
 
 func TestRemoteNativeDropPassesFilesAndFoldersToRemoteFolder(t *testing.T) {

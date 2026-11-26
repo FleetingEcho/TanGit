@@ -8,7 +8,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -27,6 +29,69 @@ type codeRecoveryFile struct {
 	Version int                 `json:"version"`
 	Root    string              `json:"root"`
 	Entries []codeRecoveryEntry `json:"entries"`
+}
+
+type codeRecoveryDocumentInput struct {
+	document *codeDocument
+	state    *editor.State
+	path     string
+	stamp    localFileStamp
+	version  uint64
+}
+
+type codeRecoveryWriteGate struct {
+	mu     sync.Mutex
+	latest uint64
+	refs   uint64
+}
+
+type codeRecoveryWritePermit struct {
+	filename string
+	gate     *codeRecoveryWriteGate
+	sequence uint64
+}
+
+type codeRecoveryWriteCoordinator struct {
+	mu    sync.Mutex
+	gates map[string]*codeRecoveryWriteGate
+}
+
+func (c *codeRecoveryWriteCoordinator) next(filename string) codeRecoveryWritePermit {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.gates == nil {
+		c.gates = make(map[string]*codeRecoveryWriteGate)
+	}
+	gate := c.gates[filename]
+	if gate == nil {
+		gate = &codeRecoveryWriteGate{}
+		c.gates[filename] = gate
+	}
+	gate.latest++
+	gate.refs++
+	return codeRecoveryWritePermit{filename: filename, gate: gate, sequence: gate.latest}
+}
+
+func (c *codeRecoveryWriteCoordinator) write(permit codeRecoveryWritePermit, recovery codeRecoveryFile) error {
+	defer c.release(permit)
+	permit.gate.mu.Lock()
+	defer permit.gate.mu.Unlock()
+	c.mu.Lock()
+	current := permit.gate.latest == permit.sequence
+	c.mu.Unlock()
+	if !current {
+		return nil
+	}
+	return codeRecoveryWriter(permit.filename, recovery)
+}
+
+func (c *codeRecoveryWriteCoordinator) release(permit codeRecoveryWritePermit) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	permit.gate.refs--
+	if permit.gate.refs == 0 && c.gates[permit.filename] == permit.gate {
+		delete(c.gates, permit.filename)
+	}
 }
 
 func codeRecoveryPath(dataDir, root string) string {
@@ -55,6 +120,8 @@ func readCodeRecovery(filename, root string) (codeRecoveryFile, error) {
 	return recovery, nil
 }
 
+var codeRecoveryWriter = writeCodeRecovery
+
 func writeCodeRecovery(filename string, recovery codeRecoveryFile) error {
 	if len(recovery.Entries) == 0 {
 		if err := os.Remove(filename); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -75,6 +142,31 @@ func writeCodeRecovery(filename string, recovery codeRecoveryFile) error {
 	})
 }
 
+// codeRecoveryInputChanged compares inexpensive document metadata on every
+// frame. Buffer contents and recovery JSON are materialized only after this
+// revision changes, not whenever a cursor, hover, or repaint rebuilds the UI.
+func (a *app) codeRecoveryInputChanged() bool {
+	inputs := make([]codeRecoveryDocumentInput, 0, len(a.code.documents))
+	for _, document := range a.code.documents {
+		if !codeDocumentModified(document) || !document.localStampKnown {
+			continue
+		}
+		inputs = append(inputs, codeRecoveryDocumentInput{
+			document: document, state: document.state, path: document.path,
+			stamp: document.localStamp, version: document.state.Buffer.Version(),
+		})
+	}
+	sort.Slice(inputs, func(i, j int) bool { return inputs[i].path < inputs[j].path })
+	if a.code.recoveryInputValid && a.code.recoveryInputEntries == a.code.recoveryEntriesSeq &&
+		slices.Equal(a.code.recoveryInput, inputs) {
+		return false
+	}
+	a.code.recoveryInput = inputs
+	a.code.recoveryInputEntries = a.code.recoveryEntriesSeq
+	a.code.recoveryInputValid = true
+	return true
+}
+
 // syncCodeRecovery snapshots dirty buffers after a short quiet period. The
 // recovery file contains app-owned copies only; restoring never writes the
 // workspace and only proceeds while the on-disk bytes still match the base.
@@ -87,6 +179,7 @@ func (a *app) syncCodeRecovery() {
 	if a.code.recoveryRoot != root {
 		a.code.recoveryRoot = root
 		a.code.recoveryLoaded = false
+		a.code.recoveryInputValid = false
 		a.code.recoverySeq++
 		sequence := a.code.recoverySeq
 		generation := a.generation
@@ -103,6 +196,8 @@ func (a *app) syncCodeRecovery() {
 				}
 				a.code.recoveryLoaded = true
 				a.code.recoveryEntries = make(map[string]codeRecoveryEntry, len(recovery.Entries))
+				a.code.recoveryEntriesSeq++
+				a.code.recoveryInputValid = false
 				for _, entry := range recovery.Entries {
 					if !validCodeManagedPath(entry.Path) {
 						continue
@@ -115,7 +210,7 @@ func (a *app) syncCodeRecovery() {
 		}()
 		return
 	}
-	if !a.code.recoveryLoaded {
+	if !a.code.recoveryLoaded || !a.codeRecoveryInputChanged() {
 		return
 	}
 	entries := make([]codeRecoveryEntry, 0, len(a.code.documents))
@@ -150,14 +245,23 @@ func (a *app) syncCodeRecovery() {
 			if generation != a.generation || sequence != a.code.recoverySeq {
 				return false
 			}
+			// Assign the physical-write order before starting the goroutine;
+			// scheduler order is not the user's edit order. The coordinator is a
+			// pointer so copying display-only codeState remains lock-free.
+			if a.code.recoveryWrites == nil {
+				a.code.recoveryWrites = &codeRecoveryWriteCoordinator{}
+			}
+			writes := a.code.recoveryWrites
+			writePermit := writes.next(filename)
 			go func() {
 				defer a.recoverBackground()
-				if err := writeCodeRecovery(filename, recovery); err != nil {
+				if err := writes.write(writePermit, recovery); err != nil {
 					a.updateChanged(func() bool {
 						if generation != a.generation || sequence != a.code.recoverySeq {
 							return false
 						}
 						a.code.recoverySignature = localFileStamp{}
+						a.code.recoveryInputValid = false
 						a.notify("warning", tr("Could not save editor recovery"), safeError(err))
 						return true
 					})
@@ -177,6 +281,8 @@ func (a *app) restoreCodeRecoveryEntry(document *codeDocument) {
 		return
 	}
 	delete(a.code.recoveryEntries, document.path)
+	a.code.recoveryEntriesSeq++
+	a.code.recoveryInputValid = false
 	if !document.localStampKnown || entry.Stamp != document.localStamp {
 		a.notify("warning", tr("Editor recovery skipped"), trf("%s changed on disk", document.path))
 		return

@@ -2,9 +2,104 @@ package app
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
+	"reflect"
+	"sync"
 
 	"github.com/egoist/mygo/ui/editor"
 )
+
+var errRemoteSaveSuperseded = errors.New("remote save superseded by a newer write")
+
+type remoteWriteKey struct {
+	client string
+	root   string
+	name   string
+}
+
+type remoteWriteGate struct {
+	mu         sync.Mutex
+	latest     uint64
+	refs       uint64
+	stamp      remoteFileStamp
+	stampKnown bool
+}
+
+type remoteWritePermit struct {
+	key      remoteWriteKey
+	gate     *remoteWriteGate
+	sequence uint64
+}
+
+// remoteWriteCoordinator outlives any individual codeDocument. Lifecycle
+// invalidation retires UI completion callbacks, but it cannot stop an SFTP
+// write already in flight; physical writes therefore need their own ordering.
+type remoteWriteCoordinator struct {
+	mu    sync.Mutex
+	gates map[remoteWriteKey]*remoteWriteGate
+}
+
+func remoteWriteClientIdentity(client remoteWorkspaceClient) string {
+	value := reflect.ValueOf(client)
+	if value.IsValid() && value.Kind() == reflect.Pointer {
+		return fmt.Sprintf("%T:%x", client, value.Pointer())
+	}
+	return fmt.Sprintf("%T:%v", client, client)
+}
+
+func (c *remoteWriteCoordinator) begin(client remoteWorkspaceClient, root, name string) remoteWritePermit {
+	key := remoteWriteKey{client: remoteWriteClientIdentity(client), root: root, name: name}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.gates == nil {
+		c.gates = make(map[remoteWriteKey]*remoteWriteGate)
+	}
+	gate := c.gates[key]
+	if gate == nil {
+		gate = &remoteWriteGate{}
+		c.gates[key] = gate
+	}
+	gate.latest++
+	gate.refs++
+	return remoteWritePermit{key: key, gate: gate, sequence: gate.latest}
+}
+
+// write runs at most one physical write for a path. If scheduling let a newer
+// request obtain the lock first, the older request exits without writing. If
+// the older request was already writing, the newer one waits and writes last.
+func (c *remoteWriteCoordinator) write(permit remoteWritePermit, client remoteWorkspaceClient, root, name string, content []byte, previous remoteFileStamp, previousKnown bool) (remoteFileStamp, error) {
+	defer c.release(permit)
+	permit.gate.mu.Lock()
+	defer permit.gate.mu.Unlock()
+	c.mu.Lock()
+	current := permit.gate.latest == permit.sequence
+	c.mu.Unlock()
+	if !current {
+		return remoteFileStamp{}, errRemoteSaveSuperseded
+	}
+	// A replacement request may have captured its optimistic-lock stamp
+	// before the last physical write committed. Even if intermediate saves
+	// were superseded, the last successful stamp is the correct base for the
+	// latest save. The optimistic check still rejects unrelated remote edits.
+	if permit.gate.stampKnown {
+		previous, previousKnown = permit.gate.stamp, true
+	}
+	stamp, err := writeRemoteWorkingFile(client, root, name, content, previous, previousKnown)
+	if err == nil {
+		permit.gate.stamp, permit.gate.stampKnown = stamp, true
+	}
+	return stamp, err
+}
+
+func (c *remoteWriteCoordinator) release(permit remoteWritePermit) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	permit.gate.refs--
+	if permit.gate.refs == 0 && c.gates[permit.key] == permit.gate {
+		delete(c.gates, permit.key)
+	}
+}
 
 // remoteSaveState is manipulated only on the UI thread. sequence retires
 // completions after a reload, close, rename, or repository switch. version is
@@ -176,10 +271,11 @@ func (a *app) saveRemoteCodeDocumentWithClient(client remoteWorkspaceClient, doc
 		document.remoteSave.callbacks = append(document.remoteSave.callbacks, done)
 	}
 	data := append([]byte(nil), content.Bytes()...)
+	writePermit := a.remoteWrites.begin(client, root, name)
 
 	go func() {
 		defer a.recoverBackground()
-		stamp, writeErr := writeRemoteWorkingFile(client, root, name, data, previous, previousKnown)
+		stamp, writeErr := a.remoteWrites.write(writePermit, client, root, name, data, previous, previousKnown)
 		a.updateChanged(func() bool {
 			current := a.code.documents[name]
 			if generation != a.generation || documentGeneration != document.generation || sequence != document.remoteSave.sequence || current != document {

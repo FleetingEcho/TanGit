@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FleetingEcho/lazygitGo/internal/app/i18n"
 	"github.com/FleetingEcho/lazygitGo/internal/repository"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -88,7 +89,7 @@ func (a *app) codeBlameDetailsCard(c *ui.Context) {
 			}
 			date := hover.blame.Date
 			if timestamp > 0 {
-				date = time.Unix(timestamp, 0).Format("Jan 2, 2006 · 15:04")
+				date = i18n.FullDateTimeLabel(time.Unix(timestamp, 0), currentLanguage)
 			}
 			historyDisabled := !a.sectionVisible(sectionHistory)
 			historyTooltip := "Open this commit in History"

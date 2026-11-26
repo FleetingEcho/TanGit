@@ -74,6 +74,28 @@ func TestNotificationDescriptionTranslationIsExplicit(t *testing.T) {
 	}
 }
 
+func TestPendingProgressToastsCoalesceWithoutAFrame(t *testing.T) {
+	a := &app{}
+	a.notifyToast(appToast{id: "transfer-1", title: "Upload", description: "1%", timeout: -1})
+	a.notifyToast(appToast{id: "transfer-2", title: "Download", description: "1%", timeout: -1})
+	for percent := 2; percent <= 100; percent++ {
+		a.notifyToast(appToast{id: "transfer-1", title: "Upload", description: fmt.Sprint(percent, "%"), timeout: -1})
+	}
+	if len(a.pendingToasts) != 2 {
+		t.Fatalf("pending progress toasts = %d, want 2", len(a.pendingToasts))
+	}
+	if got := a.pendingToasts[0].description; got != "100%" {
+		t.Fatalf("coalesced progress = %q, want latest 100%%", got)
+	}
+	if got := a.pendingToasts[1].id; got != "transfer-2" {
+		t.Fatalf("unrelated toast was reordered or replaced: %q", got)
+	}
+	a.notifyToast(appToast{id: "transfer-1", kind: "success", title: "Upload complete", timeout: time.Second})
+	if len(a.pendingToasts) != 3 || a.pendingToasts[0].description != "100%" || a.pendingToasts[2].title != "Upload complete" {
+		t.Fatalf("terminal toast replaced or discarded progress: %+v", a.pendingToasts)
+	}
+}
+
 func TestErrorsAndToastsRedactCredentials(t *testing.T) {
 	a := &app{}
 	err := errors.New("fetch https://alice:super-secret@example.com/private.git failed: Authorization: Bearer toast-secret")

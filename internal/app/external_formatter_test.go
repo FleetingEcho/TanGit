@@ -299,6 +299,22 @@ func TestExternalFormattingDiscardsResultAfterFurtherTyping(t *testing.T) {
 	}
 }
 
+func TestPrepareCodeFormattingCapturesRepositoryPaths(t *testing.T) {
+	h := menuTestApp(t)
+	h.app.snapshot.Root = "/old/repo"
+	document := &codeDocument{path: "main.go", state: &editor.State{Buffer: editor.NewBuffer("package main\n")}}
+	h.app.code.documents = map[string]*codeDocument{"main.go": document}
+	request, ok := h.app.prepareCodeFormatting(document, false)
+	if !ok {
+		t.Fatal("formatting request was rejected")
+	}
+	h.app.snapshot.Root = "/replacement/repo"
+	document.path = "replacement.go"
+	if request.root != "/old/repo" || request.filename != "/old/repo/main.go" {
+		t.Fatalf("request retained mutable repository paths: root=%q filename=%q", request.root, request.filename)
+	}
+}
+
 func TestExternalFormatterNeverLaunchesForRemoteWorkspace(t *testing.T) {
 	h := menuTestApp(t)
 	h.app.location = workspace.Location{Kind: workspace.SSH, Root: "/remote/project"}

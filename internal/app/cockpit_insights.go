@@ -267,6 +267,7 @@ type cockpitInsights struct {
 	// volumePeriod is the Code changes card's own time range.
 	volumePeriod int
 	volumeToken  uint64
+	volumeCancel context.CancelFunc
 	volumeCache  map[string]insightsCacheEntry[repository.CodeVolume]
 
 	healthUnavailable bool
@@ -310,20 +311,32 @@ func (a *app) loadCockpitCodeVolume() {
 	// that starts every load of the page syncs it first.
 	branch, period := state.branch, insights.volumePeriod
 	key := codeVolumeKey(branch, period)
+	if insights.volumeLoading && insights.volumeKey == key {
+		return
+	}
+	if insights.volumeCancel != nil {
+		insights.volumeCancel()
+		insights.volumeCancel = nil
+	}
+	// Invalidate an older read before either starting its replacement or
+	// displaying a cached value. Publishing only the current key avoids flicker.
+	insights.volumeToken++
+	token := insights.volumeToken
+	insights.volumeKey = key
 	now := time.Now()
 	if entry, ok := insights.volumeCache[key]; ok && entry.generation == a.generation && now.Sub(entry.loadedAt) < cockpitContributorsMaxAge {
 		insights.volume = bucketCodeVolume(entry.value, period, now)
-		insights.volumeLoaded, insights.volumeLoading, insights.volumeErr, insights.volumeKey = true, false, "", key
+		insights.volumeLoaded, insights.volumeLoading, insights.volumeErr = true, false, ""
 		return
 	}
-	insights.volumeLoading, insights.volumeLoaded = true, false
-	insights.volumeToken++
-	token := insights.volumeToken
+	insights.volumeLoading, insights.volumeLoaded, insights.volumeErr = true, false, ""
 	generation := a.generation
-	ctx := a.repositoryWork.Context()
+	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
+	insights.volumeCancel = cancel
 	since, limit := codeVolumeSince(period, now), codeVolumeLimit(period)
 	go func() {
 		defer a.recoverBackground()
+		defer cancel()
 		volume, err := session.CodeVolume(ctx, branch, since, limit)
 		a.update(func() {
 			current := &a.cockpit.insights
@@ -331,6 +344,7 @@ func (a *app) loadCockpitCodeVolume() {
 				return
 			}
 			current.volumeLoading = false
+			current.volumeCancel = nil
 			if err != nil {
 				current.volumeErr = safeError(err)
 				return
@@ -340,7 +354,7 @@ func (a *app) loadCockpitCodeVolume() {
 			}
 			at := time.Now()
 			current.volumeCache[key] = insightsCacheEntry[repository.CodeVolume]{value: volume, generation: generation, loadedAt: at}
-			current.volumeErr, current.volumeKey, current.volumeLoaded = "", key, true
+			current.volumeErr, current.volumeLoaded = "", true
 			current.volume = bucketCodeVolume(volume, period, at)
 		})
 	}()
@@ -458,6 +472,10 @@ func (a *app) invalidateCockpit() {
 	insights.volumeCache = nil
 	insights.volumeLoading, insights.volumeLoaded = false, false
 	insights.volumeToken++
+	if insights.volumeCancel != nil {
+		insights.volumeCancel()
+		insights.volumeCancel = nil
+	}
 	insights.healthLoading, insights.healthLoaded = false, false
 	insights.healthToken++
 	insights.langLoading, insights.langLoaded = false, false

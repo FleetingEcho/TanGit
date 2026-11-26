@@ -100,41 +100,48 @@ func rankWorkspaceSearchMatches(matches []workspaceSearchMatch, options workspac
 		group.matches = append(group.matches, scoredMatch{match: match})
 	}
 
-	withFzfScheme("default", func(slab *util.Slab) {
-		for groupIndex := range groups {
-			group := &groups[groupIndex]
-			group.best = -1
-			for matchIndex := range group.matches {
-				scored := &group.matches[matchIndex]
-				query := options.Query
-				caseSensitive := options.CaseSensitive
-				if options.RegularExpr {
-					// Regex syntax is not literal fzf input. Score the text selected by
-					// the shared matcher instead, including zero-width expressions.
-					start, end := workspaceSearchRangeWithOptions(scored.match.Text, options)
-					if start < 0 || end < start {
-						continue
+	// fzf's scoring scheme is process-global. Score in bounded batches so a
+	// worker ranking one huge file cannot hold the scheme lock against Quick
+	// Open for the entire result set. Sorting stays outside the global lock.
+	const scoreBatch = 256
+	for groupIndex := range groups {
+		group := &groups[groupIndex]
+		group.best = -1
+		for first := 0; first < len(group.matches); first += scoreBatch {
+			end := min(first+scoreBatch, len(group.matches))
+			withFzfScheme("default", func(slab *util.Slab) {
+				for matchIndex := first; matchIndex < end; matchIndex++ {
+					scored := &group.matches[matchIndex]
+					query := options.Query
+					caseSensitive := options.CaseSensitive
+					if options.RegularExpr {
+						// Regex syntax is not literal fzf input. Score the text selected by
+						// the shared matcher instead, including zero-width expressions.
+						start, end := workspaceSearchRangeWithOptions(scored.match.Text, options)
+						if start < 0 || end < start {
+							continue
+						}
+						query = scored.match.Text[start:end]
+						caseSensitive = true
 					}
-					query = scored.match.Text[start:end]
-					caseSensitive = true
+					if query == "" {
+						scored.score = 0
+					} else {
+						pattern, normalize := fzfPattern(query, caseSensitive)
+						chars := util.ToChars([]byte(scored.match.Text))
+						result, _ := algo.ExactMatchNaive(caseSensitive, normalize, true, &chars, pattern, false, slab)
+						scored.score = result.Score
+					}
+					if scored.score > group.best {
+						group.best = scored.score
+					}
 				}
-				if query == "" {
-					scored.score = 0
-				} else {
-					pattern, normalize := fzfPattern(query, caseSensitive)
-					chars := util.ToChars([]byte(scored.match.Text))
-					result, _ := algo.ExactMatchNaive(caseSensitive, normalize, true, &chars, pattern, false, slab)
-					scored.score = result.Score
-				}
-				if scored.score > group.best {
-					group.best = scored.score
-				}
-			}
-			sort.SliceStable(group.matches, func(i, j int) bool {
-				return group.matches[i].score > group.matches[j].score
 			})
 		}
-	})
+		sort.SliceStable(group.matches, func(i, j int) bool {
+			return group.matches[i].score > group.matches[j].score
+		})
+	}
 
 	sort.SliceStable(groups, func(i, j int) bool {
 		if groups[i].best != groups[j].best {

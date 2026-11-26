@@ -392,3 +392,38 @@ func languageServerExactOffsetAt(text string, position languageServerPosition) (
 	}
 	return lineStart + offset, true
 }
+
+// languageServerLineOffsets shares one line-start index across a complete LSP
+// response. Re-running languageServerExactOffsetAt for every semantic token
+// would repeatedly scan the document prefix and make large responses quadratic.
+type languageServerLineOffsets struct {
+	text   string
+	starts []int
+}
+
+func indexLanguageServerLines(text string) languageServerLineOffsets {
+	index := languageServerLineOffsets{text: text, starts: make([]int, 1, strings.Count(text, "\n")+1)}
+	for offset, char := range []byte(text) {
+		if char == '\n' {
+			index.starts = append(index.starts, offset+1)
+		}
+	}
+	return index
+}
+
+func (i languageServerLineOffsets) exactOffsetAt(position languageServerPosition) (int, bool) {
+	if position.Line < 0 || position.Character < 0 || position.Line >= len(i.starts) {
+		return 0, false
+	}
+	lineStart := i.starts[position.Line]
+	lineEnd := len(i.text) - lineStart
+	if next := strings.IndexByte(i.text[lineStart:], '\n'); next >= 0 {
+		lineEnd = next
+	}
+	line := i.text[lineStart : lineStart+lineEnd]
+	offset := languageServerUTF16ColumnToByte(line, position.Character)
+	if languageServerPositionAt(line, offset).Character != position.Character {
+		return 0, false
+	}
+	return lineStart + offset, true
+}

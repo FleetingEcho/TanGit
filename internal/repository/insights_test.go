@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -39,6 +40,53 @@ func TestParseBranchHealthSkipsRemoteHeadsAndReadsDistance(t *testing.T) {
 	}
 	if old := got[2]; old.Name != "old" || !old.Merged || old.Behind != 40 {
 		t.Fatalf("old = %+v", old)
+	}
+}
+
+func TestCodeVolumeLimitReturnsNewestAcrossPeriodWindows(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	runGit(t, dir, "config", "user.name", "Desktop Test")
+	runGit(t, dir, "config", "user.email", "desktop@example.com")
+	base := time.Now().Add(-4 * time.Hour).Truncate(time.Second)
+	times := make([]int64, 8)
+	for index := range times {
+		timeIndex := index
+		times[timeIndex] = base.Add(time.Duration(index+1) * 30 * time.Minute).Unix()
+		cmd := exec.Command("git", "-C", dir, "commit", "--allow-empty", "-m", "windowed work")
+		date := time.Unix(times[timeIndex], 0).UTC().Format(time.RFC3339)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("create dated commit: %v: %s", err, output)
+		}
+	}
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	enhanced, ok := session.(interface {
+		CodeVolume(context.Context, string, int64, int) (CodeVolume, error)
+	})
+	if !ok {
+		t.Fatal("session has no code-volume reader")
+	}
+	for _, test := range []struct {
+		limit   int
+		limited bool
+	}{{limit: 4, limited: true}, {limit: 5, limited: true}, {limit: 8}} {
+		volume, err := enhanced.CodeVolume(context.Background(), "", base.Unix(), test.limit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(volume.Commits) != test.limit || volume.Limited != test.limited {
+			t.Fatalf("CodeVolume(limit %d) = %d commits, limited %v", test.limit, len(volume.Commits), volume.Limited)
+		}
+		for index, commit := range volume.Commits {
+			want := times[len(times)-1-index]
+			if commit.At != want {
+				t.Fatalf("CodeVolume(limit %d) commit %d time = %d, want newest %d", test.limit, index, commit.At, want)
+			}
+		}
 	}
 }
 

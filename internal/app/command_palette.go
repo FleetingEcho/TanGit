@@ -1062,11 +1062,11 @@ func paletteTitle(query string, actions bool) string {
 	case '#':
 		return tr("Search Commits")
 	case '/':
-		return tr("Search File")
+		return tr("Search files")
 	case '~':
 		return tr("Switch Repository")
 	case '!':
-		return tr("Execute Command")
+		return tr("Run Shell Command")
 	}
 	return tr("Command Palette")
 }

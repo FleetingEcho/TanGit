@@ -3773,7 +3773,7 @@ func (s *gitSession) searchCommits(ctx context.Context, filter CommitFilter) ([]
 		return nil, err
 	}
 	branch = s.qualifyCommitFilterBranch(branch)
-	if commits, hashQuery, err := s.searchCommitHash(filter, query, branch); hashQuery {
+	if commits, hashQuery, err := s.searchCommitHash(ctx, filter, query, branch); hashQuery {
 		if err != nil && s.isUnbornBranch(branch) {
 			return nil, nil
 		}
@@ -3811,11 +3811,15 @@ func (s *gitSession) searchCommits(ctx context.Context, filter CommitFilter) ([]
 	if branch != "" {
 		args = append(args, branch)
 	} else {
-		// History is every branch's history, like the snapshot it shows.
-		args = append(args, "--all")
+		// Match RecentCommits: internal recovery snapshots are not user history.
+		args = append(args, allUserHistoryArgs...)
 	}
 	args = append(args, "--")
-	output, err := s.cmd.New(args).RunWithOutput()
+	command, err := s.commandContext(ctx, args)
+	if err != nil {
+		return nil, fmt.Errorf("search commits: %w", err)
+	}
+	output, err := s.runWithOutputContext(ctx, command)
 	if err != nil {
 		if s.isUnbornBranch(branch) {
 			return nil, nil
@@ -3848,7 +3852,7 @@ func (s *gitSession) isUnbornBranch(branch string) bool {
 // only reads messages, so looking up the object separately also supports the
 // abbreviated hashes shown in the commit list. An unknown prefix falls back
 // to a message search: hexadecimal words can be prose too.
-func (s *gitSession) searchCommitHash(filter CommitFilter, query, branch string) (commits []Commit, hashQuery bool, err error) {
+func (s *gitSession) searchCommitHash(ctx context.Context, filter CommitFilter, query, branch string) (commits []Commit, hashQuery bool, err error) {
 	if len(query) < 4 || len(query) > 64 {
 		return nil, false, nil
 	}
@@ -3874,9 +3878,13 @@ func (s *gitSession) searchCommitHash(filter CommitFilter, query, branch string)
 	if branch != "" {
 		args = append(args, branch)
 	} else {
-		args = append(args, "--all")
+		args = append(args, allUserHistoryArgs...)
 	}
-	output, err = s.cmd.New(args).RunWithOutput()
+	historyCommand, commandErr := s.commandContext(ctx, args)
+	if commandErr != nil {
+		return nil, true, fmt.Errorf("search commits: %w", commandErr)
+	}
+	output, err = s.runWithOutputContext(ctx, historyCommand)
 	if err != nil {
 		return nil, true, fmt.Errorf("search commits: %w", err)
 	}
@@ -3950,7 +3958,13 @@ func (s *gitSession) Authors(ctx context.Context) ([]string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	output, err := s.cmd.New([]string{"git", "log", "--all", "--format=%an"}).RunWithOutput()
+	args := append([]string{"git", "log"}, allUserHistoryArgs...)
+	args = append(args, "--format=%an")
+	command, err := s.commandContext(ctx, args)
+	if err != nil {
+		return nil, fmt.Errorf("read commit authors: %w", err)
+	}
+	output, err := s.runWithOutputContext(ctx, command)
 	if err != nil {
 		return nil, fmt.Errorf("read commit authors: %w", err)
 	}
@@ -3980,8 +3994,8 @@ func (s *gitSession) Authors(ctx context.Context) ([]string, error) {
 // FileCommits reads up to limit commits that changed path, newest first,
 // skipping the newest skip, following renames across the history, so the
 // file's own history is browsable without a checkout and pages in as the
-// drawer scrolls. Git is asked for the skipped and wanted commits together,
-// since its log takes a count from the newest commit and no offset.
+// drawer scrolls. Keep limit+skip: Git applies --skip before pathspec
+// filtering here, so unrelated commits would otherwise shift a file's pages.
 func (s *gitSession) FileCommits(ctx context.Context, path string, limit, skip int) ([]Commit, error) {
 	return s.fileCommitsPage(ctx, path, []string{"HEAD"}, limit, skip)
 }
@@ -4030,68 +4044,45 @@ func (s *gitSession) fileCommitsPage(ctx context.Context, path string, refs []st
 // history can walk every commit to find a few that touched the file.
 const fileHistoryReadTimeout = 60 * time.Second
 
-// fileCommitsWithin reads the commits of a file, giving up after
-// fileHistoryReadTimeout or when ctx ends. Git is not interruptible here, so
-// a read that times out finishes in the background and its result is dropped.
+// fileCommitsWithin gives one cancellable process context to the complete
+// File History read, including its exact-path fallback. Timing out now stops
+// Git rather than leaving an invisible full-history traversal running.
 func (s *gitSession) fileCommitsWithin(ctx context.Context, path string, refs []string, limit, skip int) ([]Commit, error) {
-	type result struct {
-		commits []Commit
-		err     error
-	}
-	done := make(chan result, 1)
-	go func() {
-		commits, err := s.readFileHistory(ctx, path, refs, limit, skip)
-		done <- result{commits, err}
-	}()
-	timer := time.NewTimer(fileHistoryReadTimeout)
-	defer timer.Stop()
-	select {
-	case r := <-done:
-		return r.commits, r.err
-	case <-timer.C:
+	timeoutContext, cancel := context.WithTimeout(ctx, fileHistoryReadTimeout)
+	defer cancel()
+	commits, err := s.readFileHistory(timeoutContext, path, refs, limit, skip)
+	if errors.Is(timeoutContext.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
 		return nil, fmt.Errorf("Git took longer than %d seconds. This repository is large: turn on the commit-graph in Optimize repository performance, then try again", int(fileHistoryReadTimeout/time.Second))
-	case <-ctx.Done():
-		return nil, ctx.Err()
 	}
+	return commits, err
 }
 
 func (s *gitSession) readFileHistory(ctx context.Context, path string, refs []string, limit, skip int) ([]Commit, error) {
-	var commits []Commit
-	if len(refs) == 1 {
-		modelCommits, err := s.fileCommits(path, refs[0], limit)
-		if err != nil {
-			return nil, err
-		}
-		commits = make([]Commit, 0, len(modelCommits))
-		for _, commit := range modelCommits {
-			commits = append(commits, snapshotCommit(commit))
-		}
-	} else {
-		var err error
-		commits, err = s.readFileHistoryLog(path, refs, limit, true, true)
-		if err != nil {
-			return nil, err
-		}
+	// An unborn HEAD makes git log fail instead of printing nothing, so answer
+	// before asking Git (the previous model-loader path guarded this too).
+	if slices.Equal(refs, []string{"HEAD"}) && !s.headHasCommit() {
+		return nil, nil
+	}
+	commits, err := s.readFileHistoryLog(ctx, path, refs, limit, true, len(refs) > 1)
+	if err != nil {
+		return nil, err
 	}
 	if len(commits) > 0 {
 		return commits[min(skip, len(commits)):], nil
-	}
-	if slices.Equal(refs, []string{"HEAD"}) && !s.headHasCommit() {
-		return nil, nil
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	// --follow can lose the path entirely on non-linear history. The
 	// exact-path log can still show edits and merges that introduced it.
-	commits, err := s.readFileHistoryLog(path, refs, limit, false, true)
+	commits, err = s.readFileHistoryLog(ctx, path, refs, limit, false, true)
 	if err != nil {
 		return nil, err
 	}
 	return commits[min(skip, len(commits)):], nil
 }
 
-func (s *gitSession) readFileHistoryLog(path string, refs []string, limit int, follow, showPulls bool) ([]Commit, error) {
+func (s *gitSession) readFileHistoryLog(ctx context.Context, path string, refs []string, limit int, follow, showPulls bool) ([]Commit, error) {
 	args := []string{
 		"git", "--literal-pathspecs", "log", "--no-patch", "--no-show-signature",
 		fmt.Sprintf("--max-count=%d", limit), commitLogFormat,
@@ -4111,7 +4102,11 @@ func (s *gitSession) readFileHistoryLog(path string, refs []string, limit int, f
 	}
 	args = append(args, refs...)
 	args = append(args, "--", path)
-	output, err := s.cmd.New(args).RunWithOutput()
+	command, err := s.commandContext(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	output, err := s.runWithOutputContext(ctx, command)
 	if err != nil {
 		return nil, err
 	}

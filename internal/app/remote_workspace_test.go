@@ -213,6 +213,80 @@ func TestRemoteWorkingFileUsesLstatAndRejectsStaleWrites(t *testing.T) {
 	}
 }
 
+func TestRemoteWriteCoordinatorRejectsRetiredPhysicalWrite(t *testing.T) {
+	client := newRemoteTestClient()
+	filename := "/srv/repo/note.txt"
+	client.infos[filename] = remoteTestRegular(filename, "original", 1)
+	client.contents[filename] = []byte("original")
+	stamp := stampRemoteFile(client.infos[filename])
+	coordinator := remoteWriteCoordinator{}
+	oldPermit := coordinator.begin(client, "/srv/repo", "note.txt")
+	newPermit := coordinator.begin(client, "/srv/repo", "note.txt")
+	if _, err := coordinator.write(oldPermit, client, "/srv/repo", "note.txt", []byte("old"), stamp, true); !errors.Is(err, errRemoteSaveSuperseded) {
+		t.Fatalf("retired write error = %v", err)
+	}
+	if len(client.atomicWrites) != 0 {
+		t.Fatal("retired request reached WriteFileAtomic")
+	}
+	if _, err := coordinator.write(newPermit, client, "/srv/repo", "note.txt", []byte("new"), stamp, true); err != nil {
+		t.Fatalf("newest write failed: %v", err)
+	}
+	if got := string(client.contents[filename]); got != "new" {
+		t.Fatalf("newest remote contents = %q", got)
+	}
+	coordinator.mu.Lock()
+	remaining := len(coordinator.gates)
+	coordinator.mu.Unlock()
+	if remaining != 0 {
+		t.Fatalf("completed writes retained %d coordination entries", remaining)
+	}
+}
+
+func TestRemoteWriteCoordinatorLatestSaveInheritsLastSuccessfulStamp(t *testing.T) {
+	client := newRemoteTestClient()
+	filename := "/srv/repo/note.txt"
+	client.infos[filename] = remoteTestRegular(filename, "original", 1)
+	client.contents[filename] = []byte("original")
+	started := make(chan struct{})
+	release := make(chan struct{})
+	client.writeFile = func(_ string, data []byte, _ os.FileMode) error {
+		if string(data) == "one" {
+			close(started)
+			<-release
+		}
+		return nil
+	}
+	coordinator := remoteWriteCoordinator{}
+	stamp := stampRemoteFile(client.infos[filename])
+	first := coordinator.begin(client, "/srv/repo", "note.txt")
+	firstResult := make(chan error, 1)
+	go func() {
+		_, err := coordinator.write(first, client, "/srv/repo", "note.txt", []byte("one"), stamp, true)
+		firstResult <- err
+	}()
+	<-started
+	middle := coordinator.begin(client, "/srv/repo", "note.txt")
+	latest := coordinator.begin(client, "/srv/repo", "note.txt")
+	close(release)
+	if err := <-firstResult; err != nil {
+		t.Fatalf("first physical save failed: %v", err)
+	}
+	if _, err := coordinator.write(middle, client, "/srv/repo", "note.txt", []byte("retired"), stamp, true); !errors.Is(err, errRemoteSaveSuperseded) {
+		t.Fatalf("intermediate save error = %v", err)
+	}
+	if _, err := coordinator.write(latest, client, "/srv/repo", "note.txt", []byte("three"), stamp, true); err != nil {
+		t.Fatalf("latest save did not inherit the last successful stamp: %v", err)
+	}
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	if len(client.atomicWrites) != 2 || string(client.atomicWrites[0]) != "one" || string(client.atomicWrites[1]) != "three" {
+		t.Fatalf("physical writes = %q, want one then three", client.atomicWrites)
+	}
+	if got := string(client.contents[filename]); got != "three" {
+		t.Fatalf("latest remote contents = %q", got)
+	}
+}
+
 func TestRemoteSearchUsesRemoteRipgrepAndFSSeamIndependently(t *testing.T) {
 	client := newRemoteTestClient()
 	filename := "/srv/repo/main.go"

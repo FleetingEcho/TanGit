@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"time"
 
 	"github.com/jesseduffield/lazygit/pkg/commands/oscommands"
 )
@@ -26,6 +27,44 @@ func backgroundExec(command *oscommands.CmdObj) *exec.Cmd {
 	cmd := command.GetCmd()
 	configureBackgroundCommand(cmd)
 	return cmd
+}
+
+// commandContext preserves Lazygit's argv, repository directory and command
+// runner while replacing the local exec.Cmd with one whose cancellation also
+// kills Git's process group. Remote builders keep their normal command object;
+// runWithOutputContext passes ctx to the SSH runner instead.
+func (s *gitSession) commandContext(ctx context.Context, args []string) (*oscommands.CmdObj, error) {
+	command := s.cmd.New(args)
+	if s.remote != nil {
+		return command, nil
+	}
+	original := command.GetCmd()
+	contextual := exec.CommandContext(ctx, original.Path, original.Args[1:]...)
+	contextual.Dir = original.Dir
+	contextual.Env = append([]string(nil), original.Env...)
+	contextual.Stdin = original.Stdin
+	configureCloneCommand(contextual)
+	contextual.WaitDelay = 5 * time.Second
+	// CmdObjBuilder's Git wrapper intentionally does not expose NewFromCmd,
+	// but GetCmd returns the same fresh, never-started exec.Cmd owned by the
+	// command. Replace that empty value before Start so every Lazygit runner
+	// and command option remains attached to the cancellable process.
+	*original = *contextual
+	return command, nil
+}
+
+func (s *gitSession) runWithOutputContext(ctx context.Context, command *oscommands.CmdObj) (string, error) {
+	var output string
+	var err error
+	if s.remote != nil {
+		output, err = s.remote.runWithOutputContext(ctx, command)
+	} else {
+		output, err = command.RunWithOutput()
+	}
+	if contextErr := ctx.Err(); contextErr != nil {
+		return "", contextErr
+	}
+	return output, err
 }
 
 // output preserves stdout as bytes, including NULs and invalid UTF-8 in Git
@@ -77,7 +116,15 @@ type backgroundCmdRunner struct {
 }
 
 func (r *backgroundCmdRunner) prepare(command *oscommands.CmdObj) {
-	configureBackgroundCommand(command.GetCmd())
+	cmd := command.GetCmd()
+	configureBackgroundCommand(cmd)
+	if cmd.Cancel != nil {
+		// gitCmdObjRunner clones exec.Cmd before retrying. exec.CommandContext's
+		// Cancel closure captures the original Cmd, so a shallow clone would
+		// kill a nil Process instead of the clone actually being executed.
+		// Rebind cancellation to this clone while preserving process-group kill.
+		configureCloneCommand(cmd)
+	}
 }
 
 func (r *backgroundCmdRunner) Run(command *oscommands.CmdObj) error {

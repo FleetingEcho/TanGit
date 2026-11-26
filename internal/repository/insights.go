@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -46,36 +45,24 @@ func (s *gitSession) CodeVolume(ctx context.Context, branch string, since int64,
 	if branch == "" {
 		scopes = overviewHistoryScope
 	}
-	// The time is spent in the per-commit diffstat, not in walking history, and
-	// the commits are independent. A bounded period is read as a few windows at
-	// once, which keeps a busy repository's week or month from being one long
-	// serial read.
+	// Read newest windows first with a shared remaining quota. The previous
+	// implementation gave all four windows maxCommits+1, so one chart could
+	// execute almost four times as many diffstats as it could ever display.
+	// A newest full window now makes every older window unnecessary.
 	windows := codeVolumeWindows(since, time.Now().Unix()+1, codeVolumeParallelism)
-	results := make([]CodeVolume, len(windows))
-	errs := make([]error, len(windows))
-	var wg sync.WaitGroup
-	for index, window := range windows {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			results[index], errs[index] = s.codeVolumeWindow(scopes, window[0], window[1], maxCommits+1)
-		}()
-	}
-	wg.Wait()
 	var volume CodeVolume
-	// Windows run oldest first; git log lists newest first, so join them that way.
-	for index := len(results) - 1; index >= 0; index-- {
-		if errs[index] != nil {
-			return CodeVolume{}, fmt.Errorf("read code changes: %w", errs[index])
+	for index := len(windows) - 1; index >= 0; index-- {
+		remaining := maxCommits - len(volume.Commits)
+		result, err := s.codeVolumeWindow(ctx, scopes, windows[index][0], windows[index][1], remaining+1)
+		if err != nil {
+			return CodeVolume{}, fmt.Errorf("read code changes: %w", err)
 		}
-		volume.Commits = append(volume.Commits, results[index].Commits...)
-	}
-	if err := ctx.Err(); err != nil {
-		return CodeVolume{}, err
-	}
-	if len(volume.Commits) > maxCommits {
-		volume.Commits = volume.Commits[:maxCommits]
-		volume.Limited = true
+		if len(result.Commits) > remaining {
+			volume.Commits = append(volume.Commits, result.Commits[:remaining]...)
+			volume.Limited = true
+			return volume, nil
+		}
+		volume.Commits = append(volume.Commits, result.Commits...)
 	}
 	return volume, nil
 }
@@ -111,7 +98,7 @@ func codeVolumeWindows(since, until int64, n int) [][2]int64 {
 // codeVolumeWindow reads one window: commits at or after from and before to
 // (0 for no bound). Rename detection is capped, because it is quadratic in the
 // files of a commit and a very large one would otherwise dominate the read.
-func (s *gitSession) codeVolumeWindow(scopes []string, from, to int64, limit int) (CodeVolume, error) {
+func (s *gitSession) codeVolumeWindow(ctx context.Context, scopes []string, from, to int64, limit int) (CodeVolume, error) {
 	args := []string{"git", "log", "--no-merges", "-l200", fmt.Sprintf("--max-count=%d", limit), "--format=%x1e%at", "--shortstat"}
 	if from > 0 {
 		args = append(args, fmt.Sprintf("--since=@%d", from))
@@ -121,7 +108,11 @@ func (s *gitSession) codeVolumeWindow(scopes []string, from, to int64, limit int
 	}
 	args = append(args, scopes...)
 	args = append(args, "--")
-	output, err := s.cmd.New(args).RunWithOutput()
+	command, err := s.commandContext(ctx, args)
+	if err != nil {
+		return CodeVolume{}, err
+	}
+	output, err := s.runWithOutputContext(ctx, command)
 	if err != nil {
 		return CodeVolume{}, err
 	}

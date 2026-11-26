@@ -386,6 +386,9 @@ type app struct {
 	// code owns the repository explorer, persistent editor documents and
 	// workspace search independently of the diff-specific file editor.
 	code codeState
+	// remoteWrites orders physical saves independently of editor lifetime, so
+	// a retired request cannot overwrite its replacement after a reopen.
+	remoteWrites remoteWriteCoordinator
 	// navSelected is the sidebar row the active section shows, which differs
 	// from workspaceTab once sections are hidden.
 	navSelected    int

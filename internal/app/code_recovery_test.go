@@ -5,9 +5,116 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui/editor"
 )
+
+func TestCodeRecoveryInputCacheSkipsUnchangedFrames(t *testing.T) {
+	a := &app{}
+	state := &editor.State{Buffer: editor.NewBuffer("base")}
+	state.Insert("changed")
+	a.code.documents = map[string]*codeDocument{"main.go": {
+		path: "main.go", state: state, localStamp: stampLocalFile([]byte("base")), localStampKnown: true,
+	}}
+	if !a.codeRecoveryInputChanged() {
+		t.Fatal("initial dirty buffer did not invalidate recovery input")
+	}
+	if a.codeRecoveryInputChanged() {
+		t.Fatal("unchanged buffer rematerialized recovery input")
+	}
+	state.Insert("!")
+	if !a.codeRecoveryInputChanged() || a.codeRecoveryInputChanged() {
+		t.Fatal("buffer version did not invalidate exactly one recovery snapshot")
+	}
+	a.code.recoveryEntriesSeq++
+	if !a.codeRecoveryInputChanged() || a.codeRecoveryInputChanged() {
+		t.Fatal("retained recovery entries did not invalidate exactly one snapshot")
+	}
+}
+
+func TestCodeRecoveryWritesCannotFinishOutOfOrder(t *testing.T) {
+	original := codeRecoveryWriter
+	defer func() { codeRecoveryWriter = original }()
+	calls := make(chan string, 3)
+	releaseOld := make(chan struct{})
+	codeRecoveryWriter = func(_ string, recovery codeRecoveryFile) error {
+		path := recovery.Entries[0].Path
+		calls <- path
+		if path == "old" {
+			<-releaseOld
+		}
+		return nil
+	}
+	coordinator := codeRecoveryWriteCoordinator{}
+	results := make(chan error, 3)
+	write := func(path string) {
+		permit := coordinator.next("recovery.json")
+		go func() {
+			results <- coordinator.write(permit, codeRecoveryFile{Entries: []codeRecoveryEntry{{Path: path}}})
+		}()
+	}
+	write("old")
+	if path := <-calls; path != "old" {
+		t.Fatalf("first recovery write = %q", path)
+	}
+	write("retired")
+	write("new")
+	deadline := time.Now().Add(time.Second)
+	for {
+		coordinator.mu.Lock()
+		latest := coordinator.gates["recovery.json"].latest
+		coordinator.mu.Unlock()
+		if latest == 3 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("replacement writes were not scheduled")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	close(releaseOld)
+	for range 3 {
+		select {
+		case err := <-results:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("coordinated recovery write did not complete")
+		}
+	}
+	if path := <-calls; path != "new" {
+		t.Fatalf("durable recovery write = %q, want newest snapshot", path)
+	}
+	select {
+	case path := <-calls:
+		t.Fatalf("retired recovery snapshot %q reached disk", path)
+	default:
+	}
+}
+
+func TestCodeRecoveryWritesAreIndependentPerWorkspace(t *testing.T) {
+	original := codeRecoveryWriter
+	defer func() { codeRecoveryWriter = original }()
+	var calls []string
+	codeRecoveryWriter = func(filename string, _ codeRecoveryFile) error {
+		calls = append(calls, filename)
+		return nil
+	}
+	coordinator := codeRecoveryWriteCoordinator{}
+	first := coordinator.next("workspace-a.json")
+	second := coordinator.next("workspace-b.json")
+	if err := coordinator.write(first, codeRecoveryFile{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.write(second, codeRecoveryFile{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 || calls[0] != "workspace-a.json" || calls[1] != "workspace-b.json" {
+		t.Fatalf("independent recovery writes = %#v; one workspace retired another", calls)
+	}
+}
 
 func TestCodeRecoveryRoundTripAndRemoval(t *testing.T) {
 	dir := t.TempDir()

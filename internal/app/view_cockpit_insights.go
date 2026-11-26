@@ -7,6 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/FleetingEcho/lazygitGo/internal/app/i18n"
 	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
@@ -100,7 +101,7 @@ func (a *app) cockpitHeatmapCard(c *ui.Context, width float32) {
 							c.Key(fmt.Sprintf("heat-month:%d", start))
 							ui.Box(c).Width(span).Height(12).Clip().Children(func() {
 								if end-start >= 2 {
-									ui.Text(c, weeks[start][0].Date.Format("Jan")).FontSize(theme.FontSize - 3).
+									ui.Text(c, i18n.MonthLabel(weeks[start][0].Date, currentLanguage)).FontSize(theme.FontSize - 3).
 										TextColor(theme.TextMuted).SingleLine()
 								}
 							})
@@ -431,7 +432,7 @@ func cockpitHeatLine(c *ui.Context, weeks [][7]heatDay, step float32) {
 					c.Key(fmt.Sprintf("heat-line-month:%d", start))
 					ui.Box(c).Width(float32(end-start) * step).Height(12).Clip().Children(func() {
 						if end-start >= 2 {
-							ui.Text(c, weeks[start][0].Date.Format("Jan")).FontSize(theme.FontSize - 3).
+							ui.Text(c, i18n.MonthLabel(weeks[start][0].Date, currentLanguage)).FontSize(theme.FontSize - 3).
 								TextColor(theme.TextMuted).SingleLine()
 						}
 					})

@@ -153,14 +153,18 @@ func TestLateRemoteCodeSaveDoesNotInvalidateReplacement(t *testing.T) {
 	document.generation++
 	document.remoteSave.invalidate()
 	state.Insert("B")
+	want := state.Buffer.String()
 	bDone, bOK := false, false
 	h.app.saveRemoteCodeDocumentWithClient(client, document, func(ok bool) {
 		bDone, bOK = true, ok
 	})
-	<-started[1]
 	sequence := document.remoteSave.sequence
 	close(release[0])
 	h.updates.waitForUpdate(t)
+	// B cannot enter WriteFileAtomic while A is still on the wire. Even
+	// though A's UI completion is retired, its physical write must finish
+	// before B so the old bytes can never become the final file contents.
+	<-started[1]
 	if bDone || !document.remoteSave.running || document.remoteSave.sequence != sequence {
 		t.Fatal("late A completion canceled replacement save B")
 	}
@@ -168,6 +172,14 @@ func TestLateRemoteCodeSaveDoesNotInvalidateReplacement(t *testing.T) {
 	h.waitFor(t, "replacement remote save B", func() bool { return bDone })
 	if !bOK || state.Buffer.Modified() {
 		t.Fatalf("replacement save did not complete and MarkSaved: done=%v ok=%v modified=%v", bDone, bOK, state.Buffer.Modified())
+	}
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	if len(client.atomicWrites) != 2 || string(client.atomicWrites[1]) != want {
+		t.Fatalf("remote write order = %q, want newest replacement %q last", client.atomicWrites, want)
+	}
+	if got := string(client.contents[filename]); got != want {
+		t.Fatalf("final remote contents = %q, want newest save", got)
 	}
 }
 

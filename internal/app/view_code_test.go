@@ -692,7 +692,7 @@ func TestCodeSearchCompletesInOneFollowUpScanAndPreservesVisibleState(t *testing
 		t.Fatalf("the partial counts are not identified as lower bounds: %v", h.tester.Texts())
 	}
 	h.app.code.searchSelected = 42
-	h.app.code.searchCollapsed = map[string]bool{"file-0001.txt": true}
+	h.app.toggleCodeSearchFile("file-0001.txt")
 
 	// Completion requires no scrolling and performs one full scan, not a third
 	// scan at a still larger page cap.
@@ -709,6 +709,11 @@ func TestCodeSearchCompletesInOneFollowUpScanAndPreservesVisibleState(t *testing
 	}
 	if h.app.code.searchSelected != 42 || !h.app.code.searchCollapsed["file-0001.txt"] {
 		t.Fatal("completing the search reset the visible selection or folding")
+	}
+	for _, row := range h.app.code.searchRows {
+		if row.path == "file-0001.txt" && !row.isFile() {
+			t.Fatalf("completion repainted the stale expanded rows after the user collapsed file-0001.txt")
+		}
 	}
 	if h.app.code.searchHasMore || !h.tester.HasText("750 matches in 750 files") {
 		t.Fatal("the completed search did not publish its exact full count")

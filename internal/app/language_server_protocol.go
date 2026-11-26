@@ -16,7 +16,10 @@ import (
 
 const maxLanguageServerMessage = 16 << 20
 
-var errLanguageServerRequestTimedOut = errors.New("language server request timed out")
+var (
+	errLanguageServerRequestTimedOut = errors.New("language server request timed out")
+	errLanguageServerInputBlocked    = errors.New("language server is not reading input")
+)
 
 type languageServerConnection interface {
 	DidOpen(uri, language, text string, version uint64)
@@ -365,16 +368,37 @@ func (s *stdioLanguageServer) queue(message any, wait bool) error {
 	case s.outgoing <- item:
 	case <-s.closed:
 		return errors.New("language server stopped")
+	default:
+		// DidChange runs on the UI thread. Waiting for a server that stopped
+		// reading stdin would eventually fill this queue and freeze all editing.
+		// Treat a full queue as a broken connection and force the pipes closed;
+		// readLoop will publish the failure and release pending requests.
+		s.interruptWrites()
+		return errLanguageServerInputBlocked
 	}
 	if item.flushed != nil {
+		timer := time.NewTimer(time.Second)
+		defer timer.Stop()
 		select {
 		case err := <-item.flushed:
 			return err
 		case <-s.closed:
 			return errors.New("language server stopped")
+		case <-timer.C:
+			s.interruptWrites()
+			return errLanguageServerInputBlocked
 		}
 	}
 	return nil
+}
+
+func (s *stdioLanguageServer) interruptWrites() {
+	if s.stdin != nil {
+		_ = s.stdin.Close()
+	}
+	if s.command != nil && s.command.Process != nil {
+		_ = s.command.Process.Kill()
+	}
 }
 
 func (s *stdioLanguageServer) writeLoop() {

@@ -132,54 +132,49 @@ type codeNavigationLocation struct {
 	column int
 }
 
-// codeSearchRow is either a collapsible file heading (match == -1) or one
-// match within that file, so the virtualized list can retain keyboard support.
-type codeSearchRow struct {
-	path    string
-	match   int
-	matches int
-}
-
-func (r codeSearchRow) isFile() bool { return r.match < 0 }
-
 type shutdownPreparation struct {
 	running   bool
 	callbacks []func(bool)
 }
 
 type codeState struct {
-	shutdown            shutdownPreparation
-	languageEditSeq     uint64
-	languageEditRunning bool
-	languageDialog      codeLanguageDialog
-	languageDocument    *codeDocument
-	languageOffset      int
-	languageRename      string
-	languageError       string
-	languageSymbols     languageSymbolsViewState
-	languageActions     []languageServerCodeAction
-	shortcutQuery       string
-	shortcutRecording   string
-	shortcutSlot        int
-	shortcutError       string
-	languageReferences  []languageServerLocation
-	languagePeekPath    string
-	languagePeekState   *editor.State
-	languagePeekLine    int
-	languagePeekLoading bool
-	recoveryRoot        string
-	recoverySignature   localFileStamp
-	recoverySeq         uint64
-	recoveryLoaded      bool
-	recoveryEntries     map[string]codeRecoveryEntry
-	paneWidth           float32
-	list                ui.ListState
-	files               []string
-	paletteFiles        paletteFileMatches
-	visiblePaths        []string
-	rows                []fileTreeRow
-	selectedRow         int
-	selectedSource      int
+	shutdown             shutdownPreparation
+	languageEditSeq      uint64
+	languageEditRunning  bool
+	languageDialog       codeLanguageDialog
+	languageDocument     *codeDocument
+	languageOffset       int
+	languageRename       string
+	languageError        string
+	languageSymbols      languageSymbolsViewState
+	languageActions      []languageServerCodeAction
+	shortcutQuery        string
+	shortcutRecording    string
+	shortcutSlot         int
+	shortcutError        string
+	languageReferences   []languageServerLocation
+	languagePeekPath     string
+	languagePeekState    *editor.State
+	languagePeekLine     int
+	languagePeekLoading  bool
+	recoveryRoot         string
+	recoverySignature    localFileStamp
+	recoverySeq          uint64
+	recoveryLoaded       bool
+	recoveryEntries      map[string]codeRecoveryEntry
+	recoveryEntriesSeq   uint64
+	recoveryInput        []codeRecoveryDocumentInput
+	recoveryInputEntries uint64
+	recoveryInputValid   bool
+	recoveryWrites       *codeRecoveryWriteCoordinator
+	paneWidth            float32
+	list                 ui.ListState
+	files                []string
+	paletteFiles         paletteFileMatches
+	visiblePaths         []string
+	rows                 []fileTreeRow
+	selectedRow          int
+	selectedSource       int
 	// treeDirty is set by folder folding. Stable frames retain the already
 	// sorted rows instead of rebuilding a large repository tree every frame.
 	treeDirty      bool
@@ -233,6 +228,7 @@ type codeState struct {
 	searchSelectedRow      int
 	searchRows             []codeSearchRow
 	searchCollapsed        map[string]bool
+	searchCollapsedSeq     uint64
 	searchQuery            string
 	searchSubmitted        string
 	searchReplaceOpen      bool
@@ -344,6 +340,8 @@ func (a *app) resetCode() {
 	a.code.recoverySignature = localFileStamp{}
 	a.code.recoveryLoaded = false
 	a.code.recoveryEntries = nil
+	a.code.recoveryInput = nil
+	a.code.recoveryInputValid = false
 	a.code.tabs = nil
 	a.code.active = ""
 	a.code.activeTab = 0
@@ -1188,306 +1186,6 @@ func (a *app) removeCodeDocument(path string) {
 		}
 		return
 	}
-}
-
-// rebuildCodeSearchRows groups consecutive results from the same sorted file.
-// The selected match is kept where possible; collapsing its file selects the
-// file heading rather than leaving the list pointing at a hidden result.
-func (a *app) rebuildCodeSearchRows() {
-	selectedFile := ""
-	if a.code.searchSelectedRow >= 0 && a.code.searchSelectedRow < len(a.code.searchRows) {
-		row := a.code.searchRows[a.code.searchSelectedRow]
-		if row.isFile() {
-			selectedFile = row.path
-		}
-	}
-	a.code.searchRows = nil
-	for first := 0; first < len(a.code.searchResults); {
-		path := a.code.searchResults[first].Path
-		end := first + 1
-		for end < len(a.code.searchResults) && a.code.searchResults[end].Path == path {
-			end++
-		}
-		a.code.searchRows = append(a.code.searchRows, codeSearchRow{path: path, match: -1, matches: end - first})
-		if !a.code.searchCollapsed[path] {
-			for match := first; match < end; match++ {
-				a.code.searchRows = append(a.code.searchRows, codeSearchRow{path: path, match: match})
-			}
-		}
-		first = end
-	}
-	if len(a.code.searchRows) == 0 {
-		a.code.searchSelected, a.code.searchSelectedRow = -1, -1
-		return
-	}
-	if a.code.searchSelected < 0 || a.code.searchSelected >= len(a.code.searchResults) {
-		a.code.searchSelected = 0
-	}
-	a.code.searchSelectedRow = -1
-	for row, item := range a.code.searchRows {
-		if selectedFile != "" && item.isFile() && item.path == selectedFile {
-			a.code.searchSelectedRow = row
-			break
-		}
-		if selectedFile == "" && item.match == a.code.searchSelected {
-			a.code.searchSelectedRow = row
-			break
-		}
-	}
-	if a.code.searchSelectedRow < 0 {
-		path := a.code.searchResults[a.code.searchSelected].Path
-		for row, item := range a.code.searchRows {
-			if item.isFile() && item.path == path {
-				a.code.searchSelectedRow = row
-				break
-			}
-		}
-	}
-}
-
-func (a *app) selectCodeSearchRow(row int) {
-	if row < 0 || row >= len(a.code.searchRows) {
-		return
-	}
-	a.code.searchSelectedRow = row
-	if match := a.code.searchRows[row].match; match >= 0 {
-		a.code.searchSelected = match
-	}
-}
-
-func (a *app) toggleCodeSearchFile(path string) {
-	if a.code.searchCollapsed == nil {
-		a.code.searchCollapsed = make(map[string]bool)
-	}
-	a.code.searchCollapsed[path] = !a.code.searchCollapsed[path]
-	a.rebuildCodeSearchRows()
-}
-
-func (a *app) revealCodeSearchMatch(match int) {
-	if match < 0 || match >= len(a.code.searchResults) {
-		return
-	}
-	delete(a.code.searchCollapsed, a.code.searchResults[match].Path)
-	a.code.searchSelected = match
-	a.code.searchSelectedRow = -1
-	a.rebuildCodeSearchRows()
-	for row, item := range a.code.searchRows {
-		if item.match == match {
-			a.code.searchSelectedRow = row
-			a.code.searchList.ScrollIntoView(row)
-			return
-		}
-	}
-}
-
-// codeSearchQueryChanged debounces reactive searches. Clearing the field is
-// immediate: it cancels stale work, old results, and option highlights at once.
-func (a *app) codeSearchQueryChanged() {
-	if strings.TrimSpace(a.code.searchQuery) == "" {
-		a.beginCodeSearch()
-		return
-	}
-	// Every edit retires the previous search immediately. Only the replacement
-	// search is debounced; an old spinner or result callback must not survive
-	// while the user is typing a different query.
-	if a.code.searchCancel != nil {
-		a.code.searchCancel()
-		a.code.searchCancel = nil
-	}
-	a.code.searchToken++
-	a.code.searchRunning = false
-	a.code.searchLoadingMore = false
-	a.code.searchHasMore = false
-	a.code.searchAfterFiles = false
-	a.code.searchDebounceSeq++
-	sequence := a.code.searchDebounceSeq
-	scheduleCodeSearch(codeSearchDebounceDelay, func() {
-		a.updateChanged(func() bool {
-			if sequence != a.code.searchDebounceSeq {
-				return false
-			}
-			a.beginCodeSearch()
-			return a.workspaceTab == sectionCode
-		})
-	})
-}
-
-func (a *app) beginCodeSearch() {
-	// Query changes do not make repository contents dirty. Search itself
-	// verifies the index before and after consulting it; saves and filesystem
-	// changes invalidate it explicitly without another background stat pass.
-	a.ensureCodeSearchIndex()
-	a.code.searchHasMore = false
-	a.code.searchLoadingMore = false
-	a.startCodeSearch(codeSearchPageSize, false)
-}
-
-func (a *app) startCodeSearch(limit int, loadingMore bool) {
-	a.code.searchDebounceSeq++
-	query := strings.TrimSpace(a.code.searchQuery)
-	if a.code.filesLoading && query != "" {
-		a.code.searchAfterFiles = true
-		return
-	}
-	a.code.searchAfterFiles = false
-	if a.code.searchCancel != nil {
-		a.code.searchCancel()
-		a.code.searchCancel = nil
-	}
-	a.code.searchToken++
-	token := a.code.searchToken
-	a.code.searchSubmitted = query
-	folder, validFolder := normalizedCodeSearchFolder(a.code.searchFolder)
-	if !validFolder {
-		a.code.searchError = tr("Search folder must stay inside the repository")
-		a.code.searchSubmittedOptions = workspaceSearchOptions{}
-		a.code.searchResults, a.code.searchRows = nil, nil
-		a.code.searchBackend = workspaceSearchBackendNone
-		a.code.searchRunning = false
-		a.code.searchLoadingMore = false
-		a.code.searchHasMore = false
-		return
-	}
-	a.code.searchFolder = folder
-	a.code.searchFolderDraft = folder
-	if a.code.searchScopeFolder != "" && a.code.searchInclude != a.code.searchScopeFolder {
-		a.code.searchScopeFolder = ""
-	}
-	if a.code.searchScopeFile != "" && a.code.searchInclude != a.code.searchScopeFile {
-		a.code.searchScopeFile = ""
-	}
-	searchScopeFolder := a.code.searchScopeFolder
-	if searchScopeFolder == "" {
-		searchScopeFolder = folder
-	}
-	a.code.searchSubmittedOptions = workspaceSearchOptions{
-		Query:               query,
-		CaseSensitive:       a.code.searchCaseSensitive,
-		WholeWord:           a.code.searchWholeWord,
-		RegularExpr:         a.code.searchRegularExpr,
-		PreferNative:        a.code.searchNativeOnly,
-		IndexDirectory:      a.codeSearchIndexDirectory(),
-		Include:             a.code.searchInclude,
-		Exclude:             a.code.searchExclude,
-		Folder:              searchScopeFolder,
-		File:                a.code.searchScopeFile,
-		ExcludedDirectories: a.searchExclusions(),
-	}
-	a.code.searchError = ""
-	if !loadingMore {
-		a.code.searchResults, a.code.searchRows = nil, nil
-		a.code.searchBackend = workspaceSearchBackendNone
-		a.code.searchCollapsed = nil
-		a.code.searchSelected, a.code.searchSelectedRow = -1, -1
-	}
-	if query == "" || a.snapshot.Root == "" {
-		if query == "" {
-			a.code.searchCaseSensitive = false
-			a.code.searchWholeWord = false
-			a.code.searchRegularExpr = false
-			a.code.searchInclude, a.code.searchExclude = "", ""
-			a.code.searchScopeFolder, a.code.searchScopeFile = "", ""
-			a.code.searchFiltersOpen = false
-			// The already captured empty options remain the single source of
-			// truth for highlighting; no cleared option can leak into a later run.
-			a.code.searchSubmittedOptions = workspaceSearchOptions{}
-		}
-		a.code.searchRunning = false
-		a.code.searchLoadingMore = false
-		a.code.searchHasMore = false
-		return
-	}
-	root := a.snapshot.Root
-	paths := append([]string(nil), a.code.files...)
-	options := a.code.searchSubmittedOptions
-	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
-	a.code.searchCancel = cancel
-	a.code.searchRunning = true
-	a.code.searchLoadingMore = loadingMore
-	remote := a.location.IsRemote()
-	var remoteClient remoteWorkspaceClient
-	var remoteErr error
-	if remote {
-		remoteClient, remoteErr = a.remoteWorkspaceClient()
-	}
-	go func() {
-		defer a.recoverBackground()
-		var matches []workspaceSearchMatch
-		var backend workspaceSearchBackend
-		var err error
-		if remote {
-			err = remoteErr
-			if err == nil {
-				paths = scopedCodeSearchPaths(ctx, root, paths, options, remoteClient)
-				matches, backend, err = searchRemoteWorkspaceFiles(ctx, remoteClient, root, paths, options, limit)
-			}
-		} else {
-			listed := len(paths)
-			paths = scopedCodeSearchPaths(ctx, root, paths, options, nil)
-			if len(paths) != listed {
-				// The index covers the Explorer list. Scan the expanded scope directly.
-				options.IndexDirectory = ""
-			}
-			matches, backend, err = runCodeSearch(ctx, root, paths, options, limit)
-		}
-		if ctx.Err() == nil {
-			matches = rankWorkspaceSearchMatches(matches, options)
-		}
-		a.updateChanged(func() bool {
-			if token != a.code.searchToken {
-				return false
-			}
-			a.code.searchRunning = false
-			a.code.searchLoadingMore = false
-			a.code.searchCancel = nil
-			a.code.searchError = safeError(err)
-			a.code.searchResults = matches
-			a.code.searchBackend = backend
-			a.code.searchHasMore = err == nil && len(matches) == limit
-			if !loadingMore {
-				a.code.searchSelected = 0
-			}
-			a.code.searchSelectedRow = -1
-			a.rebuildCodeSearchRows()
-			if !loadingMore && a.code.searchHasMore {
-				// Publish the first useful page, then complete the query in one
-				// second scan. Repeatedly enlarging a cap would rescan every
-				// earlier match once per page and leave the count incomplete
-				// until the user reached the end of the result list.
-				a.startCodeSearch(codeSearchAllResults, true)
-			}
-			return a.workspaceTab == sectionCode
-		})
-	}()
-}
-
-func (a *app) openCodeSearchMatch(match workspaceSearchMatch) {
-	a.openCodeSearchMatchMode(match, false)
-}
-
-func (a *app) openCodeSearchMatchMode(match workspaceSearchMatch, pinned bool) {
-	a.openCodeLocationMode(match.Path, match.Line, match.Column-1, pinned)
-	document := a.code.documents[match.Path]
-	if document == nil {
-		return
-	}
-	// Keep the submitted options with the pending location: asynchronous file
-	// loading must select this result even if another search starts meanwhile.
-	document.pendingLine = match.Line
-	document.pendingColumn = max(0, match.Column-1)
-	document.pendingUTF16 = false
-	document.pendingSelection = true
-	document.pendingSearchOptions = a.code.searchSubmittedOptions
-	a.revealCodeLine(document)
-}
-
-func (a *app) navigateCodeSearch(direction int) {
-	match, ok := wrappedSearchRow(a.code.searchSelected, len(a.code.searchResults), direction)
-	if !ok {
-		return
-	}
-	a.revealCodeSearchMatch(match)
-	a.openCodeSearchMatch(a.code.searchResults[match])
 }
 
 // breadcrumbMemo memoizes one symbol-breadcrumb computation per frame key.

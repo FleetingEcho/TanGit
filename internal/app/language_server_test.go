@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 type languageServerDocumentEvent struct {
@@ -99,6 +100,64 @@ func stubLanguageServerConnection(t *testing.T, connect func(languageServerLaunc
 		connectLanguageServer = original
 		languageServerLookPath = originalLookPath
 	})
+}
+
+type closeTrackingWriter struct {
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (w *closeTrackingWriter) Write(data []byte) (int, error) { return len(data), nil }
+func (w *closeTrackingWriter) Close() error {
+	w.once.Do(func() { close(w.closed) })
+	return nil
+}
+
+func TestLanguageServerQueueRejectsBackpressureWithoutBlocking(t *testing.T) {
+	stdin := &closeTrackingWriter{closed: make(chan struct{})}
+	server := &stdioLanguageServer{
+		stdin:    stdin,
+		outgoing: make(chan languageServerWrite),
+		closed:   make(chan struct{}),
+	}
+	result := make(chan error, 1)
+	go func() {
+		result <- server.queue(map[string]any{"jsonrpc": "2.0", "method": "textDocument/didChange"}, false)
+	}()
+	select {
+	case err := <-result:
+		if !errors.Is(err, errLanguageServerInputBlocked) {
+			t.Fatalf("blocked queue error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("a language-server notification blocked behind a full input queue")
+	}
+	select {
+	case <-stdin.closed:
+	default:
+		t.Fatal("a blocked language-server input was not forcibly closed")
+	}
+}
+
+func TestLanguageServerFlushTimeoutForcesBrokenPipeClosed(t *testing.T) {
+	stdin := &closeTrackingWriter{closed: make(chan struct{})}
+	server := &stdioLanguageServer{
+		stdin:    stdin,
+		outgoing: make(chan languageServerWrite, 1),
+		closed:   make(chan struct{}),
+	}
+	started := time.Now()
+	if err := server.queue(map[string]any{"jsonrpc": "2.0", "method": "exit"}, true); !errors.Is(err, errLanguageServerInputBlocked) {
+		t.Fatalf("unflushed exit error = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 3*time.Second {
+		t.Fatalf("unflushed exit took %v", elapsed)
+	}
+	select {
+	case <-stdin.closed:
+	default:
+		t.Fatal("an unflushed exit left stdin open")
+	}
 }
 
 func TestGoLanguageServerSynchronizesOpenChangeAndClose(t *testing.T) {

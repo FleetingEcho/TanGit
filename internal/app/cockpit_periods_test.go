@@ -1,11 +1,56 @@
 package app
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
+
+type lockedVolumeSession struct {
+	fakeSession
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *lockedVolumeSession) CodeVolume(ctx context.Context, _ string, _ int64, _ int) (repository.CodeVolume, error) {
+	s.started <- struct{}{}
+	select {
+	case <-s.release:
+		return repository.CodeVolume{}, nil
+	case <-ctx.Done():
+		return repository.CodeVolume{}, ctx.Err()
+	}
+}
+
+func TestCodeVolumeLoadDeduplicatesAndCancelsSupersededReads(t *testing.T) {
+	h := menuTestApp(t)
+	session := &lockedVolumeSession{started: make(chan struct{}, 3), release: make(chan struct{})}
+	h.app.session = session
+	h.app.loadCockpitCodeVolume()
+	<-session.started
+	token := h.app.cockpit.insights.volumeToken
+	h.app.loadCockpitCodeVolume()
+	select {
+	case <-session.started:
+		t.Fatal("identical Code changes load started a duplicate Git read")
+	default:
+	}
+	if h.app.cockpit.insights.volumeToken != token {
+		t.Fatal("identical load invalidated its own in-flight result")
+	}
+	h.app.cockpit.insights.volumePeriod = contributorRangeMonth
+	h.app.loadCockpitCodeVolume()
+	<-session.started
+	close(session.release)
+	h.waitFor(t, "the replacement Code changes read", func() bool {
+		return h.app.cockpit.insights.volumeLoaded && !h.app.cockpit.insights.volumeLoading
+	})
+	if !h.app.cockpit.insights.volumeLoaded || h.app.cockpit.insights.volumeErr != "" {
+		t.Fatalf("replacement volume state = loaded %v error %q", h.app.cockpit.insights.volumeLoaded, h.app.cockpit.insights.volumeErr)
+	}
+}
 
 // overviewPeriodsApp opens the Overview with every card loaded.
 func overviewPeriodsApp(t *testing.T) *harness {
