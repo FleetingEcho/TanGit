@@ -112,3 +112,30 @@ func TestChangesHeaderStashesWithADefaultMessage(t *testing.T) {
 		t.Fatalf("the form kept the generated message: %q", h.app.stashMessage)
 	}
 }
+
+// Confirming the stash starts the work in the background, which the Working
+// card reports, so the form closes at once instead of sitting disabled until
+// the stash finishes.
+func TestStashFormClosesAsSoonAsTheStashStarts(t *testing.T) {
+	h, _ := changesTestApp(t, sectionedFiles())
+	if err := h.tester.Click("Stash changes…"); err != nil {
+		t.Fatalf("open the stash form from Changes: %v", err)
+	}
+	h.tester.Frame()
+	h.tester.Type("keep my work")
+	if err := h.tester.Click("Stash changes"); err != nil {
+		t.Fatalf("stash the changes: %v", err)
+	}
+	h.confirmAttentionForTest(t)
+	// The action is still running: its result has not been applied yet.
+	if !h.app.actionBusy {
+		t.Fatal("the stash did not start")
+	}
+	if h.app.showStashForm {
+		t.Fatal("the form stayed open while the stash ran in the background")
+	}
+	if h.app.stashMessage != "" {
+		t.Fatalf("the form kept its message %q after the stash started", h.app.stashMessage)
+	}
+	h.settle(t)
+}

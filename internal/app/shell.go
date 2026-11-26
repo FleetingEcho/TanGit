@@ -8,6 +8,8 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // The window chrome: one title bar over the tabs' pages. The bar is drawn by
@@ -518,6 +520,8 @@ func (s *shell) pullSettings() {
 	}
 	s.settings = a.settings
 	s.settingsLoaded = a.settingsLoaded
+	// The safety journal switch is the window's, read by every tab's session.
+	repository.SetSafetyJournalEnabled(!a.settings.DisableSafetyJournal)
 }
 
 // pushSettings gives a page the window's preferences, with the toggles the

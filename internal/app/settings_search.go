@@ -92,6 +92,7 @@ var settingsSearchCatalog = []settingsSearchOption{
 	{settingsPageBehavior, "Wrap long diff lines", "Diff reading"},
 	{settingsPageBehavior, "Ignore untracked files", "Changes and file lists"},
 	{settingsPageBehavior, "Enable keyboard shortcuts", "Keyboard controls"},
+	{settingsPageBehavior, "Safety journal", "Save a recovery point before actions so they can be undone"},
 	{settingsPageBehavior, "Shortcut notifications", "Show shortcut acknowledgements while keeping Command Log and operation notifications visible."},
 	{settingsPageBehavior, "Background fetch", "Fetches every remote while the window is open"},
 	{settingsPageBehavior, "Fetch remotes in the background", "Background fetch"},

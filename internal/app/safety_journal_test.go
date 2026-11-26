@@ -183,7 +183,7 @@ func TestSafetyJournalRendersRecordsAndLimitsUndoToRecoverableRows(t *testing.T)
 	h.app.setWorkspaceTab(sectionStash)
 	h.tester.Frame()
 	openRecoveryForTest(t, h)
-	if err := h.tester.Click("Show safety journal"); err != nil {
+	if err := h.tester.Click("Safety Journal"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
@@ -196,14 +196,15 @@ func TestSafetyJournalRendersRecordsAndLimitsUndoToRecoverableRows(t *testing.T)
 			t.Errorf("Safety Journal is missing %q: %q", want, h.texts())
 		}
 	}
-	undoButtons := 0
-	for _, text := range h.texts() {
-		if text == "Undo…" {
-			undoButtons++
-		}
+	// Undo is an icon button named after its entry, offered on the recoverable
+	// row alone.
+	if _, found := h.tester.Find("Undo recoverable"); !found {
+		t.Fatalf("the recoverable row has no Undo button: %q", h.texts())
 	}
-	if undoButtons != 1 {
-		t.Fatalf("journal Undo buttons = %d, want only the recoverable row: %q", undoButtons, h.texts())
+	for _, id := range []string{"completed", "failed", "undone"} {
+		if _, found := h.tester.Find("Undo " + id); found {
+			t.Fatalf("row %q should not offer Undo", id)
+		}
 	}
 	for _, id := range []string{"completed", "failed", "undone"} {
 		if err := h.tester.Click("Undo " + id); err == nil {
@@ -285,7 +286,7 @@ func TestSafetyJournalScrollsToOlderRecoverableRecords(t *testing.T) {
 	h.app.setWorkspaceTab(sectionStash)
 	h.tester.Frame()
 	openRecoveryForTest(t, h)
-	if err := h.tester.Click("Show safety journal"); err != nil {
+	if err := h.tester.Click("Safety Journal"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()

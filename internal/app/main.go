@@ -393,7 +393,7 @@ type app struct {
 	selectedCommit int
 	// History's Rebase mode reads OperationState.Steps directly. A marked
 	// base is session-local UI state and always stores Git's full commit ID.
-	historyWorkspace     int
+	rebaseModalOpen      bool
 	markedBaseCommit     repository.Commit
 	rebaseStepList       ui.ListState
 	selectedRebaseStep   int

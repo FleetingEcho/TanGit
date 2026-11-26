@@ -64,11 +64,14 @@ func TestThemeJSONValidatesPreviewsSavesAndDeletes(t *testing.T) {
 func TestThemeJSONCanSelectAndUpdateAnExistingCustomTheme(t *testing.T) {
 	a := newApp(nil)
 	a.pathUserData = t.TempDir()
-	active := a.settings.Theme
 	a.settings.CustomThemes = []namedCustomTheme{
 		{Name: "Dusk", customThemeSetting: customThemeSetting{Base: "dark", Colors: map[string]string{"accent": "#112233"}}},
 		{Name: "Dawn", customThemeSetting: customThemeSetting{Base: "light", Colors: map[string]string{"accent": "#445566"}}},
 	}
+	// The editor opens on the active custom theme; the picker switches between
+	// saved themes without changing which one the window uses.
+	a.settings.Theme = customThemeValue("Dusk")
+	active := a.settings.Theme
 	a.openThemeEditor()
 	tt := ui.NewTester(a.view, 1260, 840)
 	tt.Frame()
@@ -141,6 +144,9 @@ func TestThemePickerRenameFocusesNameAndUpdatesExistingTheme(t *testing.T) {
 	if !tt.HasText("Save or reset the current new theme before adding another.") {
 		t.Fatal("the new-theme draft does not explain how to start another")
 	}
+	// Renaming applies to a saved theme, which the picker switches to.
+	a.editCustomTheme(0)
+	tt.Frame()
 	click("Custom theme")
 	click("Dusk")
 	click("Rename theme")

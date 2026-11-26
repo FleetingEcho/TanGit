@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 const maxCustomThemeNameLength = 40
@@ -388,7 +390,8 @@ func (a *app) themeEditorPreview(c *ui.Context) {
 		})
 		ui.Row(c).Gap(6).Children(func() {
 			previewPill(c, "+12", t.Success.Alpha(0.18), t.Success, t.Success)
-			previewPill(c, "M", t.Warning.Alpha(0.18), t.Warning, t.Warning)
+			// The letter is Git's own status mark, the one the Changes list shows.
+			previewPill(c, changeStatusLetter(changeRow{file: repository.File{Status: " M"}}), t.Warning.Alpha(0.18), t.Warning, t.Warning)
 			previewPill(c, "−4", t.Danger.Alpha(0.18), t.Danger, t.Danger)
 		})
 	})

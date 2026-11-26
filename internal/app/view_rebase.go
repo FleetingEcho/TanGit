@@ -10,17 +10,11 @@ import (
 	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
-const (
-	historyWorkspaceAuto = iota
-	historyWorkspaceCommits
-	historyWorkspaceRebase
-)
-
 // resetRebaseWorkspace drops repository-bound plans, marks and pending reads
 // before another repository (or the picker) becomes visible. Tokens invalidate
 // any editor read which was already in flight for the old session.
 func (a *app) resetRebaseWorkspace() {
-	a.historyWorkspace = historyWorkspaceAuto
+	a.rebaseModalOpen = false
 	a.markedBaseCommit = repository.Commit{}
 	a.selectedRebaseStep = -1
 	a.rebaseTargetRef = ""
@@ -41,26 +35,20 @@ func (a *app) activeRebaseState() *repository.OperationState {
 	return state
 }
 
-func (a *app) rebaseWorkspaceVisible() bool {
-	if a.workspaceTab != sectionHistory {
-		return false
-	}
-	if a.historyWorkspace == historyWorkspaceRebase {
-		return true
-	}
-	return a.historyWorkspace == historyWorkspaceAuto && a.activeRebaseState() != nil
-}
-
+// openRebaseWorkspace opens the Rebase TODO modal over whichever page is
+// showing. Everything about a rebase lives there: the live steps and their
+// Continue, Skip and Abort actions, the target-branch form for a new plan, and
+// the todo editor.
 func (a *app) openRebaseWorkspace() {
-	a.workspaceTab = sectionHistory
-	a.historyWorkspace = historyWorkspaceRebase
-	a.syncNavSelection()
+	a.rebaseModalOpen = true
 }
 
-func (a *app) openCommitWorkspace() {
-	a.workspaceTab = sectionHistory
-	a.historyWorkspace = historyWorkspaceCommits
-	a.syncNavSelection()
+// closeRebaseModal closes the whole modal, including its editor view.
+func (a *app) closeRebaseModal() {
+	a.rebaseModalOpen = false
+	if a.rebasePlanEditorOpen {
+		a.closeRebasePlanEditor()
+	}
 }
 
 func (a *app) visibleRebaseSteps() []repository.OperationStep {
@@ -209,6 +197,7 @@ func (a *app) rebaseOperationButtons(c *ui.Context) {
 	planReadable := state == nil || state.StepsError == ""
 	if conflicts > 0 {
 		iconTextButton(c, "Resolve conflicts", "Open the existing conflict resolver in Changes", conflictIcon, false, func() {
+			a.rebaseModalOpen = false
 			a.setWorkspaceTab(sectionChanges)
 		})
 	}
@@ -228,69 +217,47 @@ func (a *app) rebaseOperationButtons(c *ui.Context) {
 	}
 }
 
-func (a *app) rebaseHistoryView(c *ui.Context) {
+// rebaseOverviewBody is the modal's first view: the live rebase with its
+// steps and actions, or the form that starts a new plan.
+func (a *app) rebaseOverviewBody(c *ui.Context, listHeight float32) {
 	theme := c.Theme()
 	state := a.activeRebaseState()
-	islandCard(c, ui.Column(c).Grow(1).Gap(10).Padding(12)).Children(func() {
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
-			paneTitle(c, rebaseIcon, "Rebase TODO")
-			if state != nil {
-				ui.Badge(c, operationProgress(*state))
-			}
-			ui.Spacer(c).Grow(1)
-			if ui.Button(c, tr("Commits")).Label(tr("Return to commit history")).Clicked() {
-				a.openCommitWorkspace()
-			}
-			if state != nil {
-				iconTextButton(c, "Edit TODO", "Compare-and-swap edit Git's complete remaining todo", editIcon,
-					a.actionBusy, a.openActiveRebasePlan)
-			} else {
-				iconTextButton(c, "New plan", "Generate a real Git rebase plan", stageIcon, a.actionBusy, func() {
-					a.rebaseDraft = nil
-					a.rebasePlanError = ""
-				})
-			}
+	if state != nil {
+		if state.StepsError != "" {
+			ui.Text(c, state.StepsError).TextColor(theme.Danger).Tooltip(state.StepsError)
+		}
+		ui.Row(c).FillWidth().Gap(7).AlignItems(ui.Center).Wrap().Children(func() {
+			ui.Text(c, tr("Current / pending / done steps come from Git's done and git-rebase-todo files.")).
+				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1).MinWidth(160)
+			a.rebaseOperationButtons(c)
 		})
-		if state != nil {
-			if state.StepsError != "" {
-				ui.Text(c, state.StepsError).TextColor(theme.Danger).Tooltip(state.StepsError)
-			}
-			ui.Row(c).FillWidth().Gap(7).AlignItems(ui.Center).Wrap().Children(func() {
-				ui.Text(c, tr("Current / pending / done steps come from Git's done and git-rebase-todo files.")).
-					TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1).MinWidth(160)
-				a.rebaseOperationButtons(c)
-			})
-			if state.OntoSHA != "" {
-				onto := ui.Text(c, tr("onto ")+state.OntoSHA).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted).
-					MinWidth(0).Tooltip(state.OntoSHA).Selectable()
-				if width, _ := c.Size(); width >= 900 {
-					onto.SingleLine()
-				}
-			}
-		} else {
-			a.rebaseDraftControls(c)
+		if state.OntoSHA != "" {
+			ui.Text(c, tr("onto ")+state.OntoSHA).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted).
+				MinWidth(0).Tooltip(state.OntoSHA).Selectable()
 		}
-		if a.rebasePlanError != "" {
-			ui.Text(c, a.rebasePlanError).TextColor(theme.Danger).Tooltip(a.rebasePlanError)
-		}
-		steps := a.visibleRebaseSteps()
-		if len(steps) == 0 {
-			ui.Column(c).Grow(1).Center().Gap(8).Padding(20).Children(func() {
-				ui.Icon(c, rebaseIcon).FontSize(28).TextColor(theme.TextMuted)
-				ui.Text(c, tr("No rebase todo to display")).Bold()
-				ui.Text(c, tr("Choose a target ref to generate Git's actual plan, or start a rebase from a branch.")).
-					TextColor(theme.TextMuted).TextAlign(ui.Center).MaxWidth(520)
-			})
-			return
-		}
-		list := a.keyboardList(c, &a.rebaseStepList, len(steps)).Grow(1).Rows(func(row ui.ListRow) {
-			a.rebaseStepRow(row.Context, row, steps[row.Index])
+	} else {
+		a.rebaseDraftControls(c)
+	}
+	if a.rebasePlanError != "" {
+		ui.Text(c, a.rebasePlanError).TextColor(theme.Danger).Tooltip(a.rebasePlanError)
+	}
+	steps := a.visibleRebaseSteps()
+	if len(steps) == 0 {
+		ui.Column(c).FillWidth().Height(min(listHeight, 220)).Center().Gap(8).Padding(20).Children(func() {
+			ui.Icon(c, rebaseIcon).FontSize(28).TextColor(theme.TextMuted)
+			ui.Text(c, tr("No rebase todo to display")).Bold()
+			ui.Text(c, tr("Choose a target ref to generate Git's actual plan, or start a rebase from a branch.")).
+				TextColor(theme.TextMuted).TextAlign(ui.Center).MaxWidth(520)
 		})
-		a.keyboardListChanged(&a.rebaseStepList, list)
-		if state != nil && a.selectedRebaseStep >= 0 && a.selectedRebaseStep < len(steps) {
-			a.rebaseStepActions(c, steps[a.selectedRebaseStep])
-		}
+		return
+	}
+	list := a.keyboardList(c, &a.rebaseStepList, len(steps)).FillWidth().Height(listHeight).Rows(func(row ui.ListRow) {
+		a.rebaseStepRow(row.Context, row, steps[row.Index])
 	})
+	a.keyboardListChanged(&a.rebaseStepList, list)
+	if state != nil && a.selectedRebaseStep >= 0 && a.selectedRebaseStep < len(steps) {
+		a.rebaseStepActions(c, steps[a.selectedRebaseStep])
+	}
 }
 
 func (a *app) rebaseDraftControls(c *ui.Context) {
@@ -441,8 +408,7 @@ func (a *app) saveRebasePlan() {
 		} else {
 			a.rebaseDraft = nil
 			a.clearMarkedRebaseBase()
-			a.closeRebasePlanEditor()
-			a.historyWorkspace = historyWorkspaceAuto
+			a.closeRebaseModal()
 		}
 	})
 }
@@ -540,34 +506,63 @@ func (a *app) rebaseStepActions(c *ui.Context, step repository.OperationStep) {
 	})
 }
 
+// rebasePlanModal is the Rebase TODO dialog. It shows the rebase overview, or
+// its todo editor once a plan is being edited; both live in the same dialog so
+// opening Rebase never replaces the page underneath.
 func (a *app) rebasePlanModal(c *ui.Context) {
-	if !a.rebasePlanEditorOpen || a.confirm != nil {
+	if !(a.rebaseModalOpen || a.rebasePlanEditorOpen) || a.confirm != nil {
 		return
 	}
 	theme := c.Theme()
 	_, windowHeight := c.Size()
+	editing := a.rebasePlanEditorOpen
 	editorHeight := min(max(windowHeight-300, 100), 440)
+	listHeight := min(max(windowHeight-340, 160), 420)
+	state := a.activeRebaseState()
 	ui.Overlay(c, func() {
 		back := ui.Row(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
 			Justify(ui.Center).AlignItems(ui.Center).Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
 		a.registerTerminalModalShortcuts(back)
 		back.Children(func() {
-			panel := ui.Column(c).Width(860).MaxWidthPercent(94).MaxHeightPercent(94).Padding(20).Gap(12).
+			panel := ui.Column(c).Width(900).MaxWidthPercent(94).MaxHeightPercent(94).Padding(20).Gap(12).
 				Background(theme.Background).Border(1, theme.Border).Radius(theme.Radius + 4).Clip().
-				Role(ui.RoleDialog).Label(tr("Rebase Plan")).Children(func() {
-				ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				Role(ui.RoleDialog).Label(tr("Rebase TODO")).Children(func() {
+				ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
 					ui.Icon(c, rebaseIcon).FontSize(19).TextColor(theme.Accent)
-					ui.Column(c).Gap(2).Grow(1).Children(func() {
-						ui.Text(c, tr("Rebase TODO")).FontSize(18).Bold()
-						ui.Text(c, tr("The complete plan is compared before anything is replaced.")).
-							TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+					ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
+						ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+							ui.Text(c, tr("Rebase TODO")).FontSize(18).Bold()
+							if state != nil {
+								ui.Badge(c, operationProgress(*state))
+							}
+						})
+						hint := "Start or inspect a real Git rebase plan."
+						if editing {
+							hint = "The complete plan is compared before anything is replaced."
+						}
+						ui.Text(c, tr(hint)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 					})
-					iconButton(c, "Close rebase plan", "Escape", closeIcon, a.actionBusy, a.closeRebasePlanEditor)
+					if !editing {
+						if state != nil {
+							iconTextButton(c, "Edit TODO", "Compare-and-swap edit Git's complete remaining todo", editIcon,
+								a.actionBusy, a.openActiveRebasePlan)
+						} else if a.rebaseDraft != nil {
+							iconTextButton(c, "New plan", "Discard this draft and generate another", stageIcon, a.actionBusy, func() {
+								a.rebaseDraft = nil
+								a.rebasePlanError = ""
+							})
+						}
+					}
+					iconButton(c, "Close rebase plan", "Escape", closeIcon, a.actionBusy, a.closeRebaseModal)
 				})
 				// The body can shrink and scroll while the header and action row
 				// stay committed inside the panel on compact-height windows.
 				ui.Scroll(c).Grow(1).Children(func() {
-					ui.Column(c).Grow(1).Gap(10).Children(func() {
+					ui.Column(c).FillWidth().Gap(10).Children(func() {
+						if !editing {
+							a.rebaseOverviewBody(c, listHeight)
+							return
+						}
 						if a.rebasePlanLoading {
 							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 								ui.Spinner(c).Label(tr("Loading Git's rebase todo"))
@@ -590,7 +585,14 @@ func (a *app) rebasePlanModal(c *ui.Context) {
 					})
 				})
 				ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
-					if ui.Button(c, tr("Cancel")).Disabled(a.actionBusy).Clicked() {
+					if !editing {
+						if ui.Button(c, tr("Close")).Disabled(a.actionBusy).Clicked() {
+							a.closeRebaseModal()
+						}
+						return
+					}
+					cancel := tr("Back")
+					if ui.Button(c, cancel).Label(tr("Back to the rebase overview")).Disabled(a.actionBusy).Clicked() {
 						a.closeRebasePlanEditor()
 					}
 					label := tr("Start rebase")
@@ -603,7 +605,11 @@ func (a *app) rebasePlanModal(c *ui.Context) {
 				})
 			})
 			if !a.actionBusy && (panel.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape)) {
-				a.closeRebasePlanEditor()
+				if editing {
+					a.closeRebasePlanEditor()
+				} else {
+					a.closeRebaseModal()
+				}
 			}
 		})
 	})

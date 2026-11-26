@@ -77,7 +77,6 @@ func rebaseViewHarness(t *testing.T, width, height int) (*harness, *rebaseViewSe
 	}
 	a := newApp(fixedSessionOpener{session: session})
 	a.workspaceTab = sectionHistory
-	a.historyWorkspace = historyWorkspaceAuto
 	h := &harness{app: a, updates: newUpdates()}
 	h.tester = ui.NewTester(a.view, width, height)
 	a.update = h.updates.update
@@ -97,7 +96,8 @@ func TestRebaseWorkspaceRendersOperationStepsAtWideAndNarrowWidths(t *testing.T)
 			a.snapshot.OperationState = &state
 			a.snapshot.Commits = []repository.Commit{{Subject: "ordinary history must not become a rebase plan"}}
 			a.session = fakeSession{snapshot: a.snapshot}
-			tt := ui.NewTester(func(c *ui.Context) { a.rebaseHistoryView(c) }, width, 720)
+			a.rebaseModalOpen = true
+			tt := ui.NewTester(a.rebasePlanModal, width, 720)
 			tt.SetDark(true)
 			tt.Frame()
 			for _, want := range []string{
@@ -174,7 +174,7 @@ func TestRebasePlanEditorActionsFitCompactWindows(t *testing.T) {
 			tt := ui.NewTester(a.rebasePlanModal, 360, height)
 			tt.SetDark(true)
 			tt.Frame()
-			for _, label := range []string{"Cancel", "Save TODO"} {
+			for _, label := range []string{"Back", "Save TODO"} {
 				r, ok := tt.Find(label)
 				if !ok || r.W <= 0 || r.H <= 0 || r.Y < 0 || r.Y+r.H > float32(height)+1 {
 					t.Fatalf("%q is not visible in %dx%d: %+v, texts %q", label, 360, height, r, tt.Texts())
@@ -191,7 +191,7 @@ func TestRepositoryResetDropsAllRebaseDraftsAndMarks(t *testing.T) {
 	a := newApp(fakeOpener{})
 	_, plan := rebaseViewModel()
 	full := strings.Repeat("e", 40)
-	a.historyWorkspace = historyWorkspaceRebase
+	a.rebaseModalOpen = true
 	a.markedBaseCommit = repository.Commit{Hash: full}
 	a.rebaseTargetRef = "target"
 	a.rebaseDraft = &plan
@@ -212,7 +212,7 @@ func TestRepositoryResetDropsAllRebaseDraftsAndMarks(t *testing.T) {
 	if a.markedBaseCommit.Hash != "" || a.rebaseTargetRef != "" || a.rebaseDraft != nil ||
 		a.rebasePlan != nil || a.rebasePlanText != "" || a.rebasePlanEditorOpen ||
 		a.rebasePlanLoading || a.rebasePlanError != "" || a.selectedRebaseStep != -1 ||
-		a.historyWorkspace != historyWorkspaceAuto {
+		a.rebaseModalOpen {
 		t.Fatalf("repository-bound rebase state survived: %#v", a)
 	}
 }
@@ -277,13 +277,69 @@ func TestConflictAndRebaseWorkspacesSwitchBothWays(t *testing.T) {
 		t.Fatalf("open Rebase TODO from conflict UI: %v; texts %q", err, h.texts())
 	}
 	h.tester.Frame()
-	if h.app.workspaceTab != sectionHistory || !h.tester.HasText("Rebase TODO") {
+	// The modal opens over the page the conflict is on, so nothing navigates.
+	if !h.app.rebaseModalOpen || h.app.workspaceTab != sectionChanges || !h.tester.HasText("Rebase TODO") {
 		t.Fatalf("conflict back action did not open real Rebase TODO: %q", h.texts())
 	}
 	if err := h.tester.Click("Resolve conflicts"); err != nil {
 		t.Fatalf("return to conflict UI: %v; texts %q", err, h.texts())
 	}
-	if h.app.workspaceTab != sectionChanges {
-		t.Fatalf("Resolve conflicts selected workspace %d", h.app.workspaceTab)
+	if h.app.workspaceTab != sectionChanges || h.app.rebaseModalOpen {
+		t.Fatalf("Resolve conflicts left tab %d, modal open=%v", h.app.workspaceTab, h.app.rebaseModalOpen)
+	}
+}
+
+// The Rebase button in History's header opens one dialog that holds the whole
+// rebase experience, and leaves the commit list underneath in place.
+func TestRebaseButtonOpensTheRebaseModalOverHistory(t *testing.T) {
+	h := menuTestApp(t)
+	h.press(t, ui.Key3)
+	if err := h.tester.Click("Open Rebase TODO"); err != nil {
+		t.Fatalf("open Rebase TODO: %v", err)
+	}
+	h.tester.Frame()
+	if !h.app.rebaseModalOpen || h.app.workspaceTab != sectionHistory {
+		t.Fatalf("the button did not open the modal over History: open=%v tab=%d", h.app.rebaseModalOpen, h.app.workspaceTab)
+	}
+	for _, want := range []string{"Rebase TODO", "Prepare plan", "Close"} {
+		if !h.tester.HasText(want) {
+			t.Fatalf("the Rebase modal lacks %q: %q", want, h.texts())
+		}
+	}
+	if !h.tester.HasText("Commits") {
+		t.Fatalf("the History page was replaced instead of covered: %q", h.texts())
+	}
+	h.tester.Key(0, ui.KeyEscape)
+	h.tester.Frame()
+	if h.app.rebaseModalOpen {
+		t.Fatal("Escape did not close the Rebase modal")
+	}
+}
+
+// An active rebase shows its steps and actions in the modal, and the todo
+// editor opens inside the same dialog and goes back to the steps.
+func TestRebaseModalHoldsStepsAndTheTodoEditor(t *testing.T) {
+	h, _ := rebaseViewHarness(t, 1100, 800)
+	h.app.openRebaseWorkspace()
+	h.tester.Frame()
+	for _, want := range []string{"Rebase TODO", "Edit TODO", "Close", "refs/heads/stack/topic"} {
+		if !h.tester.HasText(want) {
+			t.Fatalf("the active rebase modal lacks %q: %q", want, h.texts())
+		}
+	}
+	if err := h.tester.Click("Edit TODO"); err != nil {
+		t.Fatalf("open the todo editor: %v", err)
+	}
+	h.tester.Frame()
+	h.settle(t)
+	if !h.app.rebasePlanEditorOpen || !h.tester.HasText("Complete Git rebase todo") || !h.tester.HasText("Save TODO") {
+		t.Fatalf("the editor did not open inside the modal: %q", h.texts())
+	}
+	if err := h.tester.Click("Back"); err != nil {
+		t.Fatalf("go back to the steps: %v", err)
+	}
+	h.tester.Frame()
+	if h.app.rebasePlanEditorOpen || !h.app.rebaseModalOpen || !h.tester.HasText("Edit TODO") {
+		t.Fatalf("Back did not return to the rebase overview: editor=%v modal=%v", h.app.rebasePlanEditorOpen, h.app.rebaseModalOpen)
 	}
 }

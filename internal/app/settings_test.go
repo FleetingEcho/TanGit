@@ -684,9 +684,27 @@ func TestThemeButtonOpensTheThemeList(t *testing.T) {
 		t.Fatalf("click the theme icon: %v", err)
 	}
 	tt.Frame()
-	for _, want := range []string{"System", "Dracula", "Catppuccin Mocha", "Kanagawa Wave", "Rosé Pine Dawn"} {
+	// The catalog is grouped: System sits on top, and the palettes are in the
+	// Light and Dark submenus.
+	for _, want := range []string{"System", "Light themes", "Dark themes"} {
 		if !tt.HasText(want) {
 			t.Fatalf("the theme list is missing %q: %v", want, tt.Texts())
+		}
+	}
+	if err := tt.Click("Light themes"); err != nil {
+		t.Fatalf("open the light themes: %v", err)
+	}
+	tt.Frame()
+	if !tt.HasText("Rosé Pine Dawn") {
+		t.Fatalf("the light themes are missing Rosé Pine Dawn: %v", tt.Texts())
+	}
+	if err := tt.Click("Dark themes"); err != nil {
+		t.Fatalf("open the dark themes: %v", err)
+	}
+	tt.Frame()
+	for _, want := range []string{"Dracula", "Catppuccin Mocha", "Kanagawa Wave"} {
+		if !tt.HasText(want) {
+			t.Fatalf("the dark themes are missing %q: %v", want, tt.Texts())
 		}
 	}
 	if err := tt.Click("Dracula"); err != nil {
@@ -707,6 +725,10 @@ func TestHeaderBarChoosesATheme(t *testing.T) {
 
 	if err := h.tester.Click("Theme"); err != nil {
 		t.Fatalf("open the theme list: %v", err)
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Dark themes"); err != nil {
+		t.Fatalf("open the dark themes: %v", err)
 	}
 	h.tester.Frame()
 	if err := h.tester.Click("Dracula"); err != nil {

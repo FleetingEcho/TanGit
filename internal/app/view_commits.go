@@ -127,7 +127,7 @@ func (a *app) commitRowMenuWithHistory(m *ui.Menu, commit repository.Commit, ser
 		if m.Item(markLabel).Disabled(a.actionBusy || a.snapshot.Operation != "").Chosen() {
 			a.markRebaseBase(commit)
 		}
-		if a.markedBaseCommit.Hash != "" && m.Item(tr("Open Rebase TODO workspace")).Disabled(a.actionBusy).Chosen() {
+		if a.markedBaseCommit.Hash != "" && m.Item(tr("Open Rebase TODO")).Disabled(a.actionBusy).Chosen() {
 			a.openRebaseWorkspace()
 		}
 		m.Separator()

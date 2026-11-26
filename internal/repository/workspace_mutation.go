@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 )
 
 const (
@@ -64,6 +66,11 @@ func (s *gitSession) runWorkspaceMutation(ctx context.Context, kind, summary str
 	if len(captures) > 1 {
 		return fmt.Errorf("%s: multiple recovery captures", kind)
 	}
+	if !SafetyJournalEnabled() {
+		// The user turned the safety journal off: run the action itself, with
+		// no recovery point, journal entry or pruning.
+		return mutate()
+	}
 	capture := func(ctx context.Context) (WorkSnapshot, error) {
 		return s.captureWorkSnapshot(ctx, RecoverySnapshotKind, summary)
 	}
@@ -73,11 +80,7 @@ func (s *gitSession) runWorkspaceMutation(ctx context.Context, kind, summary str
 		}
 		capture = captures[0]
 	}
-	snapshot, err := capture(ctx)
-	if err != nil {
-		return err
-	}
-	record, err := s.beginOperation(kind, summary, UndoRestoreWork, &snapshot)
+	_, record, err := s.captureAndBeginOperation(ctx, capture, kind, summary, UndoRestoreWork)
 	if err != nil {
 		return err
 	}
@@ -97,4 +100,59 @@ func (s *gitSession) runWorkspaceMutation(ctx context.Context, kind, summary str
 		return err
 	}
 	return s.pruneRecovery(ctx)
+}
+
+// recoveryAttempts is how often a recovery point is taken again when the
+// workspace changed under it. The action has not run yet at that stage, so
+// trying again is always safe.
+const recoveryAttempts = 4
+
+// isTransientRecoveryError recognizes the two ways a busy checkout defeats one
+// attempt at a recovery point: a file changed while it was being saved, or the
+// workspace changed between taking the point and checking it.
+func isTransientRecoveryError(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := err.Error()
+	return strings.Contains(text, "unstable object source data") ||
+		strings.Contains(text, "workspace changed while creating the recovery point") ||
+		strings.Contains(text, "the file kept changing while it was being saved")
+}
+
+// captureAndBeginOperation takes a recovery point and opens the journal entry
+// that protects it. Other programs write into a checkout all the time (an
+// indexer's database, a build, an editor), and one write between the two steps
+// used to refuse the whole action. Because nothing has run yet, the attempt is
+// repeated a few times before it is given up; a point that did not hold is
+// dropped rather than left behind.
+func (s *gitSession) captureAndBeginOperation(ctx context.Context, capture func(context.Context) (WorkSnapshot, error), kind, summary, undoKind string) (WorkSnapshot, OperationRecord, error) {
+	var lastErr error
+	for attempt := 0; attempt < recoveryAttempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return WorkSnapshot{}, OperationRecord{}, ctx.Err()
+			case <-time.After(time.Duration(attempt) * 150 * time.Millisecond):
+			}
+		}
+		snapshot, err := capture(ctx)
+		if err != nil {
+			if !isTransientRecoveryError(err) {
+				return WorkSnapshot{}, OperationRecord{}, err
+			}
+			lastErr = err
+			continue
+		}
+		record, err := s.beginOperation(kind, summary, undoKind, &snapshot)
+		if err == nil {
+			return snapshot, record, nil
+		}
+		_ = s.DeleteWorkSnapshot(ctx, snapshot)
+		if !isTransientRecoveryError(err) {
+			return WorkSnapshot{}, OperationRecord{}, err
+		}
+		lastErr = err
+	}
+	return WorkSnapshot{}, OperationRecord{}, lastErr
 }

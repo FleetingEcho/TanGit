@@ -82,9 +82,11 @@ func TestCommandLogSectionsAndSearch(t *testing.T) {
 
 func TestCommandLogEmptySectionOnlyOffersClearWhenFiltersExcludeEntries(t *testing.T) {
 	a, tester, _ := realCommandHarness(t)
+	a.openCommandLog()
+	// Opening the log picks its default tab and time range, so choose the
+	// empty "Your commands" section and clear the filters after it opens.
 	a.commandLogUser = true
 	a.clearCommandLogFilters()
-	a.openCommandLog()
 	tester.Frame()
 	if tester.HasText("Clear filters") || !tester.HasText("No commands in this section yet.") {
 		t.Fatalf("an unfiltered empty section offers a pointless clear action: %q", tester.Texts())

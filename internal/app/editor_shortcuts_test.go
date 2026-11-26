@@ -318,6 +318,9 @@ func TestOutlineShortcutUsesCurrentEditorPaneAndOverrides(t *testing.T) {
 	}
 	h.app.settings.EditorKeyBindings = nil
 	h.tester.Frame()
+	if err := h.tester.Click("Code editor"); err != nil {
+		t.Fatalf("focus code editor: %v", err)
+	}
 	h.tester.Key(ui.Ctrl|ui.Shift, ui.KeyE)
 	h.tester.Frame()
 	if h.app.code.languageDialog != codeLanguageDialogSymbols {

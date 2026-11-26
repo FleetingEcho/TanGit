@@ -31,13 +31,34 @@ func (a *app) recoveryModal(c *ui.Context) {
 			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
 		a.registerTerminalModalShortcuts(back)
 		back.Children(func() {
-			panel := ui.Column(c).Width(640).Height(520).MaxWidthPercent(92).MaxHeightPercent(85).
+			panel := ui.Column(c).Width(680).Height(580).MaxWidthPercent(92).MaxHeightPercent(88).
 				Padding(20).Gap(12).Background(theme.Background).
 				Border(1, theme.Border).Radius(theme.Radius + 4).
 				Role(ui.RoleDialog).Label(tr("Recovery & checkpoints"))
 			panel.Children(func() {
-				ui.Scroll(c).FillWidth().Grow(1).Shrink(1).MinHeight(0).Children(func() {
-					a.recoveryPanel(c)
+				a.recoveryHeader(c)
+				ui.Tabs(c, &a.savedWorkPanel, tr("Recovery"), tr("Safety Journal")).Label(tr("Recovery sections"))
+				if !a.safetyJournalEnabled() {
+					a.safetyJournalOffNotice(c)
+				}
+				ui.Scroll(c).FillWidth().Grow(1).Shrink(1).MinHeight(0).TrackScroll(&a.journalScroll).Children(func() {
+					ui.Column(c).FillWidth().Gap(10).Padding(0, 6, 4, 0).
+						Role(ui.RoleRegion).Label(tr("Recovery & checkpoints")).Children(func() {
+						if a.savedWorkPanel == 1 {
+							a.safetyJournalBody(c)
+						} else {
+							a.recoveryBody(c)
+						}
+					})
+				})
+				// The bottom bar: the journal switch on the left, Done on the right.
+				ui.Divider(c)
+				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(12).Children(func() {
+					a.safetyJournalToggle(c)
+					ui.Spacer(c).Grow(1)
+					if ui.PrimaryButton(c, tr("Done")).Clicked() {
+						a.showRecoveryModal = false
+					}
 				})
 			})
 			if panel.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
@@ -47,45 +68,32 @@ func (a *app) recoveryModal(c *ui.Context) {
 	})
 }
 
-// recoveryPanel owns automatic discard recovery and named checkpoints.
-// These refs are separate from ordinary stashes.
-func (a *app) recoveryPanel(c *ui.Context) {
+// recoveryHeader names the dialog and carries its safety journal switch and
+// close button.
+func (a *app) recoveryHeader(c *ui.Context) {
 	theme := c.Theme()
-	ui.Column(c).FillWidth().Gap(12).
-		Role(ui.RoleRegion).Label(tr("Recovery & checkpoints")).Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Icon(c, softResetIcon).FontSize(15).TextColor(theme.Accent)
-			ui.Text(c, tr("Recovery & checkpoints")).FontSize(17).Bold().Grow(1)
-			iconButton(c, "Close", "Escape", closeIcon, false, func() { a.showRecoveryModal = false })
+	ui.Row(c).AlignItems(ui.Center).Gap(12).Children(func() {
+		ui.Box(c).Size(36, 36).Radius(theme.Radius + 2).Center().
+			Background(theme.Accent.Alpha(0.14)).Children(func() {
+			ui.Icon(c, softResetIcon).FontSize(18).TextColor(theme.Accent)
 		})
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
-			recoveryClicked := false
-			if a.savedWorkPanel == 0 {
-				recoveryClicked = compactTextButton(ui.PrimaryButton(c, tr("Recovery"))).Label(tr("Show recovery and checkpoints")).Clicked()
-			} else {
-				recoveryClicked = compactTextButton(ui.Button(c, tr("Recovery"))).Label(tr("Show recovery and checkpoints")).Clicked()
-			}
-			if recoveryClicked {
-				a.savedWorkPanel = 0
-			}
-			journalClicked := false
-			if a.savedWorkPanel == 1 {
-				journalClicked = compactTextButton(ui.PrimaryButton(c, tr("Safety Journal"))).Label(tr("Show safety journal")).Clicked()
-			} else {
-				journalClicked = compactTextButton(ui.Button(c, tr("Safety Journal"))).Label(tr("Show safety journal")).Clicked()
-			}
-			if journalClicked {
-				a.savedWorkPanel = 1
-			}
-			ui.Badge(c, fmt.Sprintf("%d", len(a.snapshot.WorkSnapshots)+len(a.snapshot.FileRecoveries)+len(a.snapshot.Operations)))
+		ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
+			ui.Text(c, tr("Recovery & checkpoints")).FontSize(18).Bold()
+			ui.Text(c, tr("Recovery points and undo for your actions")).
+				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		})
-		if a.savedWorkPanel == 1 {
-			a.safetyJournalBody(c)
-			return
-		}
-		ui.Text(c, tr("Conflict recovery restores the original unresolved file and Git stages. Discard copies and named checkpoints stay separate.")).
-			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-		ui.Text(c, tr("Save all current work without changing it")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+		iconButton(c, "Close", "Escape", closeIcon, false, func() { a.showRecoveryModal = false })
+	})
+}
+
+// recoveryBody owns automatic discard recovery and named checkpoints.
+// These refs are separate from ordinary stashes.
+func (a *app) recoveryBody(c *ui.Context) {
+	theme := c.Theme()
+	ui.Text(c, tr("Conflict recovery restores the original unresolved file and Git stages. Discard copies and named checkpoints stay separate.")).
+		TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+	ui.Column(c).FillWidth().Gap(8).Padding(12).Background(theme.Surface).Radius(theme.Radius).Children(func() {
+		ui.Text(c, tr("Save all current work without changing it")).Bold().FontSize(theme.FontSize - 1)
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
 			input := ui.TextInput(c, &a.checkpointName).Label(tr("Checkpoint name")).
 				Placeholder(tr("Name a checkpoint")).Grow(1)
@@ -109,36 +117,38 @@ func (a *app) recoveryPanel(c *ui.Context) {
 				create()
 			}
 		})
-		a.fileRecoveryList(c)
-		if len(a.snapshot.WorkSnapshots) == 0 {
-			return
+	})
+	a.fileRecoveryList(c)
+	if len(a.snapshot.WorkSnapshots) == 0 {
+		if len(a.snapshot.FileRecoveries) == 0 {
+			emptyJournalState(c, theme, "Recovery points appear here", "")
 		}
-		height := float32(min(len(a.snapshot.WorkSnapshots), 3)) * 48
-		list := a.keyboardList(c, &a.workSnapshotList, len(a.snapshot.WorkSnapshots)).Height(height)
-		list.Rows(func(row ui.ListRow) {
-			snapshot := a.snapshot.WorkSnapshots[row.Index]
-			label := tr("Recovery")
-			if snapshot.Kind == repository.CheckpointSnapshotKind {
-				label = tr("Checkpoint")
-			}
-			ui.Row(row.Context).AlignItems(ui.Center).Gap(8).Children(func() {
-				ui.Badge(row.Context, label)
-				ui.Column(row.Context).Gap(1).Grow(1).Children(func() {
-					ui.Text(row.Context, snapshot.Name).SingleLine().Tooltip(snapshot.Name)
-					ui.Text(row.Context, time.Unix(snapshot.CreatedAt, 0).Format("2006-01-02 15:04")).
-						TextColor(secondaryRowColor(theme, row)).FontSize(theme.FontSize - 1)
-				})
-				if compactTextButton(ui.Button(row.Context, tr("Restore…"))).Label(tr("Restore") + " " + snapshot.ID).
-					Tooltip(tr("Restore saved work while keeping this entry")).
-					Disabled(a.actionBusy).Clicked() {
-					a.confirmRestoreWorkSnapshot(snapshot)
-				}
-				rowIconButton(row.Context, "Delete "+snapshot.ID, "Delete this recovery entry…", revertIcon, func() {
-					a.confirmDeleteWorkSnapshot(snapshot)
-				})
+		return
+	}
+	for index, snapshot := range a.snapshot.WorkSnapshots {
+		snapshot := snapshot
+		c.Key("recovery-entry:" + snapshot.ID)
+		_ = index
+		label := tr("Recovery")
+		if snapshot.Kind == repository.CheckpointSnapshotKind {
+			label = tr("Checkpoint")
+		}
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Padding(9, 12).
+			Background(theme.Surface).Radius(theme.Radius).Children(func() {
+			ui.Badge(c, label)
+			ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
+				ui.Text(c, snapshot.Name).SingleLine().Ellipsis("…").Tooltip(snapshot.Name)
+				ui.Text(c, time.Unix(snapshot.CreatedAt, 0).Format("2006-01-02 15:04")).
+					TextColor(theme.TextMuted).FontSize(theme.FontSize - 2)
+			})
+			iconButton(c, tr("Restore")+" "+snapshot.ID, "Restore saved work while keeping this entry…", revertIcon, a.actionBusy, func() {
+				a.confirmRestoreWorkSnapshot(snapshot)
+			})
+			iconButton(c, "Delete "+snapshot.ID, "Delete this recovery entry…", trashIcon, a.actionBusy, func() {
+				a.confirmDeleteWorkSnapshot(snapshot)
 			})
 		})
-	})
+	}
 }
 
 func fileRecoveryStageSummary(record repository.FileRecoveryRecord) string {

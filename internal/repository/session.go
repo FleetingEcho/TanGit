@@ -502,6 +502,16 @@ type gitSession struct {
 	// modification time, so saving a file re-reads it and nothing else.
 	untrackedMu         sync.Mutex
 	untrackedStatsCache map[string]untrackedStatsCacheEntry
+	// fileHashes remembers the object ID of each file a recovery snapshot has
+	// already hashed, validated by size, mode and modification time, so the
+	// several scans one action makes read only the files that changed.
+	fileHashMu sync.Mutex
+	fileHashes map[string]fileHashEntry
+	// objectMemo remembers which Git object a given tree listing or metadata
+	// blob produced. Git names an object by its content, so the same input is
+	// the same object and need not be written again for each scan.
+	objectMemoMu sync.Mutex
+	objectMemo   map[[32]byte]objectMemoEntry
 }
 
 // untrackedStatsCacheEntry is one memoized untracked file line count.
@@ -1408,11 +1418,12 @@ func (s *gitSession) Discard(ctx context.Context, file File) error {
 	if file.HasMergeConflicts {
 		return fmt.Errorf("resolve merge conflicts before discarding %s", file.Path)
 	}
-	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Discard "+file.Path)
-	if err != nil {
-		return err
+	if !SafetyJournalEnabled() {
+		return s.discardFile(ctx, file)
 	}
-	record, err := s.beginOperation(OperationDiscard, "Discard "+file.Path, UndoRestoreWork, &snapshot)
+	_, record, err := s.captureAndBeginOperation(ctx, func(ctx context.Context) (WorkSnapshot, error) {
+		return s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Discard "+file.Path)
+	}, OperationDiscard, "Discard "+file.Path, UndoRestoreWork)
 	if err != nil {
 		return err
 	}
@@ -1439,11 +1450,18 @@ func (s *gitSession) DiscardFiles(ctx context.Context, files []File) error {
 			return fmt.Errorf("resolve merge conflicts before discarding %s", file.Path)
 		}
 	}
-	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, fmt.Sprintf("Discard %d changes", len(files)))
-	if err != nil {
-		return err
+	if !SafetyJournalEnabled() {
+		for _, file := range files {
+			if err := s.discardFile(ctx, file); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
-	record, err := s.beginOperation(OperationDiscard, fmt.Sprintf("Discard %d changes", len(files)), UndoRestoreWork, &snapshot)
+	summary := fmt.Sprintf("Discard %d changes", len(files))
+	_, record, err := s.captureAndBeginOperation(ctx, func(ctx context.Context) (WorkSnapshot, error) {
+		return s.captureWorkSnapshot(ctx, RecoverySnapshotKind, summary)
+	}, OperationDiscard, summary, UndoRestoreWork)
 	if err != nil {
 		return err
 	}
@@ -1495,6 +1513,12 @@ func (s *gitSession) DeleteBranch(ctx context.Context, name string, force bool) 
 	tip, err := s.gitText("rev-parse", "--verify", "refs/heads/"+name)
 	if err != nil {
 		return fmt.Errorf("delete branch: read its tip: %w", err)
+	}
+	if !SafetyJournalEnabled() {
+		if err := s.deleteBranchAtTip(name, strings.TrimSpace(tip), force); err != nil {
+			return fmt.Errorf("delete branch: %w", err)
+		}
+		return nil
 	}
 	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Before deleting branch "+name)
 	if err != nil {
@@ -2157,6 +2181,14 @@ func (s *gitSession) StashSelectedFiles(ctx context.Context, message string, fil
 	if message == "" {
 		message = "Desktop stash"
 	}
+	// A chosen file Git does not track yet can only be stashed with
+	// --include-untracked, and choosing it already says so. The pathspec keeps
+	// the flag from sweeping up any other untracked file.
+	for _, file := range files {
+		if !file.Tracked {
+			includeUntracked = true
+		}
+	}
 	args := []string{"git", "stash", "push", "-m", message}
 	if includeUntracked {
 		args = append(args, "--include-untracked")
@@ -2170,13 +2202,6 @@ func (s *gitSession) StashSelectedFiles(ctx context.Context, message string, fil
 			}
 			seen[path] = true
 			args = append(args, ":(literal)"+path)
-		}
-	}
-	if !includeUntracked {
-		for _, file := range files {
-			if !file.Tracked {
-				return fmt.Errorf("stash selected files: include untracked to save %s", file.Path)
-			}
 		}
 	}
 	return s.withWorkspaceMutation(ctx, OperationStashSave, "Stash "+message, false, func() error {
@@ -2327,6 +2352,9 @@ func (s *gitSession) DropStash(ctx context.Context, index int) error {
 		return fmt.Errorf("drop stash: read its commit: %w", err)
 	}
 	message, _ := s.gitText("log", "-1", "--format=%s", ref)
+	if !SafetyJournalEnabled() {
+		return s.deleteStashEntry(ref, strings.TrimSpace(hash))
+	}
 	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, fmt.Sprintf("Before dropping stash@{%d}", index))
 	if err != nil {
 		return err
@@ -2343,24 +2371,33 @@ func (s *gitSession) DropStash(ctx context.Context, index int) error {
 	if err != nil || strings.TrimSpace(current) != record.ObjectID {
 		return s.failJournalOperation(record, fmt.Errorf("drop stash: the selected stash changed before it could be dropped"))
 	}
+	if err := s.deleteStashEntry(ref, record.ObjectID); err != nil {
+		return s.failJournalOperation(record, err)
+	}
+	return s.completeJournalOperation(record, nil)
+}
+
+// deleteStashEntry removes one stash reflog entry and, when it was the last,
+// the empty ref it leaves behind.
+func (s *gitSession) deleteStashEntry(ref, objectID string) error {
 	output, err := s.cmd.New([]string{"git", "reflog", "delete", "--updateref", ref}).RunWithOutput()
 	if err != nil {
-		return s.failJournalOperation(record, fmt.Errorf("drop stash: %w: %s", err, strings.TrimSpace(output)))
+		return fmt.Errorf("drop stash: %w: %s", err, strings.TrimSpace(output))
 	}
 	remaining, err := s.stashOperationState()
 	if err != nil {
-		return s.failJournalOperation(record, err)
+		return err
 	}
 	if remaining == "" {
 		// Deleting the only reflog entry leaves a ref with an empty reflog.
 		// Native stash drop removes it too, and doing so lets stash store create
 		// the restored entry on Undo instead of treating the same tip as a no-op.
-		output, err = s.cmd.New([]string{"git", "update-ref", "-d", "refs/stash", record.ObjectID}).RunWithOutput()
+		output, err = s.cmd.New([]string{"git", "update-ref", "-d", "refs/stash", objectID}).RunWithOutput()
 		if err != nil {
-			return s.failJournalOperation(record, fmt.Errorf("drop empty stash ref: %w: %s", err, strings.TrimSpace(output)))
+			return fmt.Errorf("drop empty stash ref: %w: %s", err, strings.TrimSpace(output))
 		}
 	}
-	return s.completeJournalOperation(record, nil)
+	return nil
 }
 
 func (s *gitSession) StashFiles(ctx context.Context, index int) ([]CommitFile, error) {
