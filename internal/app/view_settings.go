@@ -58,6 +58,7 @@ func (a *app) openSettingsSection(page int) {
 		a.stopEditorShortcutRecording()
 	}
 	a.settingsUI.page = page
+	a.settingsUI.searchQuery = ""
 	a.settingsUI.revealShortcuts = page == settingsPageCodeEditor
 	a.settingsUI.open = true
 }
@@ -245,7 +246,7 @@ func (a *app) settingsModal(c *ui.Context) {
 
 func (a *app) settingsHeader(c *ui.Context) {
 	theme := c.Theme()
-	ui.Row(c).AlignItems(ui.Center).Gap(12).Children(func() {
+	ui.Row(c).AlignItems(ui.Center).Gap(12).Wrap().Children(func() {
 		ui.Box(c).Size(38, 38).Radius(theme.Radius + 4).Center().
 			Background(theme.Accent.Alpha(0.12)).Children(func() {
 			ui.Icon(c, settingsIcon).FontSize(19).TextColor(theme.Accent)
@@ -255,6 +256,7 @@ func (a *app) settingsHeader(c *ui.Context) {
 			ui.Text(c, tr("Make lazygitGo look and work the way you do")).
 				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		})
+		a.settingsSearchInput(c)
 		iconButton(c, "Close settings", "Escape", closeIcon, false, a.closeSettings)
 	})
 }
@@ -325,48 +327,55 @@ func settingRow(c *ui.Context, label, hint string, control func()) {
 // became hard to scan and the footer disappeared below a long form.
 func (a *app) settingsBody(c *ui.Context) {
 	theme := c.Theme()
-	ui.Row(c).Grow(1).MinHeight(0).FillWidth().Gap(18).Children(func() {
-		ui.Column(c).Width(158).Gap(4).Padding(7).
-			Background(theme.Surface.Alpha(0.55)).Radius(theme.Radius + 6).
-			Children(func() {
-				ui.Text(c, tr("PREFERENCES")).FontSize(theme.FontSize-3).Bold().
-					TextColor(theme.TextMuted).Padding(4, 8, 9)
-				a.settingsPageButton(c, settingsPageAppearance, themeIcon, "Appearance")
-				a.settingsPageButton(c, settingsPageTypography, fontIcon, "Typography")
-				a.settingsPageButton(c, settingsPageBehavior, commitIcon, "Behavior")
-				a.settingsPageButton(c, settingsPageEditor, fileCodeIcon, "Editor")
-				a.settingsPageButton(c, settingsPageLSP, terminalIcon, "LSP")
-				a.settingsPageButton(c, settingsPageWorkspace, worktreesIcon, "Workspace")
-				a.settingsPageButton(c, settingsPageCache, trashIcon, "Cache")
-				a.settingsPageButton(c, settingsPageCommands, commandIcon, "Commands")
-				a.settingsPageButton(c, settingsPageSSHProfiles, remotesIcon, "SSH profiles")
-				a.settingsPageButton(c, settingsPageUpdates, updateIcon, "Updates")
-			})
-		ui.Box(c).Width(1).Background(theme.Border)
-		ui.Scroll(c).Grow(1).MinHeight(0).FillWidth().FillHeight().Children(func() {
-			ui.Column(c).FillWidth().Padding(3, 8, 12, 4).Children(func() {
-				switch a.settingsUI.page {
-				case settingsPageTypography:
-					a.typographySettings(c)
-				case settingsPageBehavior:
-					a.behaviorSettings(c)
-				case settingsPageEditor, settingsPageCodeEditor:
-					a.codeEditorSettings(c)
-				case settingsPageLSP:
-					settingsSection(c, func() { a.languageServerCatalog(c) })
-				case settingsPageWorkspace:
-					a.workspaceSettings(c)
-				case settingsPageCommands:
-					a.commandsSettings(c)
-				case settingsPageSSHProfiles:
-					a.sshProfileSettings(c)
-				case settingsPageUpdates:
-					settingsSection(c, func() { a.updatesSettings(c) })
-				case settingsPageCache:
-					settingsSection(c, func() { a.cacheSettings(c) })
-				default:
-					a.appearanceSettings(c)
-				}
+	ui.Column(c).Grow(1).MinHeight(0).FillWidth().Gap(12).Children(func() {
+		query := strings.TrimSpace(a.settingsUI.searchQuery)
+		if query != "" {
+			a.settingsSearchResults(c)
+			return
+		}
+		ui.Row(c).Grow(1).MinHeight(0).FillWidth().Gap(18).Children(func() {
+			ui.Column(c).Width(158).Gap(4).Padding(7).
+				Background(theme.Surface.Alpha(0.55)).Radius(theme.Radius + 6).
+				Children(func() {
+					ui.Text(c, tr("PREFERENCES")).FontSize(theme.FontSize-3).Bold().
+						TextColor(theme.TextMuted).Padding(4, 8, 9)
+					a.settingsPageButton(c, settingsPageAppearance, themeIcon, "Appearance")
+					a.settingsPageButton(c, settingsPageTypography, fontIcon, "Typography")
+					a.settingsPageButton(c, settingsPageBehavior, commitIcon, "Behavior")
+					a.settingsPageButton(c, settingsPageEditor, fileCodeIcon, "Editor")
+					a.settingsPageButton(c, settingsPageLSP, terminalIcon, "LSP")
+					a.settingsPageButton(c, settingsPageWorkspace, worktreesIcon, "Workspace")
+					a.settingsPageButton(c, settingsPageCache, trashIcon, "Cache")
+					a.settingsPageButton(c, settingsPageCommands, commandIcon, "Commands")
+					a.settingsPageButton(c, settingsPageSSHProfiles, remotesIcon, "SSH profiles")
+					a.settingsPageButton(c, settingsPageUpdates, updateIcon, "Updates")
+				})
+			ui.Box(c).Width(1).Background(theme.Border)
+			ui.Scroll(c).Grow(1).MinHeight(0).FillWidth().FillHeight().Children(func() {
+				ui.Column(c).FillWidth().Padding(3, 8, 12, 4).Children(func() {
+					switch a.settingsUI.page {
+					case settingsPageTypography:
+						a.typographySettings(c)
+					case settingsPageBehavior:
+						a.behaviorSettings(c)
+					case settingsPageEditor, settingsPageCodeEditor:
+						a.codeEditorSettings(c)
+					case settingsPageLSP:
+						settingsSection(c, func() { a.languageServerCatalog(c) })
+					case settingsPageWorkspace:
+						a.workspaceSettings(c)
+					case settingsPageCommands:
+						a.commandsSettings(c)
+					case settingsPageSSHProfiles:
+						a.sshProfileSettings(c)
+					case settingsPageUpdates:
+						settingsSection(c, func() { a.updatesSettings(c) })
+					case settingsPageCache:
+						settingsSection(c, func() { a.cacheSettings(c) })
+					default:
+						a.appearanceSettings(c)
+					}
+				})
 			})
 		})
 	})
@@ -396,6 +405,7 @@ func (a *app) settingsPageButton(c *ui.Context, page int, icon *ui.SVG, label st
 		}
 		a.settingsUI.revealShortcuts = false
 		a.settingsUI.page = page
+		a.settingsUI.searchQuery = ""
 	}
 }
 
@@ -535,17 +545,32 @@ func (a *app) appearanceSettings(c *ui.Context) {
 		ui.Divider(c)
 		settingRow(c, "Home background", "An image behind the repository picker", func() {
 			enabled := !a.settings.HomeBackgroundDisabled
-			if settingsSwitch(c, "Enable Home background", "Show or hide the chosen image without removing it", &enabled) {
-				a.settings.HomeBackgroundDisabled = !enabled
-				a.settingsChanged(c)
+			toggle := func() {
+				if settingsSwitch(c, "Enable Home background", "Show or hide the chosen image without removing it", &enabled) {
+					a.settings.HomeBackgroundDisabled = !enabled
+					a.settingsChanged(c)
+				}
 			}
-			iconTextButton(c, "Choose image…", "Choose a PNG, JPEG, GIF, WebP, or BMP image, up to 10 MiB",
-				fileImageIcon, false, a.browseHomeBackground)
-			if a.settings.HomeBackgroundPath != "" {
-				iconTextButton(c, "Remove", "Remove the Home background", trashIcon, false,
-					a.removeHomeBackground)
+			choose := func() {
+				iconTextButton(c, "Choose image…", "Choose a PNG, JPEG, GIF, WebP, or BMP image, up to 10 MiB",
+					fileImageIcon, false, a.browseHomeBackground)
+			}
+			if a.settings.HomeBackgroundPath == "" {
+				toggle()
+				choose()
+				return
+			}
+			ui.Row(c).AlignItems(ui.Center).Gap(12).Children(func() {
 				a.homeBackgroundPreview(c)
-			}
+				ui.Column(c).Gap(8).Children(func() {
+					toggle()
+					ui.Row(c).AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
+						choose()
+						iconTextButton(c, "Remove", "Remove the Home background", trashIcon, false,
+							a.removeHomeBackground)
+					})
+				})
+			})
 		})
 		if a.settings.HomeBackgroundPath != "" {
 			settingRow(c, "Background opacity", "How strongly the Home image shows", func() {
@@ -1415,6 +1440,20 @@ func (a *app) themeSwatch(c *ui.Context, color ui.Color, label string) {
 		Background(color).Tooltip(tr(label))
 }
 
+func (a *app) confirmResetSettingsToDefaults() {
+	if a.languageServerLifecycleBusy() {
+		return
+	}
+	a.askConfirm(confirmRequest{
+		title:        "Reset settings to defaults",
+		message:      tr("Reset every setting to its default?"),
+		detail:       tr("Custom themes, custom commands and SSH profiles are removed. Repository files and Git history are not changed."),
+		confirmLabel: "Reset to defaults",
+		destructive:  true,
+		run:          a.resetSettingsToDefaults,
+	})
+}
+
 func (a *app) resetSettingsToDefaults() {
 	if a.languageServerLifecycleBusy() {
 		return
@@ -1431,10 +1470,8 @@ func (a *app) resetSettingsToDefaults() {
 func (a *app) settingsFooter(c *ui.Context) {
 	theme := c.Theme()
 	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-		if ui.Button(c, tr("Reset to defaults")).Tooltip(tr("Restore every setting")).
-			Disabled(a.languageServerLifecycleBusy()).Clicked() {
-			a.resetSettingsToDefaults()
-		}
+		iconButton(c, "Reset to defaults", "Restore every setting", revertIcon,
+			a.languageServerLifecycleBusy(), a.confirmResetSettingsToDefaults)
 		ui.Text(c, tr("Changes apply immediately and are saved automatically")).
 			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1)
 		if ui.PrimaryButton(c, tr("Done")).Clicked() {

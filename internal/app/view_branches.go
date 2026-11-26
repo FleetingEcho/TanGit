@@ -681,7 +681,7 @@ func (a *app) branchCommitsKey(branch string) string {
 	if !commitFilterNarrows(a.branchFilter) {
 		return branch
 	}
-	return branch + "\x00" + a.branchFilter.Query + "\x00" + a.branchFilter.Author
+	return branch + "\x00" + a.branchFilter.Query + "\x00" + a.branchFilter.Author + "\x00" + a.branchFilter.Since
 }
 
 // requestBranchCommits reads the commits of branch when another branch's are

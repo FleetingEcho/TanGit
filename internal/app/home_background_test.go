@@ -396,6 +396,31 @@ func TestRemoveHomeBackgroundClearsPreviewRenderingAndStore(t *testing.T) {
 	}
 }
 
+func TestHomeBackgroundPreviewKeepsActionsToTheRight(t *testing.T) {
+	a, tt, _ := backgroundSettingsTester(t)
+	path := filepath.Join(t.TempDir(), "home.png")
+	writeHomeBackgroundPNG(t, path)
+	bitmap, err := readHomeBackground(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.settings.HomeBackgroundPath = path
+	a.settingsUI.homeBackgroundPath = path
+	a.settingsUI.homeBackground = bitmap
+	tt.Frame()
+
+	preview, found := tt.Find("Home background preview")
+	if !found {
+		t.Fatal("Home background preview is missing")
+	}
+	for _, label := range []string{"Enable Home background", "Choose image…", "Remove"} {
+		control, found := tt.Find(label)
+		if !found || control.X < preview.X+preview.W {
+			t.Fatalf("%q is not to the right of the preview: preview=%+v control=%+v", label, preview, control)
+		}
+	}
+}
+
 func TestResetSettingsRemovesHomeBackground(t *testing.T) {
 	a, tt, _ := backgroundSettingsTester(t)
 	path := filepath.Join(t.TempDir(), "home.png")
@@ -411,6 +436,7 @@ func TestResetSettingsRemovesHomeBackground(t *testing.T) {
 	if err := tt.Click("Reset to defaults"); err != nil {
 		t.Fatal(err)
 	}
+	a.acceptConfirm()
 	tt.Frame()
 	if a.settings.HomeBackgroundPath != "" || a.settingsUI.homeBackground != nil {
 		t.Fatal("resetting Settings left the Home background behind")
@@ -580,6 +606,7 @@ func TestResetSettingsRejectsAnInflightHomeBackgroundSelection(t *testing.T) {
 	if err := tt.Click("Reset to defaults"); err != nil {
 		t.Fatal(err)
 	}
+	a.acceptConfirm()
 	close(release)
 	updated.waitForUpdate(t)
 	tt.Frame()

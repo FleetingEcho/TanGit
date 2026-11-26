@@ -37,24 +37,83 @@ func (n *workspaceTreeNode) insert(name string, entry workspaceTreeEntry) {
 	n.entries[parts[len(parts)-1]] = entry
 }
 
+// writeWorkspaceTree writes node and everything below it. Trees are written
+// level by level, deepest first, with one `git mktree --batch` per level: one
+// process per directory made a snapshot cost hundreds of processes.
 func (s *gitSession) writeWorkspaceTree(node *workspaceTreeNode) (string, error) {
-	names := make([]string, 0, len(node.entries)+len(node.dirs))
-	for name := range node.dirs {
+	var levels [][]*workspaceTreeNode
+	var collect func(*workspaceTreeNode, int)
+	collect = func(n *workspaceTreeNode, depth int) {
+		if len(levels) == depth {
+			levels = append(levels, nil)
+		}
+		levels[depth] = append(levels[depth], n)
+		for _, child := range n.dirs {
+			collect(child, depth+1)
+		}
+	}
+	collect(node, 0)
+	oids := make(map[*workspaceTreeNode]string)
+	for depth := len(levels) - 1; depth >= 0; depth-- {
+		var input strings.Builder
+		var batch []*workspaceTreeNode
+		for _, n := range levels[depth] {
+			records := n.treeRecords(oids)
+			if records == "" {
+				// A batch cannot tell an empty tree from a separator.
+				tree, err := s.mktree("")
+				if err != nil {
+					return "", err
+				}
+				oids[n] = tree
+				continue
+			}
+			input.WriteString(records)
+			// A blank line (an extra NUL under -z) ends each tree.
+			input.WriteByte(0)
+			batch = append(batch, n)
+		}
+		if len(batch) == 0 {
+			continue
+		}
+		output, err := s.cmd.New([]string{"git", "mktree", "-z", "--missing", "--batch"}).SetStdin(input.String()).RunWithOutput()
+		if err != nil {
+			return "", fmt.Errorf("write workspace metadata tree: %w: %s", err, strings.TrimSpace(output))
+		}
+		trees := strings.Fields(output)
+		if len(trees) != len(batch) {
+			return "", fmt.Errorf("write workspace metadata tree: expected %d trees, got %d", len(batch), len(trees))
+		}
+		for i, n := range batch {
+			oids[n] = trees[i]
+		}
+	}
+	return oids[node], nil
+}
+
+func (s *gitSession) mktree(input string) (string, error) {
+	tree, err := s.cmd.New([]string{"git", "mktree", "-z", "--missing"}).SetStdin(input).RunWithOutput()
+	if err != nil {
+		return "", fmt.Errorf("write workspace metadata tree: %w: %s", err, strings.TrimSpace(tree))
+	}
+	return strings.TrimSpace(tree), nil
+}
+
+// treeRecords is the node's mktree input; children must already be in oids.
+func (n *workspaceTreeNode) treeRecords(oids map[*workspaceTreeNode]string) string {
+	names := make([]string, 0, len(n.entries)+len(n.dirs))
+	for name := range n.dirs {
 		names = append(names, name)
 	}
-	for name := range node.entries {
+	for name := range n.entries {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	var input strings.Builder
 	for _, name := range names {
-		entry, found := node.entries[name]
+		entry, found := n.entries[name]
 		if !found {
-			tree, err := s.writeWorkspaceTree(node.dirs[name])
-			if err != nil {
-				return "", err
-			}
-			fmt.Fprintf(&input, "040000 tree %s\t%s\x00", tree, name)
+			fmt.Fprintf(&input, "040000 tree %s\t%s\x00", oids[n.dirs[name]], name)
 			continue
 		}
 		kind := "blob"
@@ -65,11 +124,7 @@ func (s *gitSession) writeWorkspaceTree(node *workspaceTreeNode) (string, error)
 		}
 		fmt.Fprintf(&input, "%s %s %s\t%s\x00", entry.mode, kind, entry.oid, name)
 	}
-	tree, err := s.cmd.New([]string{"git", "mktree", "-z", "--missing"}).SetStdin(input.String()).RunWithOutput()
-	if err != nil {
-		return "", fmt.Errorf("write workspace metadata tree: %w: %s", err, strings.TrimSpace(tree))
-	}
-	return strings.TrimSpace(tree), nil
+	return input.String()
 }
 
 type workspaceIndexEntry struct {
@@ -82,6 +137,7 @@ type workspaceIndexEntry struct {
 
 func (s *gitSession) parseWorkspaceIndex(input string) ([]workspaceIndexEntry, error) {
 	var entries []workspaceIndexEntry
+	var blobs, blobOIDs []string
 	seen := make(map[string]struct{})
 	for _, record := range strings.Split(strings.TrimSuffix(input, "\x00"), "\x00") {
 		if record == "" {
@@ -117,12 +173,26 @@ func (s *gitSession) parseWorkspaceIndex(input string) ([]workspaceIndexEntry, e
 		}
 		seen[key] = struct{}{}
 		if stage == 0 || fields[0] != "160000" {
-			kind, err := s.gitText("cat-file", "-t", fields[1])
-			if err != nil || strings.TrimSpace(kind) != "blob" {
-				return nil, fmt.Errorf("saved index payload for %q is missing or not a blob", name)
-			}
+			blobs = append(blobs, name)
+			blobOIDs = append(blobOIDs, fields[1])
 		}
 		entries = append(entries, workspaceIndexEntry{Mode: fields[0], OID: fields[1], Stage: stage, Path: name, Raw: record + "\x00"})
+	}
+	// Verify every payload with one process. One `cat-file -t` per index entry
+	// made each parse spawn thousands of processes, and a snapshot parses the
+	// index several times.
+	if len(blobOIDs) > 0 {
+		output, err := s.cmd.New([]string{"git", "cat-file", "--batch-check"}).SetStdin(strings.Join(blobOIDs, "\n") + "\n").RunWithOutput()
+		lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
+		if err != nil || len(lines) != len(blobOIDs) {
+			return nil, fmt.Errorf("saved index payloads could not be verified")
+		}
+		for i, line := range lines {
+			fields := strings.Fields(line)
+			if len(fields) != 3 || fields[0] != blobOIDs[i] || fields[1] != "blob" {
+				return nil, fmt.Errorf("saved index payload for %q is missing or not a blob", blobs[i])
+			}
+		}
 	}
 	return entries, nil
 }
@@ -190,7 +260,17 @@ func (s *gitSession) captureWorkspaceTreeFiles(listing string, entries []workspa
 		paths[name] = untracked[name]
 	}
 	working, extra := newWorkspaceTreeNode(), newWorkspaceTreeNode()
-	for _, name := range sortedWorkspacePaths(paths) {
+	sortedPaths := sortedWorkspacePaths(paths)
+	// Hash every regular file in one git process. Spawning one per tracked file
+	// made each snapshot cost thousands of processes, and a discard takes
+	// several snapshots.
+	type workspaceFile struct {
+		filename string
+		info     os.FileInfo
+	}
+	files := make(map[string]workspaceFile, len(sortedPaths))
+	var batch []string
+	for _, name := range sortedPaths {
 		filename, err := s.worktreeFilePath(s.git.RepoPaths.WorktreePath(), name)
 		if err != nil {
 			return nil, nil, err
@@ -202,7 +282,37 @@ func (s *gitSession) captureWorkspaceTreeFiles(listing string, entries []workspa
 			}
 			return nil, nil, err
 		}
-		entry, err := s.captureRawWorkspaceFile(name, filename, info, index[name])
+		files[name] = workspaceFile{filename: filename, info: info}
+		if info.Mode().IsRegular() && !strings.ContainsAny(filename, "\n\"") {
+			batch = append(batch, name)
+		}
+	}
+	hashed := make(map[string]string, len(batch))
+	if len(batch) > 0 {
+		var input strings.Builder
+		for _, name := range batch {
+			input.WriteString(files[name].filename)
+			input.WriteByte('\n')
+		}
+		output, err := s.cmd.New([]string{"git", "hash-object", "-w", "--no-filters", "--stdin-paths"}).SetStdin(input.String()).RunWithOutput()
+		if err != nil {
+			return nil, nil, fmt.Errorf("capture raw worktree files: %w: %s", err, strings.TrimSpace(output))
+		}
+		oids := strings.Fields(output)
+		if len(oids) != len(batch) {
+			return nil, nil, fmt.Errorf("capture raw worktree files: expected %d object IDs, got %d", len(batch), len(oids))
+		}
+		for i, name := range batch {
+			hashed[name] = oids[i]
+		}
+	}
+	for _, name := range sortedPaths {
+		file, found := files[name]
+		if !found {
+			continue
+		}
+		filename, info := file.filename, file.info
+		entry, err := s.captureRawWorkspaceFile(name, filename, info, index[name], hashed[name])
 		if err != nil {
 			return nil, nil, err
 		}
@@ -214,7 +324,9 @@ func (s *gitSession) captureWorkspaceTreeFiles(listing string, entries []workspa
 	return working, extra, nil
 }
 
-func (s *gitSession) captureRawWorkspaceFile(name, filename string, info os.FileInfo, indexed workspaceIndexEntry) (workspaceTreeEntry, error) {
+// captureRawWorkspaceFile records one path. known is the object ID of a regular
+// file that the caller already hashed in a batch, or "" to hash it here.
+func (s *gitSession) captureRawWorkspaceFile(name, filename string, info os.FileInfo, indexed workspaceIndexEntry, known string) (workspaceTreeEntry, error) {
 	mode := "100644"
 	if info.Mode().IsDir() {
 		if indexed.Mode != "160000" || indexed.Stage != 0 {
@@ -249,9 +361,13 @@ func (s *gitSession) captureRawWorkspaceFile(name, filename string, info os.File
 	}
 	// --no-filters is essential: the index blob may be an LFS pointer or a
 	// normalized clean representation, while restore must reproduce these bytes.
-	oid, err := s.cmd.New([]string{"git", "hash-object", "-w", "--no-filters", filename}).RunWithOutput()
-	if err != nil {
-		return workspaceTreeEntry{}, fmt.Errorf("capture raw worktree file %q: %w: %s", name, err, strings.TrimSpace(oid))
+	oid := known
+	if oid == "" {
+		var err error
+		oid, err = s.cmd.New([]string{"git", "hash-object", "-w", "--no-filters", filename}).RunWithOutput()
+		if err != nil {
+			return workspaceTreeEntry{}, fmt.Errorf("capture raw worktree file %q: %w: %s", name, err, strings.TrimSpace(oid))
+		}
 	}
 	if info.Mode().Perm()&0o111 != 0 {
 		mode = "100755"

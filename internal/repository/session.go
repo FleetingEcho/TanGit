@@ -124,14 +124,25 @@ type Commit struct {
 	Parents       []string
 }
 
+// Commit time-range identifiers stay stable independently of their
+// translated labels. The empty Since value means all time.
+const (
+	CommitTimeRangeDay    = "24h"
+	CommitTimeRangeWeek   = "7d"
+	CommitTimeRange30Days = "30d"
+	CommitTimeRange90Days = "90d"
+	CommitTimeRangeYear   = "365d"
+)
+
 // CommitFilter narrows the commits History and a branch's commit list show.
 // Query matches the commit message or hash, Author the author's name or email,
-// and Branch the history read; an empty field does not narrow. Limit bounds
-// the result, which pages in as the list scrolls.
+// Branch the history read, and Since a recent time range; an empty field does
+// not narrow. Limit bounds the result, which pages in as the list scrolls.
 type CommitFilter struct {
 	Query  string
 	Author string
 	Branch string
+	Since  string
 	Limit  int
 }
 
@@ -1396,6 +1407,15 @@ func (s *gitSession) discardFile(ctx context.Context, file File) error {
 	return nil
 }
 
+// captureDiscardSnapshot takes the recovery point for a discard. Discarding
+// only rewrites tracked and untracked files, never ignored ones, so the
+// snapshot skips the ignored tree. Hashing every ignored file (node_modules,
+// build output) made a single discard take many seconds. The narrower policy
+// is stored with the snapshot, so Undo and its guards use the same scope.
+func (s *gitSession) captureDiscardSnapshot(ctx context.Context, name string) (WorkSnapshot, error) {
+	return s.captureWorkSnapshotWithIgnored(ctx, RecoverySnapshotKind, name, nil, workspaceArchiveScope{AllIgnored: false})
+}
+
 func (s *gitSession) Discard(ctx context.Context, file File) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -1405,7 +1425,7 @@ func (s *gitSession) Discard(ctx context.Context, file File) error {
 	if file.HasMergeConflicts {
 		return fmt.Errorf("resolve merge conflicts before discarding %s", file.Path)
 	}
-	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, "Discard "+file.Path)
+	snapshot, err := s.captureDiscardSnapshot(ctx, "Discard "+file.Path)
 	if err != nil {
 		return err
 	}
@@ -1436,7 +1456,7 @@ func (s *gitSession) DiscardFiles(ctx context.Context, files []File) error {
 			return fmt.Errorf("resolve merge conflicts before discarding %s", file.Path)
 		}
 	}
-	snapshot, err := s.captureWorkSnapshot(ctx, RecoverySnapshotKind, fmt.Sprintf("Discard %d changes", len(files)))
+	snapshot, err := s.captureDiscardSnapshot(ctx, fmt.Sprintf("Discard %d changes", len(files)))
 	if err != nil {
 		return err
 	}
@@ -3660,6 +3680,29 @@ func (s *gitSession) qualifyCommitFilterBranch(branch string) string {
 	return branch
 }
 
+// commitFilterSinceTime turns a stable UI range into one absolute instant,
+// so Git receives a portable RFC3339 cutoff rather than locale-specific text.
+func commitFilterSinceTime(value string, now time.Time) (time.Time, error) {
+	duration := time.Duration(0)
+	switch value {
+	case "":
+		return time.Time{}, nil
+	case CommitTimeRangeDay:
+		duration = 24 * time.Hour
+	case CommitTimeRangeWeek:
+		duration = 7 * 24 * time.Hour
+	case CommitTimeRange30Days:
+		duration = 30 * 24 * time.Hour
+	case CommitTimeRange90Days:
+		duration = 90 * 24 * time.Hour
+	case CommitTimeRangeYear:
+		duration = 365 * 24 * time.Hour
+	default:
+		return time.Time{}, fmt.Errorf("search commits: unknown time range %q", value)
+	}
+	return now.Add(-duration), nil
+}
+
 // SearchCommits reads up to filter.Limit commits matching the filter with
 // `git log`, newest first. Filtering runs in Git rather than on the page the
 // snapshot carries, so a match older than that page is still found, and a
@@ -3676,6 +3719,10 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 	if strings.HasPrefix(branch, "-") {
 		return nil, fmt.Errorf("search commits: invalid branch %q", branch)
 	}
+	since, err := commitFilterSinceTime(strings.TrimSpace(filter.Since), time.Now())
+	if err != nil {
+		return nil, err
+	}
 	branch = s.qualifyCommitFilterBranch(branch)
 	if commits, hashQuery, err := s.searchCommitHash(filter, query, branch); hashQuery {
 		if err != nil && s.isUnbornBranch(branch) {
@@ -3683,6 +3730,15 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 		}
 		if err != nil {
 			return nil, err
+		}
+		if !since.IsZero() {
+			matching := commits[:0]
+			for _, commit := range commits {
+				if !time.Unix(commit.UnixTimestamp, 0).Before(since) {
+					matching = append(matching, commit)
+				}
+			}
+			commits = matching
 		}
 		return s.withCommitLineStats(ctx, commits)
 	}
@@ -3695,6 +3751,9 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 	}
 	if author := strings.TrimSpace(filter.Author); author != "" {
 		args = append(args, "--author", author, "--regexp-ignore-case")
+	}
+	if !since.IsZero() {
+		args = append(args, "--since="+since.UTC().Format(time.RFC3339))
 	}
 	if branch != "" {
 		args = append(args, branch)

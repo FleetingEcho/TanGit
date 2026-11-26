@@ -475,7 +475,7 @@ func (a *app) confirmDiscardFile(file repository.File) {
 			a.beginRepositoryActionMessage(trf("Discarded changes to %s", file.Path), file.Path,
 				func(ctx context.Context, session repository.Session) error {
 					return requireChangesSession(session).Discard(ctx, file)
-				}, nil)
+				}, func() { a.syncDiscardedCodeFiles([]repository.File{file}) })
 		},
 	})
 }
@@ -509,7 +509,7 @@ func (a *app) confirmDiscardAllChanges() {
 			a.beginRepositoryActionMessage(tr("Discarded all changes"), "",
 				func(ctx context.Context, session repository.Session) error {
 					return requireChangesSession(session).DiscardFiles(ctx, files)
-				}, nil)
+				}, func() { a.syncDiscardedCodeFiles(files) })
 		},
 	})
 }

@@ -79,7 +79,8 @@ func (a *app) visibleCommits() []repository.Commit {
 func commitFilterNarrows(filter repository.CommitFilter) bool {
 	return strings.TrimSpace(filter.Query) != "" ||
 		strings.TrimSpace(filter.Author) != "" ||
-		strings.TrimSpace(filter.Branch) != ""
+		strings.TrimSpace(filter.Branch) != "" ||
+		strings.TrimSpace(filter.Since) != ""
 }
 
 // normalizeCommitFilter trims the fields the user typed, so a field of spaces
@@ -89,6 +90,7 @@ func normalizeCommitFilter(filter repository.CommitFilter) repository.CommitFilt
 		Query:  strings.TrimSpace(filter.Query),
 		Author: strings.TrimSpace(filter.Author),
 		Branch: strings.TrimSpace(filter.Branch),
+		Since:  strings.TrimSpace(filter.Since),
 		Limit:  filter.Limit,
 	}
 }
@@ -97,7 +99,8 @@ func normalizeCommitFilter(filter repository.CommitFilter) repository.CommitFilt
 // ignoring their page size.
 func commitFiltersEqual(left, right repository.CommitFilter) bool {
 	left, right = normalizeCommitFilter(left), normalizeCommitFilter(right)
-	return left.Query == right.Query && left.Author == right.Author && left.Branch == right.Branch
+	return left.Query == right.Query && left.Author == right.Author &&
+		left.Branch == right.Branch && left.Since == right.Since
 }
 
 // currentBranchName names the branch checked out as the filter names it: the
@@ -159,7 +162,7 @@ func (a *app) keepCommitFilterDefault(target int) {
 	}
 	// A default names a branch and nothing else. Any other field belongs to
 	// a filter the user shaped, which a checkout leaves as the user left it.
-	if query.applied.Query != "" || query.applied.Author != "" {
+	if query.applied.Query != "" || query.applied.Author != "" || query.applied.Since != "" {
 		query.defaulted = false
 		return
 	}
@@ -239,7 +242,7 @@ func (a *app) applyCommitFilter() {
 	// when it is the default again: the branch checked out and nothing else,
 	// which then keeps following the checkout as a default does.
 	query.defaulted = normalized.Query == "" &&
-		normalized.Author == "" &&
+		normalized.Author == "" && normalized.Since == "" &&
 		normalized.Branch == a.currentBranchName()
 	a.filterOpen = false
 	if !query.narrows() {
@@ -538,6 +541,7 @@ func (a *app) commitFilterBody(c *ui.Context, draft *repository.CommitFilter) {
 				draft.Author = author
 			}
 		})
+		a.commitFilterTimeRange(c, draft)
 		// A branch's commit list is already one branch, so only History
 		// chooses which branch to read.
 		if !a.filterTargetBranches() {
@@ -564,6 +568,60 @@ func (a *app) commitFilterBody(c *ui.Context, draft *repository.CommitFilter) {
 		}
 		a.commitFilterStatus(c, draft)
 	})
+}
+
+// commitTimeRangeLabel presents a stable repository range in the user's language.
+func commitTimeRangeLabel(value string) string {
+	switch value {
+	case repository.CommitTimeRangeDay:
+		return tr("Last 24 hours")
+	case repository.CommitTimeRangeWeek:
+		return tr("Last week")
+	case repository.CommitTimeRange30Days:
+		return tr("Last 30 days")
+	case repository.CommitTimeRange90Days:
+		return tr("Last 90 days")
+	case repository.CommitTimeRangeYear:
+		return tr("Last year")
+	default:
+		return tr("All time")
+	}
+}
+
+// commitFilterTimeRange combines a recent-date bound with the other fields.
+// Its zero value is deliberately All time, including for older filters.
+func (a *app) commitFilterTimeRange(c *ui.Context, draft *repository.CommitFilter) {
+	theme := c.Theme()
+	options := []struct{ value, label string }{
+		{"", tr("All time")},
+		{repository.CommitTimeRangeDay, tr("Last 24 hours")},
+		{repository.CommitTimeRangeWeek, tr("Last week")},
+		{repository.CommitTimeRange30Days, tr("Last 30 days")},
+		{repository.CommitTimeRange90Days, tr("Last 90 days")},
+		{repository.CommitTimeRangeYear, tr("Last year")},
+	}
+	current := commitTimeRangeLabel(draft.Since)
+	chosen := current
+	labels := make([]string, len(options))
+	for index, option := range options {
+		labels[index] = option.label
+	}
+	ui.Column(c).FillWidth().Gap(6).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
+			ui.Icon(c, historyIcon).FontSize(13).TextColor(theme.TextMuted)
+			ui.Text(c, tr("Time range")).Bold().FontSize(theme.FontSize - 1)
+		})
+		ui.Select(c, &chosen, labels).Grow(1).Label(tr("Time range filter"))
+	})
+	if chosen == current {
+		return
+	}
+	for _, option := range options {
+		if option.label == chosen {
+			draft.Since = option.value
+			return
+		}
+	}
 }
 
 // branchFilterLabel names the branch the filter reads, or every branch.
@@ -669,6 +727,9 @@ func commitFilterSummary(filter repository.CommitFilter) string {
 	}
 	if filter.Branch != "" {
 		parts = append(parts, filter.Branch)
+	}
+	if filter.Since != "" {
+		parts = append(parts, commitTimeRangeLabel(filter.Since))
 	}
 	summary := strings.Join(parts, " · ")
 	runes := []rune(summary)

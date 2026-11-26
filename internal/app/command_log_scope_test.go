@@ -80,6 +80,24 @@ func TestCommandLogSectionsAndSearch(t *testing.T) {
 	}
 }
 
+func TestCommandLogEmptySectionOnlyOffersClearWhenFiltersExcludeEntries(t *testing.T) {
+	a, tester, _ := realCommandHarness(t)
+	a.commandLogUser = true
+	a.clearCommandLogFilters()
+	a.openCommandLog()
+	tester.Frame()
+	if tester.HasText("Clear filters") || !tester.HasText("No commands in this section yet.") {
+		t.Fatalf("an unfiltered empty section offers a pointless clear action: %q", tester.Texts())
+	}
+
+	a.commandLog.BeginUserCommand("git status")("clean\n", false)
+	a.commandLogQuery = "no-such-command"
+	tester.Frame()
+	if !tester.HasText("No commands match your search.") || !tester.HasText("Clear filters") {
+		t.Fatalf("a filter-caused empty result lost its clear action: %q", tester.Texts())
+	}
+}
+
 func TestCommandLogUsesStandardOrderedTabsAndKeyboard(t *testing.T) {
 	a, tester, _ := realCommandHarness(t)
 	a.commandLog.Record("git rev-parse HEAD", "abc123", false)
