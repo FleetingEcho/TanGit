@@ -10,13 +10,13 @@ import (
 // off, and saves the choice. With it off, actions run without being backed up
 // or listed for Undo.
 func (a *app) setSafetyJournal(enabled bool) {
-	a.settings.DisableSafetyJournal = !enabled
+	a.settings.EnableSafetyJournal = enabled
 	a.applySettingsChange()
 }
 
 // safetyJournalEnabled is the window's current choice.
 func (a *app) safetyJournalEnabled() bool {
-	return !a.settings.DisableSafetyJournal
+	return a.settings.EnableSafetyJournal
 }
 
 // safetyJournalSetting is the Behavior page's switch for the journal.
