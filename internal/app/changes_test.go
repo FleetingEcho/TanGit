@@ -1427,18 +1427,36 @@ func TestOnlyExpandedMergeSectionFillsRemainingHeight(t *testing.T) {
 	if !ok {
 		t.Fatalf("the sections have no body: %q", h.texts())
 	}
-	mergeHeader, mergeOK := h.tester.Find("Merge Changes")
-	stagedHeader, stagedOK := h.tester.Find("Staged Changes")
-	changesHeader, changesOK := h.tester.Find("Changes")
+	// Find the titles inside the sections, not the sidebar's identical
+	// "Changes" label or the filter controls above the body.
+	sectionTitle := func(title string) (ui.Rect, bool) {
+		for _, info := range h.tester.AccessAll() {
+			bounds := info.Bounds
+			if info.Role == ui.RoleText && info.Name == title &&
+				bounds.X >= body.X && bounds.X+bounds.W <= body.X+body.W &&
+				bounds.Y >= body.Y && bounds.Y+bounds.H <= body.Y+body.H {
+				return bounds, true
+			}
+		}
+		return ui.Rect{}, false
+	}
+	mergeHeader, mergeOK := sectionTitle("Merge Changes")
+	stagedHeader, stagedOK := sectionTitle("Staged Changes")
+	changesHeader, changesOK := sectionTitle("Changes")
 	if !mergeOK || !stagedOK || !changesOK {
 		t.Fatalf("a folded header disappeared: merge=%v staged=%v changes=%v", mergeOK, stagedOK, changesOK)
 	}
-	// Both following sections have a title and there are two 10-DIP gaps.
-	// The rest of the measured body belongs to the expanded Merge section.
+	// A title's rectangle is not its row's height. Each header has five DIPs
+	// of vertical padding and controls at least 22 DIPs high. The distance to
+	// Staged includes Merge and one 10-DIP gap, so derive that same distance
+	// from the body after subtracting both folded rows and the other gap.
+	headerHeight := func(title ui.Rect) float32 { return max(title.H, 22) + 10 }
+	stagedHeight := headerHeight(stagedHeader)
+	changesHeight := headerHeight(changesHeader)
 	got := stagedHeader.Y - mergeHeader.Y
-	want := body.H - stagedHeader.H - changesHeader.H - 20
+	want := body.H - stagedHeight - changesHeight - 10
 	if got < want-1.5 || got > want+1.5 {
-		t.Fatalf("Merge occupies %.1f DIPs, want %.1f (body=%.1f; folded headers=%.1f, %.1f)", got, want, body.H, stagedHeader.H, changesHeader.H)
+		t.Fatalf("Merge occupies %.1f DIPs, want %.1f (body=%.1f; folded headers=%.1f, %.1f)", got, want, body.H, stagedHeight, changesHeight)
 	}
 }
 
