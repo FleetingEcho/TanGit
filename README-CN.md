@@ -102,6 +102,7 @@ lazygitGo 两者兼顾：沿用 Lazygit 的 Git 命令层，放进原生窗口�
 - 通过 GitHub CLI（`gh`）或 GitLab CLI（`glab`）创建拉取请求、查看检查。
 - **Agent 任务**为每个任务提供独立的分支和工作树，状态持久保存并可审查；可通过本地 `lazygitGo agent …` CLI 或 RPC 驱动。详见 [Agent 工作区](docs/agent-workspaces.md)与[自动化](docs/agent-automation.md)（英文）。
 - 自定义命令支持 `{{branch}}`、`{{file}}` 等占位符和可选快捷键。
+- **优化仓库性能**：开启 Git 文件系统监视器、未跟踪缓存、commit-graph，并可选择开启后台维护。大型仓库打开时会提示一次。
 - 可配置的后台获取与清理、20 种配色、自定义字体，以及带签名验证的应用内更新。
 - **六种界面语言**：English、简体中文、繁體中文、日本語、Español 和 Français。菜单、对话框、提示、错误信息和命令面板均已翻译，见下方截图。
 

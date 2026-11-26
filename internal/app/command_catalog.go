@@ -560,22 +560,23 @@ func (c *commandCatalog) InvokeAction(ctx commandContext, id commandID, action i
 }
 
 const (
-	commandOpenSettings   commandID = "settings/open"
-	commandOpenHelp       commandID = "keybindings/open"
-	commandOpenFetch      commandID = "repository/fetch"
-	commandOpenPull       commandID = "repository/pull"
-	commandOpenPush       commandID = "repository/push"
-	commandOpenRefresh    commandID = "repository/refresh"
-	commandOpenTerminal   commandID = "terminal/toggle"
-	commandOpenLog        commandID = "command-log/open"
-	commandCommitStaged   commandID = "changes/commit-staged"
-	commandContinue       commandID = "operation/continue"
-	commandOpenRecovery   commandID = "recovery/open"
-	commandOpenPRChecks   commandID = "branches/pr-checks"
-	commandOpenCockpit    commandID = "workspace/overview"
-	commandOpenChanges    commandID = "workspace/changes"
-	commandOpenAgents     commandID = "workspace/agents"
-	commandNextUnreviewed commandID = "git/Changes/Go to the next unreviewed file"
+	commandOpenSettings    commandID = "settings/open"
+	commandOpenHelp        commandID = "keybindings/open"
+	commandOpenFetch       commandID = "repository/fetch"
+	commandOpenPull        commandID = "repository/pull"
+	commandOpenPush        commandID = "repository/push"
+	commandOpenRefresh     commandID = "repository/refresh"
+	commandOpenTerminal    commandID = "terminal/toggle"
+	commandOpenLog         commandID = "command-log/open"
+	commandCommitStaged    commandID = "changes/commit-staged"
+	commandContinue        commandID = "operation/continue"
+	commandOpenRecovery    commandID = "recovery/open"
+	commandOpenPRChecks    commandID = "branches/pr-checks"
+	commandOpenPerformance commandID = "repository/performance"
+	commandOpenCockpit     commandID = "workspace/overview"
+	commandOpenChanges     commandID = "workspace/changes"
+	commandOpenAgents      commandID = "workspace/agents"
+	commandNextUnreviewed  commandID = "git/Changes/Go to the next unreviewed file"
 )
 
 var (
@@ -616,6 +617,7 @@ func buildStaticCommandSpecs() []commandSpec {
 		{ID: commandOpenFetch, Label: "Fetch from the remotes", Keywords: []string{"fetch", "download", "sync"}, Group: commandGroupRepository, Chord: "f", Icon: commandIconFetch, Resolve: fetchState, Run: func(ctx commandContext) { ctx.App.beginFetch() }},
 		{ID: commandOpenPull, Label: "Pull from the upstream branch", Keywords: []string{"pull", "update", "integrate"}, Group: commandGroupRepository, Chord: "p", Icon: commandIconPull, Resolve: repositoryState, Run: func(ctx commandContext) { ctx.App.confirmPull() }},
 		{ID: commandOpenPush, Label: "Push to the remote", Keywords: []string{"push", "publish", "upload"}, Group: commandGroupRepository, Chord: "Shift+P", Icon: commandIconPush, Resolve: repositoryState, Run: func(ctx commandContext) { ctx.App.confirmPush() }},
+		{ID: commandOpenPerformance, Label: "Optimize repository performance", Keywords: []string{"performance", "speed", "fast", "fsmonitor", "untracked cache", "commit-graph", "maintenance", "large repository"}, Group: commandGroupRepository, Icon: commandIconSettings, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openRepositoryPerformance() }},
 		{ID: commandOpenRefresh, Label: "Refresh the repository", Keywords: []string{"reload", "refresh", "status"}, Group: commandGroupRepository, Chord: "F5", Icon: commandIconRefresh, Resolve: repositoryState, Run: func(ctx commandContext) { ctx.App.beginRefresh() }},
 		{ID: commandOpenTerminal, Label: "Toggle Terminal", Keywords: []string{"terminal", "shell", "console"}, Group: commandGroupApplication, Chord: "Ctrl+`", Icon: commandIconTerminal, Resolve: readyAppState, Run: func(ctx commandContext) { ctx.App.toggleTerminalPanel() }},
 		{ID: commandOpenLog, Label: "Open Command Log", Keywords: []string{"commands", "output", "errors", "git log"}, Group: commandGroupApplication, Chord: "Ctrl+L", Icon: commandIconLog, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openCommandLog() }},

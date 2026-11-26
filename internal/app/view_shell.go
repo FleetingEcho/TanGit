@@ -120,6 +120,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.rebasePlanModal(c)
 	a.branchFormModal(c)
 	a.stackSyncModal(c)
+	a.repositoryPerformanceModal(c)
 	a.moveCommitsModal(c)
 	a.recoveryModal(c)
 	a.stashFormModal(c)

@@ -76,8 +76,10 @@ func (s *gitSession) Watch(ctx context.Context) (<-chan struct{}, error) {
 	go runRepositoryWatcher(ctx, watcher, modes, notifications, func(path string, entry fs.DirEntry) bool {
 		clean := filepath.Clean(path)
 		return entry.Name() == ".git" ||
-			(worktreeGitDir != "" && clean == filepath.Join(worktreeGitDir, "objects")) ||
-			(commonGitDir != "" && clean == filepath.Join(commonGitDir, "objects"))
+			(worktreeGitDir != "" && (clean == filepath.Join(worktreeGitDir, "objects") ||
+				clean == filepath.Join(worktreeGitDir, fsmonitorDaemonDir))) ||
+			(commonGitDir != "" && (clean == filepath.Join(commonGitDir, "objects") ||
+				clean == filepath.Join(commonGitDir, fsmonitorDaemonDir)))
 	})
 	return notifications, nil
 }
@@ -151,10 +153,17 @@ func addWatchTree(
 
 func gitMetadataWatchExcluded(root string) func(string, fs.DirEntry) bool {
 	objects := filepath.Join(root, "objects")
+	daemon := filepath.Join(root, fsmonitorDaemonDir)
 	return func(path string, entry fs.DirEntry) bool {
-		return entry.IsDir() && filepath.Clean(path) == objects
+		clean := filepath.Clean(path)
+		return entry.IsDir() && (clean == objects || clean == daemon)
 	}
 }
+
+// fsmonitorDaemonDir holds the cookie files Git's built-in file system
+// monitor writes for every status query. Watching it would turn each refresh
+// into the cause of the next one.
+const fsmonitorDaemonDir = "fsmonitor--daemon"
 
 // runRepositoryWatcher owns watcher after Watch returns. Notification errors
 // only lose the immediate path: the app's existing timer remains the fallback.
@@ -207,7 +216,11 @@ func runRepositoryWatcher(
 			// Chmod matters too: on filesystems with executable-bit support,
 			// it can be the only notification for a change to Git's status.
 			if event.Op&(fsnotify.Create|fsnotify.Rename) != 0 {
-				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+				// A directory created later, such as the file system monitor's
+				// cookie folder, is subject to the same exclusions as the
+				// initial walk.
+				if info, err := os.Stat(event.Name); err == nil && info.IsDir() &&
+					!excluded(event.Name, fs.FileInfoToDirEntry(info)) {
 					_ = addWatchTree(ctx, watcher, modes, event.Name, excluded)
 				}
 			}
