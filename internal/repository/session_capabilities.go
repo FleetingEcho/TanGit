@@ -2,6 +2,13 @@ package repository
 
 import "context"
 
+// ProgressiveCommitSession publishes immutable commit metadata before optional
+// line statistics and other repository details are ready.
+type ProgressiveCommitSession interface {
+	DetailsSnapshotWithCommitPage(context.Context, func([]Commit)) (Snapshot, error)
+	SearchCommitsProgressively(context.Context, CommitFilter, func([]Commit)) ([]Commit, error)
+}
+
 // HistorySession reads and rewrites commit history without exposing working-tree mutations.
 type HistorySession interface {
 	// RecentCommits reads up to limit commits reachable from any ref, newest
@@ -73,6 +80,8 @@ type HistorySession interface {
 	// or changed lines that have no commit identity yet.
 	BlameWorkingTreeFile(context.Context, string) ([]BlameLine, error)
 	CommitFiles(context.Context, Commit) ([]CommitFile, error)
+	// CommitFilesWithoutStats reads paths and change statuses for file history.
+	CommitFilesWithoutStats(context.Context, Commit) ([]CommitFile, error)
 	CommitFileDiff(context.Context, Commit, CommitFile, DiffOptions) (Diff, error)
 	// CommitFilePatch reads one canonical, apply-ready patch with fixed three-line
 	// context, binary literals and full object IDs, independent of display options.
@@ -111,6 +120,7 @@ type HistorySession interface {
 	// FileCommits reads up to limit commits that changed a path, newest
 	// first, skipping the newest skip, following renames, so the file
 	// history of a changed file is browsable and pages in as it scrolls.
+	// The returned commits omit line counts.
 	FileCommits(context.Context, string, int, int) ([]Commit, error)
 }
 

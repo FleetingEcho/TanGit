@@ -494,8 +494,7 @@ func (a *app) completeCodeFileOperation(kind codeFileOperationKind, source, dest
 	}
 	a.clearCodeSearchResults()
 	if a.fileHistoryOpen && codePathWithin(a.fileHistoryPath, source) {
-		a.fileHistoryOpen = false
-		a.fileHistoryToken++
+		a.closeFileHistory()
 	}
 	if kind == codeFileDelete {
 		return

@@ -131,6 +131,7 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 	core, coreErr := readBeforeInstall(session, func() (repository.Snapshot, error) {
 		return progressive.CoreSnapshot(ctx)
 	})
+	branchFromCore := core.Head == "" && core.HeadHash != "" && core.Branch != ""
 	coreReady := make(chan uint64, 1)
 	a.update(func() {
 		if generation != a.generation {
@@ -146,6 +147,9 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 		}
 		a.installOpenedRepository(session, core)
 		a.repositoryDetailsLoading = true
+		if branchFromCore && !a.historyFilter.defaulted {
+			a.openDefaultCommitFilters(core.Branch)
+		}
 		coreReady <- a.snapshotSeq
 	})
 	coreSequence := <-coreReady
@@ -153,7 +157,26 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 		return
 	}
 
-	details, detailsErr := progressive.DetailsSnapshot(ctx)
+	var details repository.Snapshot
+	var detailsErr error
+	if history, ok := session.(repository.ProgressiveCommitSession); ok {
+		details, detailsErr = history.DetailsSnapshotWithCommitPage(ctx, func(commits []repository.Commit) {
+			a.updateChanged(func() bool {
+				if generation != a.generation || coreSequence != a.snapshotSeq ||
+					!a.repositoryDetailsLoading || a.actionBusy {
+					return false
+				}
+				a.snapshot.Commits = commits
+				a.resetCommitPaging(a.snapshot)
+				if isCommitSection(a.workspaceTab) && !a.commitQueryFor(a.workspaceTab).narrows() && a.selectedCommit < 0 {
+					a.commitList.Choose(0)
+				}
+				return true
+			})
+		})
+	} else {
+		details, detailsErr = progressive.DetailsSnapshot(ctx)
+	}
 	a.update(func() {
 		if generation != a.generation {
 			return
@@ -181,16 +204,25 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 			return
 		}
 		selected := a.captureSelection("")
+		hadCommitPage := len(a.snapshot.Commits) > 0
+		if len(a.snapshot.Commits) > len(details.Commits) {
+			// The reader may have paged below the first page while details
+			// were loading. Keep those commits and add the initial totals.
+			all := append([]repository.Commit(nil), a.snapshot.Commits...)
+			copy(all, details.Commits)
+			details.Commits = all
+		}
 		a.snapshot = a.snapshot.WithDetails(details)
 		// The lightweight core has no worktree metadata. Now that the current
 		// checkout is known, retain its identity on its recent-repository card.
 		a.rememberOpened(a.path)
-		// The core has no branches, so its first default-filter attempt could
-		// not name the checked-out branch. Now that details supply it, start
-		// both commit pages on that branch as a full-snapshot open does.
-		a.applyDefaultCommitFilters(a.snapshot)
+		if !branchFromCore {
+			a.applyDefaultCommitFilters(a.snapshot)
+		}
 		a.snapshotSeq++
-		a.resetCommitPaging(a.snapshot)
+		if !hadCommitPage {
+			a.resetCommitPaging(a.snapshot)
+		}
 		a.resetReflogPaging(a.snapshot)
 		a.restoreSelection(selected)
 	})

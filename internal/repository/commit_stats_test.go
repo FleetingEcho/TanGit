@@ -9,7 +9,54 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
+
+func TestProgressiveCommitReadsPublishBeforeStatistics(t *testing.T) {
+	dir, session := newHistoryEditingSession(t)
+	writeHistoryCommit(t, dir, "one.txt", "first\nsecond\n", "root")
+	s := session.(*gitSession)
+	for _, test := range []struct {
+		name string
+		read func(context.Context, func([]Commit)) ([]Commit, error)
+	}{
+		{name: "default branch", read: func(ctx context.Context, publish func([]Commit)) ([]Commit, error) {
+			return s.SearchCommitsProgressively(ctx, CommitFilter{Branch: "main", Limit: 50}, publish)
+		}},
+		{name: "all refs", read: func(ctx context.Context, publish func([]Commit)) ([]Commit, error) {
+			snapshot, err := s.DetailsSnapshotWithCommitPage(ctx, publish)
+			return snapshot.Commits, err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			page := make(chan []Commit, 1)
+			done := make(chan []Commit, 1)
+			s.commitTotalsMu.Lock()
+			go func() {
+				commits, _ := test.read(ctx, func(commits []Commit) { page <- commits })
+				done <- commits
+			}()
+			var early []Commit
+			select {
+			case early = <-page:
+			case <-ctx.Done():
+				s.commitTotalsMu.Unlock()
+				<-done
+				t.Fatal("the first commit page waited for the statistics lock")
+			}
+			s.commitTotalsMu.Unlock()
+			final := <-done
+			if len(early) != 1 || len(final) != 1 || early[0].Hash != final[0].Hash {
+				t.Fatalf("early and final pages differ: %+v, %+v", early, final)
+			}
+			if early[0].LinesAdded != 0 || final[0].LinesAdded != 2 {
+				t.Fatalf("totals = %d before enrichment, %d after; want 0 and 2", early[0].LinesAdded, final[0].LinesAdded)
+			}
+		})
+	}
+}
 
 func TestCommitListTotalsCoverWholeCommit(t *testing.T) {
 	dir, session := newHistoryEditingSession(t)
@@ -61,9 +108,42 @@ func TestCommitListTotalsCoverWholeCommit(t *testing.T) {
 	check(session.BranchCommits(ctx, "main", 20))
 	check(session.SearchCommits(ctx, CommitFilter{Query: "change", Limit: 20}))
 	check(session.SearchCommits(ctx, CommitFilter{Query: gitOutput(t, dir, "rev-parse", "HEAD"), Limit: 20}))
-	check(session.FileCommits(ctx, "one.txt", 20, 0))
 	snapshot, err := session.Snapshot(ctx)
 	check(snapshot.Commits, err)
+}
+
+func TestFileHistorySkipsLineStatistics(t *testing.T) {
+	dir, session := newHistoryEditingSession(t)
+	writeHistoryCommit(t, dir, "old.txt", "old\nkeep\n", "root")
+	runGit(t, dir, "mv", "old.txt", "new.txt")
+	writeHistoryCommit(t, dir, "another.txt", "added\n", "rename and add")
+
+	ctx := context.Background()
+	commits, err := session.FileCommits(ctx, "new.txt", 20, 0)
+	if err != nil || len(commits) != 2 {
+		t.Fatalf("file history across the rename = %+v, err = %v", commits, err)
+	}
+	for _, commit := range commits {
+		if commit.LinesAdded != 0 || commit.LinesDeleted != 0 {
+			t.Fatalf("file history returned commit line statistics: %+v", commit)
+		}
+	}
+	files, err := session.CommitFilesWithoutStats(ctx, commits[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []CommitFile{
+		{Path: "another.txt", Status: "A"},
+		{Path: "new.txt", PreviousPath: "old.txt", Status: "R"},
+	}
+	if !reflect.DeepEqual(files, want) {
+		t.Fatalf("changed files = %+v, want %+v", files, want)
+	}
+	for _, entry := range session.CommandLog().Entries() {
+		if strings.Contains(entry.Command, "--numstat") {
+			t.Fatalf("file history ran a line statistics command: %s", entry.Command)
+		}
+	}
 }
 
 func TestCommitLineStatsReusesImmutableCommitTotals(t *testing.T) {

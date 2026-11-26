@@ -738,14 +738,54 @@ func openLoadedFileHistory(t *testing.T, h *harness) {
 	h.waitFor(t, "the chosen file's diff", func() bool { return h.app.fileHistoryDiffState != nil })
 }
 
+func TestFileHistoryHoverOpensCommitInHistory(t *testing.T) {
+	for _, filtered := range []bool{false, true} {
+		name := "already listed"
+		if filtered {
+			name = "outside current filter"
+		}
+		t.Run(name, func(t *testing.T) {
+			h := menuTestApp(t)
+			openLoadedFileHistory(t, h)
+			commits := h.app.fileHistoryCommits
+			commit := commits[1]
+			if filtered {
+				h.app.historyFilter = commitQuery{
+					applied: repository.CommitFilter{Query: commits[0].Hash},
+					matches: commits[:1],
+				}
+			}
+			h.tester.Move(0, 0)
+			h.tester.Frame()
+			if _, visible := h.tester.Find("Open in History"); visible {
+				t.Fatal("the action appears without hovering a commit")
+			}
+			row, ok := h.tester.Find(commit.Subject)
+			if !ok {
+				t.Fatalf("missing File History commit %q", commit.Subject)
+			}
+			h.tester.Move(row.X+row.W/2, row.Y+row.H/2)
+			h.tester.Frame()
+			if err := h.tester.Click("Open in History"); err != nil {
+				t.Fatal(err)
+			}
+			h.waitFor(t, "the chosen commit in History", func() bool {
+				return !h.app.fileHistoryOpen && h.app.workspaceTab == sectionHistory &&
+					commitHashAt(h.app.visibleCommits(), h.app.selectedCommit) == commit.Hash &&
+					h.app.commitFilesHash == commit.Hash && !h.app.commitFilesLoading
+			})
+		})
+	}
+}
+
 type disjointFileHistorySession struct{ fakeSession }
 
-func (s disjointFileHistorySession) CommitFiles(ctx context.Context, commit repository.Commit) ([]repository.CommitFile, error) {
+func (s disjointFileHistorySession) CommitFilesWithoutStats(ctx context.Context, commit repository.Commit) ([]repository.CommitFile, error) {
 	if commit.Hash == "c1c1c1c1" {
 		s.calls.record("commit-files:" + commit.Hash)
 		return []repository.CommitFile{{Path: "other.txt", Status: "A"}}, nil
 	}
-	return s.fakeSession.CommitFiles(ctx, commit)
+	return s.fakeSession.CommitFilesWithoutStats(ctx, commit)
 }
 
 func TestFileHistorySelectsDefaultFileWhenCommitsHaveDisjointFiles(t *testing.T) {

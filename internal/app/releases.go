@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"runtime"
 	"strings"
 	"time"
 
@@ -47,14 +46,19 @@ func setupUpdater() {
 // should advertise and opens the plugin window when its icon is clicked.
 func watchUpdater(s *shell) {
 	s.checkForUpdates = updater.CheckForUpdates
-	if usesPackageUpdateCheck() {
-		watchPackageUpdates(s)
+	nativeEnabled := mygo.Updater.Enabled()
+	if usePackageUpdates(nativeEnabled) {
+		if debianInstallerAvailable() {
+			s.packageUpdate.install = installDebianUpdate
+		}
+		s.packageUpdate.restart = func() { mygo.App.Relaunch() }
+		watchPackageUpdates(s, checkPackageRelease)
 		return
 	}
 	s.setUpdateInfo(appUpdateInfo{
 		AvailableVersion: updater.AvailableVersion(),
 		LastCheck:        updater.LastCheck(),
-		Enabled:          mygo.Updater.Enabled(),
+		Enabled:          nativeEnabled,
 	})
 	s.stopUpdateWatch = updater.OnChange(func() {
 		info := appUpdateInfo{
@@ -66,19 +70,23 @@ func watchUpdater(s *shell) {
 	})
 }
 
-// usesPackageUpdateCheck is true for a release build that cannot replace
-// itself where it is installed, such as the .deb: it checks GitHub by itself.
-func usesPackageUpdateCheck() bool {
-	return runtime.GOOS == "linux" && !mygo.IsDev() && !mygo.Updater.Enabled()
-}
-
 // watchPackageUpdates checks the latest release once at launch, and again
 // whenever the update button is pressed.
-func watchPackageUpdates(s *shell) {
+func watchPackageUpdates(s *shell, check func(context.Context) (*packageRelease, error)) {
 	run := func(manual bool) {
+		p := &s.packageUpdate
+		if manual {
+			p.open = true
+		}
+		if p.checking || p.installing || p.installed {
+			return
+		}
+		p.checking = true
+		p.release = nil
+		p.err = ""
 		go func() {
-			release, err := checkPackageRelease(context.Background())
-			s.update(func() { s.finishPackageCheck(release, err, manual) })
+			release, err := check(context.Background())
+			s.update(func() { s.finishPackageCheck(release, err) })
 		}()
 	}
 	s.setUpdateInfo(appUpdateInfo{Enabled: true})
@@ -86,9 +94,8 @@ func watchPackageUpdates(s *shell) {
 	run(false)
 }
 
-// finishPackageCheck records a check's result. A manual check also tells the
-// user what it found and starts the download of the package.
-func (s *shell) finishPackageCheck(release *packageRelease, err error, manual bool) {
+// finishPackageCheck publishes the result to the badge and the update dialog.
+func (s *shell) finishPackageCheck(release *packageRelease, err error) {
 	info := appUpdateInfo{Enabled: true}
 	if err == nil {
 		info.LastCheck = time.Now()
@@ -99,28 +106,10 @@ func (s *shell) finishPackageCheck(release *packageRelease, err error, manual bo
 		info = s.updateInfo()
 	}
 	s.setUpdateInfo(info)
-	if !manual {
-		return
-	}
-	a := s.activeApp()
-	if a == nil {
-		return
-	}
-	switch {
-	case err != nil:
-		a.notify("error", "Could not check for updates", safeError(err))
-	case release == nil:
-		a.notifyTranslated("success", tr("lazygitGo is up to date"), trf("Version %s is the latest release.", currentAppVersion()))
-	default:
-		a.notifyTranslated("info", tr("Update available"), packageUpdateAdvice(*release))
-		if a.openExternalURL != nil {
-			if release.DebURL != "" {
-				a.openExternalURL(release.DebURL)
-			} else {
-				a.openExternalURL(release.Page)
-			}
-		}
-	}
+	p := &s.packageUpdate
+	p.checking = false
+	p.release = release
+	p.err = safeError(err)
 }
 
 func (s *shell) setUpdateInfo(info appUpdateInfo) {
