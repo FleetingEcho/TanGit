@@ -501,7 +501,7 @@ func (a *app) requestCodeFiles() {
 			if err == nil {
 				paths, err = listRemoteCodeFiles(ctx, remoteClient, root)
 				if err == nil {
-				extraDirectories = listRemoteCodeEmptyDirectories(ctx, remoteClient, root)
+					extraDirectories = listRemoteCodeEmptyDirectories(ctx, remoteClient, root)
 				}
 			}
 		} else if plain {
