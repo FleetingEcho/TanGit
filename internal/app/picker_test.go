@@ -2,7 +2,6 @@ package app
 
 import (
 	"errors"
-	"fmt"
 	"image"
 	"image/color"
 	"strings"
@@ -30,68 +29,22 @@ func TestPickerUsesASolidThemeBackground(t *testing.T) {
 	}
 }
 
-// The flat launcher and repository history share one aligned column at both
-// desktop and narrow widths, and the launcher starts near the top.
-func TestPickerLaunchAndRecentSectionsAreAligned(t *testing.T) {
-	for _, width := range []int{1280, 720} {
-		t.Run(fmt.Sprintf("%dpx", width), func(t *testing.T) {
-			a := newApp(fakeOpener{})
-			a.recentRepositories = []recentRepository{{Path: "/w/project", LastOpened: timeNow()}}
-			tt := ui.NewTester(a.view, width, 800)
-			tt.Frame()
-
-			hero, found := tt.Find("Open a repository")
-			if !found {
-				t.Fatal("the launch card is missing")
+func TestPickerRemoteActionsFollowThePathForm(t *testing.T) {
+	a, tt, _ := recentTester(t, recentRepository{Path: "/work/project"})
+	a.openOverviewTab = func(string, overviewIntent) {}
+	for _, stacked := range []bool{false, true} {
+		a.pickerStacked = stacked
+		tt.Frame()
+		browse, found := tt.Find("Browse files…")
+		if !found {
+			t.Fatal("the repository path action is missing")
+		}
+		for _, label := range []string{"Clone repository", "Open SSH", "Overview"} {
+			button, found := tt.Find(label)
+			if !found || button.Y < browse.Y+browse.H || button.H < 38 {
+				t.Errorf("stacked=%t: invalid %s target after Browse: %+v", stacked, label, button)
 			}
-			recent, found := tt.Find("Recent repositories")
-			if !found {
-				t.Fatal("the repository history is missing")
-			}
-			// Without separate card padding, both headings start at the shared
-			// content column's left edge.
-			if got := hero.X - recent.X; got != 0 {
-				t.Fatalf("the sections have different widths or alignment: launch inset=%v hero=%+v recent=%+v", got, hero, recent)
-			}
-			if hero.Y >= 180 {
-				t.Fatalf("the launch card starts too far down the page: %+v", hero)
-			}
-		})
-	}
-}
-
-func TestPickerRemoteActionsAreAtTheCardTopRight(t *testing.T) {
-	a := newApp(fakeOpener{})
-	tt := ui.NewTester(a.view, 1280, 800)
-	tt.Frame()
-
-	heading, found := tt.Find("Open a repository")
-	if !found {
-		t.Fatal("the launch-card heading is missing")
-	}
-	browse, found := tt.Find("Browse…")
-	if !found {
-		t.Fatal("the repository path action is missing")
-	}
-	remote, found := tt.Find("Open SSH")
-	if !found {
-		t.Fatal("the SSH workspace action is missing")
-	}
-	clone, found := tt.Find("Clone")
-	if !found {
-		t.Fatal("the clone action is missing")
-	}
-	if remote.Y != heading.Y || clone.Y != heading.Y {
-		t.Fatalf("remote actions are not aligned with the card heading: heading=%+v SSH=%+v clone=%+v", heading, remote, clone)
-	}
-	if remote.H < 38 || clone.H < 38 {
-		t.Fatalf("remote action targets are too small: SSH=%+v clone=%+v", remote, clone)
-	}
-	if remote.X <= heading.X+heading.W || clone.X <= remote.X+remote.W {
-		t.Fatalf("remote actions are not at the top right: heading=%+v SSH=%+v clone=%+v", heading, remote, clone)
-	}
-	if remote.Y+remote.H > browse.Y || clone.Y+clone.H > browse.Y {
-		t.Fatalf("remote actions must precede the path field: browse=%+v SSH=%+v clone=%+v", browse, remote, clone)
+		}
 	}
 }
 
@@ -115,7 +68,7 @@ func TestPickerShowsOnlyTheLoadingPageWhileOpening(t *testing.T) {
 	}
 	tt.Frame()
 	texts := strings.Join(tt.Texts(), " ")
-	for _, gone := range []string{"Open a repository", "Browse…", "Recent repositories"} {
+	for _, gone := range []string{"Open a workspace.", "Browse files…", "Recent repositories"} {
 		if strings.Contains(texts, gone) {
 			t.Fatalf("the picker still shows %q while opening: %v", gone, tt.Texts())
 		}
@@ -132,7 +85,7 @@ func TestPickerShowsOnlyTheLoadingPageWhileOpening(t *testing.T) {
 	if a.state != stateEmpty {
 		t.Fatalf("Cancel left state %v, want the picker", a.state)
 	}
-	if !strings.Contains(strings.Join(tt.Texts(), " "), "Open a repository") {
+	if !strings.Contains(strings.Join(tt.Texts(), " "), "Open a workspace.") {
 		t.Fatalf("the picker did not come back after Cancel: %v", tt.Texts())
 	}
 
@@ -266,7 +219,7 @@ func TestPlainFolderCanBeLeftAlone(t *testing.T) {
 	if a.state != stateEmpty {
 		t.Fatalf("Not now changed the state: %v", a.state)
 	}
-	if !strings.Contains(strings.Join(tt.Texts(), " "), "Open a repository") {
+	if !strings.Contains(strings.Join(tt.Texts(), " "), "Open a workspace.") {
 		t.Fatalf("the picker is gone: %v", tt.Texts())
 	}
 }
@@ -320,7 +273,7 @@ func TestClosingRepositoryReturnsToThePicker(t *testing.T) {
 		t.Fatalf("the closed repository's path survived: %q", h.app.path)
 	}
 	texts := strings.Join(h.texts(), " ")
-	for _, want := range []string{"Open a repository", "/work/project"} {
+	for _, want := range []string{"Open a workspace.", "/work/project"} {
 		if !strings.Contains(texts, want) {
 			t.Errorf("the picker does not show %q after closing: %v", want, h.texts())
 		}

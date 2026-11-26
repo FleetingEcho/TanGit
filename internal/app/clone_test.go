@@ -69,7 +69,7 @@ func TestCloneFormSuccessUsesExistingOpenPipeline(t *testing.T) {
 		started:    make(chan cloneAttempt, 1), release: make(chan error, 1),
 	}
 	h := cloneTestApp(t, opener)
-	h.tester.Click("Clone")
+	h.tester.Click("Clone repository")
 	h.tester.Frame()
 	if !h.app.cloneOpen {
 		t.Fatal("Home entry did not open the clone form")

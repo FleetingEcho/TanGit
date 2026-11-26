@@ -54,7 +54,7 @@ func (f fakeOpener) Open(context.Context, string) (repository.Session, error) {
 // typed path opens now that the picker has no separate Open button.
 func openFixture(t *testing.T, tt *ui.Tester) {
 	t.Helper()
-	if err := tt.Click("Repository folder"); err != nil {
+	if err := tt.Click("Repository path"); err != nil {
 		t.Fatalf("focus the repository field: %v", err)
 	}
 	tt.Key(0, ui.KeyEnter)

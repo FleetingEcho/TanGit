@@ -143,7 +143,7 @@ func TestHomeBackgroundUploadPreviewsAndPersists(t *testing.T) {
 	if _, ok := tt.Find("Home background"); !ok {
 		t.Fatalf("Home does not render the selected image: %q", tt.Texts())
 	}
-	if err := tt.Click("Repository folder"); err != nil {
+	if err := tt.Click("Repository path"); err != nil {
 		t.Fatalf("the background intercepts the repository controls: %v", err)
 	}
 }

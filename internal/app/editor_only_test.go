@@ -45,7 +45,7 @@ func TestHomeAutomaticallyOpensPlainFolderAndExplainsEditorMode(t *testing.T) {
 			switch source {
 			case "Browse":
 				started, release := holdRepositoryFolderDialog(t)
-				if err := tt.Click("Browse…"); err != nil {
+				if err := tt.Click("Browse files…"); err != nil {
 					t.Fatal(err)
 				}
 				<-started
@@ -55,7 +55,7 @@ func TestHomeAutomaticallyOpensPlainFolderAndExplainsEditorMode(t *testing.T) {
 					t.Fatal(err)
 				}
 			default:
-				if err := tt.Click("Repository folder"); err != nil {
+				if err := tt.Click("Repository path"); err != nil {
 					t.Fatal(err)
 				}
 				tt.Type(root)
@@ -89,7 +89,7 @@ func TestHomeEditorModeOpensPlainFolderWithoutInitialization(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if !tt.HasText("Open a folder") || tt.HasText("Clone") {
+	if !tt.HasText("Open a workspace.") || tt.HasText("Clone repository") {
 		t.Fatalf("Editor mode did not update Home: %q", tt.Texts())
 	}
 	visibleBefore := slices.Clone(a.settings.VisibleSections)
@@ -129,7 +129,7 @@ func TestPickerOpenModeSelectedSegmentIsHighlightedInLightTheme(t *testing.T) {
 	tt.SetDark(false)
 	tt.Frame()
 	theme := themeForSettings(a.settings, false)
-	wantFace := theme.Accent.Alpha(0.14).Over(theme.Surface).SRGB()
+	wantFace := theme.Accent.Alpha(0.16).Over(theme.Background).SRGB()
 
 	assertSelection := func(selected, unselected string) {
 		t.Helper()
@@ -186,9 +186,9 @@ func TestPickerRecentRepositoriesAndFoldersAreIndependent(t *testing.T) {
 		recentRepository{Path: "/work/notes", LastOpened: timeNow(), EditorOnly: true},
 	)
 	mode, modeOK := tt.Find("Open mode")
-	hero, heroOK := tt.Find("Open a repository")
-	if !modeOK || !heroOK || mode.Y >= hero.Y {
-		t.Fatalf("Home mode is not above the launcher: mode=%+v hero=%+v", mode, hero)
+	hero, heroOK := tt.Find("Open a workspace.")
+	if !modeOK || !heroOK || mode.Y <= hero.Y {
+		t.Fatalf("Home mode is not below the workspace heading: mode=%+v hero=%+v", mode, hero)
 	}
 	if !tt.HasText("Recent repositories") || tt.HasText("Recent folders") || tt.HasText("/work/notes") {
 		t.Fatalf("Git tab mixed plain folders into its recents: %q", tt.Texts())

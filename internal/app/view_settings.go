@@ -67,12 +67,14 @@ func (a *app) openSettingsSection(page int) {
 // use — a sun on a light theme, a moon on a dark one — and a click opens the
 // list of themes to choose from, with the current one marked.
 func (a *app) themeButton(c *ui.Context) {
-	dark := c.Theme().Dark
+	a.themeMenuButton(c, compactIconButton(ui.Button(c, "")))
+}
+
+func (a *app) themeMenuButton(c *ui.Context, button ui.Element) {
 	icon := sunIcon
-	if dark {
+	if c.Theme().Dark {
 		icon = moonIcon
 	}
-	button := compactIconButton(ui.Button(c, ""))
 	button.Label(tr("Theme")).
 		Tooltip(trf("Choose a theme (currently %s)", a.settings.Theme))
 	button.Children(func() {

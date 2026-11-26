@@ -110,7 +110,7 @@ func TestShellStartsOnThePicker(t *testing.T) {
 		t.Fatal("the picker is not the page on screen")
 	}
 	for _, want := range []string{
-		"Home", "Open a repository", "New tab", "Check for updates",
+		"Home", "Open a workspace.", "New tab", "Check for updates",
 		"lazygitGo <path>", "Minimize window", "Maximize window", "Full screen", "Close window",
 	} {
 		if _, found := tt.Find(want); !found {
@@ -278,7 +278,7 @@ func TestShellTabCloseControlClosesThePage(t *testing.T) {
 	if len(s.tabs) != 1 || s.tabs[0].repository() {
 		t.Fatalf("closing the last page from its pill left %v", s.tabTitles())
 	}
-	if !tt.HasText("Open a repository") {
+	if !tt.HasText("Open a workspace.") {
 		t.Fatalf("the picker is not on screen after the close: %v", tt.Texts())
 	}
 }
@@ -624,7 +624,7 @@ func TestShellClosingTheLastPageLeavesThePicker(t *testing.T) {
 	if len(s.tabs) != 1 || s.tabs[0].repository() {
 		t.Fatalf("closing the last repository did not leave the picker: %v", s.tabTitles())
 	}
-	if !tt.HasText("Open a repository") {
+	if !tt.HasText("Open a workspace.") {
 		t.Fatalf("the picker is not on screen after closing: %v", tt.Texts())
 	}
 }

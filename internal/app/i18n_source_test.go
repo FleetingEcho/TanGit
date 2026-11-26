@@ -75,6 +75,7 @@ var i18nIdentityRawUIStrings = map[string]string{
 	"ab":                            "whole-word search glyph",
 	"AB":                            "preserve-case search glyph",
 	"C":                             "keyboard shortcut glyph",
+	"F1":                            "keyboard shortcut glyph",
 	"Ctrl+,":                        "keyboard shortcut glyph",
 	"lazygitGo <path>":              "command-line usage hint",
 }

@@ -291,7 +291,7 @@ func TestRecentCardOpensItsRepositoryInBuiltInCode(t *testing.T) {
 	}
 }
 
-func TestRecentCardEditorSitsAtTheTopRight(t *testing.T) {
+func TestRecentRowEditorSitsInTheRightActionGroup(t *testing.T) {
 	_, tt, _ := recentTester(t, recentRepository{Path: "/work/project", LastOpened: timeNow()})
 	editor, ok := tt.Find("Open /work/project in editor")
 	if !ok {
@@ -305,8 +305,8 @@ func TestRecentCardEditorSitsAtTheTopRight(t *testing.T) {
 	if !ok {
 		t.Fatal("the recent card has no More actions menu")
 	}
-	if editor.X <= name.X+name.W || editor.Y > name.Y+name.H || editor.Y != more.Y || more.X <= editor.X+editor.W {
-		t.Fatalf("editor bounds %+v are not in the top-right action group of name %+v and More menu %+v",
+	if editor.X <= name.X+name.W || editor.Y != more.Y || more.X < editor.X+editor.W {
+		t.Fatalf("editor bounds %+v are not in the right action group of name %+v and More menu %+v",
 			editor, name, more)
 	}
 	if editor.W < 28 || editor.H < 28 {

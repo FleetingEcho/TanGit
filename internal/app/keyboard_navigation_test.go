@@ -17,7 +17,7 @@ func TestKeyboardLaunchOpensRecentRepositoryWithoutMouse(t *testing.T) {
 	a.update = h.updates.update
 	h.tester = ui.NewTester(a.view, 1280, 800)
 	h.tester.Frame()
-	if !h.tester.Focused("Repository folder") {
+	if !h.tester.Focused("Repository path") {
 		t.Fatal("launch does not focus repository path")
 	}
 	for i := 0; i < 20 && !h.tester.Focused("Open /w/project"); i++ {

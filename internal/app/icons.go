@@ -221,3 +221,5 @@ var sectionIcons = []*ui.SVG{
 	compareIcon,
 	appIcon,
 }
+
+var workspaceOverviewIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><rect x="1.5" y="1.5" width="5" height="5" rx=".7"/><rect x="9.5" y="1.5" width="5" height="5" rx=".7"/><rect x="1.5" y="9.5" width="5" height="5" rx=".7"/><rect x="9.5" y="9.5" width="5" height="5" rx=".7"/></svg>`))

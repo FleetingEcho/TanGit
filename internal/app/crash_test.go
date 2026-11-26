@@ -50,7 +50,7 @@ func TestViewContainsBuildFault(t *testing.T) {
 	if a.crash != "" {
 		t.Fatalf("Try again left the fault in place: %q", a.crash)
 	}
-	if !tt.HasText("Open a repository") {
+	if !tt.HasText("Open a workspace.") {
 		t.Fatalf("the app did not come back: %v", tt.Texts())
 	}
 }
@@ -77,7 +77,7 @@ func TestCrashScreenReturnsToPicker(t *testing.T) {
 	if a.state != stateEmpty || a.session != nil {
 		t.Fatalf("the repository stayed open: state=%v", a.state)
 	}
-	if !tt.HasText("Open a repository") {
+	if !tt.HasText("Open a workspace.") {
 		t.Fatalf("the picker did not come back: %v", tt.Texts())
 	}
 }

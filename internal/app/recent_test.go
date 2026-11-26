@@ -252,7 +252,7 @@ func TestRecentPickerOffersNoListWhenHistoryIsEmpty(t *testing.T) {
 	if strings.Contains(texts, "Recent repositories") {
 		t.Fatalf("the welcome text must stand in without history: %v", tt.Texts())
 	}
-	if !strings.Contains(texts, "Open a Git repository to begin") {
+	if !strings.Contains(texts, "Open a workspace.") {
 		t.Fatalf("welcome text missing: %v", tt.Texts())
 	}
 }
@@ -493,7 +493,7 @@ func TestLinkedWorktreeBadgeSurvivesRestart(t *testing.T) {
 		t.Fatalf("worktree badge is not on the line beneath its path: path=%+v badge=%+v", path, badge)
 	}
 	owner, found := tt.Find("Main worktree · project")
-	if !found || owner.Y <= path.Y || owner.X != badge.X {
+	if !found || owner.Y != badge.Y || owner.X < badge.X+badge.W {
 		t.Fatalf("worktree card does not identify its owning repository cleanly: path=%+v owner=%+v badge=%+v texts=%v", path, owner, badge, tt.Texts())
 	}
 	if tt.HasText("Main worktree: /work/project") {

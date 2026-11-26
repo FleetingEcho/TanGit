@@ -118,7 +118,9 @@ type app struct {
 	cancelClone       context.CancelFunc
 	// pickerOpenMode is Home's transient Git/Editor choice. It is request
 	// policy, not the active workspace's identity and not a persisted setting.
-	pickerOpenMode int
+	pickerOpenMode  int
+	pickerStacked   bool
+	pickerPathFocus ui.Handle
 	// offerInitPath is the folder the picker offers to initialize, because
 	// it holds no Git repository yet.
 	offerInitPath string
@@ -208,12 +210,13 @@ type app struct {
 	historyLoaded       bool
 	historyRevision     uint64
 	recentNameOverrides map[string]string
-	// recentFilter narrows the cards by their display name or path.
-	// visibleRecent holds original history indices for the filtered grid, so
+	// recentFilter narrows the rows by their display name or path.
+	// visibleRecent holds original history indices for the filtered list, so
 	// opening, renaming, and removing a match always affect the right entry.
 	recentFilter   string
 	visibleRecent  []int
 	selectedRecent int
+	revealRecent   bool
 	homeWorktrees  homeWorktreePickerState
 
 	// pathCopiedAt is when the status bar's path was put on the clipboard,
