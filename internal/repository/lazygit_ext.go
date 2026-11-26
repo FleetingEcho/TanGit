@@ -95,10 +95,19 @@ func (s *gitSession) localBranches() ([]*models.Branch, error) {
 // for undo/redo replay. The display bound belongs on Git's command line:
 // Lazygit's loader otherwise reads the whole log before its caller trims it.
 func (s *gitSession) recentReflog(limit int) ([]*models.Commit, error) {
+	return s.recentReflogPage(limit, 0)
+}
+
+// recentReflogPage applies both limits in Git, so older display pages never
+// require reading the whole reflog first.
+func (s *gitSession) recentReflogPage(limit, skip int) ([]*models.Commit, error) {
 	if !s.headHasCommit() {
 		return nil, nil
 	}
 	args := []string{"git", "log", "-g"}
+	if skip > 0 {
+		args = append(args, fmt.Sprintf("--skip=%d", skip))
+	}
 	if limit > 0 {
 		args = append(args, fmt.Sprintf("--max-count=%d", limit))
 	}

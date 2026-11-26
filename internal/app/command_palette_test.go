@@ -183,6 +183,43 @@ func TestCommandPalettePickerOpensAndCloses(t *testing.T) {
 	}
 }
 
+func TestCommandPaletteShortcutPreferencesShareSettings(t *testing.T) {
+	s, tt, a := readyPaletteShell(t)
+	a.pathUserData = t.TempDir()
+	a.settings.DisableShortcuts = false
+	a.settings.DisableShortcutToasts = true
+	a.settings.ShortcutToastsConfigured = false
+	s.openCommandPalette(nil)
+	tt.Frame()
+
+	control, ok := tt.Access("Enable keyboard shortcuts")
+	if !ok || !control.Checked {
+		t.Fatalf("palette is missing the enabled keyboard-shortcut switch: %+v", control)
+	}
+	if err := tt.Click("Enable keyboard shortcuts"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.settings.DisableShortcuts || !s.palette.open {
+		t.Fatal("the palette shortcut switch did not update settings and stay open")
+	}
+	control, ok = tt.Access("Enable keyboard shortcuts")
+	if !ok || control.Checked {
+		t.Fatalf("the shortcut switch did not turn off in the palette: %+v", control)
+	}
+	if err := tt.Click("Shortcut notifications"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.settings.DisableShortcutToasts || !a.settings.ShortcutToastsConfigured {
+		t.Fatal("the palette notification switch did not update both preference fields")
+	}
+	saved := loadAppSettings(a.pathUserData)
+	if !saved.DisableShortcuts || saved.DisableShortcutToasts || !saved.ShortcutToastsConfigured {
+		t.Fatalf("palette switches did not persist their settings: %+v", saved)
+	}
+}
+
 func TestCommandPaletteModalOwnsRepositoryLetters(t *testing.T) {
 	s, tt, a := readyPaletteShell(t)
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyP)

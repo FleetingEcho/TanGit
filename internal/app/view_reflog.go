@@ -71,6 +71,68 @@ func (a *app) reflogActionIcons(c *ui.Context, entry repository.Commit) {
 	})
 }
 
+// requestMoreReflog appends Git's next page after the last entry already
+// loaded. The token keeps a slow read from crossing a snapshot replacement.
+func (a *app) requestMoreReflog() {
+	if a.session == nil || a.reflogLoading || !a.reflogMore {
+		return
+	}
+	session := a.session
+	repositoryGeneration := a.generation
+	a.reflogToken++
+	token := a.reflogToken
+	a.reflogLoading = true
+	a.reflogError = ""
+	skip := len(a.snapshot.Reflog)
+	ctx := a.repositoryWork.Context()
+	go func() {
+		defer a.recoverBackground()
+		entries, err := requireReflogSession(session).Reflog(ctx, repository.SnapshotCommitLimit, skip)
+		a.updateChanged(func() bool {
+			if repositoryGeneration != a.generation || token != a.reflogToken {
+				return false
+			}
+			a.reflogLoading = false
+			if err != nil {
+				a.reflogError = safeError(err)
+				return a.workspaceTab == sectionReflog
+			}
+			a.reflogMore = len(entries) == repository.SnapshotCommitLimit
+			a.snapshot.Reflog = append(a.snapshot.Reflog, entries...)
+			return a.workspaceTab == sectionReflog
+		})
+	}()
+}
+
+// reflogListFooter reports the next page without replacing the readable list
+// or moving its selection. Retry repeats the page that failed.
+func (a *app) reflogListFooter(c *ui.Context) {
+	theme := c.Theme()
+	switch {
+	case a.reflogLoading:
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+			ui.Spinner(c).Label(tr("Loading older reflog entries"))
+			ui.Text(c, tr("Loading older reflog entries…")).TextColor(theme.TextMuted).
+				FontSize(theme.FontSize - 1)
+		})
+	case a.reflogError != "":
+		ui.Column(c).Gap(2).Children(func() {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, tr("Could not load older reflog entries.")).TextColor(theme.Danger).
+					FontSize(theme.FontSize - 1).Grow(1)
+				if ui.Button(c, tr("Retry")).Clicked() {
+					a.requestMoreReflog()
+				}
+			})
+			ui.Text(c, a.reflogError).TextColor(theme.TextMuted).
+				FontSize(theme.FontSize - 2).SingleLine().Tooltip(a.reflogError)
+		})
+	case !a.reflogMore:
+		ui.Text(c, tr("Beginning of reflog")).TextColor(theme.TextMuted).
+			FontSize(theme.FontSize - 1)
+	}
+}
+
 func (a *app) reflogView(c *ui.Context) {
 	theme := c.Theme()
 	a.collapsibleContentPaneSplit(c, &a.filePaneWidth, &a.workspacePaneCollapsed[sectionReflog],
@@ -99,7 +161,8 @@ func (a *app) reflogView(c *ui.Context) {
 				list := a.keyboardList(c, &a.reflogList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
 					entry, _ := sourceRow(visible, a.snapshot.Reflog, row.Index)
 					services := row.Context.Services()
-					ui.Column(row.Context).Gap(2).Padding(7, 8).Children(func() {
+					ui.Column(row.Context).Gap(2).
+						Padding(7, 8+scrollbarGutter(theme), 7, 8).Children(func() {
 						ui.Text(row.Context, entry.Subject)
 						ui.Row(row.Context).Gap(8).Children(func() {
 							ui.Text(row.Context, entry.ShortHash).TextColor(secondaryRowColor(theme, row))
@@ -113,6 +176,7 @@ func (a *app) reflogView(c *ui.Context) {
 					a.selectReflogRow(a.selectedReflogRow)
 				}
 				normalizeFilteredRow(visible, &a.selectedReflogRow, &a.selectedReflog)
+				a.reflogListFooter(c)
 			})
 		}, func() {
 			if a.selectedReflog < 0 || a.selectedReflog >= len(a.snapshot.Reflog) {

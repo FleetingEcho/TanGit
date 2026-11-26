@@ -130,7 +130,7 @@ type app struct {
 	// openHomeTab shows the picker in one, claimOpen reports that an open was
 	// taken over by an existing page or the window's cap, and closeTab gives
 	// this app's page up.
-	openTab         func(path string)
+	openTab         func(path string, policy openPolicy)
 	openTerminalTab func(path string)
 	openHomeTab     func()
 	claimOpen       func(path string) bool
@@ -542,6 +542,11 @@ type app struct {
 	reflogFilter               string
 	selectedReflogRow          int
 	selectedReflog             int
+	// Reflog pages are appended from Git only after the list reaches its end.
+	reflogMore    bool
+	reflogLoading bool
+	reflogError   string
+	reflogToken   uint64
 
 	diffState *editor.DiffState
 	diffMedia *mediaReview
@@ -835,8 +840,8 @@ type app struct {
 	diffWrap    bool
 	diffOptions repository.DiffOptions
 
-	// graphListPercent is the Graph section's share of the workspace width,
-	// wider than the other sections because the lanes need the room.
+	// graphListPercent is the Graph list's share of the workspace width.
+	// The splitter keeps whatever percentage the user drags it to.
 	graphListPercent float32
 
 	// fileHistory is the drawer in the commits pane: the commits that
@@ -942,9 +947,9 @@ func newApp(opener repositoryOpener) *app {
 		branchListWidth:    240,
 		branchCommitsWidth: 360,
 		branchHeaderHeight: 160,
-		// The Graph lays its lanes out from left to right, so the list pane
-		// takes the larger share of the workspace.
-		graphListPercent: 58,
+		// The Graph list and commit details start with equal shares. Its
+		// percentage splitter stays draggable and follows window resizing.
+		graphListPercent: 50,
 		// Both changes sections show their files until a click folds them.
 		mergeExpanded:   true,
 		stagedExpanded:  true,
@@ -1204,6 +1209,7 @@ func newApp(opener repositoryOpener) *app {
 		return submodule.Name
 	}
 	a.reflogList.Selected = &a.selectedReflogRow
+	a.reflogList.EndReached = func(int) { a.requestMoreReflog() }
 	a.reflogList.Key = func(row int) any {
 		rows := a.visibleReflog()
 		_, ok := sourceRow(rows, a.snapshot.Reflog, row)

@@ -300,8 +300,8 @@ func (s *shell) newTab(path string) *tab {
 	a.path = path
 	a.checkForUpdates = func() { s.checkForUpdates() }
 	a.updateInfo = s.updateInfo
-	a.openTab = func(path string) {
-		s.request(func() { s.openTab(path) })
+	a.openTab = func(path string, policy openPolicy) {
+		s.request(func() { s.openTabWithPolicy(path, policy) })
 	}
 	a.openTerminalTab = func(path string) {
 		s.request(func() { s.openTabWithPolicyAndTerminal(path, openGitOnly, true) })

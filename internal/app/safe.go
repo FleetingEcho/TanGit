@@ -48,6 +48,8 @@ func (a *app) reportBackgroundFault(reason string) {
 		a.stashFilesError = reason
 	case a.branchCommitsLoading:
 		a.branchCommitsError = reason
+	case a.reflogLoading:
+		a.reflogError = reason
 	case a.branchCommitFilesLoading:
 		a.branchCommitFilesError = reason
 	case a.branchCommitDiffLoading:
@@ -82,6 +84,7 @@ func (a *app) reportBackgroundFault(reason string) {
 	a.stashDiffLoading = false
 	a.stashFilesLoading = false
 	a.branchCommitsLoading = false
+	a.reflogLoading = false
 	a.branchCommitFilesLoading = false
 	a.branchCommitDiffLoading = false
 	a.fileHistoryLoading = false

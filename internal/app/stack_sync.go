@@ -159,6 +159,7 @@ func (a *app) beginApplyStackSync() {
 				a.resetBranchCommits()
 				a.resetCommitDetails()
 				a.resetCommitPaging(snapshot)
+				a.resetReflogPaging(snapshot)
 			}
 			if applyErr != nil {
 				a.stackSync.applyError = safeError(applyErr)

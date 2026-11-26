@@ -1,8 +1,6 @@
 package app
 
 import (
-	"errors"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -72,121 +70,89 @@ func listCodeEmptyDirectories(root string) []string {
 	return directories
 }
 
-// plainFileLimit caps how many files the plain-folder explorer indexes. It is
+// plainFileLimit caps how many files the plain-folder explorer lists. It is
 // generous for a source tree and keeps a workspace opened on a giant system
 // image from flooding the interface, memory or the interactivity of the page.
 const plainFileLimit = 25000
 
 type plainFileList struct {
-	// Paths are the indexed files, in lexical order.
+	// Paths are the listed files, in lexical order.
 	Paths []string
-	// EmptyDirectories holds the directories with no indexed content, which
-	// the Explorer synthesizes alongside the files.
-	EmptyDirectories []string
+	// ExtraDirectories are known directories the Explorer should show
+	// alongside the files, even if none of their contents were listed.
+	ExtraDirectories []string
 	// Skipped counts entries that could not be read or were skipped as
 	// mount points.
 	Skipped int
 	// Truncated reports that the root holds more regular files than the
-	// limit; the listing covers the lexical first portion only.
+	// limit. The listing favors entries closer to the root.
 	Truncated bool
 }
 
-// listPlainCodeFiles indexes a folder without consulting Git. WalkDir never
-// follows symbolic links; .git is excluded so a nested administrative folder
-// cannot become editable through the plain-folder workspace. Mount roots are
-// skipped wholesale, and the walk stops once plainFileLimit regular files are
-// found, in lexical order. A readable root can hold unreadable subtrees, such
-// as procfs/sysfs mounts or permission-denied directories: those are skipped
-// and counted, never fatal for the whole listing. The root itself must be
-// readable.
-var errPlainFileLimit = errors.New("plain folder file limit reached")
-
 var listPlainCodeFiles = func(root string) (plainFileList, error) {
+	return scanPlainCodeFolder(root, plainFileLimit)
+}
+
+// scanPlainCodeFolder lists shallow entries before descending, so a large
+// subtree cannot crowd its siblings out of the initial Explorer view.
+func scanPlainCodeFolder(root string, limit int) (plainFileList, error) {
 	found := plainFileList{}
-	var directories []string
-	nonEmpty := make(map[string]bool)
-	truncated := false
-	err := filepath.WalkDir(root, func(filename string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			if filename == root {
-				// The root itself must be readable; there is nothing to show.
-				return walkErr
-			}
-			// An unreadable subtree (procfs/sysfs mount, permission denied):
-			// skip it and keep going instead of failing the listing.
-			found.Skipped++
-			if entry == nil || entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if filename == root {
-			return nil
-		}
-		if info, err := entry.Info(); err == nil && entry.IsDir() && isPlainFolderMountPoint(info) {
-			found.Skipped++
-			return filepath.SkipDir
-		}
-		relative, err := filepath.Rel(root, filename)
-		if err != nil {
-			return err
-		}
-		name := filepath.ToSlash(relative)
-		if !validCodeRelativePath(name) {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		parent := filepath.ToSlash(filepath.Dir(relative))
-		if parent != "." {
-			nonEmpty[parent] = true
-		}
-		if strings.EqualFold(entry.Name(), ".git") {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if entry.IsDir() {
-			directories = append(directories, name)
-			return nil
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			// A file that cannot be stat'ed is unreadable for our purposes;
-			// it is skipped, not fatal for the whole listing.
-			found.Skipped++
-			return nil
-		}
-		if info.Mode().IsRegular() {
-			found.Paths = append(found.Paths, name)
-			if len(found.Paths) >= plainFileLimit {
-				truncated = true
-				return errPlainFileLimit
-			}
-		}
-		return nil
-	})
-	if err != nil && !errors.Is(err, errPlainFileLimit) {
-		return plainFileList{}, err
+	rootInfo, err := os.Lstat(root)
+	if err != nil || !rootInfo.IsDir() {
+		return found, err
 	}
-	if truncated {
-		// A truncated listing is already full; the empty-directory view is
-		// dropped rather than half-built against unknown remaining content.
-		found.Truncated = true
-		return found, nil
-	}
-	for _, directory := range directories {
-		if !nonEmpty[directory] {
-			found.EmptyDirectories = append(found.EmptyDirectories, directory)
+	directories := []string{""}
+	for next := 0; next < len(directories); next++ {
+		directory := directories[next]
+		entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(directory)))
+		if err != nil {
+			if directory == "" {
+				return plainFileList{}, err
+			}
+			found.Skipped++
+			found.ExtraDirectories = append(found.ExtraDirectories, directory)
+			continue
+		}
+		hasEntries := false
+		for _, entry := range entries {
+			name := filepath.ToSlash(filepath.Join(directory, entry.Name()))
+			if !validCodeRelativePath(name) {
+				continue
+			}
+			if strings.EqualFold(entry.Name(), ".git") || entry.Type()&os.ModeSymlink != 0 {
+				hasEntries = true
+				continue
+			}
+			if found.Truncated && !entry.IsDir() {
+				continue
+			}
+			info, err := entry.Info()
+			if err != nil || (entry.IsDir() && isPlainFolderMountPoint(info)) {
+				found.Skipped++
+				continue
+			}
+			hasEntries = true
+			if entry.IsDir() {
+				directories = append(directories, name)
+			} else if info.Mode().IsRegular() {
+				if len(found.Paths) == limit {
+					found.Truncated = true
+					// Finish this directory so its sibling entries are discovered.
+					continue
+				}
+				found.Paths = append(found.Paths, name)
+			}
+		}
+		if !hasEntries && directory != "" {
+			found.ExtraDirectories = append(found.ExtraDirectories, directory)
+		}
+		if found.Truncated {
+			found.ExtraDirectories = append(found.ExtraDirectories, directories[next+1:]...)
+			break
 		}
 	}
 	sort.Strings(found.Paths)
-	sort.Strings(found.EmptyDirectories)
+	sort.Strings(found.ExtraDirectories)
 	return found, nil
 }
 

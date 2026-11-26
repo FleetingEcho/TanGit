@@ -533,7 +533,8 @@ func (a *app) historyView(c *ui.Context) {
 				a.commitListElement(c, commits).Grow(1).Rows(func(row ui.ListRow) {
 					commit := commits[row.Index]
 					services := row.Context.Services()
-					rowElement := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(7, 8)
+					rowElement := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).
+						Padding(7, 8+scrollbarGutter(theme), 7, 8)
 					if a.markedBaseCommit.Hash != "" && a.markedBaseCommit.Hash == commit.Hash {
 						rowElement.Background(theme.Warning.Alpha(0.12)).Border(1, theme.Warning.Alpha(0.55)).Radius(theme.Radius)
 					}

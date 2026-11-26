@@ -182,7 +182,8 @@ func resolvedCodeSearchIndexRoot(root string) (string, error) {
 }
 
 func (a *app) codeSearchIndexDirectory() string {
-	if a.location.IsRemote() || a.code.searchIndex.status != codeSearchIndexReady || a.code.searchIndex.busy || !a.zoektCodeSearchEnabled() {
+	if a.code.filesTruncated || a.code.searchIndexPaused || a.location.IsRemote() ||
+		a.code.searchIndex.status != codeSearchIndexReady || a.code.searchIndex.busy || !a.zoektCodeSearchEnabled() {
 		return ""
 	}
 	return a.code.searchIndex.directory
@@ -237,7 +238,8 @@ func (a *app) resumeCodeSearchIndex() {
 // leave search free to use its ordinary fallback backends.
 func (a *app) ensureCodeSearchIndex() {
 	state := &a.code.searchIndex
-	if a.location.IsRemote() || a.snapshot.Root == "" || !a.code.filesLoaded || !a.zoektCodeSearchEnabled() {
+	if a.code.filesTruncated || a.code.searchIndexPaused || a.location.IsRemote() ||
+		a.snapshot.Root == "" || !a.code.filesLoaded || !a.zoektCodeSearchEnabled() {
 		return
 	}
 	if state.status == codeSearchIndexUnavailable {
@@ -384,7 +386,7 @@ func (a *app) ensureCodeSearchIndex() {
 // rebuild; searches meanwhile use ripgrep or the native scanner without
 // waiting for the old build to finish.
 func (a *app) invalidateCodeSearchIndex() {
-	if a.location.IsRemote() || a.snapshot.Root == "" {
+	if a.code.filesTruncated || a.code.searchIndexPaused || a.location.IsRemote() || a.snapshot.Root == "" {
 		return
 	}
 	state := &a.code.searchIndex

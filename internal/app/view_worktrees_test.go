@@ -29,7 +29,7 @@ func TestOpenWorktreePreservesRemoteWorkspace(t *testing.T) {
 func TestOpenWorktreeInNewTabPreservesRemoteWorkspace(t *testing.T) {
 	a := &app{location: workspace.Location{Kind: workspace.SSH, ProfileID: "prod", Root: "/srv/main"}}
 	var opened string
-	a.openTab = func(path string) { opened = path }
+	a.openTab = func(path string, _ openPolicy) { opened = path }
 	a.snapshot.Worktrees = []repository.Worktree{{Name: "feature", Path: "/srv/feature"}}
 	a.selectedWorktree = 0
 
@@ -57,7 +57,7 @@ func TestWorktreeNewTabActionsUseSelectedExplicitTarget(t *testing.T) {
 	h.app.snapshot.Worktrees = []repository.Worktree{{Name: "feature", Path: "/work/feature", Branch: "feature"}}
 	h.app.selectedWorktreeRow, h.app.selectedWorktree = 0, 0
 	opened := ""
-	h.app.openTab = func(path string) { opened = path }
+	h.app.openTab = func(path string, _ openPolicy) { opened = path }
 	h.tester.Frame()
 
 	if err := h.tester.Click("Open worktree in new tab"); err != nil {
@@ -81,7 +81,7 @@ func TestWorktreeMaintenanceActionsReachSession(t *testing.T) {
 	h.app.workspaceTab = sectionWorktrees
 	h.app.snapshot.Worktrees = []repository.Worktree{{Name: "feature", Path: "/work/feature", Branch: "feature"}}
 	h.app.selectedWorktreeRow, h.app.selectedWorktree = 0, 0
-	h.app.openTab = func(string) {}
+	h.app.openTab = func(string, openPolicy) {}
 	h.tester.Frame()
 	for _, label := range []string{
 		"New temporary worktree…", "Repair worktree metadata…", "Prune stale worktree records…",

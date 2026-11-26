@@ -219,7 +219,8 @@ func (a *app) tagsView(c *ui.Context) {
 					list := a.keyboardList(c, &a.tagList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
 						tag := visible[row.Index].tag
 						services := row.Context.Services()
-						ui.Column(row.Context).Gap(2).Padding(7, 8).Children(func() {
+						ui.Column(row.Context).Gap(2).
+							Padding(7, 8+scrollbarGutter(theme), 7, 8).Children(func() {
 							ui.Text(row.Context, tag.Name)
 							if tag.Message != "" {
 								ui.Text(row.Context, tag.Message).TextColor(secondaryRowColor(theme, row))

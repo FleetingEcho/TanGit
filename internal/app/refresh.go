@@ -250,9 +250,10 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 	selected := a.captureSelection("")
 
 	if !refsChanged {
-		// The read returns the snapshot's first page; the pages below it are
-		// the ones the list paged in, and nothing about them changed.
+		// The read returns each snapshot's first page; the pages below them
+		// are the ones the lists paged in, and nothing about them changed.
 		snapshot.Commits = old.Commits
+		snapshot.Reflog = old.Reflog
 	}
 	if a.snapshot.Branch != snapshot.Branch || a.snapshot.Root != snapshot.Root {
 		a.commitSelection = nil
@@ -270,6 +271,7 @@ func (a *app) applyQuietSnapshot(snapshot repository.Snapshot, was, now snapshot
 	}
 	if refsChanged {
 		a.resetCommitPaging(snapshot)
+		a.resetReflogPaging(snapshot)
 	}
 	a.restoreSelection(selected)
 
@@ -500,7 +502,11 @@ func refsSignature(snapshot repository.Snapshot) string {
 	for _, submodule := range snapshot.Submodules {
 		fmt.Fprintf(&b, "%+v\x00", submodule)
 	}
-	for _, commit := range snapshot.Reflog {
+	reflog := snapshot.Reflog
+	if len(reflog) > repository.SnapshotCommitLimit {
+		reflog = reflog[:repository.SnapshotCommitLimit]
+	}
+	for _, commit := range reflog {
 		fmt.Fprintf(&b, "%s\x00%s\x00", commit.Hash, commit.Subject)
 	}
 	// Bisect lives in the gitdir rather than a ref, but its banner belongs

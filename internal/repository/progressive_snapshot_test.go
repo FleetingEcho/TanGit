@@ -119,4 +119,22 @@ func TestRecentReflogBoundsTheGitRead(t *testing.T) {
 	if !found {
 		t.Fatalf("the reflog limit was not passed to Git: %+v", git.CommandLog().Entries())
 	}
+
+	page, err := git.Reflog(context.Background(), 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page) != 1 || page[0].Hash != entries[1].Hash {
+		t.Fatalf("reflog page = %+v, want the second entry", page)
+	}
+	found = false
+	for _, entry := range git.CommandLog().Entries() {
+		if strings.Contains(entry.Command, "git log -g --skip=1 --max-count=1") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("the reflog page bounds were not passed to Git: %+v", git.CommandLog().Entries())
+	}
 }

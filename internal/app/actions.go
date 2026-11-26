@@ -16,14 +16,14 @@ import (
 	"time"
 )
 
-// openPolicy decides whether a folder without Git may become an Editor-only
-// workspace. Ordinary repository and worktree opens keep the initialization
-// offer; Home's Editor mode and terminal launches opt in explicitly.
+// openPolicy controls whether a plain folder opens in the Editor and whether
+// Home needs to explain an automatic switch from Git mode.
 type openPolicy uint8
 
 const (
 	openGitOnly openPolicy = iota
 	openAllowPlainEditor
+	openHomeWithEditorFallback
 )
 
 func (a *app) beginOpen() {
@@ -92,10 +92,14 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 	session, err := a.opener.Open(ctx, path)
 	if err != nil {
 		a.update(func() {
-			if policy == openAllowPlainEditor && errors.Is(err, repository.ErrNotRepository) && generation == a.generation {
+			if policy != openGitOnly && errors.Is(err, repository.ErrNotRepository) && generation == a.generation {
 				if location, parseErr := workspace.Parse(path); parseErr == nil && !location.IsRemote() {
 					a.cancelOpen = nil
 					a.installOpenedRepository(nil, repository.Snapshot{Root: cleanRepoPath(path)})
+					if policy == openHomeWithEditorFallback {
+						a.notifyTranslated("info", "Opened in Editor mode",
+							"This folder is outside a Git repository. Git features are unavailable.")
+					}
 					return
 				}
 			}
@@ -187,6 +191,7 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 		a.applyDefaultCommitFilters(a.snapshot)
 		a.snapshotSeq++
 		a.resetCommitPaging(a.snapshot)
+		a.resetReflogPaging(a.snapshot)
 		a.restoreSelection(selected)
 	})
 }
@@ -314,6 +319,7 @@ func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 	// The commit list starts at the page the snapshot carries; more pages
 	// exist only when that page filled.
 	a.resetCommitPaging(snapshot)
+	a.resetReflogPaging(snapshot)
 	// A new repository's filters are its own: an old filter's branch and its
 	// authors belong to the repository that was open before. Each commit
 	// page then starts on the branch checked out, which reading the two
@@ -422,6 +428,15 @@ func (a *app) resetCommitPaging(snapshot repository.Snapshot) {
 	a.commitsLoading = false
 	a.commitsError = ""
 	a.commitsToken++
+}
+
+// resetReflogPaging starts Reflog at the page carried by a replacement
+// snapshot, dropping an older page read so it cannot append after a reset.
+func (a *app) resetReflogPaging(snapshot repository.Snapshot) {
+	a.reflogMore = len(snapshot.Reflog) >= repository.SnapshotCommitLimit
+	a.reflogLoading = false
+	a.reflogError = ""
+	a.reflogToken++
 }
 
 // resetFileDiff drops the working-tree diff and anything reading one.
@@ -761,6 +776,7 @@ func (a *app) beginRepositoryActionMessage(
 				checkout := a.refreshCodeAfterCheckout(oldSnapshot, snapshot)
 				a.refreshCodeBlameAfterRepositoryMutation()
 				a.resetCommitPaging(snapshot)
+				a.resetReflogPaging(snapshot)
 				a.restoreSelection(selected)
 				// Branch details are refreshed with the deferred snapshot below.
 				// Legacy full-snapshot implementations retain their reset.
@@ -1100,7 +1116,7 @@ var chooseRepositoryFolder = func(options mygo.OpenDialogOptions) ([]string, err
 
 func (a *app) browse() {
 	generation := a.generation
-	policy := openPolicy(a.pickerOpenMode)
+	policy := a.pickerOpenPolicy()
 	defaultPath := a.path
 	if a.location.IsRemote() {
 		defaultPath = ""

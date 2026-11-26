@@ -1020,7 +1020,8 @@ func (a *app) branchCommitsView(c *ui.Context, branch repository.Branch) {
 		a.keyboardList(c, &a.branchCommitList, len(a.branchCommits)).Grow(1).Rows(func(row ui.ListRow) {
 			commit := a.branchCommits[row.Index]
 			services := row.Context.Services()
-			ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(6, 8).Children(func() {
+			ui.Row(row.Context).Gap(8).AlignItems(ui.Center).
+				Padding(6, 8+scrollbarGutter(theme), 6, 8).Children(func() {
 				a.authorAvatar(row.Context, commit, 18)
 				ui.Column(row.Context).Gap(2).Grow(1).Children(func() {
 					ui.Text(row.Context, commit.Subject).SingleLine()

@@ -33,20 +33,23 @@ func (a *app) openThemeEditor() {
 	} else {
 		a.startNewCustomTheme()
 	}
+	a.settingsUI.themeEditorMode = themeEditorVisual
 	a.settingsUI.themeEditorOpen = true
 }
 
 func (a *app) editCustomTheme(index int) {
+	a.settingsUI.themeEditorJSON = themeJSONDraft{}
 	a.settingsUI.themeEditorIndex = index
 	a.settingsUI.themeEditorName = a.settings.CustomThemes[index].Name
 	a.settingsUI.themeEditorNameErr = ""
 	a.settingsUI.themeEditorCreated = false
-	a.settingsUI.themeEditorNamed = false
+	a.settingsUI.themeEditorRenaming = false
 }
 
 // startNewCustomTheme prepares an unsaved theme; the first editor frame seeds
 // its colors from what is on screen.
 func (a *app) startNewCustomTheme() {
+	a.settingsUI.themeEditorJSON = themeJSONDraft{}
 	a.settingsUI.themeEditorPrevious = a.settings.Theme
 	name := a.uniqueCustomThemeName(tr("My theme"))
 	a.settingsUI.themeEditorIndex = -1
@@ -54,23 +57,15 @@ func (a *app) startNewCustomTheme() {
 	a.settingsUI.themeEditorName = name
 	a.settingsUI.themeEditorNameErr = ""
 	a.settingsUI.themeEditorCreated = false
-	a.settingsUI.themeEditorNamed = false
+	a.settingsUI.themeEditorRenaming = false
 }
 
 func (a *app) closeThemeEditor() {
-	a.commitThemeName()
-	// A theme that was only named, never recolored, is still one the user
-	// asked for: save it with the colors it started from.
-	if a.settingsUI.themeEditorIndex < 0 && a.settingsUI.themeEditorNamed &&
-		len(a.settingsUI.themeEditorDraft.Colors) > 0 {
-		a.useCustomTheme(nil)
-	}
+	// Theme creation and renaming have explicit actions. Closing only closes;
+	// it never turns a draft name into a theme or applies an unfinished rename.
 	a.settingsUI.themeEditorOpen = false
 	a.saveSettings()
 }
-
-// hasCustomTheme reports whether the user has saved any custom theme.
-func (a *app) hasCustomTheme() bool { return len(a.settings.CustomThemes) > 0 }
 
 // editedTheme is the theme the editor changes: a saved one, or the unsaved draft.
 func (a *app) editedTheme() *namedCustomTheme {
@@ -84,12 +79,21 @@ func (a *app) editedTheme() *namedCustomTheme {
 // the window's theme. A separately chosen accent would paint over the custom
 // accent, so it is cleared.
 func (a *app) useCustomTheme(c *ui.Context) {
-	if a.settingsUI.themeEditorIndex < 0 {
-		a.settings.CustomThemes = append(a.settings.CustomThemes, a.settingsUI.themeEditorDraft)
-		a.settingsUI.themeEditorIndex = len(a.settings.CustomThemes) - 1
-		a.settingsUI.themeEditorCreated = true
+	state := &a.settingsUI
+	if state.themeEditorIndex < 0 {
+		name := strings.TrimSpace(state.themeEditorName)
+		if problem := a.themeNameProblem(name, -1); problem != "" {
+			state.themeEditorNameErr = problem
+			return
+		}
+		state.themeEditorDraft.Name = name
+		state.themeEditorName = name
+		a.settings.CustomThemes = append(a.settings.CustomThemes, state.themeEditorDraft)
+		state.themeEditorIndex = len(a.settings.CustomThemes) - 1
+		state.themeEditorCreated = true
 		a.notify("success", "Saved custom theme", a.editedTheme().Name)
 	}
+	state.themeEditorNameErr = ""
 	a.settings.Theme = customThemeValue(a.editedTheme().Name)
 	a.settings.Accent = ""
 	a.settingsChanged(c)
@@ -114,45 +118,6 @@ func (a *app) themeNameProblem(name string, index int) string {
 		}
 	}
 	return ""
-}
-
-// renameEditedTheme applies the name field as it is typed when the name is
-// usable; otherwise the problem is shown under the field and the theme keeps
-// its last good name until commitThemeName.
-func (a *app) renameEditedTheme() {
-	name := strings.TrimSpace(a.settingsUI.themeEditorName)
-	t := a.editedTheme()
-	if name == t.Name {
-		a.settingsUI.themeEditorNameErr = ""
-		return
-	}
-	if problem := a.themeNameProblem(name, a.settingsUI.themeEditorIndex); problem != "" {
-		a.settingsUI.themeEditorNameErr = problem
-		return
-	}
-	a.settingsUI.themeEditorNameErr = ""
-	if a.settingsUI.themeEditorIndex < 0 {
-		a.settingsUI.themeEditorNamed = true
-	}
-	active := a.settings.Theme == customThemeValue(t.Name)
-	t.Name = name
-	if active {
-		a.settings.Theme = customThemeValue(name)
-	}
-}
-
-// commitThemeName is called before the editor leaves the theme it is on. A
-// rejected name is reported in a notification and the field returns to the
-// name the theme keeps.
-func (a *app) commitThemeName() {
-	if a.settingsUI.themeEditorNameErr == "" {
-		return
-	}
-	kept := a.editedTheme().Name
-	a.notify("error", "Theme name not applied",
-		a.settingsUI.themeEditorNameErr+" "+trf("Keeping “%s”.", kept))
-	a.settingsUI.themeEditorName = kept
-	a.settingsUI.themeEditorNameErr = ""
 }
 
 // removeCustomTheme deletes a saved theme, returning the window to the theme
@@ -225,13 +190,22 @@ func (a *app) themeEditorModal(c *ui.Context) {
 				Role(ui.RoleDialog).Label(tr("Customize theme")).
 				Children(func() {
 					a.themeEditorHeader(c)
+					mode := ui.Segmented(c, &a.settingsUI.themeEditorMode, tr("Visual"), tr("JSON")).
+						AlignSelf(ui.Start).Label(tr("Theme editing mode"))
+					if mode.Changed() && a.settingsUI.themeEditorMode == themeEditorJSONMode {
+						a.seedThemeJSON()
+					}
 					ui.Row(c).Grow(1).MinHeight(0).FillWidth().Gap(18).Children(func() {
-						ui.Scroll(c).Grow(1).MinHeight(0).FillHeight().Children(func() {
-							ui.Column(c).FillWidth().Gap(14).Padding(2, 10, 8, 2).Children(func() {
-								a.themeEditorBase(c)
-								a.themeEditorFields(c)
+						if a.settingsUI.themeEditorMode == themeEditorJSONMode {
+							a.themeEditorJSONView(c)
+						} else {
+							ui.Scroll(c).Grow(1).MinHeight(0).FillHeight().Children(func() {
+								ui.Column(c).FillWidth().Gap(14).Padding(2, 10, 8, 2).Children(func() {
+									a.themeEditorBase(c)
+									a.themeEditorFields(c)
+								})
 							})
-						})
+						}
 						ui.Box(c).Width(1).Background(theme.Border)
 						a.themeEditorPreview(c)
 					})
@@ -254,74 +228,36 @@ func (a *app) themeEditorHeader(c *ui.Context) {
 		})
 		ui.Column(c).Gap(2).Grow(1).Children(func() {
 			ui.Text(c, tr("Customize theme")).FontSize(21).Bold()
-			ui.Text(c, tr("Pick any color. Every change applies to the whole window and is saved automatically.")).
+			hint := "Pick any color. Every change applies to the whole window and is saved automatically."
+			if a.settingsUI.themeEditorMode == themeEditorJSONMode {
+				hint = "Apply JSON to preview it. Save theme to use it in the window."
+			}
+			ui.Text(c, tr(hint)).
 				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 		})
 		iconButton(c, "Close theme editor", "Escape", closeIcon, false, a.closeThemeEditor)
 	})
 }
 
-// themeEditorBase is the card at the top of the editor: the theme's name, the
-// saved themes to switch between, and the two choices that restyle everything
-// at once, the palette to copy colors from and the light or dark base.
+// themeEditorBase groups theme selection, creation and palette actions. The
+// selector is for saved themes only; entering text never switches a theme.
 func (a *app) themeEditorBase(c *ui.Context) {
 	theme := c.Theme()
-	caption := func(text string) {
-		ui.Text(c, tr(text)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-	}
-	islandCard(c, ui.Column(c).FillWidth().Gap(10).Padding(14)).Children(func() {
-		caption("Name")
-		input := ui.TextInput(c, &a.settingsUI.themeEditorName).Label(tr("Theme name")).
-			Placeholder(tr("Theme name")).FillWidth()
-		if input.Changed() {
-			a.renameEditedTheme()
-			a.settingsChanged(c)
-		}
-		if a.settingsUI.themeEditorNameErr != "" {
-			ui.Text(c, a.settingsUI.themeEditorNameErr).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
-		}
-
-		if len(a.settings.CustomThemes) > 0 {
-			caption("Your themes")
-			ui.Row(c).Gap(6).Wrap().AlignItems(ui.Center).Children(func() {
-				current := a.editedTheme().Name
-				for i, t := range a.settings.CustomThemes {
-					i, name := i, t.Name
-					c.Key("theme-chip:" + name)
-					// One pill: the name selects the theme, the × inside it deletes.
-					shown := name == current && a.settingsUI.themeEditorIndex == i
-					fill, line, text := theme.Surface, theme.Border, theme.TextMuted
-					if shown {
-						fill, line, text = theme.Accent.Alpha(0.16), theme.Accent.Alpha(0.45), theme.Accent
-					}
-					ui.Row(c).AlignItems(ui.Center).Height(28).Radius(theme.Radius).
-						Background(fill).Border(1, line).Children(func() {
-						pick := ui.ButtonBase(c).Padding(3, 4, 3, 10).TextColor(text).
-							Label(name).Tooltip(trf("Edit %s", name))
-						pick.Children(func() { ui.Text(c, name).SingleLine() })
-						if pick.Clicked() {
-							a.commitThemeName()
-							a.editCustomTheme(i)
-							a.settings.Theme = customThemeValue(name)
-							a.settingsChanged(c)
-						}
-						remove := ui.ButtonBase(c).Padding(3, 7, 3, 3).Radius(theme.Radius).
-							Label(trf("Delete %s", name)).Tooltip(tr("Delete this custom theme"))
-						remove.Children(func() { ui.Icon(c, closeIcon).FontSize(11).TextColor(text) })
-						if remove.Clicked() {
-							a.confirmDeleteCustomTheme(name)
-						}
-					})
-				}
-				flatIconButton(c, "New theme", "Start another custom theme from the colors on screen", plusIcon, 16, 6, false, func() {
-					a.commitThemeName()
-					a.startNewCustomTheme()
-				})
+	islandCard(c, ui.Column(c).FillWidth().Gap(12).Padding(14)).Children(func() {
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
+			ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
+				ui.Text(c, tr("Your themes")).Bold()
+				ui.Text(c, tr("Each custom theme is saved under its own name")).
+					TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 			})
-		}
-
-		caption("Colors")
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
+			a.themeEditorNewThemeButton(c)
+		})
+		ui.Divider(c)
+		a.themeEditorNamePicker(c)
+		ui.Divider(c)
+		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, tr("Colors")).TextColor(theme.TextMuted).
+				FontSize(theme.FontSize - 1).Grow(1)
 			copyFrom := ui.Button(c, "").Label(tr("Copy colors from a built-in theme")).
 				Tooltip(tr("Replace your colors with a built-in palette")).Gap(6)
 			copyFrom.Children(func() {
@@ -426,7 +362,11 @@ func (a *app) themeEditorRow(c *ui.Context, index int, resolved *ui.Theme) {
 // themeEditorPreview is a small sample of the window drawn with the palette
 // being edited, so a color can be judged without closing the dialog.
 func (a *app) themeEditorPreview(c *ui.Context) {
-	t := buildCustomTheme(a.editedTheme().customThemeSetting)
+	palette := a.editedTheme().customThemeSetting
+	if preview := a.settingsUI.themeEditorJSON.preview; a.settingsUI.themeEditorMode == themeEditorJSONMode && preview != nil {
+		palette = preview.customThemeSetting
+	}
+	t := buildCustomTheme(palette)
 	ui.Column(c).Width(290).FillHeight().Gap(10).Padding(14).
 		Background(t.Background).Border(1, t.Border).Radius(frameTheme(c).Radius + 6).Children(func() {
 		ui.Text(c, tr("Preview")).Bold().TextColor(t.TextMuted).FontSize(c.Theme().FontSize - 2)
@@ -473,7 +413,7 @@ func (a *app) themeEditorFooter(c *ui.Context) {
 	theme := c.Theme()
 	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 		previous := a.settingsUI.themeEditorPrevious
-		if a.settingsUI.themeEditorCreated && previous != "" {
+		if a.settingsUI.themeEditorMode == themeEditorVisual && a.settingsUI.themeEditorCreated && previous != "" {
 			flatIconButton(c, "Discard and go back", trf("Remove this theme and switch back to %s", previous), backIcon, 17, 8, false, func() {
 				a.removeCustomTheme(a.settingsUI.themeEditorIndex, previous)
 				a.settingsChanged(c)
