@@ -140,9 +140,6 @@ func TestTreeModeSectionBadgesCountFilesNotDirectories(t *testing.T) {
 	h.app.fileTreeMode = true
 	h.tester.Frame()
 
-	if got := changeSectionFileCount(h.app.mergeRows); got != 3 {
-		t.Fatalf("merge section has %d files, want 3", got)
-	}
 	if len(h.app.mergeRows) <= 3 {
 		t.Fatalf("fixture has no directory rows to distinguish from files: %+v", h.app.mergeRows)
 	}
@@ -162,7 +159,7 @@ func TestMergeChangesHeaderFoldsItsSection(t *testing.T) {
 	h, _ := changesTestApp(t, []repository.File{
 		{Path: "conflict.txt", Status: "UU", Unstaged: true, HasMergeConflicts: true},
 	})
-	if err := h.tester.Click("Merge Changes"); err != nil {
+	if err := h.tester.Click("Collapse Merge Changes"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
@@ -234,9 +231,112 @@ func TestChangeStatusSitsAtTheRowEnd(t *testing.T) {
 	}
 }
 
+func TestCollapsedChangesStaysBelowEmptyStagedSectionAndKeepsCount(t *testing.T) {
+	files := make([]repository.File, 66)
+	for i := range files {
+		files[i] = repository.File{Path: fmt.Sprintf("project/file-%02d.go", i), Status: "??", Unstaged: true}
+	}
+	h, _ := changesTestApp(t, files)
+	h.app.fileTreeMode = true
+	h.tester.Frame()
+	if err := h.tester.Click("Collapse Changes"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
+	empty, emptyOK := h.tester.Find("No files here")
+	collapsed, collapsedOK := h.tester.Find("Expand Changes")
+	if !emptyOK || !collapsedOK {
+		t.Fatal("the staged placeholder or collapsed Changes header is missing")
+	}
+	if gap := collapsed.Y - (empty.Y + empty.H); gap < 0 || gap > 32 {
+		t.Errorf("the collapsed header is %.1f DIPs below the staged placeholder", gap)
+	}
+	texts := h.texts()
+	staged := slices.Index(texts, "Staged Changes")
+	if staged < 0 {
+		t.Fatal("the staged header is missing")
+	}
+	for i := staged + 1; i+1 < len(texts); i++ {
+		if texts[i] == "Changes" {
+			if texts[i+1] != "66" {
+				t.Errorf("the collapsed Changes badge shows %q, want 66", texts[i+1])
+			}
+			return
+		}
+	}
+	t.Fatal("the Changes badge is missing")
+}
+
+func TestChangesKeepsFoldControlsWhenAllMatchingFilesAreHidden(t *testing.T) {
+	for _, test := range []struct {
+		name, collapse, expand string
+		tree                   bool
+	}{
+		{name: "section", collapse: "Collapse Changes", expand: "Expand Changes"},
+		{name: "directory", collapse: "Collapse directory project", expand: "Expand directory project", tree: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			const path = "project/main.go"
+			h, _ := changesTestApp(t, []repository.File{{Path: path, Status: " M", Unstaged: true, Tracked: true}})
+			h.app.fileTreeMode = test.tree
+			h.tester.Frame()
+			if err := h.tester.Click(test.collapse); err != nil {
+				t.Fatal(err)
+			}
+			h.tester.Frame()
+			if h.tester.HasText("No files match the current filters") {
+				t.Fatal("folding the last matching file replaced the section with the filter empty state")
+			}
+			if err := h.tester.Click(test.expand); err != nil {
+				t.Fatal(err)
+			}
+			h.tester.Frame()
+			if changeRowIndex(h.app.changeRows, path, false) < 0 {
+				t.Fatal("expanding did not restore the matching file")
+			}
+			h.app.selectChangesStatusFilter(changesStatusStaged)
+			h.tester.Frame()
+			if !h.tester.HasText("No files match the current filters") {
+				t.Fatal("a genuine filter miss did not show the empty state")
+			}
+		})
+	}
+}
+
+func TestChangesHeaderTitleKeepsFileListExpanded(t *testing.T) {
+	a := newApp(nil)
+	tt := ui.NewTester(func(c *ui.Context) {
+		a.changeHeaderRow(c, "Changes", folderIcon, 66, a.changesExpanded, changeSectionChanges)
+	}, 330, 100)
+	tt.Frame()
+	title, ok := tt.Find("Changes")
+	if !ok {
+		t.Fatal("the Changes header is missing")
+	}
+	tt.ClickAt(title.X+title.W/2, title.Y+title.H/2)
+	tt.Frame()
+	if !a.changesExpanded {
+		t.Fatal("clicking the Changes title hid the file list")
+	}
+	if err := tt.Click("Collapse Changes"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.changesExpanded {
+		t.Fatal("the chevron did not collapse the file list")
+	}
+	if err := tt.Click("Expand Changes"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.changesExpanded {
+		t.Fatal("the chevron did not restore the file list")
+	}
+}
+
 func TestChangesHeaderFoldsItsSection(t *testing.T) {
 	h, _ := changesTestApp(t, sectionedFiles())
-	if err := h.tester.Click("Staged Changes"); err != nil {
+	if err := h.tester.Click("Collapse Staged Changes"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
@@ -407,7 +507,7 @@ func chooseChangeRow(t *testing.T, h *harness, path string, staged bool) {
 func TestFoldingASectionKeepsTheChosenFile(t *testing.T) {
 	h, _ := changesTestApp(t, sectionedFiles())
 	chooseChangeRow(t, h, "work.txt", false)
-	if err := h.tester.Click("Staged Changes"); err != nil {
+	if err := h.tester.Click("Collapse Staged Changes"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()

@@ -205,7 +205,7 @@ func (a *app) languageServerCatalogRow(c *ui.Context, profile languageServerProf
 			})
 			if !profile.Custom {
 				installLabel, installIcon := "Download", downloadIcon
-				if enabled {
+				if enabled && a.languageServerExecutableAvailable(profile) {
 					installLabel, installIcon = "Update", updateIcon
 				}
 				flatIconButton(c, installLabel+" "+profile.Name, installLabel+" "+profile.Name, installIcon, 14, 6,

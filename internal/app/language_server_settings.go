@@ -165,9 +165,10 @@ func (a *app) loadAdditionalLanguageServerDrafts() {
 		if profile.ID == goLanguageServerID {
 			continue
 		}
-		server, configured := a.settings.LanguageServers[profile.ID]
+		server := a.settings.LanguageServers[profile.ID]
 		a.lsp.drafts[profile.ID] = &languageServerDraft{
-			Enabled: configured && !server.Disabled, Path: server.Path, Arguments: strings.Join(server.Arguments, "\n"),
+			Enabled: languageServerProfileEnabled(a.settings.LanguageServers, profile),
+			Path:    server.Path, Arguments: strings.Join(server.Arguments, "\n"),
 			Formatter: server.Formatter,
 		}
 	}
@@ -189,7 +190,7 @@ func (a *app) storeAdditionalLanguageServerDraft(c *ui.Context, id string) {
 	server := editLanguageServerLaunch(a.settings.LanguageServers[id], strings.TrimSpace(draft.Path), languageServerArguments(draft.Arguments))
 	server.Disabled = !draft.Enabled
 	server.Formatter = strings.TrimSpace(draft.Formatter)
-	if !draft.Enabled && server.Custom == nil && server.Managed == nil && server.Formatter == "" {
+	if !draft.Enabled && !profile.EnabledByDefault && server.Custom == nil && server.Managed == nil && server.Formatter == "" {
 		delete(a.settings.LanguageServers, id)
 	} else {
 		a.settings.LanguageServers[id] = server

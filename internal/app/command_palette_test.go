@@ -1,10 +1,12 @@
 package app
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -476,8 +478,6 @@ func TestCommandPaletteRowsHaveAPinButton(t *testing.T) {
 	}
 }
 
-// The / list has a switch: on (the default) it lists only the changed files, off
-// it searches every file and a click opens it in the Editor.
 func TestCommandPaletteFilesSwitch(t *testing.T) {
 	s, tt, a := readyPaletteShell(t)
 	a.code.files = []string{"README.md", "internal/app/palette.go"}
@@ -490,19 +490,97 @@ func TestCommandPaletteFilesSwitch(t *testing.T) {
 	s.palette.query = "/palette"
 	tt.Frame()
 	tt.Frame()
-	if s.palette.filesAll {
-		t.Fatal("the file list should start with changed files only")
+	if s.palette.filesChangedOnly {
+		t.Fatal("the changed-files filter should start off")
+	}
+	if _, ok := tt.Find("internal/app/palette.go"); !ok {
+		t.Fatal("the default file search missed an unchanged repository file")
 	}
 	if err := tt.Click("Changed files only"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
 	tt.Frame()
-	if !s.palette.filesAll {
-		t.Fatal("the switch did not turn off the changed-files filter")
+	if !s.palette.filesChangedOnly {
+		t.Fatal("the switch did not turn on the changed-files filter")
 	}
+	if _, ok := tt.Find("internal/app/palette.go"); ok {
+		t.Fatal("the changed-files filter still shows an unchanged file")
+	}
+}
+
+func TestCommandPaletteFilePathPansOnlyWhenTruncatedAndHovered(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		path         string
+		reduceMotion bool
+		wantPan      bool
+	}{
+		{name: "truncated", path: strings.Repeat("deep-directory/", 6) + "login.jsx", wantPan: true},
+		{name: "fits", path: "src/login.jsx"},
+		{name: "reduced motion", path: strings.Repeat("deep-directory/", 6) + "login.jsx", reduceMotion: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			s := newShell(nil)
+			tt := ui.NewTesterWith(func(c *ui.Context) {
+				s.commandPaletteRow(c, commandCandidate{
+					ID: commandID("files/open/" + test.path), Label: test.path,
+					Detail: "Open in the Editor", Group: commandGroupNavigation, Enabled: true,
+				}, true, false, false, func() {})
+			}, 350, 200, ui.TesterOptions{Preferences: ui.Preferences{ReduceMotion: test.reduceMotion}})
+			tt.Frame()
+			row, ok := tt.Find(test.path)
+			if !ok {
+				t.Fatal("the file row is missing")
+			}
+			snapshot := func() []byte {
+				frame := tt.Image()
+				// Sample the label above the tooltip, which may appear on hover.
+				return slices.Clone(frame.Pix[:int(row.Y+25)*frame.Stride])
+			}
+			resting := snapshot()
+			tt.Move(row.X+20, row.Y+row.H/2)
+			tt.Frame()
+			before := snapshot()
+			tt.Advance(800 * time.Millisecond)
+			tt.Frame()
+			if moved := !bytes.Equal(before, snapshot()); moved != test.wantPan {
+				t.Fatalf("label moved = %v, want %v", moved, test.wantPan)
+			}
+			if test.wantPan {
+				tt.Move(20, 180)
+				tt.Frame()
+				tt.Advance(20 * time.Millisecond)
+				tt.Frame()
+				if !bytes.Equal(resting, snapshot()) {
+					t.Fatal("the label did not reset after hover")
+				}
+			}
+		})
+	}
+}
+
+func TestCommandPaletteRepaintsWhenRepositoryFilesFinishLoading(t *testing.T) {
+	s, tt, a := readyPaletteShell(t)
+	a.code.filesLoading = true
+	s.openCommandPalette(nil)
+	s.palette.query = "/palette"
+	tt.Frame()
+	tt.Frame()
+	repaints := 0
+	s.invalidate = func() { repaints++ }
+	s.updateAppChanged(a, func() bool {
+		a.code.filesLoading = false
+		a.code.filesLoaded = true
+		a.code.files = []string{"internal/app/palette.go"}
+		return false // The Editor page is not visible.
+	})
+	if repaints != 1 {
+		t.Fatalf("file list completion caused %d repaints, want 1", repaints)
+	}
+	tt.Frame()
 	if _, ok := tt.Find("internal/app/palette.go"); !ok {
-		t.Fatal("the repository file is not listed with the switch off")
+		t.Fatal("the palette did not show the loaded file")
 	}
 }
 
@@ -515,7 +593,6 @@ func TestCommandPaletteFileOpensInTheEditor(t *testing.T) {
 	a.setWorkspaceTab(sectionChanges)
 	s.openCommandPalette(nil)
 	tt.Frame()
-	s.palette.filesAll = true
 	s.palette.query = "/palette"
 	tt.Frame()
 	tt.Frame()

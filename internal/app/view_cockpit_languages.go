@@ -137,7 +137,8 @@ func (a *app) cockpitLanguagesCard(c *ui.Context) {
 					angle += sweep
 				}
 			})
-			ui.Column(c).Width(0).Grow(1).MinWidth(0).MaxWidthPercent(70).Gap(2).Children(func() {
+			ui.Scroll(c).Width(0).Grow(1).MinWidth(0).MaxWidthPercent(70).MaxHeight(150).
+				Padding(0, 10, 0, 0).Gap(2).Children(func() {
 				for _, slice := range slices {
 					slice := slice
 					c.Key("language:" + slice.Name)

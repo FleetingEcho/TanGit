@@ -59,7 +59,7 @@ var languageServerDownloadURLs = map[string]string{
 }
 
 var languageServerProfiles = []languageServerProfile{
-	{ID: "typescript", Name: "TypeScript Language Server", Category: "core", Description: "Native TypeScript 7 navigation, hover, and completion", Program: "tsc", Arguments: []string{"--lsp", "--stdio"}, VersionArguments: []string{"--version"}, Extensions: map[string]string{
+	{ID: "typescript", Name: "TypeScript Language Server", Category: "core", Description: "Native TypeScript 7 navigation, hover, and completion", Program: "tsc", Arguments: []string{"--lsp", "--stdio"}, VersionArguments: []string{"--version"}, EnabledByDefault: true, Extensions: map[string]string{
 		".js": "javascript", ".jsx": "javascriptreact", ".mjs": "javascript", ".cjs": "javascript",
 		".ts": "typescript", ".tsx": "typescriptreact", ".mts": "typescript", ".cts": "typescript",
 	}},

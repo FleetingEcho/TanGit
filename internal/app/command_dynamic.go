@@ -206,7 +206,7 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 		}
 		specs = append(specs, s.commitSearchSpecs(a, strings.TrimSpace(rest), '#')...)
 	case '/':
-		if s.palette.filesAll {
+		if !s.palette.filesChangedOnly {
 			// Every file of the repository, ranked as the Editor's quick open
 			// ranks them; choosing one opens it in the Editor.
 			if !a.code.filesLoaded && !a.code.filesLoading {

@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo"
+
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // The tray menu is the only way back once the window is hidden, so it always
@@ -23,6 +25,21 @@ func TestTrayMenuOffersOpenAndQuit(t *testing.T) {
 	}
 	if items[2].Label != "Quit" {
 		t.Errorf("the last item is %q, want Quit", items[2].Label)
+	}
+}
+
+func TestTrayMenuStartsWithOpenForActiveRepository(t *testing.T) {
+	previous := appShell
+	t.Cleanup(func() { appShell = previous })
+	appShell = newShell(nil)
+	page := readyShellTab(appShell, "/work/project")
+	appShell.active = appShell.indexOf(page)
+	page.app.snapshot.Branch = "feature/long-branch-name"
+	page.app.snapshot.Files = []repository.File{{Path: "main.go", Status: " M"}}
+
+	items := trayMenu().Items()
+	if items[0].Label != "Open lazygitGo" || items[0].Disabled {
+		t.Fatalf("the first tray item should open the window, got %+v", items[0])
 	}
 }
 

@@ -53,10 +53,9 @@ func (a *app) offerLanguageServerInstall(path string) {
 		if server.Disabled || a.lsp.installPrompted[profile.ID] || a.languageServerExecutableAvailable(profile) {
 			continue
 		}
-		// TypeScript and Rust keep their first-use offer. Other servers are
-		// offered only after the user enabled them (or when enabled by default),
-		// so one JavaScript file does not advertise every optional analyzer.
-		if !configured && profile.ID != "typescript" && profile.ID != "rust" && !profile.EnabledByDefault {
+		// Rust keeps its first-use offer. Other servers are offered only
+		// when enabled, so one file does not advertise every optional analyzer.
+		if !configured && profile.ID != "rust" && !profile.EnabledByDefault {
 			continue
 		}
 		if a.lsp.installPrompted == nil {

@@ -80,6 +80,31 @@ func TestLanguageServerExecutableCandidatesSplitTrimAndFallBack(t *testing.T) {
 	}
 }
 
+func TestDetectedTypeScriptServerStartsWithoutConfiguration(t *testing.T) {
+	connection := newFakeLanguageServerConnection()
+	stubLanguageServerConnection(t, func(launch languageServerLaunch) (languageServerConnection, error) {
+		if launch.Program != "tsc" || !reflect.DeepEqual(launch.Arguments, []string{"--lsp", "--stdio"}) {
+			return nil, fmt.Errorf("unexpected TypeScript launch: %s %v", launch.Program, launch.Arguments)
+		}
+		return connection, nil
+	})
+	stubCodeWorkspace(t, map[string]string{"main.ts": "const answer = 42\n"})
+	h := menuTestApp(t)
+	openCodePageForTest(t, h, 1)
+	h.app.openCodeFile("main.ts", 0)
+	waitForCodeDocument(t, h, "main.ts")
+	server := h.app.lsp.additional["typescript"]
+	if server == nil {
+		t.Fatal("opening a TypeScript file did not select the detected server")
+	}
+	h.waitFor(t, "the detected TypeScript server to open the document", func() bool {
+		return len(connection.snapshot()) == 1
+	})
+	if h.tester.HasText("Install TypeScript Language Server?") {
+		t.Fatal("the app offered to install a server it had detected")
+	}
+}
+
 func TestLanguageServerProfilesMatchLanguagesAndDefaults(t *testing.T) {
 	settings := map[string]languageServerSettings{
 		"typescript": {}, "tailwind": {}, "oxlint": {}, "rust": {},

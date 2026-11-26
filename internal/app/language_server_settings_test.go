@@ -20,13 +20,13 @@ func TestLanguageServerSettingsNormalizePathsAndArguments(t *testing.T) {
 		t.Fatalf("normalized language servers = %#v, want %#v", got, want)
 	}
 	if got := normalizeLanguageServerSettings(map[string]languageServerSettings{
-		"go": {},
+		"go": {}, "typescript": {},
 	}); got != nil {
 		t.Fatalf("a default profile should not occupy the settings file: %#v", got)
 	}
 	if got := normalizeLanguageServerSettings(map[string]languageServerSettings{
-		"typescript": {},
-	}); !reflect.DeepEqual(got, map[string]languageServerSettings{"typescript": {}}) {
+		"tailwind": {},
+	}); !reflect.DeepEqual(got, map[string]languageServerSettings{"tailwind": {}}) {
 		t.Fatalf("an enabled opt-in profile was discarded: %#v", got)
 	}
 	formatterOnly := map[string]languageServerSettings{
