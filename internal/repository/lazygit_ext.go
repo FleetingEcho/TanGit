@@ -154,17 +154,17 @@ func (s *gitSession) branchCommits(branch string, limit int) ([]*models.Commit, 
 
 // fileCommits reads the commits that changed path, newest first, following
 // the file across renames.
-func (s *gitSession) fileCommits(path string, limit int) ([]*models.Commit, error) {
+func (s *gitSession) fileCommits(path, ref string, limit int) ([]*models.Commit, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
-	if !s.headHasCommit() {
+	if ref == "HEAD" && !s.headHasCommit() {
 		return nil, nil
 	}
 	return s.git.Loaders.CommitLoader.GetCommits(git_commands.GetCommitsOptions{
 		Limit:        limit,
 		FilterPath:   path,
-		RefName:      "HEAD",
+		RefName:      ref,
 		MainBranches: s.commitMainBranches,
 		HashPool:     s.hashPool,
 	})

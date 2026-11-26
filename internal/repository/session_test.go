@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -885,6 +886,129 @@ func TestFileCommitsPages(t *testing.T) {
 	}
 	if len(beyond) != 0 {
 		t.Fatalf("a page past the history = %#v, want none", beyond)
+	}
+	paged := slices.Concat(first, second, last)
+	got := make([]string, 0, len(paged))
+	for _, commit := range paged {
+		got = append(got, commit.Hash)
+	}
+	want := strings.Fields(gitOutput(t, dir, "log", "--topo-order", "--follow", "--format=%H", "HEAD", "--", "file.txt"))
+	if !slices.Equal(got, want) {
+		t.Fatalf("paged file history = %v, want exact Git log %v", got, want)
+	}
+}
+
+func TestFileCommitsIncludingMatchesGitLogAcrossPages(t *testing.T) {
+	dir, session := newHistoryEditingSession(t)
+	writeHistoryCommit(t, dir, "base.txt", "base\n", "root")
+	runGit(t, dir, "checkout", "-b", "feature")
+	writeHistoryCommit(t, dir, "feature.txt", "one\n", "add feature")
+	writeHistoryCommit(t, dir, "feature.txt", "two\n", "edit feature")
+	origin := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
+	runGit(t, dir, "checkout", "main")
+	writeHistoryCommit(t, dir, "feature.txt", "main\n", "newer main edit")
+
+	ctx := context.Background()
+	current, err := session.FileCommits(ctx, "feature.txt", 10, 0)
+	if err != nil || len(current) != 1 || current[0].Subject != "newer main edit" {
+		t.Fatalf("file history from the checkout = %+v, %v", current, err)
+	}
+	want := strings.Fields(gitOutput(t, dir,
+		"log", "--topo-order", "--follow", "--show-pulls", "--format=%H", "HEAD", origin, "--", "feature.txt"))
+	var got []string
+	for skip := 0; ; skip++ {
+		page, err := session.FileCommitsIncluding(ctx, "feature.txt", origin, 1, skip)
+		if err != nil {
+			t.Fatalf("combined file history page %d: %v", skip, err)
+		}
+		if len(page) > 1 {
+			t.Fatalf("one-commit page %d returned %d commits", skip, len(page))
+		}
+		for _, commit := range page {
+			got = append(got, commit.Hash)
+		}
+		if len(page) == 0 {
+			break
+		}
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("combined file history = %v, want exact Git log %v", got, want)
+	}
+	if len(got) != 3 || got[1] != origin {
+		t.Fatalf("combined history = %v, want a newer edit followed by the selected commit", got)
+	}
+}
+
+func TestHistoriesMatchGitOnNonLinearClockSkew(t *testing.T) {
+	dir, session := newHistoryEditingSession(t)
+	commitAt := func(message, date string) {
+		t.Helper()
+		cmd := exec.Command("git", "-C", dir, "commit", "-m", message)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("commit %s: %v: %s", message, err, output)
+		}
+	}
+	writeStage := func(content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		runGit(t, dir, "add", "--", "file.txt")
+	}
+	writeStage("base\n")
+	commitAt("root", "2024-01-01T00:00:00Z")
+	runGit(t, dir, "checkout", "-b", "feature")
+	writeStage("feature\n")
+	commitAt("feature", "2024-01-03T00:00:00Z")
+	origin := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
+	runGit(t, dir, "checkout", "main")
+	writeStage("main\n")
+	commitAt("main", "2024-01-04T00:00:00Z")
+	runGitExpectFailure(t, dir, "merge", "feature")
+	writeStage("merged\n")
+	// The merge is deliberately older than both of its parents. Git's own
+	// traversal, not a timestamp sort in the app, defines the expected order.
+	commitAt("merge", "2024-01-02T00:00:00Z")
+
+	readPages := func(read func(skip int) ([]Commit, error)) []string {
+		t.Helper()
+		var hashes []string
+		for skip := 0; ; skip += 2 {
+			if skip > 20 {
+				t.Fatal("history paging did not reach an empty page")
+			}
+			page, err := read(skip)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(page) > 2 {
+				t.Fatalf("two-commit page returned %d commits", len(page))
+			}
+			for _, commit := range page {
+				hashes = append(hashes, commit.Hash)
+			}
+			if len(page) == 0 {
+				return hashes
+			}
+		}
+	}
+	ctx := context.Background()
+	gotHistory := readPages(func(skip int) ([]Commit, error) {
+		return session.RecentCommits(ctx, 2, skip)
+	})
+	wantHistory := strings.Fields(gitOutput(t, dir, "log", "--topo-order", "--exclude=refs/tangit/*", "--all", "--format=%H"))
+	if !slices.Equal(gotHistory, wantHistory) || len(gotHistory) != 4 {
+		t.Fatalf("non-linear commit history = %v, want exact Git log %v", gotHistory, wantHistory)
+	}
+
+	gotFile := readPages(func(skip int) ([]Commit, error) {
+		return session.FileCommitsIncluding(ctx, "file.txt", origin, 2, skip)
+	})
+	wantFile := strings.Fields(gitOutput(t, dir,
+		"log", "--topo-order", "--follow", "--show-pulls", "--format=%H", "HEAD", origin, "--", "file.txt"))
+	if !slices.Equal(gotFile, wantFile) || len(gotFile) < 3 || !slices.Contains(gotFile, origin) {
+		t.Fatalf("non-linear file history = %v, want exact Git log %v with origin %s", gotFile, wantFile, origin)
 	}
 }
 
@@ -2096,6 +2220,14 @@ func TestRecentCommitsPages(t *testing.T) {
 	}
 	if len(all) != 3 {
 		t.Fatalf("read %d commits, want 3", len(all))
+	}
+	got := make([]string, 0, len(all))
+	for _, commit := range all {
+		got = append(got, commit.Hash)
+	}
+	want := strings.Fields(gitOutput(t, dir, "log", "--topo-order", "--exclude=refs/tangit/*", "--all", "--format=%H"))
+	if !slices.Equal(got, want) {
+		t.Fatalf("commit history = %v, want exact Git log %v", got, want)
 	}
 	page, err := session.RecentCommits(context.Background(), 1, 1)
 	if err != nil {

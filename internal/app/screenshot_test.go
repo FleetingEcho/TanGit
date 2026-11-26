@@ -492,6 +492,9 @@ func (s screenshotSession) FileCommits(_ context.Context, path string, limit, sk
 	}
 	return commits, nil
 }
+func (s screenshotSession) FileCommitsIncluding(ctx context.Context, path, _ string, limit, skip int) ([]repository.Commit, error) {
+	return s.FileCommits(ctx, path, limit, skip)
+}
 
 func (s screenshotSession) RecentCommits(_ context.Context, limit, skip int) ([]repository.Commit, error) {
 	commits := s.snapshot.Commits

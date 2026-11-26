@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"slices"
@@ -693,6 +694,102 @@ func TestFileHistoryDrawer(t *testing.T) {
 	}
 }
 
+type historicalFileHistorySession struct{ fakeSession }
+
+func (s historicalFileHistorySession) FileCommits(_ context.Context, path string, _, _ int) ([]repository.Commit, error) {
+	s.calls.record("file-commits:" + path)
+	return []repository.Commit{{Hash: "newer", Subject: "Newer file edit", UnixTimestamp: 2}}, nil
+}
+
+func (s historicalFileHistorySession) FileCommitsIncluding(_ context.Context, path, hash string, _, _ int) ([]repository.Commit, error) {
+	s.calls.record("file-history-including:" + hash + ":" + path)
+	return []repository.Commit{
+		{Hash: "newer", Subject: "Newer file edit", UnixTimestamp: 1},
+		{Hash: hash, Subject: "Selected file edit", UnixTimestamp: 100},
+		{Hash: "older", Subject: "Older file edit", UnixTimestamp: 50},
+	}, nil
+}
+
+func TestGraphFileHistoryShowsFullLogAndKeepsTheSelectedCommit(t *testing.T) {
+	h, calls := menuTestAppWithCalls(t)
+	h.app.session = historicalFileHistorySession{fakeSession: h.app.session.(fakeSession)}
+	h.press(t, sectionKeys[sectionGraph])
+	h.waitFor(t, "Graph commit files", func() bool { return len(h.app.commitFiles) > 0 })
+	origin := h.app.visibleCommits()[h.app.selectedCommit]
+
+	h.rightClick(t, "one.txt")
+	h.chooseMenuItem(t, "View file changes…")
+	h.waitFor(t, "the selected commit's file history", func() bool {
+		return h.app.fileHistoryOpen && !h.app.fileHistoryLoading && h.app.fileHistoryDiffState != nil
+	})
+	if !calls.has("file-history-including:" + origin.Hash + ":one.txt") {
+		t.Fatalf("history did not read the checkout and selected commit together: %v", calls.all())
+	}
+	commits := h.app.fileHistoryCommits
+	if len(commits) != 3 || commits[0].Hash != "newer" || commits[1].Hash != origin.Hash || commits[2].Hash != "older" {
+		t.Fatalf("history should preserve Git's full order around the selected commit %q: %+v", origin.Hash, commits)
+	}
+	if h.app.fileHistorySelected != 1 || h.app.fileHistoryDiffHash != origin.Hash {
+		t.Fatalf("history should keep the selected commit's diff: selected=%d diff=%q", h.app.fileHistorySelected, h.app.fileHistoryDiffHash)
+	}
+	selected, ok := h.tester.AccessByRole(ui.RoleListItem, commits[1].Subject)
+	if !ok || !selected.Selected {
+		t.Fatalf("the old commit is not the selected row after the newest-first repaint: %+v", selected)
+	}
+	h.tester.Frame()
+	first := append([]byte(nil), h.tester.Image().Pix...)
+	h.tester.Frame()
+	if !bytes.Equal(first, h.tester.Image().Pix) {
+		t.Fatal("an unchanged file history drawer repainted differently on the next frame")
+	}
+}
+
+func TestFileHistoryAppendsLaterPagesInGitOrderWithoutMovingSelection(t *testing.T) {
+	a := newApp(fakeOpener{})
+	origin := repository.Commit{Hash: "origin", UnixTimestamp: 20}
+	a.fileHistoryCommits = []repository.Commit{
+		{Hash: "newest", UnixTimestamp: 10}, origin,
+	}
+	a.fileHistoryList.Choose(1)
+
+	// A newer timestamp in an older page must not reorder the Git log.
+	a.storeFileHistoryPage([]repository.Commit{
+		origin, {Hash: "older", UnixTimestamp: 100}, {Hash: "oldest", UnixTimestamp: 50},
+	}, 4, false)
+	var got []string
+	for _, commit := range a.fileHistoryCommits {
+		got = append(got, commit.Hash)
+	}
+	want := []string{"newest", "origin", "older", "oldest"}
+	if !slices.Equal(got, want) || a.fileHistorySelected != 1 {
+		t.Fatalf("paged history = %v, selected=%d; want %v, selected=1", got, a.fileHistorySelected, want)
+	}
+	if a.fileHistoryRead != 4 || a.fileHistoryMore {
+		t.Fatalf("page state = read %d, more %v; want read 4, more false", a.fileHistoryRead, a.fileHistoryMore)
+	}
+}
+
+func TestFileHistoryCentersLoadingOverTheCommitList(t *testing.T) {
+	for _, firstPage := range []bool{true, false} {
+		a := newApp(fakeOpener{})
+		a.fileHistoryCommits = []repository.Commit{{Hash: "source", Subject: "Selected commit"}}
+		a.fileHistoryLoading = firstPage
+		a.fileHistoryLoadingMore = !firstPage
+		const height = 700
+		tt := ui.NewTester(func(c *ui.Context) {
+			ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() { a.fileHistoryCommitsView(c) })
+		}, 420, height)
+		tt.Frame()
+		label, ok := tt.Find("Loading older commits…")
+		if y := label.Y + label.H/2; !ok || y < height/2-20 || y > height/2+20 {
+			t.Fatalf("first page %v: loading label is not centered, found=%v y=%v", firstPage, ok, y)
+		}
+		if row, ok := tt.Find("Selected commit"); !ok || row.Y+row.H >= label.Y {
+			t.Fatal("loading overlaps the visible commit near the top")
+		}
+	}
+}
+
 // The file history drawer has three columns: the file's commits, the files of
 // the chosen commit, and the chosen file's diff. Choosing another commit reads
 // that commit's files and diff, which was the dead click the drawer had.
@@ -986,6 +1083,10 @@ func (s *pagedFileSession) FileCommits(_ context.Context, path string, limit, sk
 		})
 	}
 	return commits, nil
+}
+
+func (s *pagedFileSession) FileCommitsIncluding(ctx context.Context, path, _ string, limit, skip int) ([]repository.Commit, error) {
+	return s.FileCommits(ctx, path, limit, skip)
 }
 
 func (s *pagedFileSession) skipsRead() []int {

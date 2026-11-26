@@ -122,6 +122,10 @@ type HistorySession interface {
 	// history of a changed file is browsable and pages in as it scrolls.
 	// The returned commits omit line counts.
 	FileCommits(context.Context, string, int, int) ([]Commit, error)
+	// FileCommitsIncluding reads one Git-ordered union of the checkout's path
+	// history and the path history at the selected commit. It keeps later edits
+	// visible when the drawer opens from an old commit or another branch.
+	FileCommitsIncluding(context.Context, string, string, int, int) ([]Commit, error)
 }
 
 // ChangesSession reads and mutates the working tree, index and conflict buffers.

@@ -1,6 +1,9 @@
 package app
 
 import (
+	"context"
+	"slices"
+
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
@@ -21,7 +24,11 @@ func (a *app) commitFileMenu(m *ui.Menu, commit *repository.Commit, file reposit
 	}
 	m.Separator()
 	if m.Item(tr("View file changes…")).Chosen() {
-		a.openFileHistory(file.Path)
+		if commit == nil {
+			a.openFileHistory(file.Path)
+		} else {
+			a.openFileHistoryFrom(file.Path, *commit)
+		}
 	}
 	if commit != nil && a.customPatchActive() && m.Item(tr("Add file to Custom Patch")).Shortcut(ui.Ctrl, ui.KeyB).
 		Disabled(a.actionBusy || a.session == nil).Chosen() {
@@ -70,11 +77,16 @@ func (a *app) findFileHistories(path string) {
 // openFileHistory opens the drawer that lists the commits that changed path,
 // read from the repository rather than from the commits on screen.
 func (a *app) openFileHistory(path string) {
+	a.openFileHistoryFrom(path, repository.Commit{})
+}
+
+func (a *app) openFileHistoryFrom(path string, origin repository.Commit) {
 	if a.editorOnlyWorkspace() {
 		return
 	}
 	a.fileHistoryOpen = true
 	a.fileHistoryPath = path
+	a.fileHistoryOrigin = origin
 	a.fileHistoryCommits = nil
 	a.fileHistorySelected = 0
 	a.fileHistoryList.Choose(0)
@@ -95,35 +107,85 @@ func (a *app) openFileHistory(path string) {
 		return
 	}
 	ctx := a.repositoryWork.Context()
+	if origin.Hash != "" {
+		// Show the entry point's details immediately. The completed Git log
+		// replaces this provisional row and selects the same commit by hash.
+		a.fileHistoryCommits = []repository.Commit{origin}
+		a.fileHistoryList.ScrollTo(0, ui.Start)
+		a.loadFileHistoryCommit(origin, true)
+	}
 	go func() {
 		defer a.recoverBackground()
-		commits, err := requireHistorySession(session).FileCommits(ctx, path, fileHistoryPage, 0)
+		commits, read, more, err := readFileHistoryForDrawer(ctx, session, path, origin.Hash)
 		a.updateChanged(func() bool {
 			if token != a.fileHistoryToken || !a.fileHistoryOpen || a.fileHistoryPath != path {
 				return false
 			}
 			a.fileHistoryLoading = false
+			a.fileHistoryCommits = nil
+			a.storeFileHistoryPage(commits, read, more)
+			if origin.Hash != "" {
+				index := slices.IndexFunc(a.fileHistoryCommits, func(commit repository.Commit) bool {
+					return commit.Hash == origin.Hash
+				})
+				if index >= 0 {
+					a.fileHistoryList.Choose(index)
+					a.fileHistoryList.ScrollTo(index, ui.Center)
+				}
+				if err != nil {
+					a.fileHistoryMoreError = safeError(err)
+				}
+				return true
+			}
 			if err != nil {
 				a.fileHistoryMore = false
 				a.fileHistoryError = safeError(err)
 				return true
 			}
-			a.fileHistoryCommits = commits
-			a.fileHistoryRead = len(commits)
-			a.fileHistoryMore = len(commits) == fileHistoryPage
-			if len(commits) == 0 {
+			if len(a.fileHistoryCommits) == 0 {
 				return true
 			}
-			a.fileHistorySelected = 0
 			// Select through the list, not only the index: it tracks the
 			// chosen row by key, so a stale choice from an earlier open
 			// would otherwise leave the first commit unhighlighted.
 			a.fileHistoryList.Choose(0)
 			a.fileHistoryList.ScrollTo(0, ui.Start)
-			a.loadFileHistoryCommit(commits[0], true)
+			a.loadFileHistoryCommit(a.fileHistoryCommits[0], true)
 			return true
 		})
 	}()
+}
+
+// readFileHistoryForDrawer reads the newest page, and for a historical entry
+// point keeps reading in Git's own order until the chosen commit is visible.
+// A single revision union supplies every page, so the result needs no merge
+// or timestamp sort and the entry point can be below the first 100 rows.
+func readFileHistoryForDrawer(ctx context.Context, session repository.Session, path, originHash string) (commits []repository.Commit, read int, more bool, err error) {
+	history := requireHistorySession(session)
+	seen := map[string]bool{}
+	more = true
+	for {
+		var page []repository.Commit
+		if originHash == "" {
+			page, err = history.FileCommits(ctx, path, fileHistoryPage, read)
+		} else {
+			page, err = history.FileCommitsIncluding(ctx, path, originHash, fileHistoryPage, read)
+		}
+		if err != nil {
+			return commits, read, true, err
+		}
+		read += len(page)
+		more = len(page) == fileHistoryPage
+		for _, commit := range page {
+			if !seen[commit.Hash] {
+				seen[commit.Hash] = true
+				commits = append(commits, commit)
+			}
+		}
+		if !more || originHash == "" || seen[originHash] {
+			return commits, read, more, nil
+		}
+	}
 }
 
 // loadMoreFileHistory reads the page of commits after those the drawer shows,
@@ -139,41 +201,55 @@ func (a *app) loadMoreFileHistory() {
 		return
 	}
 	path := a.fileHistoryPath
+	originHash := a.fileHistoryOrigin.Hash
 	skip := a.fileHistoryRead
 	token := a.fileHistoryToken
 	a.fileHistoryLoadingMore = true
 	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		commits, err := requireHistorySession(session).FileCommits(ctx, path, fileHistoryPage, skip)
+		history := requireHistorySession(session)
+		var commits []repository.Commit
+		var err error
+		if originHash == "" {
+			commits, err = history.FileCommits(ctx, path, fileHistoryPage, skip)
+		} else {
+			commits, err = history.FileCommitsIncluding(ctx, path, originHash, fileHistoryPage, skip)
+		}
 		a.updateChanged(func() bool {
 			if token != a.fileHistoryToken || !a.fileHistoryOpen || a.fileHistoryPath != path {
 				return false
 			}
 			a.fileHistoryLoadingMore = false
+			a.storeFileHistoryPage(commits, skip+len(commits), err != nil || len(commits) == fileHistoryPage)
 			if err != nil {
 				a.fileHistoryMoreError = safeError(err)
 				return true
 			}
-			a.fileHistoryRead += len(commits)
-			// A commit can repeat across pages when the history shifted
-			// between reads; the list keys rows by hash, so keep each
-			// commit once.
-			seen := make(map[string]bool, len(a.fileHistoryCommits)+len(commits))
-			for _, commit := range a.fileHistoryCommits {
-				seen[commit.Hash] = true
-			}
-			for _, commit := range commits {
-				if seen[commit.Hash] {
-					continue
-				}
-				seen[commit.Hash] = true
-				a.fileHistoryCommits = append(a.fileHistoryCommits, commit)
-			}
-			a.fileHistoryMore = len(commits) == fileHistoryPage
 			return true
 		})
 	}()
+}
+
+// storeFileHistoryPage appends in Git's order. read includes duplicate rows
+// from a history that shifted between reads, so the next Git offset is exact.
+func (a *app) storeFileHistoryPage(commits []repository.Commit, read int, more bool) {
+	a.fileHistoryRead = read
+	a.fileHistoryMore = more
+	selected := commitHashAt(a.fileHistoryCommits, a.fileHistorySelected)
+	seen := make(map[string]bool, len(a.fileHistoryCommits)+len(commits))
+	for _, commit := range a.fileHistoryCommits {
+		seen[commit.Hash] = true
+	}
+	for _, commit := range commits {
+		if !seen[commit.Hash] {
+			seen[commit.Hash] = true
+			a.fileHistoryCommits = append(a.fileHistoryCommits, commit)
+		}
+	}
+	if selected != "" {
+		a.fileHistoryList.Choose(selectedCommitIndex(a.fileHistoryCommits, selected))
+	}
 }
 
 // closeFileHistory hides the drawer and drops every read it had in flight.
@@ -181,6 +257,7 @@ func (a *app) closeFileHistory() {
 	a.fileHistoryOpen = false
 	a.fileHistoryToken++
 	a.fileHistoryPath = ""
+	a.fileHistoryOrigin = repository.Commit{}
 	a.fileHistoryCommits = nil
 	a.fileHistoryLoading = false
 	a.fileHistoryError = ""
@@ -449,13 +526,13 @@ func (a *app) fileHistoryCommitsView(c *ui.Context) {
 			paneCollapseButton(c, &a.fileHistoryCommitsCollapsed, "Collapse file history commits")
 		})
 		switch {
-		case a.fileHistoryLoading:
+		case a.fileHistoryLoading && len(a.fileHistoryCommits) == 0:
 			loadingPane(c, "Loading file history", "Reading the file's history…")
 		case a.fileHistoryError != "":
 			ui.Column(c).Grow(1).Gap(8).Children(func() {
 				ui.Text(c, a.fileHistoryError).TextColor(theme.Danger)
 				if ui.Button(c, tr("Try again")).Clicked() {
-					a.openFileHistory(a.fileHistoryPath)
+					a.openFileHistoryFrom(a.fileHistoryPath, a.fileHistoryOrigin)
 				}
 			})
 		case len(a.fileHistoryCommits) == 0:
@@ -508,11 +585,14 @@ func (a *app) fileHistoryCommitsView(c *ui.Context) {
 				a.loadMoreFileHistory()
 			}
 			switch {
-			case a.fileHistoryLoadingMore:
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-					ui.Spinner(c).Label(tr("Loading older commits"))
-					ui.Text(c, tr("Loading older commits…")).TextColor(theme.TextMuted).
-						FontSize(theme.FontSize - 1)
+			case a.fileHistoryLoading || a.fileHistoryLoadingMore:
+				ui.Box(c).Absolute().Left(0).Right(0).Top(0).Bottom(0).Center().PassThrough().Children(func() {
+					ui.Row(c).MaxWidthPercent(94).Padding(5, 8).Gap(8).AlignItems(ui.Center).
+						Background(theme.Background).Radius(theme.Radius).PassThrough().Children(func() {
+						ui.Spinner(c).Label(tr("Loading older commits"))
+						ui.Text(c, tr("Loading older commits…")).TextColor(theme.TextMuted).
+							FontSize(theme.FontSize - 1)
+					})
 				})
 			case a.fileHistoryMoreError != "":
 				ui.Column(c).Gap(2).Children(func() {
