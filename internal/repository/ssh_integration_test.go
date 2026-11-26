@@ -152,6 +152,7 @@ func TestOpenSSHWorkspaceRealOpenSSH(t *testing.T) {
 }
 
 func TestOpenSSHWorkspaceRecoveryRealOpenSSH(t *testing.T) {
+	enableSafetyJournalForTest(t)
 	server := sshintegration.Start(t)
 	connector, err := sshworkspace.NewConnector(server.SecretStore, filepath.Join(t.TempDir(), "known_hosts"), func(sshworkspace.HostKeyInfo) (bool, error) {
 		return true, nil

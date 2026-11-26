@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -55,6 +56,28 @@ func (a *app) confirmUndoOperation(record repository.OperationRecord) {
 			a.beginRepositoryActionMessage(trf("Undid %s", record.Summary), "", func(ctx context.Context, session repository.Session) error {
 				return session.UndoOperation(ctx, id)
 			}, nil)
+		},
+	})
+}
+
+func (a *app) confirmDeleteOperation(record repository.OperationRecord) {
+	if a.actionBusy || a.session == nil || !record.CanDelete() {
+		return
+	}
+	a.askConfirm(confirmRequest{
+		title:        "Delete Safety Journal Entry",
+		message:      trf("Delete %s?", record.Summary),
+		detail:       "This removes the journal entry and its Undo action. Saved recovery points remain available in Recovery.",
+		confirmLabel: "Delete",
+		destructive:  true,
+		run: func() {
+			a.beginRepositoryActionMessage(trf("Deleted %s", record.Summary), "", func(ctx context.Context, session repository.Session) error {
+				return session.DeleteOperation(ctx, record.ID)
+			}, func() {
+				a.snapshot.Operations = slices.DeleteFunc(slices.Clone(a.snapshot.Operations), func(entry repository.OperationRecord) bool {
+					return entry.ID == record.ID
+				})
+			})
 		},
 	})
 }
@@ -199,6 +222,8 @@ func (a *app) safetyJournalBody(c *ui.Context) {
 					a.confirmUndoOperation(record)
 				})
 			}
+			iconButton(c, tr("Delete")+" "+record.ID, "Delete this safety journal entry…", trashIcon,
+				a.actionBusy || !record.CanDelete(), func() { a.confirmDeleteOperation(record) })
 		})
 	}
 	ui.Text(c, fmt.Sprintf(tr("%d journal entries"), len(a.snapshot.Operations))).

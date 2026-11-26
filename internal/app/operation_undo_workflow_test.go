@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -54,7 +55,30 @@ func TestRealAppUndoCommitThroughSafetyJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := newFileRecoveryApp(t, dir, session)
+	h.app.pathUserData = t.TempDir()
+	previousJournal := repository.SafetyJournalEnabled()
+	t.Cleanup(func() { repository.SetSafetyJournalEnabled(previousJournal) })
+	h.app.setSafetyJournal(true)
 	ctx := context.Background()
+	waitFor := func(description string, ready func() bool) {
+		t.Helper()
+		deadline := time.NewTimer(10 * time.Second)
+		defer deadline.Stop()
+		for {
+			h.updates.flushPending()
+			h.tester.Frame()
+			if ready() {
+				return
+			}
+			select {
+			case <-h.updates.done:
+			case <-deadline.C:
+				records, err := session.Operations(ctx)
+				t.Fatalf("waiting for %s: action error=%q, journal=%+v (%v)", description, h.app.actionError, records, err)
+			}
+		}
+	}
+	waitFor("the initial repository details", func() bool { return !h.app.repositoryDetailsLoading })
 
 	// Use the actual commit shortcut and real form submission. The baseline
 	// contains separate staged bytes and an unstaged working-file suffix.
@@ -67,7 +91,7 @@ func TestRealAppUndoCommitThroughSafetyJournal(t *testing.T) {
 	if err := h.tester.Click("Commit"); err != nil {
 		t.Fatalf("submit the real commit: %v; texts=%q", err, h.texts())
 	}
-	h.waitFor(t, "a recoverable commit in the safety journal", func() bool {
+	waitFor("a recoverable commit in the safety journal", func() bool {
 		for _, record := range h.app.snapshot.Operations {
 			if record.Kind == repository.OperationCommit && record.CanUndo() {
 				return true
@@ -124,7 +148,7 @@ func TestRealAppUndoCommitThroughSafetyJournal(t *testing.T) {
 	if err := h.tester.Click("Undo"); err != nil {
 		t.Fatalf("accept Undo: %v; texts=%q", err, h.texts())
 	}
-	h.waitFor(t, "the confirmed Undo to restore the parent", func() bool {
+	waitFor("the confirmed Undo to restore the parent", func() bool {
 		if strings.TrimSpace(runGitIn(t, dir, "rev-parse", "HEAD")) != before {
 			return false
 		}

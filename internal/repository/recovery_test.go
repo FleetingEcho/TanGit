@@ -10,12 +10,16 @@ import (
 	"testing"
 )
 
+func enableSafetyJournalForTest(t *testing.T) {
+	t.Helper()
+	previous := SafetyJournalEnabled()
+	SetSafetyJournalEnabled(true)
+	t.Cleanup(func() { SetSafetyJournalEnabled(previous) })
+}
+
 func recoveryRepository(t *testing.T) (string, FullSession) {
 	t.Helper()
-	// Recovery tests exercise the opt-in behavior explicitly; production starts
-	// with the journal off, while these helpers focus on recovery mechanics.
-	SetSafetyJournalEnabled(true)
-	t.Cleanup(func() { SetSafetyJournalEnabled(false) })
+	enableSafetyJournalForTest(t)
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--initial-branch=main")
 	runGit(t, dir, "config", "user.email", "desktop@example.com")

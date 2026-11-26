@@ -101,6 +101,12 @@ func (r OperationRecord) CanUndo() bool {
 	return recoverable && r.UndoneAt == 0 && r.UndoKind != "" && !r.RebasePaused && r.ActiveOperation == OperationTypeNone
 }
 
+// CanDelete reports whether a journal entry can be removed without losing
+// the continuation state of an active operation.
+func (r OperationRecord) CanDelete() bool {
+	return !r.RebasePaused && r.ActiveOperation == OperationTypeNone && r.Status != OperationUndoing
+}
+
 func (s *gitSession) journalDir() string {
 	return s.joinPath(s.git.RepoPaths.WorktreeGitDirPath(), "tangit", "journal")
 }
@@ -445,6 +451,36 @@ func (s *gitSession) Operations(ctx context.Context) ([]OperationRecord, error) 
 		return records[i].CreatedAt > records[j].CreatedAt
 	})
 	return records, nil
+}
+
+// DeleteOperation removes the journal entry. Recovery snapshots have their
+// own lifetime and can still be restored from Recovery & checkpoints.
+func (s *gitSession) DeleteOperation(ctx context.Context, id string) error {
+	name, err := s.operationPath(id)
+	if err != nil {
+		return err
+	}
+	unlock := s.lockWorktreeMutation()
+	defer unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	record, err := s.readOperationRecord(name)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	// Operations also exposes unreadable records under their canonical IDs,
+	// so a user can remove a damaged entry from the journal.
+	if err == nil && !record.CanDelete() {
+		return fmt.Errorf("finish the active operation before deleting its safety journal entry")
+	}
+	if err := s.fileService().Remove(name); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("delete safety journal entry: %w", err)
+	}
+	return s.syncDirectory(s.journalDir())
 }
 
 func (s *gitSession) validateJournalSnapshot(snapshot *WorkSnapshot) error {
