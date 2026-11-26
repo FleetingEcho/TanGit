@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"path"
 	"runtime"
 	"strconv"
 	"strings"
@@ -17,6 +19,10 @@ import (
 // latestReleaseAPI is where the newest published release is read from. It is a
 // variable so tests can point it at a local server.
 var latestReleaseAPI = "https://api.github.com/repos/FleetingEcho/lazygitGo/releases/latest"
+
+// releasesWebBase serves the release pages and assets. Unlike the API it has
+// no per-address request limit, so it answers when the API refuses.
+var releasesWebBase = "https://github.com/FleetingEcho/lazygitGo/releases"
 
 // packageRelease is a published release the running build is behind.
 type packageRelease struct {
@@ -52,6 +58,11 @@ func fetchLatestRelease(ctx context.Context, client *http.Client, arch string) (
 		return packageRelease{}, err
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusTooManyRequests {
+		// An address that has used up the API's anonymous allowance gets 403.
+		// The release page and its checksum file are not limited that way.
+		return fetchLatestReleaseFromWeb(ctx, client, arch)
+	}
 	if response.StatusCode != http.StatusOK {
 		return packageRelease{}, fmt.Errorf("the release feed answered %s", response.Status)
 	}
@@ -66,6 +77,64 @@ func fetchLatestRelease(ctx context.Context, client *http.Client, arch string) (
 	for _, asset := range release.Assets {
 		if asset.Name == "lazygitgo_"+result.Version+"_"+arch+".deb" {
 			result.DebURL, result.DebName, result.DebDigest = asset.URL, asset.Name, asset.Digest
+			break
+		}
+	}
+	return result, nil
+}
+
+// fetchLatestReleaseFromWeb finds the newest release without the API: the
+// latest-release page redirects to the tag, and the release's SHA256SUMS lists
+// the checksum of each package it ships.
+func fetchLatestReleaseFromWeb(ctx context.Context, client *http.Client, arch string) (packageRelease, error) {
+	noRedirect := *client
+	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, releasesWebBase+"/latest", nil)
+	if err != nil {
+		return packageRelease{}, err
+	}
+	request.Header.Set("User-Agent", "lazygitGo-update-check")
+	response, err := noRedirect.Do(request)
+	if err != nil {
+		return packageRelease{}, err
+	}
+	response.Body.Close()
+	location, err := response.Location()
+	if err != nil {
+		return packageRelease{}, fmt.Errorf("the release page answered %s", response.Status)
+	}
+	tag := path.Base(location.Path)
+	version := strings.TrimPrefix(tag, "v")
+	if !strings.HasPrefix(tag, "v") || version == "" || strings.ContainsAny(version, "/?#") {
+		return packageRelease{}, fmt.Errorf("the release page named no version")
+	}
+	result := packageRelease{Version: version, Page: releasesWebBase + "/tag/" + tag}
+
+	name := "lazygitgo_" + version + "_" + arch + ".deb"
+	request, err = http.NewRequestWithContext(ctx, http.MethodGet, releasesWebBase+"/download/"+tag+"/SHA256SUMS", nil)
+	if err != nil {
+		return packageRelease{}, err
+	}
+	request.Header.Set("User-Agent", "lazygitGo-update-check")
+	sums, err := client.Do(request)
+	if err != nil {
+		return packageRelease{}, err
+	}
+	defer sums.Body.Close()
+	if sums.StatusCode != http.StatusOK {
+		// A release without checksums can still be announced; it cannot be
+		// installed, because the installer needs a digest to verify.
+		return result, nil
+	}
+	body, err := io.ReadAll(io.LimitReader(sums.Body, 1<<20))
+	if err != nil {
+		return packageRelease{}, err
+	}
+	for _, line := range strings.Split(string(body), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[1] == name {
+			result.DebURL = releasesWebBase + "/download/" + tag + "/" + name
+			result.DebName, result.DebDigest = name, "sha256:"+fields[0]
 			break
 		}
 	}
