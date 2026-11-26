@@ -671,7 +671,8 @@ func (f fakeSession) DeleteSubmodule(context.Context, string) error {
 	return nil
 }
 
-func (f fakeSession) BlameFile(context.Context, repository.File) ([]repository.BlameLine, error) {
+func (f fakeSession) BlameFile(_ context.Context, file repository.File) ([]repository.BlameLine, error) {
+	f.calls.record("blame-file:" + file.Path)
 	return []repository.BlameLine{{Hash: "a1b2c3d4e5f60718", Author: "Ada", Date: "2026-01-01", Text: "changed"}}, nil
 }
 

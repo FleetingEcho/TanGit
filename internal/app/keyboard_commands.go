@@ -271,7 +271,20 @@ func (a *app) registerGitCommands(c *ui.Context) {
 		return
 	}
 	group := a.keyboardActionGroup(c)
+	// The blame view is a read-only report on one file. While it is open the
+	// keys that act on the chosen file (Space to stage, D to discard, I to
+	// ignore, and the rest of the Changes commands) must not fire through it,
+	// so a key pressed over the report does nothing to the working tree.
+	blameOpen := a.blameState != nil || a.blameLoading
+	if blameOpen {
+		a.onShortcut(c, 0, ui.KeyEscape, shortcutDefinition{
+			id: "git/Changes/Close blame", chord: "Esc", label: tr("Close blame"),
+		}, a.closeBlame)
+	}
 	for _, command := range keyboardCommands() {
+		if blameOpen && command.group == "Changes" {
+			continue
+		}
 		// A selected tag's publish action takes the same P as global push.
 		if command.group == "Everywhere" && group == "Tags" && command.key == ui.KeyP && command.mods == ui.Shift {
 			continue

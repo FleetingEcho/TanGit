@@ -71,3 +71,29 @@ func padBlameAuthor(author string, width int) string {
 	}
 	return string(runes) + strings.Repeat(" ", max(0, width-len(runes)))
 }
+
+// closeBlame puts the file's diff back where the blame report was. Bumping the
+// generation also drops a blame still being read, so it cannot reappear.
+func (a *app) closeBlame() {
+	a.blameGeneration++
+	a.blameState = nil
+	a.blameLoading = false
+	a.blameError = ""
+}
+
+// followBlame keeps an open blame on the file the list has chosen. Choosing
+// another file reads that file's blame in place of the old one, so the report
+// never describes a file other than the one selected; a file that cannot be
+// blamed closes it.
+func (a *app) followBlame() {
+	open := a.blameState != nil || a.blameLoading || a.blameError != ""
+	change, ok := a.selectedChange()
+	if !open || !ok || a.blamePath == change.file.Path {
+		return
+	}
+	if change.file.Deleted || change.file.HasMergeConflicts {
+		a.closeBlame()
+		return
+	}
+	a.beginBlame()
+}
