@@ -102,10 +102,18 @@ type app struct {
 	cloneURLError          string
 	cloneBranchError       string
 	cloneDestinationError  string
-	cloneError             string
-	cloneProgress          repository.CloneProgress
-	cloneGeneration        uint64
-	cancelClone            context.CancelFunc
+	// cloneModeChoice is the translated label of the chosen clone mode; the
+	// depth, single-branch and sparse fields only apply to some modes.
+	cloneModeChoice   string
+	cloneDepth        string
+	cloneSingleBranch bool
+	cloneSparse       string
+	cloneDepthError   string
+	cloneSparseError  string
+	cloneError        string
+	cloneProgress     repository.CloneProgress
+	cloneGeneration   uint64
+	cancelClone       context.CancelFunc
 	// pickerOpenMode is Home's transient Git/Editor choice. It is request
 	// policy, not the active workspace's identity and not a persisted setting.
 	pickerOpenMode int

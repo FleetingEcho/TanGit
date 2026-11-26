@@ -171,3 +171,98 @@ func TestCloneRepositoryRejectsCredentialsBeforeCreatingDestination(t *testing.T
 		t.Fatalf("rejected clone created its destination: %v", statErr)
 	}
 }
+
+func TestCloneArgumentsForEachMode(t *testing.T) {
+	cases := []struct {
+		options CloneOptions
+		want    string
+	}{
+		{CloneOptions{}, "clone --progress"},
+		{CloneOptions{Branch: "main", Mode: CloneBlobless}, "clone --progress --branch main --filter=blob:none"},
+		{CloneOptions{Mode: CloneTreeless, SingleBranch: true}, "clone --progress --filter=tree:0 --single-branch"},
+		{CloneOptions{Mode: CloneShallow}, "clone --progress --depth 1 --no-single-branch"},
+		{CloneOptions{Mode: CloneShallow, Depth: 50, SingleBranch: true}, "clone --progress --depth 50 --single-branch"},
+		{CloneOptions{Mode: CloneBlobless, SparsePaths: []string{"cmd"}}, "clone --progress --filter=blob:none --sparse"},
+	}
+	for _, tc := range cases {
+		if got := strings.Join(cloneArguments(tc.options), " "); got != tc.want {
+			t.Errorf("cloneArguments(%+v) = %q, want %q", tc.options, got, tc.want)
+		}
+	}
+}
+
+func TestParseSparsePathsValidatesFolders(t *testing.T) {
+	got, err := ParseSparsePaths(" cmd, internal/app\n/docs/ cmd ")
+	if err != nil || strings.Join(got, "|") != "cmd|internal/app|docs" {
+		t.Fatalf("ParseSparsePaths = %q, %v", got, err)
+	}
+	for _, bad := range []string{"../outside", "a/./b", "-x", "src/*.go", "a\\b", "!keep"} {
+		if _, err := ParseSparsePaths(bad); err == nil {
+			t.Errorf("unsafe sparse folder %q was accepted", bad)
+		}
+	}
+	if _, err := NormalizeCloneOptions(CloneOptions{
+		URL: "https://example.com/o/p.git", Destination: t.TempDir() + "/p", Mode: CloneShallow, Depth: -1,
+	}); err == nil {
+		t.Fatal("negative shallow depth was accepted")
+	}
+}
+
+func TestCloneRepositoryRealPartialShallowAndSparseModes(t *testing.T) {
+	ctx := context.Background()
+	source := filepath.Join(t.TempDir(), "source")
+	if err := os.MkdirAll(filepath.Join(source, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(source, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, source, "init", "--initial-branch=main")
+	runGit(t, source, "config", "user.name", "Clone Test")
+	runGit(t, source, "config", "user.email", "clone@example.com")
+	runGit(t, source, "config", "uploadpack.allowFilter", "true")
+	for index, name := range []string{"app/main.go", "docs/guide.md", "README.md"} {
+		if err := os.WriteFile(filepath.Join(source, name), []byte(strings.Repeat("x", index+1)+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		runGit(t, source, "add", name)
+		runGit(t, source, "commit", "-m", "add "+name)
+	}
+	runGit(t, source, "branch", "topic")
+	remote := "file://" + filepath.ToSlash(source)
+
+	blobless := filepath.Join(t.TempDir(), "blobless")
+	if err := cloneRepository(ctx, CloneOptions{URL: remote, Destination: blobless, Mode: CloneBlobless}, nil, true); err != nil {
+		t.Fatalf("blobless clone: %v", err)
+	}
+	if got := strings.TrimSpace(gitOutput(t, blobless, "config", "remote.origin.partialclonefilter")); got != "blob:none" {
+		t.Fatalf("partial clone filter = %q, want blob:none", got)
+	}
+
+	shallow := filepath.Join(t.TempDir(), "shallow")
+	if err := cloneRepository(ctx, CloneOptions{URL: remote, Destination: shallow, Mode: CloneShallow, Depth: 1}, nil, true); err != nil {
+		t.Fatalf("shallow clone: %v", err)
+	}
+	if got := strings.TrimSpace(gitOutput(t, shallow, "rev-list", "--count", "HEAD")); got != "1" {
+		t.Fatalf("shallow history length = %s, want 1", got)
+	}
+	if got := strings.TrimSpace(gitOutput(t, shallow, "branch", "-r")); !strings.Contains(got, "origin/topic") {
+		t.Fatalf("shallow clone dropped other branches: %q", got)
+	}
+
+	sparse := filepath.Join(t.TempDir(), "sparse")
+	if err := cloneRepository(ctx, CloneOptions{
+		URL: remote, Destination: sparse, Mode: CloneBlobless, SparsePaths: []string{"app"},
+	}, nil, true); err != nil {
+		t.Fatalf("sparse clone: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(sparse, "app", "main.go")); err != nil {
+		t.Fatalf("sparse folder missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(sparse, "docs", "guide.md")); !os.IsNotExist(err) {
+		t.Fatalf("folder outside the sparse set was checked out: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(sparse, "README.md")); err != nil {
+		t.Fatalf("cone mode keeps top-level files: %v", err)
+	}
+}

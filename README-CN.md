@@ -150,7 +150,7 @@ lazygitGo 两者兼顾：沿用 Lazygit 的 Git 命令层，放进原生窗口�
 | Windows（AMD64、ARM64） | 安装程序 |
 | Linux（AMD64、ARM64） | `.deb` 或压缩包。Debian：`sudo apt install ./lazygitgo_*.deb` |
 
-3. 打开本地仓库；点击 **打开 SSH** 操作远程 Linux 仓库；或在首页点击 **克隆**，通过 HTTPS 或 SSH 地址克隆并查看真实进度。克隆使用你现有的 Git 凭据助手或 SSH Agent。
+3. 打开本地仓库；点击 **打开 SSH** 操作远程 Linux 仓库；或在首页点击 **克隆**，通过 HTTPS 或 SSH 地址克隆并查看真实进度。克隆使用你现有的 Git 凭据助手或 SSH Agent。大型仓库可以选择无 Blob、无 Tree 或浅克隆，只取一个分支，或只检出部分文件夹。
 
 **从 TanGit 升级？** 在 **设置 → 更新 → 检查更新** 中安装。原有设置、最近的仓库和工作区都会保留。
 Debian 用户请安装新的 `.deb`，它会替换 `tangit`。[升级详情（英文）](docs/guide.md#upgrade-from-tangit)

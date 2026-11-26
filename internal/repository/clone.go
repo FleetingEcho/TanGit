@@ -25,6 +25,107 @@ type CloneOptions struct {
 	URL         string
 	Destination string
 	Branch      string
+	// Mode trades history or object completeness for clone speed. The zero
+	// value is an ordinary full clone.
+	Mode CloneMode
+	// Depth is the number of commits a shallow clone fetches. It is ignored
+	// by the other modes; zero means one commit.
+	Depth int
+	// SingleBranch fetches only the cloned branch's history.
+	SingleBranch bool
+	// SparsePaths, when present, checks out only these directories with
+	// cone-mode sparse checkout. Every other path stays in history only.
+	SparsePaths []string
+}
+
+// CloneMode selects how much of the remote's history and objects Git fetches.
+type CloneMode int
+
+const (
+	// CloneFull fetches every commit, tree and file.
+	CloneFull CloneMode = iota
+	// CloneBlobless fetches every commit and tree but downloads file contents
+	// on demand (--filter=blob:none). History, blame and log stay complete.
+	CloneBlobless
+	// CloneTreeless fetches commits only and downloads trees and files on
+	// demand (--filter=tree:0). Fastest for build machines; history walks that
+	// read old trees become slow.
+	CloneTreeless
+	// CloneShallow truncates history to Depth commits (--depth).
+	CloneShallow
+)
+
+const maxCloneDepth = 1 << 20
+
+// cloneArguments returns the git clone options for the chosen mode, before
+// the URL and destination.
+func cloneArguments(options CloneOptions) []string {
+	args := []string{"clone", "--progress"}
+	if options.Branch != "" {
+		args = append(args, "--branch", options.Branch)
+	}
+	switch options.Mode {
+	case CloneBlobless:
+		args = append(args, "--filter=blob:none")
+	case CloneTreeless:
+		args = append(args, "--filter=tree:0")
+	case CloneShallow:
+		depth := options.Depth
+		if depth <= 0 {
+			depth = 1
+		}
+		args = append(args, "--depth", strconv.Itoa(depth))
+	}
+	if options.SingleBranch {
+		args = append(args, "--single-branch")
+	} else if options.Mode == CloneShallow {
+		// --depth implies --single-branch; keep the other branches visible
+		// unless the user asked for one branch.
+		args = append(args, "--no-single-branch")
+	}
+	if len(options.SparsePaths) > 0 {
+		args = append(args, "--sparse")
+	}
+	return args
+}
+
+// ParseSparsePaths splits a comma-, space- or newline-separated list of
+// repository directories and validates each one.
+func ParseSparsePaths(raw string) ([]string, error) {
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == '\n' || r == '\r' || r == ' ' || r == '\t'
+	})
+	paths := make([]string, 0, len(fields))
+	seen := map[string]bool{}
+	for _, field := range fields {
+		path := strings.Trim(filepath.ToSlash(strings.TrimSpace(field)), "/")
+		if path == "" {
+			continue
+		}
+		if err := validateSparsePath(path); err != nil {
+			return nil, err
+		}
+		if !seen[path] {
+			seen[path] = true
+			paths = append(paths, path)
+		}
+	}
+	return paths, nil
+}
+
+func validateSparsePath(path string) error {
+	if strings.ContainsAny(path, "\x00\r\n*?[]!\\") {
+		return fmt.Errorf("sparse checkout folder %q contains unsupported characters", path)
+	}
+	if strings.HasPrefix(path, "-") || strings.HasPrefix(path, "/") || filepath.IsAbs(path) || filepath.VolumeName(path) != "" {
+		return fmt.Errorf("sparse checkout folder %q must be a relative repository folder", path)
+	}
+	for _, part := range strings.Split(path, "/") {
+		if part == "." || part == ".." {
+			return fmt.Errorf("sparse checkout folder %q must not contain . or ..", path)
+		}
+	}
+	return nil
 }
 
 // CloneProgress is one real progress record parsed from git clone --progress.
@@ -38,6 +139,10 @@ type CloneProgress struct {
 	Known    bool
 	Detail   string
 }
+
+// ErrCloneSparseCheckout reports that the clone succeeded but narrowing it to
+// the chosen folders failed. The destination is a usable repository.
+var ErrCloneSparseCheckout = errors.New("the repository was cloned, but its sparse checkout folders could not be set")
 
 var ErrCloneCredentials = errors.New("repository URL contains credentials or a token; use a Git credential helper or SSH agent instead")
 
@@ -59,6 +164,34 @@ func normalizeCloneOptions(options CloneOptions, allowLocalTransport bool) (Clon
 	}
 	if err := ValidateCloneBranch(options.Branch); err != nil {
 		return CloneOptions{}, err
+	}
+	if options.Mode < CloneFull || options.Mode > CloneShallow {
+		return CloneOptions{}, fmt.Errorf("unknown clone mode %d", options.Mode)
+	}
+	if options.Mode == CloneShallow {
+		if options.Depth < 0 || options.Depth > maxCloneDepth {
+			return CloneOptions{}, errors.New("shallow clone depth must be a positive number of commits")
+		}
+		if options.Depth == 0 {
+			options.Depth = 1
+		}
+	} else {
+		options.Depth = 0
+	}
+	sparse := make([]string, 0, len(options.SparsePaths))
+	for _, path := range options.SparsePaths {
+		path = strings.Trim(filepath.ToSlash(strings.TrimSpace(path)), "/")
+		if path == "" {
+			continue
+		}
+		if err := validateSparsePath(path); err != nil {
+			return CloneOptions{}, err
+		}
+		sparse = append(sparse, path)
+	}
+	options.SparsePaths = sparse
+	if len(sparse) == 0 {
+		options.SparsePaths = nil
 	}
 	absolute, err := filepath.Abs(options.Destination)
 	if err != nil {
@@ -194,11 +327,7 @@ func cloneRepository(ctx context.Context, options CloneOptions, report func(Clon
 	if err != nil {
 		return err
 	}
-	args := []string{"clone", "--progress"}
-	if options.Branch != "" {
-		args = append(args, "--branch", options.Branch)
-	}
-	args = append(args, "--", options.URL, options.Destination)
+	args := append(cloneArguments(options), "--", options.URL, options.Destination)
 	command := exec.CommandContext(ctx, "git", args...)
 	configureBackgroundCommand(command)
 	configureCloneCommand(command)
@@ -214,14 +343,43 @@ func cloneRepository(ctx context.Context, options CloneOptions, report func(Clon
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
 	}
-	if err == nil {
+	if err != nil {
+		return cloneFailure("clone repository", err, diagnostics.String())
+	}
+	if len(options.SparsePaths) == 0 {
 		return nil
 	}
-	diagnostic := sanitizeCloneDiagnostic(diagnostics.String())
-	if diagnostic == "" {
-		return fmt.Errorf("clone repository: %w", err)
+	return setSparseCheckout(ctx, options.Destination, options.SparsePaths)
+}
+
+// setSparseCheckout narrows a --sparse clone to the chosen directories. The
+// clone itself already succeeded, so a failure here leaves a usable
+// repository with only the top-level files checked out.
+func setSparseCheckout(ctx context.Context, destination string, paths []string) error {
+	args := append([]string{"-C", destination, "sparse-checkout", "set", "--cone"}, paths...)
+	command := exec.CommandContext(ctx, "git", args...)
+	configureBackgroundCommand(command)
+	configureCloneCommand(command)
+	command.WaitDelay = 2 * time.Second
+	diagnostics := &boundedDiagnostic{limit: cloneDiagnosticLimit}
+	command.Stdout = diagnostics
+	command.Stderr = diagnostics
+	err := command.Run()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
 	}
-	return fmt.Errorf("clone repository: %w: %s", err, diagnostic)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrCloneSparseCheckout, cloneFailure("git sparse-checkout", err, diagnostics.String()))
+	}
+	return nil
+}
+
+func cloneFailure(action string, err error, output string) error {
+	diagnostic := sanitizeCloneDiagnostic(output)
+	if diagnostic == "" {
+		return fmt.Errorf("%s: %w", action, err)
+	}
+	return fmt.Errorf("%s: %w: %s", action, err, diagnostic)
 }
 
 // Clone lets the app reuse Opener for both opening and cloning. Tests whose
