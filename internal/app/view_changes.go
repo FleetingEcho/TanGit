@@ -921,7 +921,7 @@ func (a *app) changeHeaderRow(c *ui.Context, title string, icon *ui.SVG, count i
 					return requireChangesSession(session).StageAll(ctx)
 				}, nil)
 			})
-		flatIconButton(c, "Discard all changes", "Discard every change", revertIcon, 14, 4,
+		flatIconButton(c, "Discard all changes", "Discard every change", undoIcon, 14, 4,
 			a.actionBusy || len(a.snapshot.Files) == 0, a.confirmDiscardAllChanges)
 	})
 }
@@ -1022,7 +1022,7 @@ func (a *app) changeFileRow(row ui.ListRow, change changeRow, index int, guides 
 					rowIconButton(row.Context, trf("Stage %s", file.Path), "Stage this file", stageIcon, func() {
 						a.beginStageFile(file, true)
 					})
-					rowIconButton(row.Context, trf("Discard %s", file.Path), "Discard changes…", revertIcon, func() {
+					rowIconButton(row.Context, trf("Discard %s", file.Path), "Discard changes…", undoIcon, func() {
 						a.confirmDiscardFile(file)
 					})
 				}

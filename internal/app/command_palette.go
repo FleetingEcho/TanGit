@@ -72,6 +72,10 @@ func (s *shell) commandContext() commandContext {
 // openCommandPalette opens only over ordinary application content. Existing
 // safety forms and confirmations always keep the top-most interaction scope.
 func (s *shell) openCommandPalette(c *ui.Context) {
+	s.openCommandPaletteWithQuery(c, "")
+}
+
+func (s *shell) openCommandPaletteWithQuery(c *ui.Context, query string) {
 	if s == nil || s.palette.open || s.activity.open {
 		return
 	}
@@ -94,7 +98,10 @@ func (s *shell) openCommandPalette(c *ui.Context) {
 	if _, ok := s.palette.shellRun.entry(); !ok {
 		s.palette.shellRun = paletteShellRun{}
 	}
-	s.palette.query = ""
+	s.palette.query = query
+	if query == "/" {
+		s.palette.filesChangedOnly = false
+	}
 	s.palette.selected = 0
 	s.palette.notice = ""
 	s.palette.revealSelection = true

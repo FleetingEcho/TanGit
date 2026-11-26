@@ -1192,6 +1192,7 @@ func (s *shell) registerShortcuts(c *ui.Context) {
 		return
 	}
 	s.onShortcut(c, ui.Cmd|ui.Shift, ui.KeyP, shortcut("commands/palette", cmdShortcutChord()+"+Shift+P", tr("Open Command Palette")), func() { s.openCommandPalette(c) })
+	s.onShortcut(c, ui.Cmd, ui.KeyP, shortcut("commands/find-file", cmdShortcutChord()+"+P", tr("Search files")), func() { s.openCommandPaletteWithQuery(c, "/") })
 	s.onShortcut(c, ui.Cmd|ui.Shift, ui.KeyA, shortcut("activity/open", cmdShortcutChord()+"+Shift+A", tr("Open Activity Center")), func() { s.openActivityCenter() })
 	s.onShortcut(c, ui.Cmd, ui.KeyT, shortcut("tabs/new-home", cmdShortcutChord()+"+T", tr("Open a new tab or the picker")), func() { s.request(s.showHome) })
 	s.onShortcut(c, ui.Cmd, ui.KeyW, shortcut("tabs/close-active", cmdShortcutChord()+"+W", tr("Close the active tab")), func() {
