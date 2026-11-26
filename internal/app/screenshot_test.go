@@ -418,6 +418,9 @@ func (s screenshotSession) CommitFiles(context.Context, repository.Commit) ([]re
 		{Path: "docs/notes.md", Status: "A", LinesAdded: 24},
 	}, nil
 }
+func (s screenshotSession) CommitFilesWithoutStats(ctx context.Context, commit repository.Commit) ([]repository.CommitFile, error) {
+	return s.CommitFiles(ctx, commit)
+}
 func (s screenshotSession) RestoreCommitFile(context.Context, repository.Commit, repository.CommitFile) error {
 	return nil
 }

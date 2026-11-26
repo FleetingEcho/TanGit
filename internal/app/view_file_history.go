@@ -192,6 +192,31 @@ func (a *app) closeFileHistory() {
 	a.resetFileHistoryCommit()
 }
 
+func (a *app) openFileHistoryCommitInHistory(hash string) {
+	if !a.sectionVisible(sectionHistory) {
+		return
+	}
+	a.closeFileHistory()
+	a.setWorkspaceTab(sectionHistory)
+	for index, commit := range a.visibleCommits() {
+		if commit.Hash == hash {
+			a.commitList.Choose(index)
+			a.commitList.ScrollTo(index, ui.Center)
+			return
+		}
+	}
+
+	// The file's commits can be older than the loaded History page or outside its filter.
+	query := a.commitQueryFor(sectionHistory)
+	query.reset()
+	query.applied = repository.CommitFilter{Query: hash}
+	query.draft = query.applied
+	query.limit = repository.SnapshotCommitLimit
+	a.commitList.Choose(-1)
+	a.resetCommitDetails()
+	a.runCommitFilter(sectionHistory, "")
+}
+
 // resetFileHistoryCommit drops the second and third columns, and the reads
 // they had in flight.
 func (a *app) resetFileHistoryCommit() {
@@ -239,7 +264,7 @@ func (a *app) loadFileHistoryCommit(commit repository.Commit, force bool) {
 	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
-		files, err := requireHistorySession(session).CommitFiles(ctx, commit)
+		files, err := requireHistorySession(session).CommitFilesWithoutStats(ctx, commit)
 		a.updateChanged(func() bool {
 			if token != a.fileHistoryFilesToken || !a.fileHistoryOpen || a.fileHistoryPath != path {
 				return false
@@ -261,7 +286,6 @@ func (a *app) loadFileHistoryCommit(commit repository.Commit, force bool) {
 				}
 			}
 			a.fileHistoryFileList.Choose(choice)
-			// Choose does not scroll: bring the file this drawer is about into view.
 			a.fileHistoryFileList.ScrollTo(choice, ui.Center)
 			a.loadFileHistoryDiff(commit, files[choice], true)
 			return true
@@ -442,7 +466,10 @@ func (a *app) fileHistoryCommitsView(c *ui.Context) {
 			list := a.keyboardList(c, &a.fileHistoryList, len(a.fileHistoryCommits)).Grow(1).Rows(func(row ui.ListRow) {
 				commit := a.fileHistoryCommits[row.Index]
 				services := row.Context.Services()
-				ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(6, 8).Children(func() {
+				element := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).
+					Padding(6, 8+scrollbarGutter(theme), 6, 8)
+				reveal := element.Hovered() && a.sectionVisible(sectionHistory)
+				element.Children(func() {
 					a.authorAvatar(row.Context, commit, 18)
 					ui.Column(row.Context).Gap(2).Grow(1).Children(func() {
 						ui.Text(row.Context, commit.Subject).SingleLine()
@@ -454,7 +481,16 @@ func (a *app) fileHistoryCommitsView(c *ui.Context) {
 							}
 						})
 					})
-					commitDiffStatBlocks(row.Context, commit.ShortHash, commit.LinesAdded, commit.LinesDeleted)
+					if reveal {
+						row.Context.Key("file-history-open-in-history")
+						ui.ButtonBase(row.Context).Padding(3).Shrink(0).
+							Label(tr("Open in History")).Tooltip(tr("Open this commit in History")).
+							OnClick(func() { a.openFileHistoryCommitInHistory(commit.Hash) }).
+							Children(func() {
+								ui.Icon(row.Context, historyIcon).FontSize(rowActionIconSize(theme)).
+									TextColor(secondaryRowColor(theme, row))
+							})
+					}
 				}).OnClick(func() {
 					a.fileHistorySelected = row.Index
 					a.loadFileHistoryCommit(commit, false)
@@ -544,7 +580,6 @@ func (a *app) fileHistoryFilesView(c *ui.Context) {
 						ui.Text(row.Context, "← "+file.PreviousPath).
 							TextColor(secondaryRowColor(theme, row)).FontSize(theme.FontSize - 1).SingleLine()
 					}
-					fileDiffStatCounts(row.Context, file.Path, file.LinesAdded, file.LinesDeleted)
 					statusSlot(row.Context, statusLetter(file.Status), rowStatusColor(theme, row, style))
 				}).OnClick(func() {
 					a.fileHistorySelectedFile = row.Index

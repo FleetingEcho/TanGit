@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -190,12 +191,17 @@ func (s *blockedProgressiveSession) DetailsSnapshot(context.Context) (repository
 }
 
 func progressiveOpenFixture(t *testing.T, detailsErr error) (*app, *updates, *blockedProgressiveSession) {
+	return progressiveOpenFixtureWithHead(t, detailsErr, "")
+}
+
+func progressiveOpenFixtureWithHead(t *testing.T, detailsErr error, head string) (*app, *updates, *blockedProgressiveSession) {
 	t.Helper()
 	session := &blockedProgressiveSession{
 		core: repository.Snapshot{
-			Root:   "/work/progressive",
-			Branch: "main",
-			Files:  []repository.File{{Path: "core.txt", Status: " M", Unstaged: true, Tracked: true}},
+			Root:     "/work/progressive",
+			Branch:   "main",
+			HeadHash: head,
+			Files:    []repository.File{{Path: "core.txt", Status: " M", Unstaged: true, Tracked: true}},
 		},
 		details: repository.Snapshot{
 			Commits:  []repository.Commit{{Hash: "detail-commit", Subject: "Deferred history"}},
@@ -207,6 +213,7 @@ func progressiveOpenFixture(t *testing.T, detailsErr error) (*app, *updates, *bl
 		detailsRelease: make(chan struct{}),
 	}
 	session.fakeSession.snapshot = session.core.WithDetails(session.details)
+	session.fakeSession.calls = &callRecorder{}
 	a := newApp(fixtureOpener{session: session})
 	a.path = session.core.Root
 	updated := newUpdates()
@@ -215,6 +222,52 @@ func progressiveOpenFixture(t *testing.T, detailsErr error) (*app, *updates, *bl
 	updated.waitForUpdate(t)
 	<-session.detailsStart
 	return a, updated, session
+}
+
+func TestProgressiveOpenShowsCommitPagesBeforeDetailsFinish(t *testing.T) {
+	a, updated, session := progressiveOpenFixtureWithHead(t, nil, "detail-commit")
+	defer close(session.detailsRelease)
+	a.setWorkspaceTab(sectionChanges)
+	tester := ui.NewTester(a.view, 1280, 800)
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	for {
+		updated.flushPending()
+		if len(a.historyFilter.matches) > 0 {
+			break
+		}
+		select {
+		case <-updated.done:
+		case <-timer.C:
+			t.Fatalf("History waited for the repository details: %q", tester.Texts())
+		}
+	}
+	a.setWorkspaceTab(sectionHistory)
+	tester.Frame()
+	if !a.repositoryDetailsLoading || !tester.HasText("Deferred history") {
+		t.Fatalf("History waited for the repository details: %q", tester.Texts())
+	}
+	if a.selectedCommit != 0 || tester.HasText("Select a commit") {
+		t.Fatalf("entering History did not select its first commit: index=%d", a.selectedCommit)
+	}
+	h := &harness{app: a, tester: tester, updates: updated}
+	h.waitFor(t, "the first commit's diff", func() bool {
+		return a.commitDiffHash == "detail-commit" && a.commitDiffState != nil
+	})
+	a.setWorkspaceTab(sectionGraph)
+	tester.Frame()
+	if !tester.HasText("Deferred history") {
+		t.Fatalf("Graph did not reuse the loaded branch page: %q", tester.Texts())
+	}
+	searches := 0
+	for _, call := range session.calls.all() {
+		if call == "search-commits" {
+			searches++
+		}
+	}
+	if searches != 1 {
+		t.Fatalf("initial History and Graph needed %d branch searches, want one", searches)
+	}
 }
 
 func TestProgressiveOpenShowsCoreBeforeDetailsFinish(t *testing.T) {

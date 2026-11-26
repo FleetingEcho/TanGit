@@ -805,6 +805,10 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 // tree useful. Snapshot and progressive opening attach them to a core with
 // WithDetails rather than duplicating their installation rules.
 func (s *gitSession) DetailsSnapshot(ctx context.Context) (Snapshot, error) {
+	return s.DetailsSnapshotWithCommitPage(ctx, nil)
+}
+
+func (s *gitSession) DetailsSnapshotWithCommitPage(ctx context.Context, publish func([]Commit)) (Snapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return Snapshot{}, err
 	}
@@ -816,6 +820,10 @@ func (s *gitSession) DetailsSnapshot(ctx context.Context) (Snapshot, error) {
 	commits := make([]Commit, 0, len(modelCommits))
 	for _, commit := range modelCommits {
 		commits = append(commits, snapshotCommit(commit))
+	}
+	if publish != nil && len(commits) > 0 && ctx.Err() == nil {
+		publish(commits)
+		commits = slices.Clone(commits)
 	}
 	if _, err := s.withCommitLineStats(ctx, commits); err != nil {
 		return Snapshot{}, err
@@ -3464,6 +3472,14 @@ func (s *gitSession) currentBranch() (*models.Branch, error) {
 }
 
 func (s *gitSession) CommitFiles(ctx context.Context, commit Commit) ([]CommitFile, error) {
+	return s.commitFiles(ctx, commit, true)
+}
+
+func (s *gitSession) CommitFilesWithoutStats(ctx context.Context, commit Commit) ([]CommitFile, error) {
+	return s.commitFiles(ctx, commit, false)
+}
+
+func (s *gitSession) commitFiles(ctx context.Context, commit Commit, includeStats bool) ([]CommitFile, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -3475,15 +3491,18 @@ func (s *gitSession) CommitFiles(ctx context.Context, commit Commit) ([]CommitFi
 	if err != nil {
 		return nil, fmt.Errorf("load commit files: %w", err)
 	}
-	output, err := s.cmd.New([]string{
-		"git", "diff", "--no-ext-diff", "--numstat", "-z",
-		fmt.Sprintf("--find-renames=%d%%", s.renameSimilarityThreshold),
-		from, commit.Hash,
-	}).RunWithOutput()
-	if err != nil {
-		return nil, fmt.Errorf("load commit line statistics: %w", err)
+	var stats map[string]commitLineStats
+	if includeStats {
+		output, err := s.cmd.New([]string{
+			"git", "diff", "--no-ext-diff", "--numstat", "-z",
+			fmt.Sprintf("--find-renames=%d%%", s.renameSimilarityThreshold),
+			from, commit.Hash,
+		}).RunWithOutput()
+		if err != nil {
+			return nil, fmt.Errorf("load commit line statistics: %w", err)
+		}
+		stats = parseCommitLineStats(output)
 	}
-	stats := parseCommitLineStats(output)
 	result := make([]CommitFile, 0, len(files))
 	for _, file := range files {
 		stat := stats[file.Path]
@@ -3721,6 +3740,22 @@ func commitFilterBounds(filter CommitFilter) (since, until time.Time, err error)
 // snapshot carries, so a match older than that page is still found, and a
 // branch's own history can be searched without checking it out.
 func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]Commit, error) {
+	return s.SearchCommitsProgressively(ctx, filter, nil)
+}
+
+func (s *gitSession) SearchCommitsProgressively(ctx context.Context, filter CommitFilter, publish func([]Commit)) ([]Commit, error) {
+	commits, err := s.searchCommits(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	if publish != nil && len(commits) > 0 && ctx.Err() == nil {
+		publish(commits)
+		commits = slices.Clone(commits)
+	}
+	return s.withCommitLineStats(ctx, commits)
+}
+
+func (s *gitSession) searchCommits(ctx context.Context, filter CommitFilter) ([]Commit, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -3754,7 +3789,7 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 			}
 			commits = matching
 		}
-		return s.withCommitLineStats(ctx, commits)
+		return commits, nil
 	}
 
 	args := []string{"git", "log", fmt.Sprintf("--max-count=%d", filter.Limit), commitLogFormat}
@@ -3786,7 +3821,7 @@ func (s *gitSession) SearchCommits(ctx context.Context, filter CommitFilter) ([]
 		}
 		return nil, fmt.Errorf("search commits: %w", err)
 	}
-	return s.withCommitLineStats(ctx, parseCommitLog(output))
+	return parseCommitLog(output), nil
 }
 
 // isUnbornBranch recognizes only the checked-out symbolic branch whose ref
@@ -3972,18 +4007,12 @@ func (s *gitSession) FileCommits(ctx context.Context, path string, limit, skip i
 	for _, commit := range modelCommits {
 		commits = append(commits, snapshotCommit(commit))
 	}
-	return s.withCommitStatsWithin(ctx, commits), nil
+	return commits, nil
 }
 
-const (
-	// fileHistoryReadTimeout bounds `git log -- <path>`, which on a huge
-	// history can walk every commit to find a few that touched the file.
-	fileHistoryReadTimeout = 60 * time.Second
-	// fileHistoryStatsGrace is how long the +/- counts may delay the list.
-	// They are decoration; the list shows without them if they are slow, for
-	// example behind a History read holding the same lock.
-	fileHistoryStatsGrace = 3 * time.Second
-)
+// fileHistoryReadTimeout bounds `git log -- <path>`, which on a huge
+// history can walk every commit to find a few that touched the file.
+const fileHistoryReadTimeout = 60 * time.Second
 
 // fileCommitsWithin reads the commits of a file, giving up after
 // fileHistoryReadTimeout or when ctx ends. Git is not interruptible here, so
@@ -4007,32 +4036,6 @@ func (s *gitSession) fileCommitsWithin(ctx context.Context, path string, limit i
 		return nil, fmt.Errorf("Git took longer than %d seconds. This repository is large: turn on the commit-graph in Optimize repository performance, then try again", int(fileHistoryReadTimeout/time.Second))
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	}
-}
-
-// withCommitStatsWithin adds line counts to commits, but returns them as they
-// are, without counts, when the counts are slow to arrive. The read continues
-// and caches its result for the next time.
-func (s *gitSession) withCommitStatsWithin(ctx context.Context, commits []Commit) []Commit {
-	type result struct{ commits []Commit }
-	done := make(chan result, 1)
-	input := slices.Clone(commits)
-	go func() {
-		counted, err := s.withCommitLineStats(ctx, input)
-		if err != nil {
-			counted = input
-		}
-		done <- result{counted}
-	}()
-	timer := time.NewTimer(fileHistoryStatsGrace)
-	defer timer.Stop()
-	select {
-	case r := <-done:
-		return r.commits
-	case <-timer.C:
-		return commits
-	case <-ctx.Done():
-		return commits
 	}
 }
 

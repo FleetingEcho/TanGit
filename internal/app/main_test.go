@@ -690,6 +690,10 @@ func (f fakeSession) CommitFiles(_ context.Context, commit repository.Commit) ([
 	}, nil
 }
 
+func (f fakeSession) CommitFilesWithoutStats(ctx context.Context, commit repository.Commit) ([]repository.CommitFile, error) {
+	return f.CommitFiles(ctx, commit)
+}
+
 func (f fakeSession) CommitFileDiff(_ context.Context, commit repository.Commit, file repository.CommitFile, options repository.DiffOptions) (repository.Diff, error) {
 	f.calls.record("commit-file-diff:" + commit.Hash + ":" + file.Path)
 	return repository.Diff{NewText: "changed\n", Kind: "Commit"}, nil

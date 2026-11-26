@@ -146,6 +146,10 @@ func (a *app) applyDefaultCommitFilters(snapshot repository.Snapshot) {
 	if branch == "" || len(snapshot.Commits) == 0 {
 		return
 	}
+	a.openDefaultCommitFilters(branch)
+}
+
+func (a *app) openDefaultCommitFilters(branch string) {
 	for _, target := range [...]int{sectionHistory, sectionGraph} {
 		query := a.commitQueryFor(target)
 		query.applied = repository.CommitFilter{Branch: branch}
@@ -154,8 +158,8 @@ func (a *app) applyDefaultCommitFilters(snapshot repository.Snapshot) {
 		query.limit = repository.SnapshotCommitLimit
 		query.matches = nil
 		query.more = false
-		a.runCommitFilter(target, "")
 	}
+	a.runCommitFilterQueries("", true, sectionHistory, sectionGraph)
 }
 
 // keepCommitFilterDefault holds a commit page's filter on the branch checked
@@ -329,10 +333,16 @@ func (a *app) runCommitFilter(target int, selectedHash string) {
 }
 
 func (a *app) runCommitFilterMode(target int, selectedHash string, resetScroll bool) {
+	a.runCommitFilterQueries(selectedHash, resetScroll, target)
+}
+
+// The two default pages can share one initial query. Each page owns its token
+// and can change its filter or page size while that read is in flight.
+func (a *app) runCommitFilterQueries(selectedHash string, resetScroll bool, targets ...int) {
 	if a.session == nil {
 		return
 	}
-	query := a.commitQueryFor(target)
+	query := a.commitQueryFor(targets[0])
 	filter := query.applied
 	if filter.Limit <= 0 {
 		filter.Limit = query.limit
@@ -343,43 +353,75 @@ func (a *app) runCommitFilterMode(target int, selectedHash string, resetScroll b
 	session := a.session
 	repositoryGeneration := a.generation
 	ctx := a.repositoryWork.Context()
-	query.token++
-	token := query.token
-	query.loading = true
-	query.err = ""
+	tokens := make([]uint64, len(targets))
+	for i, target := range targets {
+		query := a.commitQueryFor(target)
+		query.token++
+		tokens[i] = query.token
+		query.loading = true
+		query.err = ""
+	}
+	publish := func(commits []repository.Commit, err error, statsOnly bool) {
+		a.updateChanged(func() bool {
+			if repositoryGeneration != a.generation {
+				return false
+			}
+			changed := false
+			for i, target := range targets {
+				query := a.commitQueryFor(target)
+				if query.token != tokens[i] {
+					continue
+				}
+				changed = true
+				if statsOnly {
+					query.matches = commits
+					continue
+				}
+				a.publishCommitFilter(target, selectedHash, filter.Limit, resetScroll, commits, err)
+			}
+			return changed
+		})
+	}
 	go func() {
 		defer a.recoverBackground()
+		if progressive, ok := session.(repository.ProgressiveCommitSession); ok {
+			published := false
+			commits, err := progressive.SearchCommitsProgressively(ctx, filter, func(page []repository.Commit) {
+				published = true
+				publish(page, nil, false)
+			})
+			if !published || err == nil {
+				publish(commits, err, published)
+			}
+			return
+		}
 		commits, err := requireCommitSearchSession(session).SearchCommits(ctx, filter)
-		a.update(func() {
-			if repositoryGeneration != a.generation || token != query.token {
-				return
-			}
-			query.loading = false
-			if err != nil {
-				query.err = safeError(err)
-				return
-			}
-			query.matches = commits
-			query.more = len(commits) >= filter.Limit
-			// A read for a page the user has left must not move the
-			// selection the page on screen is showing.
-			if a.workspaceTab == target {
-				// A newer selection wins over a stale read initiated for the
-				// previous choice. Empty retains the normal initial selection.
-				currentSelection := commitHashAt(a.visibleCommits(), a.selectedCommit)
-				if selectedHash != "" && currentSelection != selectedHash {
-					a.selectedCommit = selectedCommitIndex(commits, currentSelection)
-					return
-				}
-				a.selectedCommit = selectedCommitIndex(commits, selectedHash)
-				if resetScroll {
-					a.commitList.ScrollTo(0, ui.Start)
-					// Otherwise list keys preserve the reader's commit without
-					// overwriting a newer manual scroll with an older row index.
-				}
-			}
-		})
+		publish(commits, err, false)
 	}()
+}
+
+func (a *app) publishCommitFilter(target int, selectedHash string, limit int, resetScroll bool, commits []repository.Commit, err error) {
+	query := a.commitQueryFor(target)
+	query.loading = false
+	if err != nil {
+		query.err = safeError(err)
+		return
+	}
+	currentSelection := commitHashAt(a.visibleCommits(), a.selectedCommit)
+	query.matches = commits
+	query.more = len(commits) >= limit
+	if a.workspaceTab != target {
+		return
+	}
+	// A newer choice wins while the previous query was running.
+	if selectedHash != "" && currentSelection != "" && currentSelection != selectedHash {
+		a.commitList.Choose(selectedCommitIndex(commits, currentSelection))
+		return
+	}
+	a.commitList.Choose(selectedCommitIndex(commits, selectedHash))
+	if resetScroll {
+		a.commitList.ScrollTo(0, ui.Start)
+	}
 }
 
 // requestMoreFilteredCommits pages target's filtered history in: Git's log

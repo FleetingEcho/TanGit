@@ -187,6 +187,7 @@ type shell struct {
 	updaterEnabled  bool
 	checkForUpdates func()
 	stopUpdateWatch func()
+	packageUpdate   packageUpdateState
 
 	// crash is a fault caught while drawing the chrome. The title bar falls
 	// back to a safe screen rather than taking the window with it.
@@ -450,6 +451,7 @@ func (s *shell) view(c *ui.Context) {
 	// window while existing app safety modals retain opening priority.
 	s.commandPaletteView(c)
 	s.activityCenterView(c)
+	s.packageUpdateView(c)
 
 	// The page settles its own theme through the shared context. Clear the
 	// root last so neither that call nor the shell's replaces the transparent

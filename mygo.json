@@ -16,7 +16,8 @@
   },
   "linux": {
     "depends": [
-      "libayatana-appindicator3-1"
+      "libayatana-appindicator3-1",
+      "pkexec | policykit-1"
     ],
     "webview": false,
     "command": "lazygitGo",

@@ -1283,8 +1283,13 @@ func (a *app) setWorkspaceTab(tab int) {
 	}
 	a.syncNavSelection()
 	a.showCommitForm = false
-	if isCommitSection(previous) && isCommitSection(tab) {
-		a.selectedCommit = selectedCommitIndex(a.visibleCommits(), selectedHash)
+	if isCommitSection(tab) {
+		commits := a.visibleCommits()
+		// The first page can finish loading while another section is open.
+		// Select its first commit if there is no valid choice to carry over.
+		if isCommitSection(previous) || a.selectedCommit < 0 || a.selectedCommit >= len(commits) {
+			a.commitList.Choose(selectedCommitIndex(commits, selectedHash))
+		}
 	}
 }
 

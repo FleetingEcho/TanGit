@@ -11,10 +11,8 @@ import (
 	"time"
 )
 
-// A copy installed by a package manager, such as the .deb in /opt, cannot
-// replace itself, and a repository without an apt source never gets updates
-// from the package manager either. For those installs lazygitGo checks GitHub's
-// latest release itself and points to the package to install.
+// Package-managed builds read the release feed directly so the Debian
+// installation can be updated through APT.
 
 // latestReleaseAPI is where the newest published release is read from. It is a
 // variable so tests can point it at a local server.
@@ -25,8 +23,9 @@ type packageRelease struct {
 	Version string
 	Page    string
 	// DebURL is the .deb for this machine's architecture, "" when none is listed.
-	DebURL  string
-	DebName string
+	DebURL    string
+	DebName   string
+	DebDigest string
 }
 
 type githubRelease struct {
@@ -34,8 +33,9 @@ type githubRelease struct {
 	HTMLURL string `json:"html_url"`
 	Draft   bool   `json:"draft"`
 	Assets  []struct {
-		Name string `json:"name"`
-		URL  string `json:"browser_download_url"`
+		Name   string `json:"name"`
+		URL    string `json:"browser_download_url"`
+		Digest string `json:"digest"`
 	} `json:"assets"`
 }
 
@@ -64,8 +64,8 @@ func fetchLatestRelease(ctx context.Context, client *http.Client, arch string) (
 	}
 	result := packageRelease{Version: strings.TrimPrefix(strings.TrimSpace(release.TagName), "v"), Page: release.HTMLURL}
 	for _, asset := range release.Assets {
-		if strings.HasSuffix(asset.Name, "_"+arch+".deb") {
-			result.DebURL, result.DebName = asset.URL, asset.Name
+		if asset.Name == "lazygitgo_"+result.Version+"_"+arch+".deb" {
+			result.DebURL, result.DebName, result.DebDigest = asset.URL, asset.Name, asset.Digest
 			break
 		}
 	}
