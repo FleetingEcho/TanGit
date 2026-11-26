@@ -630,6 +630,23 @@ func buildStaticCommandSpecs() []commandSpec {
 		{ID: commandCommitStaged, Label: "Commit staged changes", Detail: "Write a commit message for the current staged changes", Keywords: []string{"commit", "save", "staged"}, Group: commandGroupChanges, Chord: "c", Icon: commandIconCommit, Resolve: commitState, Run: func(ctx commandContext) { ctx.App.showCommitForm = true }},
 		{ID: commandContinue, Label: "Continue the interrupted operation", Keywords: []string{"continue", "merge", "rebase", "cherry-pick"}, Group: commandGroupRepository, Icon: commandIconContinue, Resolve: continueState, Run: func(ctx commandContext) { ctx.App.confirmContinueOperation() }},
 		{ID: commandOpenRecovery, Label: "Open Safety Journal", Keywords: []string{"recovery", "undo", "journal", "operations"}, Group: commandGroupRepository, Icon: commandIconActivity, Glyph: reflogIcon, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openActivityRecovery() }},
+		{ID: "history/resume-code-changes", Label: "Resume code change search", Keywords: []string{"previous", "last", "results", "pickaxe", "history", "code"}, Group: commandGroupHistory, Glyph: searchIcon,
+			Resolve: func(ctx commandContext) commandState {
+				state := historyChangesCommandState(ctx)
+				if ctx.App == nil {
+					state.Visible = false
+					return state
+				}
+				search := &ctx.App.historyChanges
+				// Leaving for a result keeps the search; offer it first so the
+				// results are one keystroke away instead of searched again.
+				state.Visible = state.Visible && search.started
+				if state.Visible {
+					state.ContextScore = 20000
+				}
+				return state
+			},
+			Run: func(ctx commandContext) { ctx.App.openHistoryChanges(nil) }},
 		{ID: "history/search-code-changes", Label: historyChangesLabel, Keywords: []string{"git log", "pickaxe", "diff", "history", "code"}, Group: commandGroupHistory, Glyph: searchIcon, Resolve: historyChangesCommandState, Run: func(ctx commandContext) { ctx.App.openHistoryChanges(nil) }},
 		{ID: commandOpenPRChecks, Label: "Open Pull Request Checks", Keywords: []string{"checks", "ci", "pull request", "github"}, Group: commandGroupBranches, Icon: commandIconActivity, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openPullRequestChecks() }},
 	}
@@ -865,7 +882,7 @@ func workspaceState(section int) func(commandContext) commandState {
 		}
 		state.Enabled = true
 		if ctx.App.workspaceTab == section {
-			state.ContextScore = 20
+			state.ContextScore = 10000
 		} else {
 			state.ContextScore = 10
 		}
@@ -942,7 +959,7 @@ func keyboardState(ctx commandContext, command keyboardCommand) commandState {
 		state.DisabledReason = "No staged changes to commit"
 	}
 	if command.group == group || command.group == "Everywhere" {
-		state.ContextScore = 20
+		state.ContextScore = 10000
 	}
 	return state
 }

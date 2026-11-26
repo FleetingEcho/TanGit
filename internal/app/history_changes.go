@@ -70,12 +70,19 @@ func (a *app) openHistoryChanges(query *repository.HistoryChangeQuery) {
 		return
 	}
 	a.closeCommitFilter()
-	if query != nil {
+	if query != nil && !a.historyChangesHolds(*query) {
 		a.resetHistoryChanges()
 		a.historyChanges.draft = *query
 	}
 	a.historyChanges.open = true
 	a.historyChanges.focusPending = true
+}
+
+// historyChangesHolds reports whether the search already has results for this
+// query, so reopening it brings them back instead of searching again.
+func (a *app) historyChangesHolds(query repository.HistoryChangeQuery) bool {
+	search := &a.historyChanges
+	return search.started && search.applied == query
 }
 
 func (a *app) closeHistoryChanges() {
@@ -180,6 +187,13 @@ func (a *app) historyChangesModal(c *ui.Context) {
 				Radius(theme.Radius + 4).Role(ui.RoleDialog).Label(tr(historyChangesLabel))
 			panel.Children(func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+					if a.showCommandPalette != nil {
+						iconButton(c, "Back to Command Palette", "Back to Command Palette", backIcon, false, func() {
+							// Closing keeps the search, so the palette offers to resume it.
+							a.closeHistoryChanges()
+							a.showCommandPalette()
+						})
+					}
 					ui.Text(c, tr(historyChangesLabel)).Grow(1).FontSize(19).Bold()
 					iconButton(c, "Close", "Escape", closeIcon, false, a.closeHistoryChanges)
 				})
@@ -232,30 +246,19 @@ func (a *app) historyChangesScope(c *ui.Context) {
 	draft := &search.draft
 	theme := c.Theme()
 	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Wrap().Children(func() {
-		ui.Row(c).Gap(2).Padding(2).Radius(theme.Radius).Background(theme.Surface).Children(func() {
-			for _, option := range []struct {
-				label string
-				count bool
-			}{
-				{label: "Changed lines"},
-				{label: "Occurrence count", count: true},
-			} {
-				c.Key(option.label)
-				active := draft.Occurrences == option.count
-				button := compactTextButton(ui.ButtonBase(c)).Label(tr(option.label)).Checked(active).
-					Radius(theme.Radius)
-				if active {
-					button.Background(theme.Accent.Alpha(0.18))
-				} else if button.Hovered() {
-					button.Background(theme.SurfaceHover)
-				}
-				if option.count {
-					button.Tooltip(tr("Find commits where the text became more or less frequent in a file."))
-				}
-				button.OnClick(func() { draft.Occurrences = option.count }).
-					Children(func() { ui.Text(c, tr(option.label)).SingleLine() })
+		mode := 0
+		if draft.Occurrences {
+			mode = 1
+		}
+		if ui.Tabs(c, &mode, tr("Changed lines"), tr("Occurrence count")).Label(tr("Search mode")).
+			Tooltip(tr("Find commits where the text became more or less frequent in a file.")).Changed() {
+			draft.Occurrences = mode == 1
+			// The tab picks what the results mean, so a search that already ran
+			// is repeated in the new mode instead of leaving the old results up.
+			if search.started && !search.loading && draft.Text != "" {
+				a.startHistoryChanges()
 			}
-		})
+		}
 		ui.Spacer(c).Grow(1)
 		active := draft.AllBranches || draft.Path != "" || draft.Regex ||
 			(draft.Ref != "" && draft.Ref != "HEAD") || !draft.Since.IsZero() || !draft.Until.IsZero()
@@ -376,7 +379,27 @@ func (a *app) historyChangesResults(c *ui.Context) {
 			ui.Icon(c, fileCodeIcon).FontSize(16).TextColor(theme.TextMuted)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
 				ui.Text(c, hit.Commit.Subject).Bold().SingleLine().Tooltip(hit.Commit.Subject)
-				ui.Text(c, hit.Path).SingleLine().Tooltip(hit.Path).TextColor(theme.TextMuted)
+				location := hit.Path
+				if extra := len(hit.Files) - 1; extra > 0 {
+					location = trf("%s and %d more files", hit.Path, extra)
+				}
+				ui.Row(c).Gap(5).AlignItems(ui.Center).MinWidth(0).Children(func() {
+					ui.Icon(c, fileIcon).FontSize(12).TextColor(theme.TextMuted)
+					ui.Text(c, location).SingleLine().Tooltip(strings.Join(hit.Files, "\n")).TextColor(theme.TextMuted)
+				})
+				if hit.Commit.AuthorName != "" || len(hit.Commit.Tags) > 0 {
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+						if hit.Commit.AuthorName != "" {
+							ui.Icon(c, personIcon).FontSize(12).TextColor(theme.TextMuted)
+							ui.Text(c, hit.Commit.AuthorName).SingleLine().Tooltip(hit.Commit.AuthorEmail).
+								TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+						}
+						for _, tag := range hit.Commit.Tags {
+							ui.Icon(c, tagsIcon).FontSize(12).TextColor(theme.TextMuted)
+							ui.Badge(c, tag).Tooltip(tr("Tag"))
+						}
+					})
+				}
 			})
 			ui.Column(c).AlignItems(ui.End).Gap(2).Children(func() {
 				ui.Text(c, hit.Commit.ShortHash).TextColor(theme.TextMuted).SingleLine()
@@ -420,7 +443,10 @@ func (a *app) historyChangesFooter(c *ui.Context) {
 
 func (a *app) openHistoryChangeHit(hit repository.HistoryChangeHit) {
 	query := a.historyChanges.applied
-	a.closeHistoryChanges()
+	// Leaving for the commit keeps the results, and a search still running
+	// keeps filling them, so reopening the search shows them again.
+	a.historyChanges.open = false
+	a.historyChanges.showFilters = false
 	a.showCommitInHistory(hit.Commit.Hash)
 	a.resetCommitDetails()
 	a.historyDiffTarget = &historyDiffTarget{hash: hit.Commit.Hash, path: hit.Path, change: &query}

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,8 +37,16 @@ const (
 	paletteHistoryShell   = "shell"
 )
 
+// paletteHistoryLimits are the sizes the Recent list can be kept to. A store
+// without a saved limit uses the default.
+var paletteHistoryLimits = []int{100, 200, 500, 1000}
+
+const paletteHistoryDefaultLimit = 500
+
 type paletteHistoryStore struct {
-	Paused  bool                  `json:"paused"`
+	Paused bool `json:"paused"`
+	// Limit is how many of the newest entries are kept; zero means the default.
+	Limit   int                   `json:"limit,omitempty"`
 	Entries []paletteHistoryEntry `json:"entries"`
 }
 
@@ -138,6 +147,23 @@ func (h *paletteHistoryState) decode(data []byte) error {
 	}
 }
 
+func (h *paletteHistoryState) limit() int {
+	if h.Limit <= 0 {
+		return paletteHistoryDefaultLimit
+	}
+	return h.Limit
+}
+
+// trim drops the oldest entries beyond the limit and reports whether it did.
+func (h *paletteHistoryState) trim() bool {
+	if extra := len(h.Entries) - h.limit(); extra > 0 {
+		h.Entries = slices.Clone(h.Entries[extra:])
+		h.rewrite = true
+		return true
+	}
+	return false
+}
+
 func (h *paletteHistoryState) save() error {
 	if h.path == "" {
 		return nil
@@ -195,6 +221,11 @@ func (s *shell) recordPaletteHistory(a *app, entry paletteHistoryEntry) {
 	entry.ID, entry.At = h.nextID, time.Now()
 	entry.Workspace = paletteHistoryWorkspace(a)
 	h.Entries = append(h.Entries, entry)
+	if h.trim() {
+		h.err = safeError(h.save())
+		s.syncPaletteHistoryRecents()
+		return
+	}
 	h.err = safeError(h.appendEntry(entry))
 }
 
@@ -288,17 +319,10 @@ func (s *shell) paletteHistoryView(c *ui.Context) {
 				h.focusList = true
 				h.cursor = 0
 			})
-		toggle := ui.Switch(c, &h.Paused).Label(tr("Pause recording")).Disabled(h.loadFailed)
-		toggle.OnChange(func() { h.err = safeError(h.save()) })
-		ui.Text(c, tr("Pause recording")).SingleLine()
 	})
 	ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
-		ui.Text(c, tr("Newest first")).TextColor(theme.TextMuted).Grow(1)
-		if h.multi {
-			ui.Text(c, trf("%d selected", len(h.selected))).TextColor(theme.TextMuted)
-		}
 		selectButton := compactIconButton(ui.ButtonBase(c)).Label(tr("Select history entries")).Tooltip(tr("Select history entries")).
-			Checked(h.multi).Disabled(len(h.Entries) == 0).Radius(theme.Radius)
+			Checked(h.multi).Disabled(len(h.Entries) == 0 || h.clear).Radius(theme.Radius)
 		if h.multi {
 			selectButton.Background(theme.Accent.Alpha(0.2))
 		} else {
@@ -309,14 +333,28 @@ func (s *shell) paletteHistoryView(c *ui.Context) {
 			h.selected = nil
 			h.focusList = true
 		}).Children(func() { ui.Icon(c, selectCommitsIcon).FontSize(14) })
+		ui.Text(c, tr("Newest first")).TextColor(theme.TextMuted)
+		ui.Badge(c, trf("%d items", len(h.Entries))).Tooltip(tr("Entries saved in Recent"))
+		ui.Spacer(c).Grow(1)
+		if h.multi {
+			ui.Text(c, trf("%d selected", len(h.selected))).TextColor(theme.TextMuted)
+		}
+		if !h.multi {
+			s.paletteHistoryLimitSelect(c)
+		}
 		if h.multi {
 			iconButton(c, "Delete selected", "Delete selected", trashIcon, len(h.selected) == 0 || h.loadFailed, func() {
 				s.deletePaletteHistory(false)
 			})
+			iconButton(c, "Exit selection mode", "Exit selection mode", closeIcon, false, func() {
+				h.multi, h.selected, h.focusList = false, nil, true
+			})
 		}
-		iconButton(c, "Clear history", "Clear history", clearHistoryIcon, len(h.Entries) == 0 || h.loadFailed || h.clear, func() {
-			h.clear = true
-		})
+		if !h.multi {
+			iconButton(c, "Clear history", "Clear history", clearHistoryIcon, len(h.Entries) == 0 || h.loadFailed || h.clear, func() {
+				h.clear = true
+			})
+		}
 	})
 	if h.err != "" {
 		ui.Text(c, h.err).TextColor(theme.Danger)
@@ -345,7 +383,7 @@ func (s *shell) paletteHistoryView(c *ui.Context) {
 		h.list.Selected = &h.cursor
 		h.list.RowHighlighted = func(int) bool { return false }
 		h.cursor = min(max(h.cursor, 0), count-1)
-		list := ui.List(c, &h.list, count).Grow(1).FillWidth().Label(tr("History"))
+		list := ui.List(c, &h.list, count).Grow(1).FillWidth().Label(tr("Recent"))
 		list.ItemKey(func(index int) any { return entryAt(index).ID })
 		list.OnSubmit(func() {
 			if !h.clear && h.cursor >= 0 && h.cursor < count {
@@ -365,6 +403,43 @@ func (s *shell) paletteHistoryView(c *ui.Context) {
 			ui.Button(c, tr("Cancel")).OnClick(func() { h.clear = false })
 			iconTextButton(c, "Confirm clear history", "Confirm clear history", trashIcon, false, func() { s.deletePaletteHistory(true) })
 		})
+	}
+}
+
+// paletteHistoryLimitSelect chooses how many of the newest entries Recent keeps.
+// Choosing a smaller size removes the older entries at once.
+func (s *shell) paletteHistoryLimitSelect(c *ui.Context) {
+	h := &s.palette.history
+	labels := make([]string, len(paletteHistoryLimits))
+	current := ""
+	for index, limit := range paletteHistoryLimits {
+		labels[index] = strconv.Itoa(limit)
+		if limit == h.limit() {
+			current = labels[index]
+		}
+	}
+	chosen := current
+	ui.Select(c, &chosen, labels).Label(tr("Entries to keep")).Tooltip(trf("Keep latest %d", h.limit())).
+		Width(76).Height(26).Disabled(h.loadFailed)
+	if chosen == current {
+		return
+	}
+	for index, label := range labels {
+		if label != chosen {
+			continue
+		}
+		before, beforeLimit := h.Entries, h.Limit
+		h.Limit = paletteHistoryLimits[index]
+		h.trim()
+		if err := h.save(); err != nil {
+			h.Entries, h.Limit = before, beforeLimit
+			h.err = safeError(err)
+			return
+		}
+		h.err = ""
+		s.syncPaletteHistoryRecents()
+		s.savePaletteState()
+		return
 	}
 }
 
@@ -398,7 +473,7 @@ func (s *shell) paletteHistoryRow(row ui.ListRow, entry paletteHistoryEntry) {
 	h, c := &s.palette.history, row.Context
 	theme := c.Theme()
 	text := paletteHistoryText(entry)
-	button := ui.ButtonBase(c).FillWidth().AlignItems(ui.Center).Gap(10).Padding(7, 9).
+	button := ui.ButtonBase(c).FillWidth().AlignItems(ui.Center).Gap(10).Padding(7, 9).Height(54).Margin(0, 0, 4, 0).
 		Radius(theme.Radius).Label(text).Disabled(h.clear)
 	if row.Index == h.cursor && row.ListFocused() {
 		button.Background(theme.Accent.Alpha(0.16)).Border(1, theme.Accent.Alpha(0.45))
@@ -479,8 +554,11 @@ func (s *shell) recallPaletteHistory(entry paletteHistoryEntry) {
 	case paletteHistoryCode:
 		if entry.CodeQuery != nil && a.historyChangesAvailable() {
 			s.closeCommandPalette(true)
+			held := a.historyChangesHolds(*entry.CodeQuery)
 			a.openHistoryChanges(entry.CodeQuery)
-			a.startHistoryChanges()
+			if !held {
+				a.startHistoryChanges()
+			}
 		} else {
 			h.err = tr("Code change search requires the History view")
 		}

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -28,11 +29,11 @@ func TestPaletteHistoryPersistsSearchesCommandsAndPause(t *testing.T) {
 
 	s.openCommandPalette(nil)
 	tt.Frame()
-	if err := tt.Click("History"); err != nil {
+	if err := tt.Click("Recent"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if err := tt.Click("Pause recording"); err != nil {
+	if err := tt.Click("Record history"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -125,5 +126,24 @@ func TestPaletteHistoryRerunsTheClickedAndKeyboardSelectedEntry(t *testing.T) {
 	tt.Frame()
 	if s.palette.open || a.workspaceTab != sectionHistory {
 		t.Fatalf("Enter did not run the selected command: cursor=%d workspace=%d", s.palette.history.cursor, a.workspaceTab)
+	}
+}
+
+func TestPaletteHistoryKeepsOnlyTheNewestEntriesWithinItsLimit(t *testing.T) {
+	s, _, a := readyPaletteShell(t)
+	a.pathUserData = t.TempDir()
+	s.loadPaletteHistory(a)
+	s.palette.history.Limit = 100
+	for i := range 130 {
+		s.recordPaletteHistory(a, paletteHistoryEntry{Kind: paletteHistorySearch, Text: fmt.Sprintf("query %d", i)})
+	}
+	entries := s.palette.history.Entries
+	if len(entries) != 100 || entries[0].Text != "query 30" || entries[99].Text != "query 129" {
+		t.Fatalf("kept %d entries, first %q", len(entries), entries[0].Text)
+	}
+	again := newShell(nil)
+	again.loadPaletteHistory(a)
+	if len(again.palette.history.Entries) != 100 || again.palette.history.Limit != 100 {
+		t.Fatalf("limit was not persisted: %d entries, limit %d", len(again.palette.history.Entries), again.palette.history.Limit)
 	}
 }

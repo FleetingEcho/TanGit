@@ -13,9 +13,16 @@ import (
 )
 
 const (
-	historyChangeWindow = 500
+	// A page scans this many commits unless it finds historyChangeLimit hits
+	// first. Large repositories hold tens of thousands of commits, and each page
+	// ends with a manual "Continue", so a small window made a rare string cost
+	// hundreds of clicks. The page timeout still ends a slow one gracefully
+	// with a resumable partial result.
+	historyChangeWindow = 2000
 	historyChangeLimit  = 50
 	historyChangeBatch  = 25
+	// Over SSH every batch is a round trip, so batches are larger.
+	historyChangeRemoteBatch = 100
 )
 
 type HistoryChangeQuery struct {
@@ -37,7 +44,10 @@ type HistoryChangeCursor struct {
 
 type HistoryChangeHit struct {
 	Commit Commit
-	Path   string
+	// Path is the first matching file, the one the diff opens on. Files lists
+	// every file whose change matched, Path included.
+	Path  string
+	Files []string
 }
 
 type HistoryChangePage struct {
@@ -108,8 +118,12 @@ func (s *gitSession) SearchHistoryChanges(ctx context.Context, query HistoryChan
 	if scope != "." {
 		args = append(args, scope)
 	}
+	batchSize := historyChangeBatch
+	if s.remote != nil {
+		batchSize = historyChangeRemoteBatch
+	}
 	for page.Scanned < min(historyChangeWindow, len(candidates)) {
-		end := min(page.Scanned+historyChangeBatch, historyChangeWindow, len(candidates))
+		end := min(page.Scanned+batchSize, historyChangeWindow, len(candidates))
 		batch := candidates[page.Scanned:end]
 		output, err := s.historyChangeGit(ctx, strings.Join(batch, "\n")+"\n", args...)
 		if err != nil {
@@ -151,9 +165,14 @@ func historyChangeHits(output string) map[string]HistoryChangeHit {
 			continue
 		}
 		commits := parseCommitLog(header)
-		file, _, _ := strings.Cut(paths, "\x00")
-		if len(commits) == 1 && file != "" {
-			hits[commits[0].Hash] = HistoryChangeHit{Commit: commits[0], Path: file}
+		var files []string
+		for _, file := range strings.Split(paths, "\x00") {
+			if file != "" {
+				files = append(files, file)
+			}
+		}
+		if len(commits) == 1 && len(files) > 0 {
+			hits[commits[0].Hash] = HistoryChangeHit{Commit: commits[0], Path: files[0], Files: files}
 		}
 	}
 	return hits

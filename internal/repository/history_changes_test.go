@@ -141,3 +141,33 @@ func TestHistoryChangeSearchBoundsWorkAndResumes(t *testing.T) {
 		t.Fatal("resuming did not continue after the last examined commit")
 	}
 }
+
+func TestHistoryChangeHitListsEveryMatchingFile(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	runGit(t, dir, "config", "user.email", "test@example.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+		text := "needle\n"
+		if name == "c.txt" {
+			text = "other\n"
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "three files")
+	session, err := (Opener{}).Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := session.(HistoryChangeSession).SearchHistoryChanges(context.Background(), HistoryChangeQuery{Text: "needle"}, HistoryChangeCursor{}, nil)
+	if err != nil || len(page.Hits) != 1 {
+		t.Fatalf("hits = %+v, %v", page.Hits, err)
+	}
+	hit := page.Hits[0]
+	if !slices.Equal(hit.Files, []string{"a.txt", "b.txt"}) || hit.Path != "a.txt" || hit.Commit.AuthorName != "Test" {
+		t.Fatalf("hit = %+v", hit)
+	}
+}

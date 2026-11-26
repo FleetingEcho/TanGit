@@ -505,10 +505,6 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 		}
 		s.togglePinnedCommand(candidates[s.palette.selected].ID)
 	}
-	scope := ""
-	if tab := s.activeTab(); tab != nil {
-		scope = tab.title()
-	}
 	move := func(delta int) {
 		if mode == '!' && len(s.palette.shellHistory) > 0 {
 			// Up and Down move between the rows. They walk the shell history
@@ -554,11 +550,14 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 				Role(ui.RoleDialog).Label(tr("Command Palette"))
 			panel.Children(func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
+					if historyOpen {
+						iconButton(c, "Back to Command Palette", "Back to Command Palette", backIcon, false, func() { s.togglePaletteHistory(false) })
+					}
 					ui.Icon(c, searchIcon).FontSize(20).TextColor(theme.Accent)
 					ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
 						title := paletteTitle(s.palette.query, s.palette.target != nil)
 						if historyOpen {
-							ui.Text(c, tr("History")).FontSize(19).Bold()
+							ui.Text(c, tr("Recent")).FontSize(19).Bold()
 							return
 						}
 						ui.Text(c, title).FontSize(19).Bold()
@@ -568,18 +567,30 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 						}
 						ui.Text(c, subtitle).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).SingleLine()
 					})
-					if scope != "" {
-						ui.Badge(c, scope).Tooltip(tr("Commands run against this workspace"))
-					}
-					label, glyph := "History", historyIcon
 					if historyOpen {
-						label, glyph = "Commands", searchIcon
+						h := &s.palette.history
+						// The badge names what the history is doing now, in the place the
+						// workspace badge holds elsewhere, so a click on the switch is
+						// answered where the eye already is.
+						recording := !h.Paused
+						status, tip := tr("Recording"), tr("New searches and commands are saved to Recent")
+						if h.Paused {
+							status, tip = tr("Not recording"), tr("New searches and commands are not saved to Recent")
+						}
+						ui.Badge(c, status).Tooltip(tip)
+						ui.Switch(c, &recording).Label(tr("Record history")).Tooltip(tip).Disabled(h.loadFailed).
+							OnChange(func() {
+								h.Paused = !recording
+								h.err = safeError(h.save())
+							})
+						iconButton(c, "Back to Command Palette", "Escape", closeIcon, false, func() { s.togglePaletteHistory(false) })
+						return
 					}
-					compactTextButton(ui.ButtonBase(c)).Gap(5).Label(tr(label)).Radius(theme.Radius).
-						Background(theme.Surface).OnClick(func() { s.togglePaletteHistory(!historyOpen) }).
+					compactTextButton(ui.ButtonBase(c)).Gap(5).Label(tr("Recent")).Radius(theme.Radius).
+						Background(theme.Surface).OnClick(func() { s.togglePaletteHistory(true) }).
 						Children(func() {
-							ui.Icon(c, glyph).FontSize(13).TextColor(theme.TextMuted)
-							ui.Text(c, tr(label)).SingleLine()
+							ui.Icon(c, historyIcon).FontSize(13).TextColor(theme.TextMuted)
+							ui.Text(c, tr("Recent")).SingleLine()
 						})
 					iconButton(c, "Close Command Palette", "Escape", closeIcon, false, func() { s.closeCommandPalette(true) })
 				})
@@ -743,7 +754,7 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 		label += " — " + candidate.DisabledReason
 	}
 	row := ui.ButtonBase(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(10).
-		Padding(8, 10).Radius(theme.Radius).Role(ui.RoleOption).
+		Padding(8, 10).Height(56).Radius(theme.Radius).Role(ui.RoleOption).
 		Label(label).Selected(selected)
 	filePath := strings.HasPrefix(string(candidate.ID), "files/open/") ||
 		strings.HasPrefix(string(candidate.ID), "files/select/")
@@ -813,7 +824,8 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 			}
 		})
 		ui.Column(c).Gap(2).Shrink(0).AlignItems(ui.End).Children(func() {
-			if selected && len(candidate.ActionLabels) > 0 {
+			hinted := selected && len(candidate.ActionLabels) > 0
+			if hinted {
 				hint := tr("Tab: more actions")
 				if s.palette.actionIndex > 0 && s.palette.actionIndex <= len(candidate.ActionLabels) {
 					hint = tr("Enter: ") + candidate.ActionLabels[s.palette.actionIndex-1]
@@ -860,7 +872,9 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 				})
 				ui.Text(c, groupLabel).FontSize(theme.FontSize - 2).TextColor(theme.TextMuted).SingleLine()
 			})
-			if candidate.Chord != "" {
+			// Every row has the same height, so the action hint takes the
+			// chord's line while it shows.
+			if candidate.Chord != "" && !hinted {
 				ui.Text(c, candidate.Chord).FontSize(theme.FontSize - 2).TextColor(theme.Accent).SingleLine()
 			}
 		})
