@@ -149,22 +149,28 @@ func (a *app) liveDiffs() []*editor.DiffState {
 	}
 }
 
-// diffLayoutButton is the icon above a diff that toggles its layout: the icon
-// of the layout a click gives, which its tooltip names. A plain button, not a
-// filled one: the icon is the action, and the diff itself shows the layout on
-// screen.
+// diffLayoutButton is the icon above a diff that toggles its layout. As the
+// wrap toggle beside it, it shows the state on screen: the side-by-side icon,
+// filled with the accent, while the diff is split, and the unified icon on a
+// plain button otherwise. Its tooltip names the layout a click gives.
 func (a *app) diffLayoutButton(c *ui.Context) {
 	tooltip := "Switch to side-by-side diff"
-	icon := diffSplitIcon
+	icon := diffUnifiedIcon
+	// One button only: the constructor appends the node, so choose the
+	// look before building it.
+	var button ui.Element
 	if a.diffSplit {
 		tooltip = "Switch to unified diff"
-		icon = diffUnifiedIcon
+		icon = diffSplitIcon
+		button = compactIconButton(ui.PrimaryButton(c, ""))
+	} else {
+		button = compactIconButton(ui.Button(c, ""))
 	}
-	button := compactIconButton(ui.Button(c, "")).Label(tr("Toggle diff layout")).Tooltip(tr(tooltip))
+	clicked := button.Label(tr("Toggle diff layout")).Tooltip(tr(tooltip)).Clicked()
 	button.Children(func() {
 		ui.Icon(c, icon).FontSize(14)
 	})
-	if button.Clicked() {
+	if clicked {
 		a.toggleDiffLayout()
 	}
 }
@@ -624,7 +630,14 @@ func (a *app) diffFullscreenView(c *ui.Context, overlayTopInset float32) {
 					ui.Row(c).AlignItems(ui.Center).Gap(10).Shrink(0).Children(func() {
 						ui.Icon(c, diffSplitIcon).FontSize(18).TextColor(theme.Accent)
 						ui.Column(c).Gap(1).Grow(1).Children(func() {
-							ui.Text(c, target.title).FontSize(17).Bold().SingleLine().Tooltip(target.title)
+							ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
+								ui.Text(c, target.title).FontSize(17).Bold().SingleLine().Tooltip(target.title)
+								if path := target.path; path != "" {
+									services := c.Services()
+									flatIconButton(c, "Copy file path", "Copy the file path", copyIcon, 14, 3, false,
+										func() { a.notifyCopied(services, "relative path", path) })
+								}
+							})
 							if target.subtitle != "" {
 								ui.Text(c, target.subtitle).TextColor(theme.TextMuted).
 									FontSize(theme.FontSize - 1).SingleLine()
