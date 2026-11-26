@@ -696,9 +696,12 @@ func (s *gitSession) CoreSnapshot(ctx context.Context) (Snapshot, error) {
 	// Snapshots run unattended and the filesystem watcher observes .git. Keep
 	// optional locks disabled so status does not refresh the index through an
 	// index.lock file and mistake its own housekeeping for an external change.
-	modelFiles, err := s.statusFiles(git_commands.GetStatusFileOptions{Background: true})
+	modelFiles, statusNote, err := s.statusFilesNoted(git_commands.GetStatusFileOptions{Background: true})
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("load working-tree status: %w", err)
+	}
+	if statusNote != "" {
+		warnings = append(warnings, statusNote)
 	}
 	// Lazygit's status loader leaves line counts at zero. One batch numstat
 	// from HEAD to the working tree counts the final content accurately even

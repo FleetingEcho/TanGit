@@ -13,10 +13,76 @@ import (
 // statusFiles keeps Lazygit's local status behavior while avoiding its
 // directory and conflict-marker filesystem probes for SSH sessions.
 func (s *gitSession) statusFiles(options git_commands.GetStatusFileOptions) ([]*models.File, error) {
-	if s.sshClient == nil {
-		return s.git.Loaders.FileLoader.GetStatusFiles(options), nil
+	files, _, err := s.statusFilesNoted(options)
+	return files, err
+}
+
+// statusFilesNoted is statusFiles plus a note for the user when the list had to
+// be read in a degraded way (see verifyEmptyLocalStatus).
+func (s *gitSession) statusFilesNoted(options git_commands.GetStatusFileOptions) ([]*models.File, string, error) {
+	if s.sshClient != nil {
+		files, err := s.remoteStatusFiles(options)
+		return files, "", err
 	}
-	return s.remoteStatusFiles(options)
+	files := s.git.Loaders.FileLoader.GetStatusFiles(options)
+	if len(files) > 0 {
+		return files, "", nil
+	}
+	return s.verifyEmptyLocalStatus(options)
+}
+
+// lfsUnavailableNote is shown when status had to ignore Git LFS to answer.
+const lfsUnavailableNote = "Git LFS could not run, so files it manages may be listed as modified. Make git-lfs available to the app (it must be on its PATH) for exact status."
+
+// verifyEmptyLocalStatus settles what an empty list from Lazygit's loader
+// means. That loader reports a failed `git status` only to its own log and
+// returns no files, which is indistinguishable from a clean tree: a merge that
+// rewrote thousands of files left the window showing "Clean" because the
+// app's PATH lacked git-lfs and every changed file's clean filter failed.
+// Here the same command runs again with its error kept, and when a Git LFS
+// filter is what failed it runs once more with the filters off, so the changes
+// are listed rather than hidden. Any other failure is returned, never turned
+// into an empty tree.
+func (s *gitSession) verifyEmptyLocalStatus(options git_commands.GetStatusFileOptions) ([]*models.File, string, error) {
+	args := []string{"git", "status", "--untracked-files=all", "--porcelain", "-z"}
+	if options.NoRenames {
+		args = append(args, "--no-renames")
+	} else {
+		args = append(args, fmt.Sprintf("--find-renames=%d%%", s.renameSimilarityThreshold))
+	}
+	run := func(argv []string) (string, string, error) {
+		command := s.cmd.New(argv).DontLog()
+		if !options.Background {
+			command.RemoveEnvVar(git_commands.OptionalLocksEnvVar)
+		}
+		return command.RunWithOutputs()
+	}
+	stdout, stderr, err := run(args)
+	note := ""
+	if err != nil && isOptionalFilterStatsError(fmt.Errorf("%w %s", err, stderr)) {
+		if configured, configErr := s.filterDisablingArgs(); configErr == nil {
+			retry := append([]string{args[0]}, configured...)
+			retry = append(retry, args[1:]...)
+			stdout, stderr, err = run(withoutLFSFilters(retry))
+			note = lfsUnavailableNote
+		}
+	}
+	if err != nil {
+		return nil, "", fmt.Errorf("read working-tree status: %w: %s", err, strings.TrimSpace(stdout+stderr))
+	}
+	files, err := parseRemoteStatusFiles(stdout)
+	if err != nil {
+		return nil, "", err
+	}
+	for _, file := range files {
+		if file.HasInlineMergeConflicts {
+			file.ConflictMarkerSize = s.remoteConflictMarkerSize(file.Path)
+		}
+	}
+	if len(files) == 0 {
+		note = ""
+	}
+	return files, note, nil
 }
 
 func (s *gitSession) remoteStatusFiles(options git_commands.GetStatusFileOptions) ([]*models.File, error) {
