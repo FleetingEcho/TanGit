@@ -10,6 +10,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
+
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 type languageServerFormattingOptions struct {
@@ -66,6 +68,15 @@ func (a *app) codeDocumentContextMenu(menu *ui.Menu, document *codeDocument) {
 	}
 	if menu.Item(tr("Format Selection")).Disabled(selectionDisabled).Chosen() {
 		a.formatCodeSelection(document)
+	}
+	if a.historyChangesAvailable() && document != nil && document.state != nil && document.state.Buffer != nil {
+		selection := document.state.Selection()
+		if menu.Item(tr(historyChangesLabel)).Disabled(selection.Empty()).Chosen() {
+			selected := document.state.SelectedText()
+			a.openHistoryChanges(&repository.HistoryChangeQuery{
+				Text: selected, Path: document.path, Occurrences: strings.Contains(selected, "\n"),
+			})
+		}
 	}
 }
 

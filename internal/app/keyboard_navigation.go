@@ -440,13 +440,15 @@ func (a *app) keyboardDiffViewerWithID(c *ui.Context, state *editor.DiffState, o
 	}
 	diff := editor.DiffView(c, state).Grow(1)
 	if state == a.commitDiffState {
-		if target := a.codeBlameHistoryTarget; target != nil && target.hash == a.commitDiffHash && target.path == a.commitDiffPath && state.ViewportHeight() > 0 {
-			if target.line > 0 {
+		if target := a.historyDiffTarget; target != nil && target.hash == a.commitDiffHash && target.path == a.commitDiffPath && state.ViewportHeight() > 0 {
+			if target.change != nil {
+				scrollToHistoryChange(state, *target.change)
+			} else if target.line > 0 {
 				// The first paint has supplied the viewport and line geometry.
 				// Reveal the commit-local blamed line once, on this layout pass.
 				state.SetScrollY(state.LineTop(editor.DiffNew, target.line-1))
 			}
-			a.codeBlameHistoryTarget = nil
+			a.historyDiffTarget = nil
 		}
 	}
 	e := a.keyboardPanelTabs(id, a.keyboardPane(c, id, diff).Label(tr("Diff")))

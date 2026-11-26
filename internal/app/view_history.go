@@ -194,7 +194,7 @@ func (a *app) requestHistoryCommitMessage(commit repository.Commit) {
 // frame reads the chosen commit again after an action changed it.
 func (a *app) resetCommitDetails() {
 	a.commitDetailMessage.reset()
-	a.codeBlameHistoryTarget = nil
+	a.historyDiffTarget = nil
 	if a.cancelCommitFiles != nil {
 		a.cancelCommitFiles()
 		a.cancelCommitFiles = nil
@@ -285,13 +285,13 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 			}
 			a.commitFiles = files
 			if len(files) == 0 {
-				a.codeBlameHistoryTarget = nil
+				a.historyDiffTarget = nil
 				a.selectedCommitFileRow = -1
 				a.selectedCommitFile = -1
 				return a.commitDetailsVisible()
 			}
 			a.selectedCommitFile = 0
-			if target := a.codeBlameHistoryTarget; target != nil && target.hash == commit.Hash {
+			if target := a.historyDiffTarget; target != nil && target.hash == commit.Hash {
 				matched := false
 				for index, file := range files {
 					if file.Path != target.path {
@@ -310,7 +310,7 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 					break
 				}
 				if !matched {
-					a.codeBlameHistoryTarget = nil
+					a.historyDiffTarget = nil
 				}
 			}
 			return a.commitDetailsVisible()
@@ -321,8 +321,8 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 // requestCommitFileDiff reads the diff of the file chosen in commit, unless
 // it is already the one the pane shows.
 func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.CommitFile) {
-	if target := a.codeBlameHistoryTarget; target != nil && (target.hash != commit.Hash || target.path != file.Path) {
-		a.codeBlameHistoryTarget = nil
+	if target := a.historyDiffTarget; target != nil && (target.hash != commit.Hash || target.path != file.Path) {
+		a.historyDiffTarget = nil
 	}
 	if a.session == nil || (a.commitDiffHash == commit.Hash && a.commitDiffPath == file.Path &&
 		a.commitDiffOptions == a.diffOptions) {
@@ -398,8 +398,8 @@ func (a *app) requestCommitFileDiff(commit repository.Commit, file repository.Co
 			a.commitDiffPatch = diff.Patch
 			a.commitDiffState = state
 			a.commitDiffMedia = media
-			if target := a.codeBlameHistoryTarget; target != nil && target.hash == commit.Hash && target.path == file.Path && state == nil {
-				a.codeBlameHistoryTarget = nil
+			if target := a.historyDiffTarget; target != nil && target.hash == commit.Hash && target.path == file.Path && state == nil {
+				a.historyDiffTarget = nil
 			}
 			return a.commitDetailsVisible()
 		})
@@ -587,6 +587,11 @@ func (a *app) historyListHeader(c *ui.Context) {
 			ui.Spacer(c).Grow(1)
 			commitHeaderButton(c, "Open Rebase TODO", "Start or inspect a real Git rebase plan", rebaseIcon, a.openRebaseWorkspace)
 			a.commitSelectionModeButton(c)
+			if a.historyChangesAvailable() {
+				commitHeaderButton(c, historyChangesLabel, "Find text added or removed in commit history", fileCodeIcon, func() {
+					a.openHistoryChanges(nil)
+				})
+			}
 			commitFilterButton(c, "Search and filter the commit list", filtered, func() {
 				a.openCommitFilter(sectionHistory)
 			})

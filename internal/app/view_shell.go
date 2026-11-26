@@ -160,6 +160,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.themeEditorModal(c)
 	a.keybindingsModal(c)
 	a.commitFilterModal(c)
+	a.historyChangesModal(c)
 	a.confirmModal(c)
 	a.sshHostKeyModal(c)
 	a.keyboardTextFocus = c.FocusTakesText()

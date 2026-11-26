@@ -636,6 +636,7 @@ func (a *app) closeAllForms() {
 	a.resetChangeCourier()
 	a.closeCodeBlameDetails()
 	a.filterOpen = false
+	a.closeHistoryChanges()
 	a.closeCompare()
 	a.showTagRemoteDeleteForm = false
 	a.showMoveCommitsForm = false
@@ -667,6 +668,7 @@ func (a *app) openFormName(inline bool) string {
 		name string
 	}{
 		{!inline && a.filterOpen, "filterOpen"},
+		{a.historyChanges.open, "historyChanges"},
 		{!inline && a.showCommitForm, "showCommitForm"},
 		{a.showBranchForm, "showBranchForm"},
 		{a.showRenameForm, "showRenameForm"},

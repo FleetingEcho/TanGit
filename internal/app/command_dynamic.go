@@ -138,7 +138,7 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 					return state
 				},
 				Run: func(ctx commandContext) {
-					ctx.Shell.rememberShellLine(rest)
+					ctx.Shell.rememberShellLineAs(rest, "commands/run-line-terminal")
 					ctx.App.runLineInTerminal(rest)
 				},
 			})
@@ -191,6 +191,14 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 			}
 		}
 	case '#':
+		if query, ok := parseHistoryChangesPalette(rest); ok {
+			specs = append(specs, commandSpec{
+				ID: "history/search-typed-code-changes", Label: historyChangesLabel, Detail: query.Text, Group: commandGroupHistory,
+				Prefix: '#', Glyph: searchIcon, NoFilter: true, Resolve: historyChangesCommandState,
+				Run: func(ctx commandContext) { ctx.App.openHistoryChanges(&query) },
+			})
+			break
+		}
 		if before, typed, ok := authorSuggestion(strings.TrimLeft(s.palette.query, " ")[1:]); ok {
 			specs = append(specs, s.authorSuggestionSpecs(a, before, typed)...)
 			break

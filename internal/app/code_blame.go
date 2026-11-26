@@ -34,12 +34,13 @@ type codeBlameHoverState struct {
 	token          uint64
 }
 
-// codeBlameHistoryTarget survives the asynchronous History, file-list and
+// historyDiffTarget survives the asynchronous History, file-list and
 // diff reads needed to reveal one blamed source location.
-type codeBlameHistoryTarget struct {
-	hash string
-	path string
-	line int
+type historyDiffTarget struct {
+	change *repository.HistoryChangeQuery
+	hash   string
+	path   string
+	line   int
 }
 
 func codeBlameAvailable(document *codeDocument) bool {
@@ -466,6 +467,6 @@ func (a *app) openCodeBlameCommitInHistory() {
 	a.setWorkspaceTab(sectionHistory)
 	a.selectedCommit = -1
 	a.resetCommitDetails()
-	a.codeBlameHistoryTarget = &codeBlameHistoryTarget{hash: hash, path: path, line: line}
+	a.historyDiffTarget = &historyDiffTarget{hash: hash, path: path, line: line}
 	a.runCommitFilter(sectionHistory, hash)
 }

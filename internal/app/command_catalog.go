@@ -181,6 +181,7 @@ type commandInvokeResult struct {
 	Status   commandInvokeStatus
 	Reason   string
 	KeepOpen bool
+	Label    string
 }
 
 func (r commandInvokeResult) Accepted() bool { return r.Status == commandInvokeAccepted }
@@ -548,13 +549,18 @@ func (c *commandCatalog) InvokeAction(ctx commandContext, id commandID, action i
 			}
 		}
 		run, keepOpen := spec.Run, spec.KeepOpen
+		label := tr(spec.Label)
+		if spec.Format != "" {
+			label = spec.formattedLabel()
+		}
 		if action > 0 && action <= len(spec.Actions) {
 			run, keepOpen = spec.Actions[action-1].Run, spec.Actions[action-1].KeepOpen
+			label = tr(spec.Actions[action-1].Label)
 		} else if action > 0 {
 			keepOpen = false
 		}
 		run(ctx)
-		return commandInvokeResult{Status: commandInvokeAccepted, KeepOpen: keepOpen}
+		return commandInvokeResult{Status: commandInvokeAccepted, KeepOpen: keepOpen, Label: label}
 	}
 	return commandInvokeResult{Status: commandInvokeUnknown, Reason: "Command is unavailable"}
 }
@@ -624,6 +630,7 @@ func buildStaticCommandSpecs() []commandSpec {
 		{ID: commandCommitStaged, Label: "Commit staged changes", Detail: "Write a commit message for the current staged changes", Keywords: []string{"commit", "save", "staged"}, Group: commandGroupChanges, Chord: "c", Icon: commandIconCommit, Resolve: commitState, Run: func(ctx commandContext) { ctx.App.showCommitForm = true }},
 		{ID: commandContinue, Label: "Continue the interrupted operation", Keywords: []string{"continue", "merge", "rebase", "cherry-pick"}, Group: commandGroupRepository, Icon: commandIconContinue, Resolve: continueState, Run: func(ctx commandContext) { ctx.App.confirmContinueOperation() }},
 		{ID: commandOpenRecovery, Label: "Open Safety Journal", Keywords: []string{"recovery", "undo", "journal", "operations"}, Group: commandGroupRepository, Icon: commandIconActivity, Glyph: reflogIcon, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openActivityRecovery() }},
+		{ID: "history/search-code-changes", Label: historyChangesLabel, Keywords: []string{"git log", "pickaxe", "diff", "history", "code"}, Group: commandGroupHistory, Glyph: searchIcon, Resolve: historyChangesCommandState, Run: func(ctx commandContext) { ctx.App.openHistoryChanges(nil) }},
 		{ID: commandOpenPRChecks, Label: "Open Pull Request Checks", Keywords: []string{"checks", "ci", "pull request", "github"}, Group: commandGroupBranches, Icon: commandIconActivity, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openPullRequestChecks() }},
 	}
 	specs = append(specs, commandSpec{ID: "activity/open", Label: "Open Activity Center", Detail: "Commands, Safety Journal, Agent tasks, transfers and notices across open repositories", Keywords: []string{"activity", "history", "notifications", "log", "recent", "journal"}, Group: commandGroupApplication, Chord: cmdShortcutChord() + "+Shift+A", Glyph: historyIcon, Resolve: shellState, Run: func(ctx commandContext) { ctx.Shell.openActivityCenter() }})

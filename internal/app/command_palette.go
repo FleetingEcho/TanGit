@@ -41,6 +41,7 @@ func (r paletteShellRun) entry() (repository.CommandEntry, bool) {
 }
 
 type commandPaletteState struct {
+	history      paletteHistoryState
 	open         bool
 	query        string
 	selected     int
@@ -96,6 +97,12 @@ func (s *shell) openCommandPaletteWithQuery(c *ui.Context, query string) {
 		s.palette.shellRun = paletteShellRun{}
 	}
 	s.loadPaletteState()
+	s.loadPaletteHistory(a)
+	if !s.palette.history.loadFailed {
+		s.syncPaletteHistoryRecents()
+	}
+	s.palette.history.open, s.palette.history.clear = false, false
+	s.palette.history.lastQuery = ""
 	s.palette.target = nil
 	s.palette.historyPos = -1
 	s.palette.actionIndex = 0
@@ -126,7 +133,11 @@ func (s *shell) closeCommandPalette(restore bool) {
 	if s == nil || !s.palette.open {
 		return
 	}
+	if s.palette.target == nil && !s.palette.history.open {
+		s.rememberPaletteQuery(s.activeApp(), s.palette.query)
+	}
 	s.palette.open = false
+	s.palette.history.open = false
 	s.palette.target = nil
 	if search := &s.palette.commitSearch; search.cancel != nil {
 		search.cancel()
@@ -157,6 +168,10 @@ func (s *shell) closeCommandPalette(restore bool) {
 }
 
 func (s *shell) rememberCommand(id commandID) {
+	s.loadPaletteHistory(s.activeApp())
+	if s.palette.history.Paused || s.palette.history.loadFailed {
+		return
+	}
 	recent := make([]commandID, 0, 20)
 	recent = append(recent, id)
 	for _, existing := range s.palette.recent {
@@ -221,6 +236,18 @@ func (s *shell) savePaletteState() {
 			a.settings.CommandUses[string(id)] = count
 		}
 	}
+	copyPreferences := func(settings *appSettings) {
+		settings.PinnedCommands = a.settings.PinnedCommands
+		settings.RecentCommands = a.settings.RecentCommands
+		settings.ShellHistory = a.settings.ShellHistory
+		settings.CommandUses = a.settings.CommandUses
+	}
+	copyPreferences(&s.settings)
+	for _, tab := range s.tabs {
+		if tab != nil && tab.app != nil {
+			copyPreferences(&tab.app.settings)
+		}
+	}
 	if a.dataDir() != "" {
 		a.saveSettings()
 	}
@@ -228,8 +255,16 @@ func (s *shell) savePaletteState() {
 
 // rememberShellLine records a ! command line, newest first.
 func (s *shell) rememberShellLine(line string) {
+	s.rememberShellLineAs(line, "commands/run-line")
+}
+
+func (s *shell) rememberShellLineAs(line string, id commandID) {
 	line = strings.TrimSpace(line)
 	if line == "" {
+		return
+	}
+	s.recordPaletteHistory(s.activeApp(), paletteHistoryEntry{Kind: paletteHistoryShell, Text: line, Command: id})
+	if s.palette.history.Paused || s.palette.history.loadFailed {
 		return
 	}
 	s.palette.shellHistory = normalizeCommandList(append([]string{line}, s.palette.shellHistory...), 50)
@@ -275,6 +310,7 @@ func (s *shell) invokeCommandAction(id commandID, action int) commandInvokeResul
 		return commandInvokeResult{Status: commandInvokeUnknown, Reason: "The window is unavailable"}
 	}
 	ctx := s.commandContext()
+	paletteOpen, query, target := s.palette.open, s.palette.query, s.palette.target
 	result := s.catalogFor(ctx).InvokeAction(ctx, id, action)
 	if !result.Accepted() {
 		if s.palette.open {
@@ -282,7 +318,23 @@ func (s *shell) invokeCommandAction(id commandID, action int) commandInvokeResul
 		}
 		return result
 	}
-	s.rememberCommand(id)
+	if paletteOpen {
+		if target == nil {
+			s.rememberPaletteQuery(ctx.App, query)
+		}
+		mode, _ := commandQueryMode(query)
+		if mode != '!' && result.Label != "" && !strings.HasPrefix(string(id), "commits/guide/") &&
+			id != "history/search-typed-code-changes" {
+			entry := paletteHistoryEntry{Kind: paletteHistoryCommand, Text: result.Label, Command: id, Query: query, Action: action}
+			if target != nil {
+				entry.Commit = &target.commit
+			} else if picked := s.palette.target; strings.HasPrefix(string(id), "history/commit/") && picked != nil {
+				entry.Commit = &picked.commit
+			}
+			s.recordPaletteHistory(ctx.App, entry)
+		}
+		s.rememberCommand(id)
+	}
 	if s.palette.open && !result.KeepOpen {
 		s.closeCommandPalette(true)
 	}
@@ -393,8 +445,12 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 		run.app.paletteOutputVisible.Store(false)
 	}
 	theme := c.Theme()
-	s.ensureCommitSearch(s.activeApp())
-	candidates := s.commandPaletteCandidates()
+	historyOpen := s.palette.history.open
+	var candidates []commandCandidate
+	if !historyOpen {
+		s.ensureCommitSearch(s.activeApp())
+		candidates = s.commandPaletteCandidates()
+	}
 	if len(candidates) == 0 {
 		s.palette.selected = 0
 	} else if s.palette.selected >= len(candidates) {
@@ -408,6 +464,17 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 	}
 	// Escape steps back out of a commit's actions before it closes the palette.
 	backOut := func() {
+		if historyOpen {
+			if s.palette.history.clear {
+				s.palette.history.clear = false
+			} else if s.palette.history.multi {
+				s.palette.history.multi = false
+				s.palette.history.selected = nil
+			} else {
+				s.togglePaletteHistory(false)
+			}
+			return
+		}
 		if s.palette.target != nil {
 			s.closeCommitActions()
 			return
@@ -490,6 +557,10 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 					ui.Icon(c, searchIcon).FontSize(20).TextColor(theme.Accent)
 					ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
 						title := paletteTitle(s.palette.query, s.palette.target != nil)
+						if historyOpen {
+							ui.Text(c, tr("History")).FontSize(19).Bold()
+							return
+						}
 						ui.Text(c, title).FontSize(19).Bold()
 						subtitle := tr("Search navigation and actions for the current workspace") + " · " + cmdShortcutChord() + "+Shift+P"
 						if target := s.palette.target; target != nil {
@@ -500,8 +571,22 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 					if scope != "" {
 						ui.Badge(c, scope).Tooltip(tr("Commands run against this workspace"))
 					}
+					label, glyph := "History", historyIcon
+					if historyOpen {
+						label, glyph = "Commands", searchIcon
+					}
+					compactTextButton(ui.ButtonBase(c)).Gap(5).Label(tr(label)).Radius(theme.Radius).
+						Background(theme.Surface).OnClick(func() { s.togglePaletteHistory(!historyOpen) }).
+						Children(func() {
+							ui.Icon(c, glyph).FontSize(13).TextColor(theme.TextMuted)
+							ui.Text(c, tr(label)).SingleLine()
+						})
 					iconButton(c, "Close Command Palette", "Escape", closeIcon, false, func() { s.closeCommandPalette(true) })
 				})
+				if historyOpen {
+					s.paletteHistoryView(c)
+					return
+				}
 				search := ui.TextInput(c, &s.palette.query).Bind(&s.palette.search).
 					Label(tr("Search commands")).Placeholder(searchPlaceholder(s.palette.target != nil)).Search().AutoFocus()
 				// Text fields consume Enter for submission and may use Escape for
@@ -611,6 +696,15 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 					}
 				})
 			})
+			if historyOpen {
+				if panel.PressedOutside() {
+					s.closeCommandPalette(true)
+				}
+				if back.OverlayShortcut(0, ui.KeyEscape) {
+					backOut()
+				}
+				return
+			}
 			if back.OverlayShortcut(0, ui.KeyUp) {
 				move(-1)
 			}

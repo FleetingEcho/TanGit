@@ -341,6 +341,7 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 // resetRepositoryState clears everything a frame would read from the
 // repository that was open before, so a new one starts with its own choices.
 func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
+	a.resetHistoryChanges()
 	a.closeContinueReview()
 	a.shutdownLocalTransfers()
 	a.resetRebaseWorkspace()

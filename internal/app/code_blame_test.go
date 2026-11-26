@@ -329,7 +329,7 @@ func TestCodeBlameHistoryOpensBlamedFileAtCommitLine(t *testing.T) {
 	state := h.app.commitDiffState
 	if got, want := state.ScrollY(), state.LineTop(editor.DiffNew, 14); got != want {
 		t.Fatalf("diff scroll = %v, blamed commit line 15 top = %v, height = %v, viewport = %v; target=%#v", got, want,
-			state.LineTop(editor.DiffNew, state.New.LineCount()), state.ViewportHeight(), h.app.codeBlameHistoryTarget)
+			state.LineTop(editor.DiffNew, state.New.LineCount()), state.ViewportHeight(), h.app.historyDiffTarget)
 	}
 	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
 		saveScreenshot(t, dir, "code-blame-history-commit-line", h.tester)

@@ -122,7 +122,7 @@ func TestRowActionsAndFailureCommands(t *testing.T) {
 	// A bare # explains the search instead of listing commits.
 	s.palette.query = "#"
 	guide := s.catalogFor(ctx).Search(ctx, "#", nil)
-	if len(guide) != 4 || guide[1].Label != "by:name" {
+	if len(guide) != 5 || guide[1].Label != "by:name" {
 		t.Fatalf("a bare # should show the search guide, got %+v", guide)
 	}
 	for _, c := range guide {

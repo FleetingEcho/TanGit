@@ -150,6 +150,9 @@ func (s *shell) paletteCommitText() string {
 	case s.palette.target != nil:
 		return ""
 	case mode == '#':
+		if _, ok := parseHistoryChangesPalette(rest); ok {
+			return ""
+		}
 		text := strings.TrimLeft(s.palette.query, " ")[1:]
 		if _, _, typing := authorSuggestion(text); typing {
 			return ""
@@ -584,6 +587,7 @@ func (s *shell) branchSuggestionSpecs(a *app, before, typed string) []commandSpe
 // understands. Choosing one starts that kind of search in the box.
 func (s *shell) commitSearchGuideSpecs() []commandSpec {
 	guide := []struct{ id, label, detail, query string }{
+		{"guide/changed", historyChangesLabel, `Find added or removed lines with # changed:"<code>"`, "# changed:"},
 		{"guide/message", "Search commit messages", "Type words after #, for example #fix login", "#"},
 		{"guide/by", "by:name", "Only commits by one author, for example #by:alice", "#by:"},
 		{"guide/branch", "branch:name", "Only commits on one branch, for example #branch:main", "#branch:"},

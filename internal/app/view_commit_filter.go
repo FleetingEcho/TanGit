@@ -761,8 +761,13 @@ func (a *app) commitFilterFooter(c *ui.Context) {
 		searching = a.branchCommitsLoading
 	}
 	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-		ui.Text(c, tr("Escape cancels")).
-			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1)
+		if a.filterTarget == sectionHistory && a.historyChangesAvailable() {
+			ui.Button(c, tr(historyChangesLabel)).OnClick(func() { a.openHistoryChanges(nil) })
+			ui.Spacer(c).Grow(1)
+		} else {
+			ui.Text(c, tr("Escape cancels")).
+				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1)
+		}
 		iconButton(c, "Clear filters", "Show every commit again", closeIcon, false, func() {
 			a.clearCommitFilter(a.filterTarget)
 		})

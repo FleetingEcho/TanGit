@@ -357,6 +357,9 @@ func (s *shell) newTab(path string) *tab {
 	a.showActivityCenter = func() { s.openActivityCenter() }
 	a.showContributors = func() { s.openActivityCenterView(activityViewContributors) }
 	a.showCommandPalette = func() { s.openCommandPalette(nil) }
+	a.recordHistorySearch = func(query repository.HistoryChangeQuery) {
+		s.recordPaletteHistory(a, paletteHistoryEntry{Kind: paletteHistoryCode, Text: query.Text, CodeQuery: &query})
+	}
 	a.invokeCommand = func(id commandID) commandInvokeResult { return s.invokeCommand(id) }
 	a.resolveCommand = s.commandStateFor
 	a.openActivityTarget = func(target activityTarget) activityOpenResult {

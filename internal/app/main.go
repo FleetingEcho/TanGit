@@ -137,13 +137,14 @@ type app struct {
 	closeTab        func()
 	// Shell-owned workflows are hooked rather than stored MyGo elements or
 	// contexts, keeping standalone app tests independent of window chrome.
-	shellOverlayOpen   func() bool
-	showActivityCenter func()
-	showContributors   func()
-	showCommandPalette func()
-	invokeCommand      func(commandID) commandInvokeResult
-	resolveCommand     func(commandID) commandState
-	openActivityTarget func(activityTarget) activityOpenResult
+	shellOverlayOpen    func() bool
+	showActivityCenter  func()
+	showContributors    func()
+	showCommandPalette  func()
+	recordHistorySearch func(repository.HistoryChangeQuery)
+	invokeCommand       func(commandID) commandInvokeResult
+	resolveCommand      func(commandID) commandState
+	openActivityTarget  func(activityTarget) activityOpenResult
 	// onRecentRenamed carries a name given to one page's repository to the
 	// window's other pages, so a pill, a card, and the next opening agree.
 	onRecentRenamed func(path, name string)
@@ -431,8 +432,9 @@ type app struct {
 	fileTreeRowsMemo   map[fileTreeRowsMemoKeyType][]fileTreeRow
 	// filterOpen is the commit filter modal, for History, the Graph, or a
 	// branch's commit list; filterTarget is the section it was opened from.
-	filterOpen   bool
-	filterTarget int
+	historyChanges historyChangesState
+	filterOpen     bool
+	filterTarget   int
 	// authors are the repository's commit authors the filter offers, read
 	// when the modal opens or is refreshed.
 	authors           []string
@@ -799,11 +801,11 @@ type app struct {
 	// whose every line is new work.
 	blameNewFile bool
 	// blamePath is the file the blame on screen, or being read, is of.
-	blamePath              string
-	blameError             string
-	blameGeneration        uint64
-	codeBlameHover         codeBlameHoverState
-	codeBlameHistoryTarget *codeBlameHistoryTarget
+	blamePath         string
+	blameError        string
+	blameGeneration   uint64
+	codeBlameHover    codeBlameHoverState
+	historyDiffTarget *historyDiffTarget
 
 	commitDetailMessage   commitMessageDetailState
 	commitFiles           []repository.CommitFile
