@@ -3,6 +3,7 @@ package i18n
 // Overview commit filters and the expanded commit's quick actions.
 var overviewActionTranslations = map[string]map[string]string{
 	"zh-Hans": {
+		"Open this Overview":              "打开此概览",
 		"Mark all as read":                "全部标记为已读",
 		"Mark the %d new commits as read": "将 %d 个新提交标记为已读",
 		"New":                             "新",
@@ -47,6 +48,7 @@ var overviewActionTranslations = map[string]map[string]string{
 		"Search every followed repository for %s": "在所有关注的仓库中搜索 %s",
 	},
 	"zh-Hant": {
+		"Open this Overview":              "開啟此概覽",
 		"Mark all as read":                "全部標記為已讀",
 		"Mark the %d new commits as read": "將 %d 個新提交標記為已讀",
 		"New":                             "新",
@@ -91,6 +93,7 @@ var overviewActionTranslations = map[string]map[string]string{
 		"Search every followed repository for %s": "在所有追蹤的儲存庫中搜尋 %s",
 	},
 	"ja": {
+		"Open this Overview":              "このオーバービューを開く",
 		"Mark all as read":                "すべて既読にする",
 		"Mark the %d new commits as read": "新しい %d 件のコミットを既読にする",
 		"New":                             "新着",
@@ -135,6 +138,7 @@ var overviewActionTranslations = map[string]map[string]string{
 		"Search every followed repository for %s": "フォロー中の全リポジトリで %s を検索",
 	},
 	"es": {
+		"Open this Overview":              "Abrir este resumen",
 		"Mark all as read":                "Marcar todo como leído",
 		"Mark the %d new commits as read": "Marcar los %d commits nuevos como leídos",
 		"New":                             "Nuevo",
@@ -179,6 +183,7 @@ var overviewActionTranslations = map[string]map[string]string{
 		"Search every followed repository for %s": "Buscar %s en todos los repositorios seguidos",
 	},
 	"fr": {
+		"Open this Overview":              "Ouvrir cet aperçu",
 		"Mark all as read":                "Tout marquer comme lu",
 		"Mark the %d new commits as read": "Marquer les %d nouveaux commits comme lus",
 		"New":                             "Nouveau",

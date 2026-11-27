@@ -196,11 +196,13 @@ func (a *app) overviewPickerRow(c *ui.Context, def overviewDef) {
 				ui.Text(c, def.Name).FontSize(13).Bold().SingleLine().MinWidth(0)
 				ui.Text(c, summary).FontSize(11).TextColor(theme.TextMuted).SingleLine().MinWidth(0)
 			})
-			ui.Icon(c, chevronRightIcon).FontSize(13).TextColor(theme.TextMuted).Shrink(0)
 		})
 		flatIconButton(c, "Edit "+def.Name, "Rename this Overview or change its repositories", editIcon, 14, 6, a.confirm != nil,
 			func() { a.editOverviewFromPicker(def.ID) })
 		flatIconButton(c, "Delete "+def.Name, "Delete this Overview", trashIcon, 14, 6, a.confirm != nil,
 			func() { a.confirmDeleteOverviewByID(def.ID) })
+		// Open is the last control on the row, at its right edge.
+		flatIconButton(c, trf("Open %s", def.Name), "Open this Overview", chevronRightIcon, 14, 6, a.confirm != nil,
+			func() { a.chooseOverview(def.ID, overviewShow) })
 	})
 }
