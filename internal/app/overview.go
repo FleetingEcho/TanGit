@@ -28,7 +28,9 @@ const (
 	overviewConcurrency = 4
 	overviewPageRows    = 100
 
-	overviewSidebarWidth float32 = 232
+	overviewSidebarWidth    float32 = 232
+	overviewSidebarMinWidth float32 = 180
+	overviewSidebarMaxWidth float32 = 480
 )
 
 var overviewIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="4" r="1.1"/><circle cx="3.5" cy="8" r="1.1"/><circle cx="3.5" cy="12" r="1.1"/><path d="M7 4h6.5M7 8h6.5M7 12h4"/></svg>`))
@@ -135,6 +137,8 @@ type overviewState struct {
 	seenBefore int64
 	// colors gives each followed repository its own color in this Overview.
 	colors map[string]ui.Color
+	// sidebarW is the repository list's width, dragged at the divider.
+	sidebarW float32
 }
 
 // cur is the Overview on show, nil when the user has none yet.
@@ -181,6 +185,7 @@ func newOverviewState() *overviewState {
 		repos:    map[string]*overviewRepoState{},
 		shown:    overviewPageRows,
 		rangeIdx: overviewDefaultRange,
+		sidebarW: overviewSidebarWidth,
 	}
 }
 
@@ -895,10 +900,19 @@ func (a *app) overviewView(c *ui.Context) {
 	ui.Box(c).Fill().Background(islandBackdrop(theme)).Children(func() {
 		ui.Column(c).Fill().Padding(islandGap / 2).Children(func() {
 			a.overviewHeader(c, o)
-			islandCard(c, ui.Row(c).Grow(1).FillWidth().MinHeight(0).Clip()).Children(func() {
-				a.overviewSidebar(c, o)
-				ui.Box(c).Width(1).FillHeight().Background(theme.Border)
-				a.overviewMain(c, o)
+			// Two island cards with a draggable divider between them, as the
+			// repository page's lists and details have.
+			o.sidebarW = min(max(o.sidebarW, overviewSidebarMinWidth), overviewSidebarMaxWidth)
+			ui.Box(c).Grow(1).FillWidth().MinHeight(0).Children(func() {
+				paneSplit(c, &o.sidebarW, func() {
+					islandCard(c, ui.Column(c).Grow(1).MinWidth(0).Clip()).Children(func() {
+						a.overviewSidebar(c, o)
+					})
+				}, func() {
+					islandCard(c, ui.Column(c).Grow(1).MinWidth(0).Clip()).Children(func() {
+						a.overviewMain(c, o)
+					})
+				}).Fill()
 			})
 		})
 	})
@@ -978,7 +992,7 @@ func (a *app) overviewSubtitle(o *overviewState) string {
 // click narrows the timeline to one of them.
 func (a *app) overviewSidebar(c *ui.Context, o *overviewState) {
 	theme := c.Theme()
-	ui.Column(c).Width(overviewSidebarWidth).FillHeight().Padding(12, 10).Gap(4).Children(func() {
+	ui.Column(c).FillWidth().Grow(1).Padding(12, 10).Gap(4).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Padding(0, 6, 0, 8).Gap(6).Children(func() {
 			ui.Text(c, tr("Repositories")).Bold().TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).
 				Grow(1).MinWidth(0).SingleLine()
@@ -1147,7 +1161,7 @@ func overviewRowTooltip(path, name, problem string) string {
 
 func (a *app) overviewMain(c *ui.Context, o *overviewState) {
 	theme := c.Theme()
-	ui.Column(c).Grow(1).MinWidth(0).FillHeight().Children(func() {
+	ui.Column(c).Grow(1).FillWidth().MinWidth(0).Children(func() {
 		if o.cur() == nil || len(o.followed()) == 0 {
 			a.overviewEmpty(c, o, "folder")
 			return
