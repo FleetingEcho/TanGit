@@ -64,6 +64,9 @@ type commandPaletteState struct {
 	actionIndex      int
 	notice           string
 	revealSelection  bool
+	// topID is the first candidate of the last frame. When results arrive late
+	// or re-rank and the first one changes, the list returns to the top.
+	topID commandID
 }
 
 func (s *shell) commandContext() commandContext {
@@ -458,6 +461,19 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 	} else if s.palette.selected < 0 {
 		s.palette.selected = 0
 	}
+	top := commandID("")
+	if len(candidates) > 0 {
+		top = candidates[0].ID
+	}
+	if top != s.palette.topID {
+		s.palette.topID = top
+		if s.palette.selected == 0 {
+			// File and commit results come in after typing and can re-rank: the
+			// best match stays in view without the list being scrolled by hand.
+			s.palette.scroll.Y = 0
+			s.palette.revealSelection = true
+		}
+	}
 	mode, _ := commandQueryMode(s.palette.query)
 	if s.palette.target != nil {
 		mode = 'a'
@@ -619,6 +635,7 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 					s.palette.historyPos = -1
 					s.palette.actionIndex = 0
 					s.palette.selected = 0
+					s.palette.scroll.Y = 0
 					s.palette.revealSelection = true
 					s.palette.notice = ""
 				}

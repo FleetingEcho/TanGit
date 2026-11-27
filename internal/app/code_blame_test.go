@@ -896,10 +896,10 @@ func TestCodeBlameCardLoadsMessageFilesAndExactTotals(t *testing.T) {
 	h.app.openCodeBlameDetails(document, 0)
 	h.waitFor(t, "rich commit details", func() bool { return !h.app.codeBlameHover.loading })
 	h.tester.Frame()
-	if h.app.codeBlameHover.filesCollapsed || !h.app.codeBlameHover.infoExpanded {
-		t.Fatal("commit card sections must default to expanded")
+	if h.app.codeBlameHover.filesCollapsed || h.app.codeBlameHover.infoExpanded {
+		t.Fatal("the changed files default to open and More info to folded")
 	}
-	if bounds, ok := h.tester.Find("Changed files"); !ok || bounds.H != 144 {
+	if bounds, ok := h.tester.Find("Changed files"); !ok || bounds.H != codeBlameFilesHeight {
 		t.Fatalf("file list does not retain its fixed height: %+v", bounds)
 	}
 	for _, text := range []string{"Improve server errors", "Include the original error for better debugging.", "You", "v2.0", "Changes in this commit (3)", "server/server.go", "old/config.go → server/config.go", "+18", "−4"} {
@@ -1066,8 +1066,8 @@ func TestCodeBlameFileListHasFixedHeightAndScrollsIndependently(t *testing.T) {
 		})
 	}, 720, 780)
 	list, ok := tt.Find("Changed files")
-	if !ok || list.H != 144 {
-		t.Fatalf("file list height = %+v, want 144", list)
+	if !ok || list.H != codeBlameFilesHeight {
+		t.Fatalf("file list height = %+v, want %v", list, codeBlameFilesHeight)
 	}
 	info, _ := tt.Find("More info")
 	insertions, _ := tt.Find("Insertions")
@@ -1092,7 +1092,7 @@ func TestCodeBlameFileListHasFixedHeightAndScrollsIndependently(t *testing.T) {
 	tt.Frame()
 	shortList, _ := tt.Find("Changed files")
 	shortInfo, _ := tt.Find("More info")
-	if shortList.H != 144 || shortInfo != info {
+	if shortList.H != codeBlameFilesHeight || shortInfo != info {
 		t.Fatalf("one file changed the fixed layout: list %+v info %+v, want %+v", shortList, shortInfo, info)
 	}
 }

@@ -11,6 +11,9 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 )
 
+// codeBlameFilesHeight shows about three changed files at once; the rest scroll.
+const codeBlameFilesHeight = float32(104)
+
 func codeBlameCardWidth(c *ui.Context) float32 {
 	width, _ := c.Size()
 	return min(float32(540), max(float32(180), width-48))
@@ -132,7 +135,7 @@ func (a *app) codeBlameDetailsCard(c *ui.Context) {
 			if hover.description != "" {
 				// A long body scrolls inside its own bounded region instead of
 				// pushing the changed files out of the card.
-				descriptionHeight := min(float32(180), max(float32(80), height*0.3))
+				descriptionHeight := min(float32(110), max(float32(64), height*0.2))
 				ui.Scroll(c.Key(fmt.Sprintf("blame-card-description-%d", hover.token))).Label(tr("Commit description")).
 					FillWidth().MaxHeight(descriptionHeight).Children(func() {
 					ui.Text(c, hover.description).FillWidth().MinWidth(0).TextColor(theme.TextMuted)
@@ -168,7 +171,7 @@ func (a *app) codeBlameDetailsCard(c *ui.Context) {
 				label := trf("Changes in this commit (%d)", len(hover.files))
 				codeBlameDisclosure(c, label, !hover.filesCollapsed, func() { hover.filesCollapsed = !hover.filesCollapsed })
 				if !hover.filesCollapsed {
-					ui.Scroll(c.Key("blame-files")).Label(tr("Changed files")).FillWidth().Height(144).Shrink(0).Children(func() {
+					ui.Scroll(c.Key("blame-files")).Label(tr("Changed files")).FillWidth().Height(codeBlameFilesHeight).Shrink(0).Children(func() {
 						ui.Column(c).Width(cardWidth-8).Padding(0, scrollbarGutter(theme), 0, 0).Gap(4).Children(func() {
 							currentIndex := codeBlameCurrentFileIndex(hover)
 							renderFile := func(file repository.CommitFile, current bool) {
@@ -200,16 +203,6 @@ func (a *app) codeBlameDetailsCard(c *ui.Context) {
 						})
 					})
 				}
-				added, deleted := 0, 0
-				for _, file := range hover.files {
-					added += file.LinesAdded
-					deleted += file.LinesDeleted
-				}
-				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-					ui.Text(c, tr("Files changed")).TextColor(theme.TextMuted).Grow(1)
-					ui.Textf(c, "%d", len(hover.files)).TextColor(theme.TextMuted)
-					fileDiffStatCounts(c, hover.blame.Hash, added, deleted)
-				})
 			}
 			codeBlameDivider(c)
 			codeBlameDisclosure(c, tr("More info"), hover.infoExpanded, func() { hover.infoExpanded = !hover.infoExpanded })

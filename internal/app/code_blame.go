@@ -579,7 +579,8 @@ func (a *app) openCodeBlameDetails(document *codeDocument, line int) {
 	hover.files = nil
 	hover.filesLoaded = false
 	hover.filesCollapsed = false
-	hover.infoExpanded = true
+	// More info starts folded: the card stays short, and it opens on click.
+	hover.infoExpanded = false
 	hover.loading = false
 	hover.loadError = ""
 	offset := document.state.Buffer.Snapshot().LineEnd(line)
