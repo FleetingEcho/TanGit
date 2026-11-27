@@ -547,7 +547,7 @@ func (a *app) compareResults(c *ui.Context, theme *ui.Theme) {
 // compareFilesView is the file tab: the changed files and the chosen diff.
 func (a *app) compareFilesView(c *ui.Context, theme *ui.Theme) {
 	a.compare.fileRows = a.syncCompareFileRows()
-	a.collapsibleContentPaneSplit(c, &a.compare.listWidth, &a.workspacePaneCollapsed[sectionCompare],
+	collapsiblePaneSplitNested(c, &a.compare.listWidth, &a.workspacePaneCollapsed[sectionCompare],
 		"Expand list pane", func() {
 			ui.Column(c).Grow(1).FillHeight().Gap(7).Padding(0, comparePaneDividerInset, 0, 0).Children(func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {

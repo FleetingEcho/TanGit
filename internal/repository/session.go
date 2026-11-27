@@ -1043,10 +1043,20 @@ func (s *gitSession) Diff(ctx context.Context, file File, options DiffOptions) (
 		// is asked to compare it with /dev/null: the answer is the patch that
 		// adds it, which is both what the pane shows and what a selection of
 		// its lines is built from.
-		args := append([]string{"git", "diff", "--no-index", "--no-color", "--no-ext-diff"}, optionArgs...)
+		args := append([]string{"git", "diff", "--no-index", "--no-color", "--no-ext-diff", "--no-textconv"}, optionArgs...)
 		args = append(args, "--", "/dev/null")
 		args = append(args, paths...)
 		outputBytes, commandErr := s.combinedOutput(s.cmd.New(args))
+		// A missing optional clean filter must not prevent the raw working-tree
+		// file from being previewed. Preserve normal filter behavior when it is
+		// available, and retry only the failed read with configured filters off.
+		if commandErr != nil && isOptionalFilterStatsError(fmt.Errorf("%w: %s", commandErr, outputBytes)) {
+			if configured, configErr := s.filterDisablingArgs(); configErr == nil {
+				retry := append([]string{args[0]}, configured...)
+				retry = append(retry, args[1:]...)
+				outputBytes, commandErr = s.combinedOutput(s.cmd.New(withoutLFSFilters(retry)))
+			}
+		}
 		if commandErr != nil {
 			// Git uses status 1 to report that the two sides differ.
 			if exitCode, ok := commandExitCode(commandErr); !ok || exitCode != 1 {
@@ -1071,6 +1081,18 @@ func (s *gitSession) Diff(ctx context.Context, file File, options DiffOptions) (
 	args := append(optionArgs, "--")
 	args = append(args, paths...)
 	patch, err := s.git.Diff.GetDiff(staged, args...)
+	if err != nil && isOptionalFilterStatsError(fmt.Errorf("%w: %s", err, patch)) {
+		// A missing optional filter (git-lfs not on PATH) must not hide the
+		// file's changes: read the same diff again with the filters off.
+		retryArgs := []string{"git", "diff", "--no-ext-diff", "--no-color", "--submodule"}
+		if staged {
+			retryArgs = append(retryArgs, "--cached")
+		}
+		retryArgs = append(retryArgs, args...)
+		if stdout, _, retryErr := s.readGit(retryArgs); retryErr == nil {
+			patch, err = stdout, nil
+		}
+	}
 	if err != nil {
 		return Diff{}, fmt.Errorf("load file diff: %w", err)
 	}

@@ -430,9 +430,9 @@ func (a *app) compareResultTabs(c *ui.Context) {
 // compareCommitsView is the commit tabs: the commits on one side of the
 // comparison, and the shared detail of the chosen one.
 func (a *app) compareCommitsView(c *ui.Context, theme *ui.Theme) {
-	a.collapsibleContentPaneSplit(c, &a.compare.listWidth, &a.workspacePaneCollapsed[sectionCompare],
+	collapsiblePaneSplitNested(c, &a.compare.listWidth, &a.workspacePaneCollapsed[sectionCompare],
 		"Expand list pane", func() {
-			ui.Column(c).Grow(1).FillHeight().Padding(0, comparePaneDividerInset, 0, 0).Children(func() {
+			ui.Column(c).Grow(1).FillHeight().Padding(0, comparePaneDividerInset/4, 0, 0).Children(func() {
 				islandCard(c, ui.Column(c).Grow(1).Gap(8).Padding(12)).Children(func() {
 					a.compareCommitList(c, theme)
 				})
@@ -442,7 +442,7 @@ func (a *app) compareCommitsView(c *ui.Context, theme *ui.Theme) {
 			if selected, ok := a.compareCommitsSelected(); ok {
 				commit = &selected
 			}
-			ui.Column(c).Grow(1).FillHeight().Padding(0, 0, 0, comparePaneDividerInset).Children(func() {
+			ui.Column(c).Grow(1).FillHeight().Padding(0, 0, 0, comparePaneDividerInset/4).Children(func() {
 				islandCard(c, ui.Column(c).Grow(1).Gap(10).Padding(16)).Children(func() {
 					a.commitDetailBody(c, commit, "Select a commit to see its files and diff.",
 						func(c *ui.Context, commit repository.Commit) {

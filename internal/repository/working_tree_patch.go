@@ -56,6 +56,9 @@ func (s *gitSession) WorkingTreeFilePatch(ctx context.Context, file File) (strin
 		args = append(args, ":(literal)"+path)
 	}
 	patch, err := s.cmd.New(args).RunWithOutput()
+	if retry, ok := s.filterRetryArgs(args, err, patch); ok {
+		patch, err = s.cmd.New(retry).RunWithOutput()
+	}
 	if err != nil {
 		return "", fmt.Errorf("load canonical working-tree file patch: %w: %s", err, strings.TrimSpace(patch))
 	}
@@ -69,11 +72,15 @@ func (s *gitSession) untrackedFilePatch(file File) (string, error) {
 	if _, err := s.worktreeFilePath(s.git.RepoPaths.WorktreePath(), file.Path); err != nil {
 		return "", fmt.Errorf("load canonical untracked file patch: %w", err)
 	}
-	output, stderr, err := s.output(s.cmd.New([]string{
+	args := []string{
 		"git", "diff", "--no-index", "--no-color", "--no-ext-diff", "--no-textconv",
 		"--binary", "--full-index", "--unified=3", "--submodule",
 		"--", "/dev/null", file.Path,
-	}))
+	}
+	output, stderr, err := s.output(s.cmd.New(args))
+	if retry, ok := s.filterRetryArgs(args, err, string(output)+string(stderr)); ok {
+		output, stderr, err = s.output(s.cmd.New(retry))
+	}
 	if err != nil {
 		// Git uses status 1 for an ordinary difference between the two paths.
 		if code, ok := commandExitCode(err); !ok || code != 1 {

@@ -120,6 +120,34 @@ func (s *gitSession) remoteStatusFiles(options git_commands.GetStatusFileOptions
 // only for the child Git command that reads optional metadata. It does not
 // write repository or user configuration. Keys are sorted for deterministic
 // command lines and existing filters are disabled as required=false as well.
+// filterRetryArgs is the argv for running a read-only Git command again with
+// every configured filter off, when the failure was an optional filter (such
+// as git-lfs missing from PATH) rather than the command itself. ok is false
+// for any other failure, which the caller must report as it was.
+func (s *gitSession) filterRetryArgs(args []string, failure error, output string) ([]string, bool) {
+	if failure == nil || !isOptionalFilterStatsError(fmt.Errorf("%w: %s", failure, output)) {
+		return nil, false
+	}
+	configured, err := s.filterDisablingArgs()
+	if err != nil {
+		return nil, false
+	}
+	retry := append([]string{args[0]}, configured...)
+	retry = append(retry, args[1:]...)
+	return withoutLFSFilters(retry), true
+}
+
+// readGit runs a read-only Git command and, when only an optional filter
+// failed, once more with the filters off. Never use it for commands that
+// write: a skipped clean filter would store the wrong content.
+func (s *gitSession) readGit(args []string) (string, string, error) {
+	stdout, stderr, err := s.cmd.New(args).RunWithOutputs()
+	if retry, ok := s.filterRetryArgs(args, err, stdout+stderr); ok {
+		return s.cmd.New(retry).RunWithOutputs()
+	}
+	return stdout, stderr, err
+}
+
 func (s *gitSession) filterDisablingArgs() ([]string, error) {
 	output, err := s.cmd.New([]string{"git", "config", "--get-regexp", `^filter\..*\.(process|clean|smudge|required)$`}).RunWithOutput()
 	if err != nil {

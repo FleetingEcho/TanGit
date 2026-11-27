@@ -462,6 +462,38 @@ func TestSnapshotDoesNotRequireGitLFSExecutable(t *testing.T) {
 	}
 }
 
+func TestUntrackedDiffDoesNotRequireGitLFSExecutable(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--initial-branch=main")
+	runGit(t, dir, "config", "user.name", "Desktop Test")
+	runGit(t, dir, "config", "user.email", "desktop@example.com")
+	if err := os.WriteFile(filepath.Join(dir, ".gitattributes"), []byte("*.tar.xz filter=lfs diff=lfs merge=lfs -text\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", ".gitattributes")
+	runGit(t, dir, "commit", "-m", "initial")
+	if err := os.WriteFile(filepath.Join(dir, "object.tar.xz"), []byte{'x', 0, 'z'}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	missing := "lazygitgo-test-git-lfs-that-is-not-installed"
+	runGit(t, dir, "config", "filter.lfs.required", "true")
+	runGit(t, dir, "config", "filter.lfs.process", missing+" filter-process")
+	runGit(t, dir, "config", "filter.lfs.clean", missing+" clean -- %f")
+	runGit(t, dir, "config", "filter.lfs.smudge", missing+" smudge -- %f")
+
+	session, err := openFullRepositorySessionForTest((Opener{}).Open(context.Background(), dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff, err := session.Diff(context.Background(), File{Path: "object.tar.xz"}, DiffOptions{ContextLines: 3})
+	if err != nil {
+		t.Fatalf("preview an untracked LFS-attributed file without git-lfs: %v", err)
+	}
+	if diff.Kind != "Untracked" || !strings.Contains(diff.Patch, "Binary files") {
+		t.Fatalf("unexpected untracked LFS-attributed binary diff: %#v", diff)
+	}
+}
+
 // ApplyCachedPatch moves only the lines its patch names, forward to stage
 // them and backwards to take them out of the index again, and leaves the
 // working tree as it was.

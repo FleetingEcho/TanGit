@@ -65,6 +65,9 @@ func (a *app) overviewRangeControl(c *ui.Context, o *overviewState) {
 			button := compactTextButton(ui.Button(c, "")).Label(label).Tooltip(tr("Custom period")).
 				OnClick(func() { a.openOverviewPeriod(o) })
 			button.Children(func() { ui.Text(c, label).SingleLine().FontSize(theme.FontSize - 1) })
+			// Back to the preset range the custom period replaced.
+			iconButton(c, "Reset period", "Clear the custom period and use the time range again", closeIcon, false,
+				func() { a.selectOverviewPreset(o, o.rangeIdx) })
 		}
 		dropdown := compactTextButton(ui.Button(c, "")).Label(tr("Time range")).Gap(6)
 		if o.period != nil {

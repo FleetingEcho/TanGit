@@ -108,8 +108,8 @@ func (a *app) pickerHeaderView(c *ui.Context, hasHistory, wide, split bool) {
 			ui.Text(c, tr("A native Git client, built on Lazygit")).
 				FontSize(theme.FontSize - 2).TextColor(theme.TextMuted).SingleLine()
 		})
-		ui.Row(c).AlignItems(ui.Center).Gap(2).Padding(3).
-			Background(theme.Background).Border(1, theme.Border).Radius(9).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(2).Padding(2).
+			Background(theme.Background).Border(1, theme.Border).Radius(7).Children(func() {
 			a.pickerLayoutButton(c, "Side-by-side layout", splitIcon, false, hasHistory && wide, split)
 			a.pickerLayoutButton(c, "Stacked layout", splitBelowIcon, true, hasHistory, !split && hasHistory)
 		})
@@ -126,14 +126,14 @@ func (a *app) pickerHeaderView(c *ui.Context, hasHistory, wide, split bool) {
 func (a *app) pickerLayoutButton(c *ui.Context, label string, icon *ui.SVG, stacked, enabled, selected bool) {
 	theme := c.Theme()
 	button := ui.ButtonBase(c.Key(label)).Label(tr(label)).Tooltip(tr(label)).
-		Disabled(!enabled).Selected(selected).Size(29, 28).Radius(6).Center()
+		Disabled(!enabled).Selected(selected).Size(24, 22).Radius(5).Center()
 	switch {
 	case selected:
 		button.Background(theme.Accent.Alpha(0.16)).TextColor(theme.Accent)
 	case enabled && button.Hovered():
 		button.Background(theme.SurfaceHover)
 	}
-	button.Children(func() { ui.Icon(c, icon).FontSize(17) })
+	button.Children(func() { ui.Icon(c, icon).FontSize(14) })
 	button.OnClick(func() { a.pickerStacked = stacked })
 }
 

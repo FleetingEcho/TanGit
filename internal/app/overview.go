@@ -1424,7 +1424,7 @@ func (a *app) overviewTimeline(c *ui.Context, o *overviewState, rows []overviewC
 		counts[time.Unix(row.Commit.UnixTimestamp, 0).Format(time.DateOnly)]++
 	}
 	ui.Scroll(c).Grow(1).FillWidth().TrackScroll(&o.scroll).Label(tr("Recent commits")).Children(func() {
-		ui.Column(c).FillWidth().Padding(4, 20, 24).Gap(2).Children(func() {
+		ui.Column(c).FillWidth().Padding(4, 20, 24).Gap(4).Children(func() {
 			var day string
 			for i := 0; i < limit; i++ {
 				row := rows[i]
@@ -1479,6 +1479,9 @@ func (a *app) overviewCommitHeading(c *ui.Context, o *overviewState, row overvie
 	line.Label(name + " " + commit.ShortHash + " " + commit.Subject).
 		Expanded(expanded).Tooltip(commit.Subject).OnClick(func() { a.toggleOverviewCommit(row) })
 	hovered := line.Hovered()
+	// At rest a row wears a faint wash and hairline, so on a white card the
+	// rows read as a list of items rather than loose text.
+	line.Background(overviewRowResting(theme)).Border(1, theme.Border.Alpha(0.25))
 	if hovered || expanded {
 		line.Background(theme.SurfaceHover)
 	}
@@ -1830,3 +1833,12 @@ var (
 	overviewUnpushedIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 12.4h6.6a2.6 2.6 0 0 0 .5-5.1 3.7 3.7 0 0 0-7.1-.9 2.9 2.9 0 0 0 0 6z"/><path d="M2.2 2.2l11.6 11.6"/></svg>`))
 	overviewExportIcon   = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.2 1.8H4.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.2a1 1 0 0 0 1-1V5.4z"/><path d="M9.2 1.8v3.6h3.6"/><path d="M8 7.6v4.2"/><path d="m6.2 10.2 1.8 1.8 1.8-1.8"/></svg>`))
 )
+
+// overviewRowResting is the fill of a commit row that is neither hovered nor
+// open: a step off the card's own color in either theme.
+func overviewRowResting(theme *ui.Theme) ui.Color {
+	if theme.Dark {
+		return theme.Background.Mix(ui.RGBA(1, 1, 1, 1), 0.02)
+	}
+	return theme.Background.Mix(black, 0.012)
+}

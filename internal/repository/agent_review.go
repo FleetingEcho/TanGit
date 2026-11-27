@@ -105,7 +105,7 @@ func (s *gitSession) FinalFiles(ctx context.Context, base string, options DiffOp
 	if err != nil {
 		return nil, fmt.Errorf("load final files: %w", err)
 	}
-	output, stderr, err := s.cmd.New(nameArgs).RunWithOutputs()
+	output, stderr, err := s.readGit(nameArgs)
 	if err != nil {
 		if message := strings.TrimSpace(stderr); message != "" {
 			return nil, fmt.Errorf("load final files: %w: %s", err, message)
@@ -121,7 +121,7 @@ func (s *gitSession) FinalFiles(ctx context.Context, base string, options DiffOp
 	if err != nil {
 		return nil, fmt.Errorf("load final line statistics: %w", err)
 	}
-	output, stderr, err = s.cmd.New(statArgs).RunWithOutputs()
+	output, stderr, err = s.readGit(statArgs)
 	if err != nil {
 		if message := strings.TrimSpace(stderr); message != "" {
 			return nil, fmt.Errorf("load final line statistics: %w: %s", err, message)
@@ -189,9 +189,12 @@ func (s *gitSession) FinalFileDiff(ctx context.Context, base string, file Commit
 	}
 
 	if strings.HasPrefix(file.Status, "?") {
-		args := append([]string{"git", "diff", "--no-index", "--no-color", "--no-ext-diff"}, optionArgs...)
+		args := append([]string{"git", "diff", "--no-index", "--no-color", "--no-ext-diff", "--no-textconv"}, optionArgs...)
 		args = append(args, "--", "/dev/null", file.Path)
 		output, stderr, commandErr := s.output(s.cmd.New(args))
+		if retry, ok := s.filterRetryArgs(args, commandErr, string(output)+string(stderr)); ok {
+			output, stderr, commandErr = s.output(s.cmd.New(retry))
+		}
 		if commandErr != nil {
 			if exitCode, ok := commandExitCode(commandErr); !ok || exitCode != 1 {
 				if message := strings.TrimSpace(string(stderr)); message != "" {
@@ -218,7 +221,7 @@ func (s *gitSession) FinalFileDiff(ctx context.Context, base string, file Commit
 	if file.PreviousPath != "" && file.PreviousPath != file.Path {
 		args = append(args, literalReviewPath(file.PreviousPath))
 	}
-	patch, stderr, err := s.cmd.New(args).RunWithOutputs()
+	patch, stderr, err := s.readGit(args)
 	if err != nil {
 		if message := strings.TrimSpace(stderr); message != "" {
 			return Diff{}, fmt.Errorf("load final file diff: %w: %s", err, message)
