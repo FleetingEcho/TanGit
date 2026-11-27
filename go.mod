@@ -89,4 +89,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/egoist/mygo => github.com/FleetingEcho/mygo v0.10.1-0.20261127013946-3a0c77ccfb33
+replace github.com/egoist/mygo => github.com/FleetingEcho/mygo v0.10.1-0.20261127014630-faf53d8ae288
