@@ -74,7 +74,10 @@ func TestOverviewCustomPeriodCanBeAppliedAndReopened(t *testing.T) {
 	a.pathUserData = t.TempDir()
 	o := newOverviewState()
 	a.overview = o
-	o.config = overviewConfig{Overviews: []overviewDef{{ID: "overview"}}}
+	o.config = overviewConfig{Active: "overview", Overviews: []overviewDef{{ID: "overview"}}}
+	if err := saveOverviewConfig(a.dataDir(), o.config); err != nil {
+		t.Fatal(err)
+	}
 	tt := ui.NewTester(func(c *ui.Context) {
 		a.overviewRangeControl(c, o)
 		a.overviewPeriodModal(c, o)
@@ -108,7 +111,11 @@ func TestOverviewCustomPeriodCanBeAppliedAndReopened(t *testing.T) {
 		t.Fatalf("applied search period = %+v", got)
 	}
 	saved := loadOverviewConfig(a.dataDir())
-	if period := saved.current().Period; period == nil || !period.From.Equal(from) || !period.To.Equal(to) {
+	current := saved.current()
+	if current == nil {
+		t.Fatal("applied custom period did not retain the active Overview")
+	}
+	if period := current.Period; period == nil || !period.From.Equal(from) || !period.To.Equal(to) {
 		t.Fatalf("saved period = %+v", period)
 	}
 	click(from.Format(overviewPeriodLayout) + " – " + to.Format(overviewPeriodLayout))
@@ -154,7 +161,17 @@ func TestOverviewSidebarRemovesOnlyAfterConfirmation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	click("Remove Alpha")
+	openRepoMenu := func(label string) {
+		t.Helper()
+		r, ok := tt.Find(label)
+		if !ok {
+			t.Fatalf("no repository row shows %q", label)
+		}
+		tt.RightClickAt(r.X+r.W/2, r.Y+r.H/2)
+		tt.Frame()
+	}
+	openRepoMenu("Alpha")
+	click("Remove from Overview")
 	if _, ok := tt.Find("Remove Alpha from this Overview?"); !ok {
 		t.Fatal("removal confirmation is missing")
 	}
@@ -162,7 +179,8 @@ func TestOverviewSidebarRemovesOnlyAfterConfirmation(t *testing.T) {
 	if len(o.followed()) != 2 || o.filter != alpha {
 		t.Fatal("cancelling removal changed the Overview")
 	}
-	click("Remove Alpha")
+	openRepoMenu("Alpha")
+	click("Remove from Overview")
 	click("Remove")
 	saved := loadOverviewConfig(a.dataDir())
 	if repos := saved.current().Repos; len(repos) != 1 || repos[0].Path != beta {
@@ -254,7 +272,13 @@ func TestOverviewRenameAndOpenCommitHistory(t *testing.T) {
 	if o.setup.open {
 		t.Fatal("close button did not dismiss the edit dialog")
 	}
-	click("Rename repository")
+	repo, ok := tt.Find("main")
+	if !ok {
+		t.Fatal("repository row is missing")
+	}
+	tt.RightClickAt(repo.X+repo.W/2, repo.Y+repo.H/2)
+	tt.Frame()
+	click("Rename")
 	tt.Key(ui.Ctrl, ui.KeyA)
 	tt.Type("Backend")
 	click("Save")
@@ -267,8 +291,8 @@ func TestOverviewRenameAndOpenCommitHistory(t *testing.T) {
 	if s.activeTab() != page {
 		t.Fatal("opening the disclosure switched tabs")
 	}
-	if _, ok := tt.Find("Details"); !ok {
-		t.Fatal("expanded preview has no Details link")
+	if _, ok := tt.Find("Open commit details"); !ok {
+		t.Fatal("expanded preview has no Open commit details button")
 	}
 	updated.waitForUpdate(t)
 	tt.Frame()
@@ -279,9 +303,9 @@ func TestOverviewRenameAndOpenCommitHistory(t *testing.T) {
 	if !ok {
 		t.Fatal("expanded preview did not load the changed files")
 	}
-	details, ok := tt.Find("Details")
+	details, ok := tt.Find("Open commit details")
 	if !ok || details.X < firstFile.X+200 || details.Y <= firstFile.Y {
-		t.Fatalf("Details is not at the lower right: link=%+v file=%+v", details, firstFile)
+		t.Fatalf("Open commit details is not at the lower right: button=%+v file=%+v", details, firstFile)
 	}
 	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
 		saveScreenshot(t, dir, "overview-commit-preview", tt)
@@ -291,16 +315,16 @@ func TestOverviewRenameAndOpenCommitHistory(t *testing.T) {
 	if !ok || lastFile.Y <= firstFile.Y || lastFile.Y >= details.Y {
 		t.Fatalf("last file is not visible in the scrolled list: %+v", lastFile)
 	}
-	if after, _ := tt.Find("Details"); after != details {
-		t.Fatalf("scrolling files moved the Details link: before=%+v after=%+v", details, after)
+	if after, _ := tt.Find("Open commit details"); after != details {
+		t.Fatalf("scrolling files moved the Open commit details button: before=%+v after=%+v", details, after)
 	}
 	click(label)
-	if _, ok := tt.Find("Details"); ok {
-		t.Fatal("collapsed preview still shows the Details link")
+	if _, ok := tt.Find("Open commit details"); ok {
+		t.Fatal("collapsed preview still shows the Open commit details button")
 	}
 	click(label)
 	tabCount := len(s.tabs)
-	click("Details")
+	click("Open commit details")
 	tt.Frame()
 	dest := s.activeApp()
 	if dest != existing.app || len(s.tabs) != tabCount || dest.state != stateReady ||
@@ -343,10 +367,13 @@ func TestOverviewSetupMatchesSavedSubfolderToRecentRoot(t *testing.T) {
 	a.update = updated.update
 	a.recentRepositories = []recentRepository{{Path: root}}
 	a.overview = newOverviewState()
-	a.overview.config = overviewConfig{Overviews: []overviewDef{{
+	a.overview.config = overviewConfig{Active: "overview", Overviews: []overviewDef{{
 		ID: "overview", Name: "Overview",
 		Repos: []overviewRepo{{Path: subfolder, Name: "NIGHT"}, {Path: nestedRepo}},
 	}}}
+	if err := saveOverviewConfig(a.dataDir(), a.overview.config); err != nil {
+		t.Fatal(err)
+	}
 	a.openOverviewSetup()
 	updated.waitForUpdate(t)
 	setup := &a.overview.setup
@@ -357,7 +384,11 @@ func TestOverviewSetupMatchesSavedSubfolderToRecentRoot(t *testing.T) {
 	a.opener = nil // Verify saved selection without starting a new timeline read.
 	a.applyOverviewSetup()
 	saved := loadOverviewConfig(a.dataDir())
-	repos := saved.current().Repos
+	current := saved.current()
+	if current == nil {
+		t.Fatal("saved repository selection did not retain the active Overview")
+	}
+	repos := current.Repos
 	if len(repos) != 2 || repos[0].Path != root || repos[0].Name != "NIGHT" || repos[1].Path != nestedRepo {
 		t.Fatalf("saved selection = %+v", repos)
 	}

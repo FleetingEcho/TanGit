@@ -36,6 +36,9 @@ type overviewRepo struct {
 	Path   string `json:"path"`
 	Name   string `json:"name,omitempty"`
 	Custom bool   `json:"custom,omitempty"`
+	// Color is the color the user gave this repository, as "#rrggbb"; empty
+	// leaves it to the automatic color the Overview picks.
+	Color string `json:"color,omitempty"`
 }
 
 func (r overviewRepo) displayName() string {

@@ -334,6 +334,9 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 		case a.overviewCommitTarget.Hash != "":
 			a.openOverviewCommitInHistory(a.overviewCommitTarget)
 		case start == sectionCode:
+			if a.startSectionOnce == sectionCode+1 {
+				a.setWorkspaceTab(sectionCode)
+			}
 		case start == sectionOverview:
 			a.workspaceTab = sectionOverview
 			a.syncNavSelection()

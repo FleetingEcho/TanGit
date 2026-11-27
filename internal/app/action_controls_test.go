@@ -195,6 +195,11 @@ func TestChangesHunkActionStyleAcrossViewportsAndThemes(t *testing.T) {
 					h.tester.SetSize(viewport.width, viewport.height)
 					h.tester.SetDark(dark)
 					h.tester.Frame()
+					h.tester.Frame()
+					h.waitFor(t, "the resized diff", func() bool {
+						return h.app.diffState != nil && !h.app.diffLoading && h.app.cancelDiff == nil
+					})
+					h.tester.Frame()
 
 					action, actionVisible := matrixAction(t, h, "Stage hunk", "Diff hunk actions", style, viewport.width, viewport.height)
 					if actionVisible && !strings.Contains(action.Description, "leaving other hunks unstaged") {

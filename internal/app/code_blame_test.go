@@ -203,6 +203,10 @@ func TestCodeBlameAnnotationsOpenCommitAndJumpToHistory(t *testing.T) {
 		h.app.codeBlameHover.commit.Hash != hash {
 		t.Fatalf("blame commit dialog = %#v", h.app.codeBlameHover)
 	}
+	if err := h.tester.Click("More info"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
 	if !h.tester.HasText("Explain the blame model") || !h.tester.HasText("ada@example.com") {
 		t.Fatalf("commit details are incomplete: %q", h.texts())
 	}
@@ -902,6 +906,10 @@ func TestCodeBlameCardLoadsMessageFilesAndExactTotals(t *testing.T) {
 	if bounds, ok := h.tester.Find("Changed files"); !ok || bounds.H != codeBlameFilesHeight {
 		t.Fatalf("file list does not retain its fixed height: %+v", bounds)
 	}
+	if err := h.tester.Click("More info"); err != nil {
+		t.Fatal(err)
+	}
+	h.tester.Frame()
 	for _, text := range []string{"Improve server errors", "Include the original error for better debugging.", "You", "v2.0", "Changes in this commit (3)", "server/server.go", "old/config.go → server/config.go", "+18", "−4"} {
 		if !h.tester.HasText(text) {
 			t.Errorf("card missing %q: %v", text, h.texts())
@@ -1097,7 +1105,7 @@ func TestCodeBlameFileListHasFixedHeightAndScrollsIndependently(t *testing.T) {
 	}
 }
 
-func TestCodeBlameCardUsesWindowHeightToShowExpandedContent(t *testing.T) {
+func TestCodeBlameCardFitsExpandedContentWithinWindow(t *testing.T) {
 	a := newApp(fakeOpener{})
 	a.codeBlameHover = codeBlameHoverState{
 		open: true, path: "server/server.go", line: 42,
@@ -1113,8 +1121,8 @@ func TestCodeBlameCardUsesWindowHeightToShowExpandedContent(t *testing.T) {
 		})
 	}, 720, 1000)
 	card, ok := tt.Find("Commit details")
-	if !ok || card.H <= 620 {
-		t.Fatalf("card retained an arbitrary height cap: %+v", card)
+	if !ok || card.H <= 0 || card.Y < 0 || card.Y+card.H > 1000 {
+		t.Fatalf("expanded card does not fit within the window: %+v", card)
 	}
 	for _, label := range []string{"Copy commit hash", "Changed files", "Insertions", "Deletions", "server/server.go:42"} {
 		bounds, ok := tt.Find(label)
@@ -1169,6 +1177,10 @@ func TestCodeBlameNativeGoHoverFitsAndPrioritizesCurrentFile(t *testing.T) {
 			snapshot := document.state.Buffer.Snapshot()
 			document.state.OnHover(editor.HoverRequest{Offset: snapshot.LineEnd(tc.line), Version: snapshot.Version()})
 			h.waitFor(t, "native Go blame card", func() bool { return h.app.codeBlameHover.open && !h.app.codeBlameHover.loading })
+			h.tester.Frame()
+			if err := h.tester.Click("More info"); err != nil {
+				t.Fatal(err)
+			}
 			h.tester.Frame()
 			panel, ok := h.tester.AccessByRole(ui.RoleTooltip, "")
 			if !ok {

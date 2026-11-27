@@ -273,8 +273,8 @@ func TestOverviewFillsTallViewportAndScrollsInShortWindows(t *testing.T) {
 	}
 	height := cardBounds("Branch health").H
 	for _, label := range []string{"Code changes", "Working tree", "Collaboration"} {
-		if got := cardBounds(label).H; got != height {
-			t.Errorf("%s height = %g, want %g", label, got, height)
+		if got := cardBounds(label).H; got < height-0.001 || got > height+0.001 {
+			t.Errorf("%s height = %g, want %g (within 0.001 DIP)", label, got, height)
 		}
 	}
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -139,6 +140,12 @@ type overviewState struct {
 	colors map[string]ui.Color
 	// sidebarW is the repository list's width, dragged at the divider.
 	sidebarW float32
+	// colorFor names the repository whose color panel is open, "" while none is;
+	// colorOpen follows the popover's own state and colorCustom is the color
+	// well's live value.
+	colorFor    string
+	colorOpen   bool
+	colorCustom ui.Color
 }
 
 // cur is the Overview on show, nil when the user has none yet.
@@ -517,6 +524,11 @@ func (o *overviewState) repoColor(path string) ui.Color {
 	used := make(map[int]bool, len(repos))
 	colors := make(map[string]ui.Color, len(repos))
 	for _, repo := range repos {
+		// A color the user chose is theirs: it takes no slot from the others.
+		if chosen, ok := parseCustomAccent(repo.Color); ok {
+			colors[repo.Path] = chosen
+			continue
+		}
 		h := fnv.New32a()
 		_, _ = h.Write([]byte(strings.ToLower(repo.Path)))
 		slot := int(h.Sum32()) % len(names)
@@ -745,6 +757,16 @@ func (a *app) applyOverviewSetup() {
 		repos = append(repos, overviewRepo{Path: path, Name: o.setup.names[path], Custom: true})
 	}
 	repos = normalizeOverviewRepos(repos)
+	// Editing the list of repositories keeps the colors the user gave them.
+	if def := o.cur(); def != nil && !o.setup.isNew {
+		for i := range repos {
+			for _, before := range def.Repos {
+				if before.Path == repos[i].Path {
+					repos[i].Color = before.Color
+				}
+			}
+		}
+	}
 	isNew := o.setup.isNew
 	name := cleanOverviewName(o.setup.name)
 	if name == "" {
@@ -1046,7 +1068,11 @@ func (a *app) overviewSidebar(c *ui.Context, o *overviewState) {
 }
 
 func strconvCount(n int) string {
-	return trf("%d", n)
+	return strconv.Itoa(n)
+}
+
+func overviewCount(label string, n int) string {
+	return label + " ×" + strconv.Itoa(n)
 }
 
 func (a *app) overviewSidebarRow(c *ui.Context, key, name, branch string, color ui.Color, selected bool, badge, problem string, run func()) {
@@ -1088,15 +1114,128 @@ func (a *app) overviewSidebarRow(c *ui.Context, key, name, branch string, color 
 				ui.Text(c, badge).FontSize(theme.FontSize - 1).TextColor(tone)
 			}
 		})
-		if key != "" {
-			flatIconButton(c, "Rename repository", name, editIcon, 14, 4, false, func() {
-				a.overview.rename = overviewRepo{Path: key, Name: name}
-				a.overview.renameErr = ""
-			})
-			flatIconButton(c, trf("Remove %s", name), "Remove repository", trashIcon, 14, 4, a.confirm != nil,
-				func() { a.confirmRemoveOverviewRepo(key, name) })
+	})
+	if key == "" {
+		return
+	}
+	// Rename, color and removal live in the row's context menu, so the row stays
+	// a clean target for filtering the timeline.
+	item.PopoverMenu(func(m *ui.Menu) {
+		if m.Item(tr("Rename")).Disabled(a.overview.searching()).Chosen() {
+			a.overview.rename = overviewRepo{Path: key, Name: name}
+			a.overview.renameErr = ""
+		}
+		if m.Item(tr("Change color")).Chosen() {
+			a.overview.colorFor = key
+			a.overview.colorOpen = true
+			a.overview.colorCustom = ui.Color{}
+		}
+		m.Separator()
+		if m.Item(tr("Remove from Overview")).Danger().Disabled(a.confirm != nil).Chosen() {
+			a.confirmRemoveOverviewRepo(key, name)
 		}
 	})
+	if o := a.overview; o != nil && o.colorFor == key {
+		panel := ui.Popover(c, item, &o.colorOpen, func() { a.overviewColorPanel(c, o, key) })
+		if panel.Dismissed() {
+			o.colorFor = ""
+		}
+	}
+}
+
+// overviewColorPanel is the color picker a repository offers: the accent
+// swatches, a well for any color, and the way back to the automatic one. A
+// choice is saved with the Overview and shows at once.
+func (a *app) overviewColorPanel(c *ui.Context, o *overviewState, path string) {
+	theme := c.Theme()
+	current := ""
+	if def := o.cur(); def != nil {
+		for _, repo := range def.Repos {
+			if repo.Path == path {
+				current = repo.Color
+			}
+		}
+	}
+	ui.Column(c).Gap(10).Padding(12).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+			ui.Text(c, tr("Repository color")).Bold()
+			ui.Spacer(c).Grow(1)
+			if current != "" {
+				if ui.Button(c, tr("Use automatic color")).Clicked() {
+					a.setOverviewRepoColor(o, path, "")
+					o.colorOpen = false
+					o.colorFor = ""
+				}
+			}
+		})
+		ui.Row(c).Gap(6).Wrap().Children(func() {
+			for _, name := range accentNames {
+				color := accentChoices[name]
+				chosen := current != "" && current == formatCustomAccent(color)
+				swatch := ui.ButtonBase(c).Size(26, 26).Radius(theme.Radius + 4).Center()
+				swatch.Label(tr(name)).Tooltip(tr(name)).Background(color)
+				switch {
+				case chosen:
+					swatch.Border(2, theme.Text)
+				case swatch.Hovered():
+					swatch.Border(2, theme.Text.Alpha(0.5))
+				}
+				swatch.Children(func() {
+					if chosen {
+						ui.Icon(c, commitIcon).FontSize(14).TextColor(accentText(color))
+					}
+				})
+				if swatch.Clicked() {
+					// A swatch is a finished choice: apply it and put the panel away.
+					a.setOverviewRepoColor(o, path, formatCustomAccent(color))
+					o.colorOpen = false
+					o.colorFor = ""
+				}
+			}
+			if o.colorCustom == (ui.Color{}) {
+				if chosen, ok := parseCustomAccent(current); ok {
+					o.colorCustom = chosen
+				} else {
+					o.colorCustom = o.repoColor(path)
+				}
+			}
+			well := ui.ColorWell(c, &o.colorCustom).Label(tr("Custom color")).
+				Tooltip(tr("Choose a custom color"))
+			if well.Changed() {
+				a.setOverviewRepoColor(o, path, formatCustomAccent(
+					ui.RGB(o.colorCustom.R, o.colorCustom.G, o.colorCustom.B)))
+			}
+		})
+	})
+}
+
+// setOverviewRepoColor saves the color of one followed repository with its
+// Overview; "" gives it back the automatic one. The change shows at once, in
+// the list and on the timeline's pills.
+func (a *app) setOverviewRepoColor(o *overviewState, path, color string) {
+	current := o.cur()
+	if current == nil {
+		return
+	}
+	def := *current
+	def.Repos = slices.Clone(def.Repos)
+	found := false
+	for i := range def.Repos {
+		if def.Repos[i].Path == path {
+			def.Repos[i].Color = color
+			found = true
+		}
+	}
+	if !found {
+		return
+	}
+	saved, err := saveOverviewDef(a.dataDir(), def, false)
+	if err != nil {
+		a.notifyError(err)
+		return
+	}
+	o.config = saved
+	o.colors = nil
 }
 
 func (a *app) confirmRemoveOverviewRepo(path, name string) {
@@ -1363,7 +1502,7 @@ func (a *app) overviewCommitHeading(c *ui.Context, o *overviewState, row overvie
 		if shared := o.mrCounts[row.MR]; row.MR != "" && shared > 1 {
 			ui.Row(c).Padding(1, 6).Radius(theme.Radius).Background(theme.Accent.Alpha(0.14)).
 				Tooltip(trf("Merge request %s has %d commits here", row.MR, shared)).Children(func() {
-				ui.Text(c, trf("%s ×%d", row.MR, shared)).FontSize(theme.FontSize - 2).TextColor(theme.Accent).SingleLine()
+				ui.Text(c, overviewCount(row.MR, shared)).FontSize(theme.FontSize - 2).TextColor(theme.Accent).SingleLine()
 			})
 		}
 		if linked := len(o.issueRepos[row.Issue]); row.Issue != "" && linked > 1 {

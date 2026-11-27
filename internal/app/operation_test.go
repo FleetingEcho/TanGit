@@ -74,7 +74,7 @@ func richRebaseOperation() repository.OperationState {
 func TestOperationContextShowsRealRefsAndProgress(t *testing.T) {
 	h, _ := operationTestApp(t, richRebaseOperation())
 	h.tester.Frame()
-	for _, want := range []string{"feature", "Step 2 of 5"} {
+	for _, want := range []string{"refs/heads/feature", "Step 2 of 5"} {
 		if !slices.Contains(h.texts(), want) {
 			t.Fatalf("operation context does not show %q: %q", want, h.texts())
 		}

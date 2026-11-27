@@ -117,10 +117,9 @@ func TestEditorBlameIconTogglesFullFileAndKeepsActiveLine(t *testing.T) {
 	document := waitForCodeDocument(t, h, "changed.txt")
 	h.waitFor(t, "the editor blame", func() bool { return document.blameLoaded })
 
-	h.clickAndSettle(t, "Git Blame")
 	if !document.blameEnabled || !document.blameLoaded || !document.blameFull ||
 		len(document.blameInlays) != 1 || len(document.state.LineAnnotations()) != 1 {
-		t.Fatalf("the blame icon did not show full-file blame and retain the active line: enabled=%v loaded=%v full=%v inlays=%#v annotations=%#v",
+		t.Fatalf("Blame menu did not show full-file blame and retain the active line: enabled=%v loaded=%v full=%v inlays=%#v annotations=%#v",
 			document.blameEnabled, document.blameLoaded, document.blameFull, document.blameInlays, document.state.LineAnnotations())
 	}
 	h.clickAndSettle(t, "Git Blame")
@@ -128,5 +127,10 @@ func TestEditorBlameIconTogglesFullFileAndKeepsActiveLine(t *testing.T) {
 		len(document.blameInlays) != 1 || len(document.state.LineAnnotations()) != 0 {
 		t.Fatalf("hiding full-file blame hid the selected-line annotation: enabled=%v loaded=%v full=%v inlays=%#v annotations=%#v",
 			document.blameEnabled, document.blameLoaded, document.blameFull, document.blameInlays, document.state.LineAnnotations())
+	}
+	h.clickAndSettle(t, "Git Blame")
+	if !document.blameFull || len(document.blameInlays) != 1 || len(document.state.LineAnnotations()) != 1 {
+		t.Fatalf("the blame icon did not restore full-file blame and retain the active line: full=%v inlays=%#v annotations=%#v",
+			document.blameFull, document.blameInlays, document.state.LineAnnotations())
 	}
 }

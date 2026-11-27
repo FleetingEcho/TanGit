@@ -242,34 +242,25 @@ func TestNormalizeExternalEditorsRejectsInvalidAndDuplicateEntries(t *testing.T)
 	}
 }
 
-// A Home card can open its repository in the configured editor without
-// opening that repository in lazygitGo; its context menu offers the same action.
-func TestRecentCardOpensTheRepositoryWithTheConfiguredEditor(t *testing.T) {
-	a, tt, _ := recentTester(t, recentRepository{Path: "/work/project", LastOpened: timeNow()})
-	opened := stubEditor(t, nil)
+// Home's editor action always opens the repository's built-in Code page,
+// even when an external editor is configured for explicit external actions.
+func TestRecentCardIgnoresExternalEditorAndOpensBuiltInCode(t *testing.T) {
+	stubCodeWorkspace(t, nil)
+	a, tt, updated := recentTester(t, recentRepository{Path: "/work/project", LastOpened: timeNow()})
+	a.workspaceTab = sectionChanges
 	a.settings.EditorCommand = editorPresets[2].Command
-	want := launchedEditor{command: editorPresets[2].Command, path: "/work/project"}
+	opened := stubEditor(t, nil)
 
 	if err := tt.Click("Open /work/project in editor"); err != nil {
 		t.Fatalf("the recent card has no editor button: %v", err)
 	}
-	if !slices.Equal(*opened, []launchedEditor{want}) {
-		t.Fatalf("card editor opened %+v, want %+v", *opened, want)
+	h := &harness{app: a, tester: tt, updates: updated}
+	h.settle(t)
+	if a.state != stateReady || a.workspaceTab != sectionCode {
+		t.Fatalf("Home editor action opened state=%v section=%d, want the repository's Code page", a.state, a.workspaceTab)
 	}
-	if a.state != stateEmpty {
-		t.Fatalf("opening the editor must not open the lazygitGo repository; state=%v", a.state)
-	}
-
-	tt.Frame()
-	if err := tt.RightClick("/work/project"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if err := tt.Click("Open in editor"); err != nil {
-		t.Fatalf("the card menu has no editor command: %v", err)
-	}
-	if !slices.Equal(*opened, []launchedEditor{want, want}) {
-		t.Fatalf("menu editor opened %+v, want a second launch of %+v", *opened, want)
+	if len(*opened) != 0 {
+		t.Fatalf("Home editor action launched the configured external editor: %+v", *opened)
 	}
 }
 

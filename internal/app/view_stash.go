@@ -653,7 +653,7 @@ func (a *app) stashView(c *ui.Context) {
 					// The saved files and the chosen file's diff share the rest
 					// of the card. Their inset sash can be dragged like the commit
 					// detail panes without touching the card's rounded border.
-					paneSplitVertical(c, &a.stashFilesHeight, func() {
+					paneSplitVerticalInCard(c, &a.stashFilesHeight, func() {
 						ui.Column(c).Fill().Gap(6).Children(func() {
 							ui.Row(c).AlignItems(ui.Center).Gap(7).Children(func() {
 								ui.Icon(c, folderIcon).FontSize(13).TextColor(theme.Accent)

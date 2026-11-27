@@ -47,6 +47,16 @@ func (a *app) changedFileNavigation(direction int) {
 // the existing conflict editor at narrow widths.
 func (a *app) changedFileAndHunkNavigationControls(c *ui.Context) {
 	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(4).Children(func() {
+		windowWidth, _ := c.Size()
+		narrow := windowWidth < 1000
+		// A compact labels menu sits at the selection group's trailing edge.
+		// Move file navigation before it so their hit targets cannot overlap;
+		// direct icon actions retain the established trailing navigation order.
+		leadingFileNavigation := narrow && a.hunkMode &&
+			normalizeConflictActionStyle(a.settings.ConflictActionStyle) != conflictActionStyleIcons
+		if leadingFileNavigation {
+			a.changedFileNavigationControls(c)
+		}
 		if a.hunkMode {
 			// The selection tools sit in one bordered group, so what belongs to
 			// choosing changes reads apart from the file navigation beside it.
@@ -58,10 +68,12 @@ func (a *app) changedFileAndHunkNavigationControls(c *ui.Context) {
 			a.hunkModeButton(c)
 			ui.Row(c).Grow(1).MinWidth(0)
 		}
-		if width, _ := c.Size(); width >= 1000 {
-			toolbarSeparator(c)
+		if !leadingFileNavigation {
+			if !narrow {
+				toolbarSeparator(c)
+			}
+			a.changedFileNavigationControls(c)
 		}
-		a.changedFileNavigationControls(c)
 	})
 }
 

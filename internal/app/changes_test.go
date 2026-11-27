@@ -1795,3 +1795,49 @@ func TestAMergeAndAnEmptyStagedSectionFitAboveTheChanges(t *testing.T) {
 		t.Fatalf("the merge rows end at %v, before %v: they are squeezed", mergeLast, body.Y+changeHeaderHeight+2*changeRowHeight)
 	}
 }
+
+// mergeFileHistorySession lists a file's own log without the merge commit the
+// drawer was opened from: Git simplifies such a merge away when its parents
+// carry the change.
+type mergeFileHistorySession struct{ fakeSession }
+
+func (s mergeFileHistorySession) FileCommitsIncluding(_ context.Context, path, hash string, _, _ int) ([]repository.Commit, error) {
+	s.calls.record("file-history-including:" + hash + ":" + path)
+	return []repository.Commit{
+		{Hash: "newer", Subject: "Newer file edit", UnixTimestamp: 300},
+		{Hash: "older", Subject: "Older file edit", UnixTimestamp: 50},
+	}, nil
+}
+
+// Opening the drawer from a commit the file's log leaves out keeps that commit
+// as the selected row once the full history loads, with its files and diff.
+func TestFileHistoryKeepsAnEntryCommitTheFileLogOmits(t *testing.T) {
+	h, _ := menuTestAppWithCalls(t)
+	h.app.session = mergeFileHistorySession{fakeSession: h.app.session.(fakeSession)}
+	h.press(t, sectionKeys[sectionGraph])
+	h.waitFor(t, "Graph commit files", func() bool { return len(h.app.commitFiles) > 0 })
+	origin := h.app.visibleCommits()[h.app.selectedCommit]
+	origin.UnixTimestamp = 100 // Between the two commits the log lists.
+
+	h.app.openFileHistoryFrom("one.txt", origin)
+	h.waitFor(t, "the full file history", func() bool {
+		return h.app.fileHistoryOpen && !h.app.fileHistoryLoading && len(h.app.fileHistoryCommits) == 3 &&
+			len(h.app.fileHistoryFiles) > 0 && h.app.fileHistoryDiffState != nil
+	})
+	for range 3 {
+		h.tester.Frame()
+		h.settle(t)
+	}
+	commits := h.app.fileHistoryCommits
+	if len(commits) != 3 || commits[0].Hash != "newer" || commits[1].Hash != origin.Hash || commits[2].Hash != "older" {
+		t.Fatalf("the entry commit should sit in date order among the file's commits: %+v", commits)
+	}
+	if h.app.fileHistorySelected != 1 || h.app.fileHistoryFilesHash != origin.Hash || len(h.app.fileHistoryFiles) == 0 {
+		t.Fatalf("selection or files lost: selected=%d filesFor=%q files=%d",
+			h.app.fileHistorySelected, h.app.fileHistoryFilesHash, len(h.app.fileHistoryFiles))
+	}
+	row, ok := h.tester.AccessByRole(ui.RoleListItem, origin.Subject)
+	if !ok || !row.Selected {
+		t.Fatalf("the entry commit is not the selected row: found=%v %+v", ok, row)
+	}
+}

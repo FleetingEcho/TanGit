@@ -510,13 +510,8 @@ func (a *app) filteredCommitFooter(c *ui.Context, theme *ui.Theme, target int, q
 	}
 }
 
-// historyPaneMinWidth keeps the commit list's header controls, which can number
-// seven beside the title and count, from being cut off at the pane's edge.
-const historyPaneMinWidth = float32(400)
-
 func (a *app) historyView(c *ui.Context) {
 	theme := c.Theme()
-	a.filePaneWidth = max(a.filePaneWidth, historyPaneMinWidth)
 	a.collapsibleContentPaneSplit(c, &a.filePaneWidth, &a.workspacePaneCollapsed[sectionHistory],
 		"Expand list pane", func() {
 			islandCard(c, ui.Column(c).Grow(1).Gap(8).Padding(12)).Children(func() {
@@ -784,7 +779,7 @@ func (a *app) commitDetailsSplitWith(c *ui.Context, width, height *float32, coll
 				"Expand changed files", first, second)
 			return
 		}
-		collapsiblePaneSplit(c, width, collapsed,
+		collapsiblePaneSplitNested(c, width, collapsed,
 			"Expand changed files", first, second)
 	})
 	return host

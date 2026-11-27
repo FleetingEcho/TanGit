@@ -162,7 +162,7 @@ func overviewPreviewFiles(c *ui.Context, detail *overviewCommitDetail) {
 					c.Key("overview-folder:" + folder.Dir)
 					ui.Row(c).Padding(1, 6).Radius(theme.Radius).Background(theme.Surface).Border(1, theme.Border).
 						Tooltip(folder.Dir).Children(func() {
-						ui.Text(c, trf("%s ×%d", path.Base(folder.Dir), folder.Files)).FontSize(theme.FontSize - 2).
+						ui.Text(c, overviewCount(path.Base(folder.Dir), folder.Files)).FontSize(theme.FontSize - 2).
 							TextColor(theme.TextMuted).SingleLine().MaxWidth(220)
 					})
 				}

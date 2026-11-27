@@ -131,10 +131,22 @@ func (a *app) openFileHistoryFrom(path string, origin repository.Commit) {
 				index := slices.IndexFunc(a.fileHistoryCommits, func(commit repository.Commit) bool {
 					return commit.Hash == origin.Hash
 				})
-				if index >= 0 {
-					a.fileHistoryList.Choose(index)
-					a.fileHistoryList.ScrollTo(index, ui.Center)
+				if index < 0 {
+					// The file's own log can leave out the commit it was opened
+					// from, as it does a merge whose parents carry the change.
+					// Keep that commit as a row, in date order, so the selection
+					// and the files and diff already shown stay what they were.
+					index = len(a.fileHistoryCommits)
+					for i, commit := range a.fileHistoryCommits {
+						if commit.UnixTimestamp <= origin.UnixTimestamp {
+							index = i
+							break
+						}
+					}
+					a.fileHistoryCommits = slices.Insert(a.fileHistoryCommits, index, origin)
 				}
+				a.fileHistoryList.Choose(index)
+				a.fileHistoryList.ScrollTo(index, ui.Center)
 				if err != nil {
 					a.fileHistoryMoreError = safeError(err)
 				}

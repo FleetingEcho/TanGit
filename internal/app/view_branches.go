@@ -442,7 +442,9 @@ func (a *app) branchesView(c *ui.Context) {
 }
 
 func (a *app) branchPageView(c *ui.Context) {
-	islandCard(c, ui.Column(c).Grow(1).Padding(16)).Children(func() {
+	// The card has no bottom padding of its own: the lane's panes carry it, so a
+	// collapsed rail can run to the card's edge (collapsiblePaneSplitInCard).
+	islandCard(c, ui.Column(c).Grow(1).Padding(16, 16, 0, 16)).Children(func() {
 		if a.selectedBranch < 0 || a.selectedBranch >= len(a.snapshot.Branches) {
 			ui.Column(c).Grow(1).Center().Children(func() {
 				ui.Text(c, tr("Select a branch")).TextColor(c.Theme().TextMuted)
@@ -450,7 +452,7 @@ func (a *app) branchPageView(c *ui.Context) {
 			return
 		}
 		branch := a.snapshot.Branches[a.selectedBranch]
-		paneSplitVertical(c, &a.branchHeaderHeight, func() {
+		paneSplitVerticalInCard(c, &a.branchHeaderHeight, func() {
 			ui.Scroll(c).Fill().Label(tr("Branch summary")).Children(func() {
 				ui.Column(c).FillWidth().Gap(10).Padding(0, 12, 8, 0).Children(func() {
 					a.branchHeaderView(c, branch)
@@ -458,7 +460,7 @@ func (a *app) branchPageView(c *ui.Context) {
 			})
 		}, func() {
 			ui.Column(c).Fill().Padding(10, 0, 0, 0).Children(func() {
-				collapsiblePaneSplitLane(c, &a.branchCommitsWidth, &a.branchCommitsCollapsed,
+				collapsiblePaneSplitInCard(c, &a.branchCommitsWidth, &a.branchCommitsCollapsed,
 					"Expand commit list", func() {
 						a.branchCommitsView(c, branch)
 					}, func() {

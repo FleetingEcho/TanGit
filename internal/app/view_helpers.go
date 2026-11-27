@@ -279,17 +279,65 @@ func collapsiblePaneSplit(c *ui.Context, size *float32, collapsed *bool,
 	collapsiblePaneSplitLane(c, size, collapsed, expandLabel, first, second)
 }
 
+// collapsibleContentPaneSplit is collapsiblePaneSplit for a workspace page,
+// whose panes are island cards: its rail spans what those cards do.
 func (a *app) collapsibleContentPaneSplit(c *ui.Context, size *float32, collapsed *bool,
 	expandLabel string, first, second func()) {
-	collapsiblePaneSplitLane(c, size, collapsed, expandLabel, first, second)
+	collapsiblePaneSplitWithInset(c, collapsed, expandLabel, islandGap/2, first, second,
+		pixelSplitter(size, func(size *float32) { paneSplit(c, size, first, second).Fill() }))
 }
 
 func collapsiblePaneSplitLane(c *ui.Context, size *float32, collapsed *bool,
 	expandLabel string, first, second func()) {
 	collapsiblePaneSplitWith(c, collapsed, expandLabel, first, second,
-		func() {
-			paneSplit(c, size, first, second).Fill()
-		})
+		pixelSplitter(size, func(size *float32) { paneSplit(c, size, first, second).Fill() }))
+}
+
+// collapsiblePaneSplitNested is collapsiblePaneSplit for a split inside an
+// island card: its divider's masked ends take the card's color, not the
+// darker backdrop that shows between cards.
+func collapsiblePaneSplitNested(c *ui.Context, size *float32, collapsed *bool,
+	expandLabel string, first, second func()) {
+	collapsiblePaneSplitWith(c, collapsed, expandLabel, first, second,
+		pixelSplitter(size, func(size *float32) { paneSplitInCard(c, size, first, second).Fill() }))
+}
+
+// paneSplitter draws a collapsible split. extent is the first pane's full width
+// for a host of the given width (nil when the split does not animate); draw
+// builds the split, with the first pane at width, or at its own size when width
+// is negative, so that a drag still changes it.
+type paneSplitter struct {
+	extent func(hostWidth float32) float32
+	draw   func(width, hostWidth float32)
+}
+
+// pixelSplitter is a split whose first pane has a size in DIPs.
+func pixelSplitter(size *float32, build func(size *float32)) paneSplitter {
+	return paneSplitter{
+		extent: func(float32) float32 { return *size },
+		draw: func(width, _ float32) {
+			if width < 0 {
+				build(size)
+				return
+			}
+			build(&width)
+		},
+	}
+}
+
+// percentSplitter is a split whose first pane has a share of the host.
+func percentSplitter(percent *float32, build func(percent *float32)) paneSplitter {
+	return paneSplitter{
+		extent: func(hostWidth float32) float32 { return *percent / 100 * hostWidth },
+		draw: func(width, hostWidth float32) {
+			if width < 0 || hostWidth <= 0 {
+				build(percent)
+				return
+			}
+			share := width / hostWidth * 100
+			build(&share)
+		},
+	}
 }
 
 // collapsiblePaneSplitPercent keeps a responsive percentage split while using
@@ -301,15 +349,33 @@ func collapsiblePaneSplitPercent(c *ui.Context, percent *float32, collapsed *boo
 
 func (a *app) collapsibleContentPaneSplitPercent(c *ui.Context, percent *float32, collapsed *bool,
 	expandLabel string, first, second func()) {
-	collapsiblePaneSplitPercentLane(c, percent, collapsed, expandLabel, first, second)
+	collapsiblePaneSplitWithInset(c, collapsed, expandLabel, islandGap/2, first, second,
+		percentSplitter(percent, func(percent *float32) { paneSplitPercent(c, percent, first, second).Fill() }))
 }
 
 func collapsiblePaneSplitPercentLane(c *ui.Context, percent *float32, collapsed *bool,
 	expandLabel string, first, second func()) {
 	collapsiblePaneSplitWith(c, collapsed, expandLabel, first, second,
-		func() {
-			paneSplitPercent(c, percent, first, second).Fill()
-		})
+		percentSplitter(percent, func(percent *float32) { paneSplitPercent(c, percent, first, second).Fill() }))
+}
+
+const (
+	// paneRailWidth is a collapsed pane's rail: its toggle and its gap.
+	paneRailWidth = paneToggleSize + islandGap
+	// paneRailShowsBelow is how far open a sliding pane is when it turns into its
+	// rail: the part of the slide in which its content is too squeezed to read.
+	paneRailShowsBelow float32 = 0.4
+)
+
+// paneCollapseDuration is how long a pane takes to slide shut or open. It is a
+// variable so tests, which assert the settled layout, can turn the motion off.
+var paneCollapseDuration = 200 * time.Millisecond
+
+func b2f(on bool) float32 {
+	if on {
+		return 1
+	}
+	return 0
 }
 
 const (
@@ -349,7 +415,7 @@ func paneSplitVerticalReserve(c *ui.Context, size *float32, secondMin, inset flo
 	}
 	// The requested minimum belongs to the second pane's content, not to
 	// the breathing room above its divider.
-	return paneSplitWithGripReserve(c, size, true, false, secondMin+inset,
+	return paneSplitCore(c, size, true, false, secondMin+inset, true,
 		withSpace(true, first), withSpace(false, second))
 }
 
@@ -369,7 +435,31 @@ const paneSecondMinWidth float32 = 200
 
 func paneSplitWithGripReserve(c *ui.Context, value *float32, vertical, percent bool, secondMin float32,
 	first, second func()) ui.Element {
+	return paneSplitCore(c, value, vertical, percent, secondMin, false, first, second)
+}
+
+// paneSplitInCard is paneSplit for a split inside an island card, where the
+// divider's masked ends take the card's color.
+func paneSplitInCard(c *ui.Context, size *float32, first, second func()) ui.Element {
+	return paneSplitCore(c, size, false, false, 0, true, first, second)
+}
+
+// paneSplitVerticalInCard is paneSplitVertical for a split inside an island
+// card, where the divider's ends are masked in the card's own color rather than
+// the darker backdrop that shows between cards.
+func paneSplitVerticalInCard(c *ui.Context, size *float32, first, second func()) ui.Element {
+	return paneSplitCore(c, size, true, false, 0, true, first, second)
+}
+
+// paneSplitCore is the split every paneSplit* builds; inCard says the split
+// sits inside a card, so its divider's masked ends take the card's color.
+func paneSplitCore(c *ui.Context, value *float32, vertical, percent bool, secondMin float32,
+	inCard bool, first, second func()) ui.Element {
 	theme := c.Theme()
+	mask := islandBackdrop(theme)
+	if inCard {
+		mask = theme.Background
+	}
 	if !vertical && !percent && secondMin == 0 {
 		secondMin = paneSecondMinWidth
 	}
@@ -429,14 +519,14 @@ func paneSplitWithGripReserve(c *ui.Context, value *float32, vertical, percent b
 		// including its accent hover feedback.
 		if vertical {
 			ui.Box(c).Absolute().Top(shown).Left(0).Width(paneResizeLineInset).Height(1).
-				Background(islandBackdrop(theme)).PassThrough()
+				Background(mask).PassThrough()
 			ui.Box(c).Absolute().Top(shown).Right(0).Width(paneResizeLineInset).Height(1).
-				Background(islandBackdrop(theme)).PassThrough()
+				Background(mask).PassThrough()
 		} else {
 			ui.Box(c).Absolute().Left(shown).Top(0).Height(paneResizeLineInset).Width(1).
-				Background(islandBackdrop(theme)).PassThrough()
+				Background(mask).PassThrough()
 			ui.Box(c).Absolute().Left(shown).Bottom(0).Height(paneResizeLineInset).Width(1).
-				Background(islandBackdrop(theme)).PassThrough()
+				Background(mask).PassThrough()
 		}
 
 		grip := ui.Box(c).Absolute().Center().Radius(theme.Radius).
@@ -487,37 +577,85 @@ func paneSplitWithGripReserve(c *ui.Context, value *float32, vertical, percent b
 }
 
 func collapsiblePaneSplitWith(c *ui.Context, collapsed *bool,
-	expandLabel string, first, second, split func()) {
-	collapsiblePaneSplitWithAxis(c, collapsed, expandLabel, false, first, second, split)
+	expandLabel string, first, second func(), split paneSplitter) {
+	collapsiblePaneSplitWithInset(c, collapsed, expandLabel, 0, first, second, split)
 }
 
-// collapsiblePaneSplitVertical is the stacked counterpart of
-// collapsiblePaneSplit: collapsing the upper pane leaves a slim restore rail
-// above the lower pane.
+// collapsiblePaneSplitWithInset leaves inset of room above and below the
+// collapsed rail: a workspace page's cards carry that margin, so their rail
+// matches them, while the panes nested inside a card are plain content that
+// the rail should span fully.
+func collapsiblePaneSplitWithInset(c *ui.Context, collapsed *bool,
+	expandLabel string, inset float32, first, second func(), split paneSplitter) {
+	collapsiblePaneSplitWithAxis(c, collapsed, expandLabel, false,
+		railInset{side: inset, top: inset, bottom: inset}, first, second, split)
+}
+
+// railInset places a collapsed pane's rail against its host: side is the room
+// at the rail's outer edge, top and bottom the room above and below. A negative
+// top lets the rail climb into the gap above the host.
+type railInset struct{ side, top, bottom float32 }
+
+const (
+	// cardRailGap is the room a rail inside a card keeps from the card's border
+	// and from the divider above it, enough for its rounded corners to show.
+	cardRailGap float32 = 6
+	// cardPanePadding is the card's own padding, which such a pane now carries
+	// itself so that its rail can run out to the card's edge.
+	cardPanePadding float32 = 16
+)
+
+// collapsiblePaneSplitInCard is collapsiblePaneSplit for panes that fill the
+// bottom of an island card whose padding stops at its bottom edge. The panes
+// carry that padding themselves, so the rail beside them runs the card's whole
+// remaining height, leaving cardRailGap above and below, instead of stopping at
+// the padding.
+func collapsiblePaneSplitInCard(c *ui.Context, size *float32, collapsed *bool,
+	expandLabel string, first, second func()) {
+	padded := func(content func()) func() {
+		return func() {
+			ui.Column(c).Fill().Padding(0, 0, cardPanePadding, 0).Children(content)
+		}
+	}
+	first, second = padded(first), padded(second)
+	// The rail climbs 4 DIPs into the 10 DIP gap over the split, which leaves
+	// cardRailGap clear of the divider above it.
+	collapsiblePaneSplitWithAxis(c, collapsed, expandLabel, false,
+		railInset{top: -(10 - cardRailGap), bottom: cardRailGap}, first, second,
+		pixelSplitter(size, func(size *float32) { paneSplitInCard(c, size, first, second).Fill() }))
+}
+
 func collapsiblePaneSplitVertical(c *ui.Context, size *float32, collapsed *bool,
 	expandLabel string, first, second func()) {
-	collapsiblePaneSplitWithAxis(c, collapsed, expandLabel, true, first, second,
-		func() { paneSplitVertical(c, size, first, second).Fill() })
+	collapsiblePaneSplitWithAxis(c, collapsed, expandLabel, true, railInset{}, first, second,
+		pixelSplitter(size, func(size *float32) { paneSplitVerticalInCard(c, size, first, second).Fill() }))
 }
 
 func collapsiblePaneSplitWithAxis(c *ui.Context, collapsed *bool,
-	expandLabel string, vertical bool, first, second, split func()) {
+	expandLabel string, vertical bool, inset railInset, first, second func(), split paneSplitter) {
 	theme := c.Theme()
 	host := ui.Box(c).Grow(1)
+	// open eases between 0 (collapsed) and 1 (expanded) when a side-by-side pane
+	// is toggled. It starts at its target, so a pane that is built collapsed or
+	// open does not animate, and it moves at once where the desktop asks for less
+	// motion. Stacked panes switch without it.
+	open := b2f(!*collapsed)
+	if paneCollapseDuration > 0 && !vertical {
+		open = host.Animate("pane-open", open, paneCollapseDuration)
+	}
 	if vertical {
 		host.FillWidth()
 	} else {
 		host.FillHeight()
 	}
 	host.Children(func() {
-		if *collapsed {
-			if vertical {
+		if vertical {
+			if *collapsed {
 				const restoreHeight = paneToggleHeight + islandGap
-				ui.Box(c).Absolute().Left(0).Right(0).Top(0).Height(restoreHeight).
-					Background(collapsedRailBackground(theme)).PassThrough()
+				ui.Box(c).Absolute().Left(inset.side).Right(inset.side).Top(inset.top).
+					Height(restoreHeight-inset.top).Background(collapsedRailBackground(theme)).
+					Border(1, theme.Border).Radius(theme.Radius + 4).PassThrough()
 				ui.Column(c).Fill().Padding(restoreHeight, 0, 0, 0).Children(second)
-				ui.Box(c).Absolute().Left(0).Right(0).Top(0).Height(1).
-					Background(theme.Border).PassThrough()
 				button := paneToggle(c, ui.ButtonBase(c).Absolute()).
 					Left(islandGap / 2).Top(islandGap / 2).
 					Label(tr(expandLabel)).Tooltip(tr(expandLabel))
@@ -529,14 +667,20 @@ func collapsiblePaneSplitWithAxis(c *ui.Context, collapsed *bool,
 				}
 				return
 			}
-			// Each host already begins after its parent's restore rail, so every
-			// collapsed pane owns exactly one identical rail of its own.
-			const restoreWidth = paneToggleSize + islandGap
-			ui.Box(c).Absolute().Left(0).Top(0).Bottom(0).Width(restoreWidth).
-				Background(collapsedRailBackground(theme)).PassThrough()
-			ui.Column(c).Fill().Padding(0, 0, 0, restoreWidth).Children(second)
-			ui.Box(c).Absolute().Left(0).Top(0).Bottom(0).Width(1).
-				Background(theme.Border).PassThrough()
+			split.draw(-1, 0)
+			return
+		}
+
+		// drawRail is the slim rail a collapsed pane leaves, width DIPs wide, with
+		// the second pane beside it. Each host already begins after its parent's
+		// restore rail, so every collapsed pane owns exactly one identical rail of
+		// its own. The rail leaves the same room above and below as the cards
+		// beside it, or none when the panes beside it are plain content.
+		drawRail := func(width float32) {
+			ui.Box(c).Absolute().Left(inset.side).Top(inset.top).Bottom(inset.bottom).
+				Width(width-inset.side).Background(collapsedRailBackground(theme)).
+				Border(1, theme.Border).Radius(theme.Radius + 4).PassThrough()
+			ui.Column(c).Fill().Padding(0, 0, 0, width).Children(second)
 			// A collapsed pane has no width. Anchor its restore button to this
 			// host's zero edge instead of the remembered expanded width.
 			button := paneToggle(c, ui.ButtonBase(c).Absolute()).
@@ -548,10 +692,26 @@ func collapsiblePaneSplitWithAxis(c *ui.Context, collapsed *bool,
 			if button.Clicked() {
 				*collapsed = false
 			}
+		}
+		if *collapsed && open <= 0 {
+			drawRail(paneRailWidth)
 			return
 		}
-
-		split()
+		hostWidth := host.Bounds().W
+		if open < 1 && hostWidth > 0 && split.extent != nil {
+			// Mid-slide the pane is as wide as its rail plus what is left of it.
+			// Once it is narrow the rail is drawn at that width instead, over the
+			// pane's squeezed content, so the pane turns into the rail as it
+			// shrinks and the rail never pops in at its end.
+			width := paneRailWidth + max(split.extent(hostWidth)-paneRailWidth, 0)*open
+			if open < paneRailShowsBelow {
+				drawRail(width)
+				return
+			}
+			split.draw(width, hostWidth)
+			return
+		}
+		split.draw(-1, hostWidth)
 	})
 }
 
