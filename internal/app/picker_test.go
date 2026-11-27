@@ -110,7 +110,7 @@ func TestRecentCardMoreMenuKeepsRepositoryActions(t *testing.T) {
 	tt.Frame()
 	for _, action := range []string{
 		"Open", "Open in editor", "Open in new tab", "Open worktree",
-		"Copy path", "Rename…", "Remove from list",
+		"Copy path", "Rename", "Remove from list",
 	} {
 		if !tt.HasText(action) {
 			t.Errorf("the More menu lost %q: %v", action, tt.Menu())

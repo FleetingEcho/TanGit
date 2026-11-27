@@ -156,9 +156,66 @@ func (h *harness) requireMenuLabels(t *testing.T, want ...string) {
 	t.Helper()
 	texts := h.texts()
 	for _, label := range want {
+		// An action the commit menu groups in a submenu is not drawn until the
+		// group opens; its group being offered is what this can see.
+		if group, grouped := commitMenuGroups[label]; grouped && !slices.Contains(texts, label) {
+			label = group
+		}
 		if !slices.Contains(texts, label) {
 			t.Errorf("menu missing %q, texts %q", label, texts)
 		}
+	}
+}
+
+// commitMenuGroups names the submenu each commit action sits in, so tests
+// reach it as a person does: through the group.
+var commitMenuGroups = func() map[string]string {
+	groups := map[string][]string{
+		"Custom Patch": {"Add all files to Custom Patch", "Review Custom Patch"},
+		"Copy": {"Copy commit hash", "Copy short hash", "Copy subject", "Copy commit message",
+			"Copy author", "Copy web URL", "Copy patch"},
+		"Rewrite history": {"Mark as base commit for rebase", "Cancel marked base commit", "Open Rebase TODO",
+			"Edit commit (pause rebase)…", "Reword commit…", "Drop commit…", "Amend with staged changes…",
+			"Create fixup commit from staged changes…", "Apply fixups from this commit through HEAD…",
+			"Squash into older commit…", "Fixup into older commit…", "Move commit toward HEAD",
+			"Move commit toward older history"},
+		"Reset": {"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…",
+			"Soft reset to this commit…", "Mixed reset to this commit…", "Hard reset to this commit…"},
+		"Create": {"Create a tag here…", "Create a branch here…", "Create worktree here…", "Export as mailbox patch…"},
+		"Bisect": {"Mark commit good (bisect)", "Mark commit bad (bisect)", "Skip commit (bisect)",
+			"Start bisect from this commit…"},
+		"Compare": {"Compare commit with HEAD", "Compare first parent with commit"},
+	}
+	out := map[string]string{}
+	for group, labels := range groups {
+		for _, label := range labels {
+			out[label] = group
+		}
+	}
+	return out
+}()
+
+// menuOffers reports whether the open menu has label, in its submenu when the
+// commit menu groups it. It chooses the item to find out, so call it where an
+// absent item is the expected answer; the texts alone cannot say, because a
+// submenu's items are not drawn until it opens.
+func (h *harness) menuOffers(label string) bool {
+	return chooseMenuPath(h.tester, label) == nil
+}
+
+// chooseMenuPath chooses label from the open menu, through its submenu when the
+// commit menu groups it in one.
+func chooseMenuPath(t *ui.Tester, label string) error {
+	if err := t.ChooseMenuItem(label); err == nil {
+		return nil
+	} else if group, grouped := commitMenuGroups[label]; grouped {
+		if groupErr := t.ChooseMenuItem(group, label); groupErr == nil {
+			return nil
+		} else {
+			return groupErr
+		}
+	} else {
+		return err
 	}
 }
 
@@ -166,7 +223,7 @@ func (h *harness) requireMenuLabels(t *testing.T, want ...string) {
 // matching button elsewhere in the frame (commit rows also have icon bars).
 func (h *harness) chooseMenuItem(t *testing.T, label string) {
 	t.Helper()
-	if err := h.tester.ChooseMenuItem(label); err != nil {
+	if err := chooseMenuPath(h.tester, label); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()

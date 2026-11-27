@@ -122,11 +122,12 @@ func TestUndoLatestCommitUsesResolvedHeadAcrossAllRefs(t *testing.T) {
 	h.app.snapshot.Commits = append([]repository.Commit{{
 		Hash: "f3f3f3f3", ShortHash: "f3f3f3f", Subject: "Newer commit on another branch", Parents: []string{"c2c2c2c2"},
 	}}, h.app.snapshot.Commits...)
-	h.rightClick(t, "Second commit")
 	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
-		if !slices.Contains(h.texts(), label) {
+		h.rightClick(t, "Second commit")
+		if !h.menuOffers(label) {
 			t.Fatalf("resolved HEAD does not offer %q when another ref is newer", label)
 		}
+		h.press(t, ui.KeyEscape) // Dismiss the confirmation the choice opened.
 	}
 }
 
@@ -134,7 +135,7 @@ func TestUndoLatestCommitMenuIsLimitedToAttachedHeadWithAParent(t *testing.T) {
 	h, _ := historyHarness(t)
 	h.rightClick(t, "Initial commit")
 	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
-		if slices.Contains(h.texts(), label) {
+		if h.menuOffers(label) {
 			t.Fatalf("a non-HEAD commit offers %q", label)
 		}
 	}
@@ -143,7 +144,7 @@ func TestUndoLatestCommitMenuIsLimitedToAttachedHeadWithAParent(t *testing.T) {
 	h.app.snapshot.HeadHash = "c1c1c1c1"
 	h.rightClick(t, "Initial commit")
 	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
-		if slices.Contains(h.texts(), label) {
+		if h.menuOffers(label) {
 			t.Fatalf("a root commit offers %q", label)
 		}
 	}
@@ -153,7 +154,7 @@ func TestUndoLatestCommitMenuIsLimitedToAttachedHeadWithAParent(t *testing.T) {
 	h.app.snapshot.Branches[0].DetachedHead = true
 	h.rightClick(t, "Initial commit")
 	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
-		if slices.Contains(h.texts(), label) {
+		if h.menuOffers(label) {
 			t.Fatalf("detached HEAD offers %q", label)
 		}
 	}
@@ -244,7 +245,7 @@ func TestOtherBranchCommitRowMenuOffersSafeCommitActions(t *testing.T) {
 	h.rightClick(t, "Initial commit")
 	h.requireMenuLabels(t, safeCommitMenuItems...)
 	for _, label := range historyOnlyCommitMenuItems {
-		if slices.Contains(h.texts(), label) {
+		if h.menuOffers(label) {
 			t.Errorf("a non-current branch offers current-branch history edit %q", label)
 		}
 	}

@@ -114,16 +114,18 @@ func TestHomeRecentPanelFillsRemainingSpaceWithAnyResultCount(t *testing.T) {
 			tt.SetSize(1024, 940)
 			tt.Frame()
 
-			footer, ok := tt.Find("Sorted by last opened")
+			// The list's footer reports how many cards it shows.
+			footer, ok := tt.Find("2 folders")
 			pageFooter, pageOK := tt.Find("lazygitGo <path>")
 			if !ok || !pageOK || pageFooter.Y-footer.Y > 80 || pageFooter.Y-footer.Y < 30 {
 				t.Fatalf("list footer should be near the bottom of the page: list=%+v page=%+v", footer, pageFooter)
 			}
 
-			for _, query := range []string{"second", "no matches"} {
+			for _, step := range []struct{ query, count string }{{"second", "1 folder"}, {"no matches", "0 folders"}} {
+				query := step.query
 				a.recentFilter = query
 				tt.Frame()
-				filtered, ok := tt.Find("Sorted by last opened")
+				filtered, ok := tt.Find(step.count)
 				if !ok || filtered.Y != footer.Y {
 					t.Fatalf("filtering by %q moved the list footer: before=%+v after=%+v", query, footer, filtered)
 				}
@@ -145,7 +147,7 @@ func TestHomeRecentScrollLeavesTableHeadersAndFooterInPlace(t *testing.T) {
 			tt.Frame()
 			row, rowOK := tt.Find("Open /work/repository-01")
 			header, headerOK := tt.Find("Repository / branch")
-			footer, footerOK := tt.Find("Sorted by last opened")
+			footer, footerOK := tt.Find("12 repositories")
 			if !rowOK || !headerOK || !footerOK || header.Y >= row.Y || row.Y >= footer.Y {
 				t.Fatalf("missing table header, first row or footer: header=%+v row=%+v footer=%+v", header, row, footer)
 			}
@@ -154,7 +156,7 @@ func TestHomeRecentScrollLeavesTableHeadersAndFooterInPlace(t *testing.T) {
 			tt.Frame()
 			last, lastOK := tt.Find("Open /work/repository-12")
 			headerAfter, _ := tt.Find("Repository / branch")
-			footerAfter, _ := tt.Find("Sorted by last opened")
+			footerAfter, _ := tt.Find("12 repositories")
 			if !lastOK || last.Y < header.Y || last.Y >= footer.Y ||
 				header.Y != headerAfter.Y || footer.Y != footerAfter.Y {
 				t.Fatalf("scroll should reveal the last row inside the table: last=%+v header before/after=%+v/%+v footer before/after=%+v/%+v", last, header, headerAfter, footer, footerAfter)
@@ -181,7 +183,7 @@ func TestHomeRecentArrowKeysRevealSelection(t *testing.T) {
 				tt.Frame()
 			}
 			last, ok := tt.Find("Open /work/repository-12")
-			footer, _ := tt.Find("Sorted by last opened")
+			footer, _ := tt.Find("12 repositories")
 			if a.selectedRecent != 11 || !ok || last.H == 0 || last.Y+last.H > footer.Y {
 				t.Fatalf("Down did not reveal the last repository: selected=%d last=%+v footer=%+v", a.selectedRecent, last, footer)
 			}

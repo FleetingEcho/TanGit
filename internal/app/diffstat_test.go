@@ -188,7 +188,7 @@ func TestCommitDiffStatBlocksUseTheCountsPalette(t *testing.T) {
 	var success ui.Color
 	tester := ui.NewTester(func(c *ui.Context) {
 		success = c.Theme().Success
-		commitDiffStatBlocks(c, "f0aca5c", 2, 0)
+		commitDiffStatBlocksSized(c, "f0aca5c", 2, 0, 6)
 	}, 100, 40)
 	tester.SetDark(true)
 	tester.Frame()

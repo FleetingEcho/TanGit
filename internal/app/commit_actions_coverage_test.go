@@ -440,20 +440,17 @@ func TestCommitMenuCommandsThatActOnAppState(t *testing.T) {
 func TestCommitMenuOmitsCommandsThatCannotApply(t *testing.T) {
 	h, _ := historyHarness(t)
 	h.rightClick(t, "Initial commit")
-	texts := h.texts()
 	for _, label := range []string{
 		"Undo latest commit and keep changes staged…",
 		"Undo latest commit and keep changes unstaged…",
 	} {
-		for _, text := range texts {
-			if text == label {
-				t.Errorf("a commit that is not the branch tip offers %q", label)
-			}
+		if h.menuOffers(label) {
+			t.Errorf("a commit that is not the branch tip offers %q", label)
 		}
 	}
 	// A root commit has no first parent, so the item is there but cannot be chosen.
 	h.requireMenuLabels(t, "Compare first parent with commit")
-	if err := h.tester.ChooseMenuItem("Compare first parent with commit"); err == nil {
+	if err := chooseMenuPath(h.tester, "Compare first parent with commit"); err == nil {
 		t.Fatal("the root commit's parent comparison could be chosen")
 	}
 	if h.app.workspaceTab == sectionCompare {

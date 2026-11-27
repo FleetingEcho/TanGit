@@ -346,7 +346,7 @@ func TestFilteredRecentRenameAndRemoveTargetTheOriginalCard(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if err := tt.ChooseMenuItem("Rename…"); err != nil {
+	if err := tt.ChooseMenuItem("Rename"); err != nil {
 		t.Fatal(err)
 	}
 	if a.renameRecentPath != "/work/second" || !a.showRenameRecent {
@@ -875,7 +875,7 @@ func TestRecentCardNameIsRenamedFromMoreMenu(t *testing.T) {
 		t.Fatalf("open the card actions: %v", err)
 	}
 	tt.Frame()
-	if err := tt.ChooseMenuItem("Rename…"); err != nil {
+	if err := tt.ChooseMenuItem("Rename"); err != nil {
 		t.Fatalf("open the rename modal: %v", err)
 	}
 	tt.Frame()
@@ -930,7 +930,7 @@ func TestRecentRenameEscapeLeavesTheNameAlone(t *testing.T) {
 		t.Fatalf("open the card actions: %v", err)
 	}
 	tt.Frame()
-	if err := tt.ChooseMenuItem("Rename…"); err != nil {
+	if err := tt.ChooseMenuItem("Rename"); err != nil {
 		t.Fatalf("open the rename modal: %v", err)
 	}
 	tt.Frame()
@@ -956,15 +956,15 @@ func TestRecentRenameClearsBackToTheFolderName(t *testing.T) {
 		t.Fatalf("right click: %v", err)
 	}
 	tt.Frame()
-	if !tt.HasText("Rename…") {
-		t.Fatalf("the row menu misses Rename…: %v", tt.Texts())
+	if !tt.HasText("Rename") {
+		t.Fatalf("the row menu misses Rename: %v", tt.Texts())
 	}
-	if err := tt.Click("Rename…"); err != nil {
-		t.Fatalf("choose Rename…: %v", err)
+	if err := tt.Click("Rename"); err != nil {
+		t.Fatalf("choose Rename: %v", err)
 	}
 	tt.Frame()
 	if !a.showRenameRecent {
-		t.Fatal("Rename… opened no modal")
+		t.Fatal("Rename opened no modal")
 	}
 	// The field starts on the name the card holds, so it can be replaced.
 	if a.renameRecentName != "Nickname" {
@@ -1024,7 +1024,7 @@ func TestRecentRenameSavesOnEnter(t *testing.T) {
 		t.Fatalf("open the card actions: %v", err)
 	}
 	tt.Frame()
-	if err := tt.ChooseMenuItem("Rename…"); err != nil {
+	if err := tt.ChooseMenuItem("Rename"); err != nil {
 		t.Fatalf("open the rename modal: %v", err)
 	}
 	tt.Frame()

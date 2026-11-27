@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui/editor"
 )
@@ -80,7 +81,19 @@ func TestEditorShortcutRecorderKeepsPromptOnOneLine(t *testing.T) {
 			}
 			h.app.beginEditorShortcutRecording(action, 0)
 			h.tester.Frame()
-			recorder, found := h.tester.Access(editorShortcutRecordLabel(action, 0))
+			// The binding's row sits below the Editor page's earlier sections,
+			// and an element scrolled out of its pane has no size: bring it in.
+			label := editorShortcutRecordLabel(action, 0)
+			recorder, found := h.tester.Access(label)
+			for range 30 {
+				if found && recorder.Bounds.H > 0 {
+					break
+				}
+				h.tester.Wheel(float32(width)/2, 400, 0, 500)
+				h.tester.Advance(time.Second)
+				h.tester.Frame()
+				recorder, found = h.tester.Access(label)
+			}
 			if !found {
 				t.Fatal("shortcut recorder is missing")
 			}

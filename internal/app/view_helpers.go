@@ -362,9 +362,17 @@ func paneSplitWithGrip(c *ui.Context, value *float32, vertical, percent bool,
 	return paneSplitWithGripReserve(c, value, vertical, percent, 0, first, second)
 }
 
+// paneSecondMinWidth is the room a side-by-side split always leaves its second
+// pane when the window can spare it, so a wide first pane cannot squeeze the
+// details beside it into an unusable strip on a narrow window.
+const paneSecondMinWidth float32 = 200
+
 func paneSplitWithGripReserve(c *ui.Context, value *float32, vertical, percent bool, secondMin float32,
 	first, second func()) ui.Element {
 	theme := c.Theme()
+	if !vertical && !percent && secondMin == 0 {
+		secondMin = paneSecondMinWidth
+	}
 	host := ui.Box(c).Grow(1)
 	if vertical {
 		host.FillWidth()
@@ -378,7 +386,7 @@ func paneSplitWithGripReserve(c *ui.Context, value *float32, vertical, percent b
 			total = bounds.H
 		}
 		capFirst := func(v float32) float32 {
-			if vertical && secondMin > 0 && total > 0 {
+			if secondMin > 0 && total > 0 {
 				maximum := max(total-1-secondMin, theme.Space(10))
 				return min(v, maximum)
 			}
@@ -386,7 +394,7 @@ func paneSplitWithGripReserve(c *ui.Context, value *float32, vertical, percent b
 		}
 		controlled := capFirst(*value)
 		size := value
-		if vertical && secondMin > 0 {
+		if secondMin > 0 && !percent {
 			size = &controlled
 		}
 		splitter := ui.Element{}
@@ -398,9 +406,9 @@ func paneSplitWithGripReserve(c *ui.Context, value *float32, vertical, percent b
 		case percent:
 			splitter = ui.SplitPercent(c, value, first, second).Fill()
 		default:
-			splitter = ui.Split(c, value, first, second).Fill()
+			splitter = ui.Split(c, size, first, second).Fill()
 		}
-		if vertical && secondMin > 0 && splitter.Changed() {
+		if secondMin > 0 && !percent && splitter.Changed() {
 			*value = capFirst(controlled)
 		}
 

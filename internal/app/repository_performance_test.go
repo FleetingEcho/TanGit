@@ -83,6 +83,8 @@ func TestRepositoryPerformanceSuggestionOnlyForLargeUnoptimizedRepositories(t *t
 			reads := make(chan struct{}, 2)
 			h.app.session = &performanceTestSession{Session: h.app.session, report: tc.report, reads: reads}
 			h.app.path = "/repo/" + tc.name
+			// A suggestion is only offered for a repository whose status read was slow.
+			h.app.performance.statusRead = performanceSlowStatus
 			h.app.suggestRepositoryPerformance()
 			h.app.suggestRepositoryPerformance() // a second open in the same window stays quiet
 			// Toasts move from the queue to the window as a frame draws them,
