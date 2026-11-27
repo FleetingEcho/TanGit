@@ -3,6 +3,8 @@ package i18n
 // Overview commit filters and the expanded commit's quick actions.
 var overviewActionTranslations = map[string]map[string]string{
 	"zh-Hans": {
+		"Don't remind me for this repository": "不再为此仓库提醒",
+		"%d tracked files. Reading this repository's status was slow. Git's file system monitor, untracked cache and commit-graph can make status and history much faster.": "%d 个已跟踪文件。读取此仓库的状态很慢。Git 的文件系统监视器、未跟踪缓存和 commit-graph 可以让状态和历史快很多。",
 		"Show commit details":           "显示提交详情",
 		"View blame before this change": "查看此次改动之前的追溯",
 		"Mine":                          "我的",
@@ -36,6 +38,8 @@ var overviewActionTranslations = map[string]map[string]string{
 		"Search every followed repository for %s": "在所有关注的仓库中搜索 %s",
 	},
 	"zh-Hant": {
+		"Don't remind me for this repository": "不再為此儲存庫提醒",
+		"%d tracked files. Reading this repository's status was slow. Git's file system monitor, untracked cache and commit-graph can make status and history much faster.": "%d 個已追蹤檔案。讀取此儲存庫的狀態很慢。Git 的檔案系統監視器、未追蹤快取和 commit-graph 可以讓狀態和歷史快很多。",
 		"Show commit details":           "顯示提交詳情",
 		"View blame before this change": "檢視此次變更之前的追溯",
 		"Mine":                          "我的",
@@ -69,6 +73,8 @@ var overviewActionTranslations = map[string]map[string]string{
 		"Search every followed repository for %s": "在所有追蹤的儲存庫中搜尋 %s",
 	},
 	"ja": {
+		"Don't remind me for this repository": "このリポジトリでは通知しない",
+		"%d tracked files. Reading this repository's status was slow. Git's file system monitor, untracked cache and commit-graph can make status and history much faster.": "追跡中のファイルが %d 個あります。このリポジトリのステータス取得が遅くなっています。Git のファイルシステムモニター、未追跡キャッシュ、commit-graph でステータスと履歴が大幅に速くなります。",
 		"Show commit details":           "コミットの詳細を表示",
 		"View blame before this change": "この変更より前の blame を表示",
 		"Mine":                          "自分",
@@ -102,6 +108,8 @@ var overviewActionTranslations = map[string]map[string]string{
 		"Search every followed repository for %s": "フォロー中の全リポジトリで %s を検索",
 	},
 	"es": {
+		"Don't remind me for this repository": "No recordármelo en este repositorio",
+		"%d tracked files. Reading this repository's status was slow. Git's file system monitor, untracked cache and commit-graph can make status and history much faster.": "%d archivos rastreados. Leer el estado de este repositorio fue lento. El monitor del sistema de archivos de Git, la caché de no rastreados y commit-graph pueden acelerar mucho el estado y el historial.",
 		"Show commit details":           "Mostrar detalles del commit",
 		"View blame before this change": "Ver blame anterior a este cambio",
 		"Mine":                          "Míos",
@@ -135,6 +143,8 @@ var overviewActionTranslations = map[string]map[string]string{
 		"Search every followed repository for %s": "Buscar %s en todos los repositorios seguidos",
 	},
 	"fr": {
+		"Don't remind me for this repository": "Ne plus me le rappeler pour ce dépôt",
+		"%d tracked files. Reading this repository's status was slow. Git's file system monitor, untracked cache and commit-graph can make status and history much faster.": "%d fichiers suivis. La lecture de l’état de ce dépôt a été lente. Le moniteur de système de fichiers de Git, le cache des fichiers non suivis et commit-graph peuvent accélérer nettement l’état et l’historique.",
 		"Show commit details":           "Afficher les détails du commit",
 		"View blame before this change": "Voir le blame avant cette modification",
 		"Mine":                          "Les miens",

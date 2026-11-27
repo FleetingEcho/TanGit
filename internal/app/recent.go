@@ -37,6 +37,10 @@ type recentRepository struct {
 	// the accent swatches, or a #rrggbb custom color. Empty keeps the theme's
 	// own tab background.
 	TabColor string `json:"tabColor,omitempty"`
+	// PerformanceHintOff records that the user asked not to be reminded about
+	// repository performance settings for this repository. It lives in the
+	// entry, so removing the entry from the recent list forgets the choice.
+	PerformanceHintOff bool `json:"performanceHintOff,omitempty"`
 }
 
 // recentNameLimit bounds a card's name, in characters, so a long one cannot
@@ -234,6 +238,7 @@ func rememberRecentMode(repositories []recentRepository, path string, now int64,
 		if cleanRepoPath(r.Path) == path {
 			out[0].Name = r.Name
 			out[0].TabColor = r.TabColor
+			out[0].PerformanceHintOff = r.PerformanceHintOff
 			continue
 		}
 		if kept < maxRecentRepositories {

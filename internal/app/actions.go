@@ -114,9 +114,11 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 	}
 	progressive, ok := session.(repository.ProgressiveSession)
 	if !ok {
+		readStart := time.Now()
 		snapshot, err := readBeforeInstall(session, func() (repository.Snapshot, error) {
 			return session.Snapshot(ctx)
 		})
+		readTime := time.Since(readStart)
 		a.update(func() {
 			if generation != a.generation {
 				closeRepositorySession(session)
@@ -128,14 +130,17 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 				return
 			}
 			a.cancelOpen = nil
+			a.performance.statusRead = readTime
 			a.installOpenedRepository(session, snapshot)
 		})
 		return
 	}
 
+	coreStart := time.Now()
 	core, coreErr := readBeforeInstall(session, func() (repository.Snapshot, error) {
 		return progressive.CoreSnapshot(ctx)
 	})
+	coreTime := time.Since(coreStart)
 	branchFromCore := core.Head == "" && core.HeadHash != "" && core.Branch != ""
 	coreReady := make(chan uint64, 1)
 	a.update(func() {
@@ -150,6 +155,7 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 			coreReady <- 0
 			return
 		}
+		a.performance.statusRead = coreTime
 		a.installOpenedRepository(session, core)
 		a.repositoryDetailsLoading = true
 		if branchFromCore && !a.graphFilter.defaulted {

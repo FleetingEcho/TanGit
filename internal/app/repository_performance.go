@@ -21,6 +21,40 @@ type performanceUIState struct {
 	// suggested remembers the repositories already offered the settings in
 	// this window, so reopening one does not repeat the notice.
 	suggested map[string]bool
+	// statusRead is how long the first snapshot, whose working-tree status is
+	// the slow part in a big repository, took to read when this one was opened.
+	statusRead time.Duration
+}
+
+// performanceSlowStatus is how long that first read must take before a repository
+// is offered the settings: below it, the repository is not slow however many
+// files it holds, and the notice would only be noise.
+const performanceSlowStatus = 2 * time.Second
+
+// performanceHintMuted says whether the user asked not to be reminded about
+// this repository. Only its own recent entry is consulted.
+func (a *app) performanceHintMuted(path string) bool {
+	want := cleanRepoPath(path)
+	for _, repo := range a.recentRepositories {
+		if !repo.EditorOnly && cleanRecentPath(repo.Path) == want {
+			return repo.PerformanceHintOff
+		}
+	}
+	return false
+}
+
+// mutePerformanceHint stops the reminder for this repository alone and keeps
+// the choice in its recent entry. A repository with no entry has nothing to keep.
+func (a *app) mutePerformanceHint(path string) {
+	want := cleanRepoPath(path)
+	for i := range a.recentRepositories {
+		if !a.recentRepositories[i].EditorOnly && cleanRecentPath(a.recentRepositories[i].Path) == want {
+			a.recentRepositories[i].PerformanceHintOff = true
+			a.historyRevision++
+			_ = saveRecentRepositories(a.dataDir(), a.recentRepositories)
+			return
+		}
+	}
 }
 
 func (s *performanceUIState) reset() {
@@ -141,11 +175,17 @@ func (a *app) suggestRepositoryPerformance() {
 	if !ok || a.performance.suggested[a.path] {
 		return
 	}
+	// Only a repository that really was slow to read is worth a notice, and only
+	// while the user has not turned it off for this one.
+	if a.performance.statusRead < performanceSlowStatus || a.performanceHintMuted(a.path) {
+		return
+	}
 	if a.performance.suggested == nil {
 		a.performance.suggested = map[string]bool{}
 	}
 	a.performance.suggested[a.path] = true
 	generation := a.generation
+	path := a.path
 	ctx := a.repositoryWork.Context()
 	go func() {
 		defer a.recoverBackground()
@@ -161,11 +201,14 @@ func (a *app) suggestRepositoryPerformance() {
 				id:    "repository-performance",
 				kind:  "info",
 				title: "Large repository",
-				description: trf("%d tracked files. Git's file system monitor, untracked cache and commit-graph can make status and history much faster.",
+				description: trf("%d tracked files. Reading this repository's status was slow. Git's file system monitor, untracked cache and commit-graph can make status and history much faster.",
 					report.TrackedFiles),
 				action:   "Optimize…",
 				onAction: a.openRepositoryPerformance,
-				timeout:  12 * time.Second,
+				moreActions: []appToastAction{{label: "Don't remind me for this repository", onAction: func() {
+					a.mutePerformanceHint(path)
+				}}},
+				timeout: 12 * time.Second,
 			})
 			return true
 		})
