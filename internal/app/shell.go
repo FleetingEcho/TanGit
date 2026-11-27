@@ -423,7 +423,7 @@ func (s *shell) updateAppChanged(a *app, fn func() bool) {
 		// over a page other than the Editor.
 		mode, _ := commandQueryMode(s.palette.query)
 		paletteFilesReady := filesWereLoading && !a.code.filesLoading &&
-			s.palette.open && s.palette.target == nil && mode == '/' && !s.palette.filesChangedOnly
+			s.palette.open && s.palette.target == nil && (mode == '^' || mode == '/' && !s.palette.filesChangedOnly)
 		if changed || paletteFilesReady {
 			s.invalidate()
 		}

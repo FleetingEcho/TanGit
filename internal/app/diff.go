@@ -855,7 +855,16 @@ func (a *app) fullscreenDiffFiles() []fullscreenFile {
 // diffFullscreenFilesView draws the whole-window diff beside the files it
 // reads: the pane's files on the left, the diff on the right, and a line
 // between them the user drags to give one more room than the other.
-func (a *app) diffFullscreenFilesView(c *ui.Context, theme *ui.Theme, target shownDiff, files []fullscreenFile) {
+func (a *app) diffFullscreenFilesView(c *ui.Context, theme *ui.Theme, target shownDiff, all []fullscreenFile) {
+	files := all
+	if query := a.fullscreenFileFinderQuery(); query != "" {
+		files = make([]fullscreenFile, 0, len(all))
+		for _, file := range all {
+			if strings.Contains(strings.ToLower(file.label+"\n"+file.previous), strings.ToLower(query)) {
+				files = append(files, file)
+			}
+		}
+	}
 	current := -1
 	for i, file := range files {
 		if file.current {
@@ -868,9 +877,15 @@ func (a *app) diffFullscreenFilesView(c *ui.Context, theme *ui.Theme, target sho
 				ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 					ui.Icon(c, folderIcon).FontSize(13).TextColor(theme.TextMuted)
 					ui.Text(c, tr("Changed files")).Bold().Grow(1)
-					ui.Badge(c, fmt.Sprintf("%d", len(files)))
+					ui.Badge(c, fmt.Sprintf("%d", len(all)))
+					a.fullscreenFileFinderButton(c)
 					paneCollapseButton(c, &a.diffFullscreenFilesCollapsed, "Collapse changed files")
 				})
+				a.fullscreenFileFinderRow(c, len(files), len(all))
+				if len(files) == 0 && len(all) > 0 {
+					listSearchEmpty(c, "No files match this filter")
+					return
+				}
 				// The list's choice follows the file the diff shows, so the
 				// accent marks the one being read.
 				a.diffFullscreenFile = current

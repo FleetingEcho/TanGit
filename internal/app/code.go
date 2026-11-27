@@ -184,6 +184,7 @@ type codeState struct {
 	list                 ui.ListState
 	files                []string
 	paletteFiles         paletteFileMatches
+	paletteHistoryFiles  paletteFileMatches
 	visiblePaths         []string
 	rows                 []fileTreeRow
 	selectedRow          int
@@ -486,6 +487,7 @@ func (a *app) refreshCodeAfterCheckout(old, current repository.Snapshot) bool {
 func (s *codeState) replaceFiles(paths []string) {
 	s.files = paths
 	s.paletteFiles = paletteFileMatches{}
+	s.paletteHistoryFiles = paletteFileMatches{}
 }
 
 func (a *app) requestCodeFiles() {

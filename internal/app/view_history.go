@@ -949,8 +949,7 @@ func (a *app) commitDetailBodyWithOptions(c *ui.Context, commit *repository.Comm
 		}
 		files := *state.files
 		previousSelectedRow := *state.selectedFileRow
-		*state.fileRows = a.syncFileTreeRows(state.scope, files, *state.fileRows,
-			state.selectedFileRow, state.selectedFile)
+		*state.fileRows = a.syncCommitFileRows(state, files)
 		revealSelectedRow := *state.selectedFileRow >= 0 && *state.selectedFileRow != previousSelectedRow
 		// The files and the diff share the rest of the pane, and the line
 		// between them is dragged to give one more room than the other.
@@ -960,12 +959,18 @@ func (a *app) commitDetailBodyWithOptions(c *ui.Context, commit *repository.Comm
 					ui.Icon(c, folderIcon).FontSize(13).TextColor(theme.Accent)
 					ui.Text(c, tr("Commit files")).Bold().Grow(1)
 					ui.Badge(c, fmt.Sprintf("%d", len(files)))
+					a.commitFileFinderButton(c)
 					a.fileTreeModeButton(c)
 					if *state.filesLoading {
 						ui.Spinner(c).Label(tr("Loading commit details"))
 					}
 					paneCollapseButton(c, state.filesCollapsed, "Collapse changed files").MarginEnd(8)
 				})
+				a.commitFileFinderRow(c, files)
+				if len(*state.fileRows) == 0 && a.commitFileFinderQuery() != "" {
+					listSearchEmpty(c, "No files match this filter")
+					return
+				}
 				guides := treeGuideGroups(*state.fileRows)
 				list := a.keyboardList(c, state.fileList, len(*state.fileRows)).Grow(1).Rows(func(row ui.ListRow) {
 					item := (*state.fileRows)[row.Index]

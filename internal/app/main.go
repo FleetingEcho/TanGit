@@ -844,12 +844,20 @@ type app struct {
 	codeBlameHover    codeBlameHoverState
 	historyDiffTarget *historyDiffTarget
 
-	commitDetailMessage   commitMessageDetailState
-	commitFiles           []repository.CommitFile
-	commitFileRows        []fileTreeRow
-	commitFileList        ui.ListState
-	selectedCommitFileRow int
-	selectedCommitFile    int
+	commitDetailMessage commitMessageDetailState
+	commitFiles         []repository.CommitFile
+	commitFileRows      []fileTreeRow
+	// commitFileSearch filters the commit's changed files; the finder row is
+	// shown while commitFileSearchOpen, and it is shared by every commit pane.
+	commitFileSearch          string
+	fullscreenFileSearch      string
+	fullscreenFileSearchOpen  bool
+	fullscreenFileSearchFocus ui.Handle
+	commitFileSearchOpen      bool
+	commitFileSearchFocus     ui.Handle
+	commitFileList            ui.ListState
+	selectedCommitFileRow     int
+	selectedCommitFile        int
 	// commitFilesHeight and commitFilesWidth are the room the commit's files
 	// take above or beside its diff, which the line between them drags.
 	// commitDetailsLayout chooses those two arrangements.
@@ -898,9 +906,16 @@ type app struct {
 	fileHistoryCommits  []repository.Commit
 	fileHistoryList     ui.ListState
 	fileHistorySelected int
-	fileHistoryLoading  bool
-	fileHistoryError    string
-	fileHistoryToken    uint64
+	// fileHistoryRow is the selected row of the (possibly filtered) commit list;
+	// fileHistoryRows maps rows to indices of fileHistoryCommits.
+	fileHistoryRow         int
+	fileHistoryRows        []int
+	fileHistorySearch      string
+	fileHistorySearchOpen  bool
+	fileHistorySearchFocus ui.Handle
+	fileHistoryLoading     bool
+	fileHistoryError       string
+	fileHistoryToken       uint64
 	// more says the last page filled, so scrolling to the end reads another;
 	// loadingMore and moreError are that read's own state. read counts rows
 	// fetched from Git, including duplicates dropped from the keyed list.
@@ -909,13 +924,18 @@ type app struct {
 	fileHistoryMoreError   string
 	fileHistoryRead        int
 
-	fileHistoryFiles        []repository.CommitFile
-	fileHistoryFileList     ui.ListState
-	fileHistorySelectedFile int
-	fileHistoryFilesLoading bool
-	fileHistoryFilesError   string
-	fileHistoryFilesHash    string
-	fileHistoryFilesToken   uint64
+	fileHistoryFiles            []repository.CommitFile
+	fileHistoryFileRow          int
+	fileHistoryFileRows         []int
+	fileHistoryFilesSearch      string
+	fileHistoryFilesSearchOpen  bool
+	fileHistoryFilesSearchFocus ui.Handle
+	fileHistoryFileList         ui.ListState
+	fileHistorySelectedFile     int
+	fileHistoryFilesLoading     bool
+	fileHistoryFilesError       string
+	fileHistoryFilesHash        string
+	fileHistoryFilesToken       uint64
 
 	fileHistoryDiffState   *editor.DiffState
 	fileHistoryDiffMedia   *mediaReview
@@ -930,7 +950,6 @@ type app struct {
 	// percentages of the room they share. The commit and file columns fold
 	// independently into restore rails without disturbing the loaded diff.
 	fileHistoryWidth            float32
-	fileHistoryShown            float32
 	fileHistoryCommitPercent    float32
 	fileHistoryFilePercent      float32
 	fileHistoryCommitsCollapsed bool
@@ -1289,34 +1308,34 @@ func newApp(opener repositoryOpener) *app {
 		}
 		return a.diffFullscreenRows[row].label
 	}
-	a.fileHistoryList.Selected = &a.fileHistorySelected
+	a.fileHistoryList.Selected = &a.fileHistoryRow
 	// The drawer reloads while its lists still draw, so a row can outlive the
 	// data it named for one frame; those callbacks must not index past it.
 	a.fileHistoryList.Key = func(row int) any {
-		if row < 0 || row >= len(a.fileHistoryCommits) {
+		if row < 0 || row >= len(a.fileHistoryRows) || a.fileHistoryRows[row] >= len(a.fileHistoryCommits) {
 			return row
 		}
-		return a.fileHistoryCommits[row].Hash
+		return a.fileHistoryCommits[a.fileHistoryRows[row]].Hash
 	}
 	a.fileHistoryList.Label = func(row int) string {
-		if row < 0 || row >= len(a.fileHistoryCommits) {
+		if row < 0 || row >= len(a.fileHistoryRows) || a.fileHistoryRows[row] >= len(a.fileHistoryCommits) {
 			return ""
 		}
-		return a.fileHistoryCommits[row].Subject
+		return a.fileHistoryCommits[a.fileHistoryRows[row]].Subject
 	}
-	a.fileHistoryFileList.Selected = &a.fileHistorySelectedFile
+	a.fileHistoryFileList.Selected = &a.fileHistoryFileRow
 	a.fileHistoryFileList.Key = func(row int) any {
-		if row < 0 || row >= len(a.fileHistoryFiles) {
+		if row < 0 || row >= len(a.fileHistoryFileRows) || a.fileHistoryFileRows[row] >= len(a.fileHistoryFiles) {
 			return row
 		}
-		file := a.fileHistoryFiles[row]
+		file := a.fileHistoryFiles[a.fileHistoryFileRows[row]]
 		return file.Path + "\x00" + file.Status
 	}
 	a.fileHistoryFileList.Label = func(row int) string {
-		if row < 0 || row >= len(a.fileHistoryFiles) {
+		if row < 0 || row >= len(a.fileHistoryFileRows) || a.fileHistoryFileRows[row] >= len(a.fileHistoryFiles) {
 			return ""
 		}
-		return a.fileHistoryFiles[row].Path
+		return a.fileHistoryFiles[a.fileHistoryFileRows[row]].Path
 	}
 	a.updateChanged = func(fn func() bool) {
 		a.update(func() { fn() })

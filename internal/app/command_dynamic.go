@@ -213,6 +213,21 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 			break
 		}
 		specs = append(specs, s.commitSearchSpecs(a, strings.TrimSpace(rest), '#')...)
+	case '^':
+		// Every file, fuzzy-ranked like the Editor's quick open; choosing one
+		// opens the file history drawer for it.
+		if !a.code.filesLoaded && !a.code.filesLoading {
+			a.requestCodeFiles()
+		}
+		specs = append(specs, fileHistoryFileSpecs(a, rest)...)
+		if len(specs) == 0 && a.code.filesLoading {
+			specs = append(specs, commandSpec{
+				ID: "files/history-loading", Label: "Reading the files…", Group: commandGroupNavigation, Prefix: '^', Glyph: historyIcon, NoFilter: true,
+				Resolve: func(commandContext) commandState {
+					return commandState{Visible: true, DisabledReason: "The list of files is being read"}
+				},
+			})
+		}
 	case '/':
 		if !s.palette.filesChangedOnly {
 			// Every file of the repository, ranked as the Editor's quick open
@@ -367,6 +382,48 @@ func workspaceFileSpecs(a *app, query string) []commandSpec {
 		})
 	}
 	a.code.paletteFiles = paletteFileMatches{query: query, specs: specs}
+	return specs
+}
+
+// fileHistoryFileSpecs is workspaceFileSpecs for the '^' mode: the same ranked
+// files, each opening its history drawer instead of the Editor.
+func fileHistoryFileSpecs(a *app, query string) []commandSpec {
+	query = strings.TrimSpace(query)
+	if cached := a.code.paletteHistoryFiles; cached.specs != nil && cached.query == query {
+		return cached.specs
+	}
+	if len(a.code.files) == 0 {
+		return nil
+	}
+	paths := a.code.files
+	if query != "" {
+		paths = filterCodePathsFzf(paths, query)
+	}
+	if len(paths) > workspaceFileMatchLimit {
+		paths = paths[:workspaceFileMatchLimit]
+	}
+	specs := make([]commandSpec, 0, len(paths))
+	for index, path := range paths {
+		path, score := path, workspaceFileMatchLimit-index
+		specs = append(specs, commandSpec{
+			ID: commandID("files/history/" + path), Label: path, Detail: "Open file history", NoFilter: true,
+			Group: commandGroupHistory, Prefix: '^', Glyph: historyIcon,
+			Resolve: func(ctx commandContext) commandState {
+				state := repositoryStateAllowBusy(ctx)
+				state.ContextScore = score
+				return state
+			},
+			Run: func(ctx commandContext) { ctx.App.openFileHistory(path) },
+			Actions: []commandAction{
+				{Label: "Open in the Editor", Run: func(ctx commandContext) {
+					ctx.App.setWorkspaceTab(sectionCode)
+					ctx.App.openCodeFile(path, 0)
+				}},
+				{Label: "Copy file path", Run: func(ctx commandContext) { ctx.App.notifyCopied(ctx.App.services, "file path", path) }},
+			},
+		})
+	}
+	a.code.paletteHistoryFiles = paletteFileMatches{query: query, specs: specs}
 	return specs
 }
 

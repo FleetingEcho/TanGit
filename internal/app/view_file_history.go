@@ -145,6 +145,7 @@ func (a *app) openFileHistoryFrom(path string, origin repository.Commit) {
 					}
 					a.fileHistoryCommits = slices.Insert(a.fileHistoryCommits, index, origin)
 				}
+				a.fileHistorySelected = index
 				a.fileHistoryList.Choose(index)
 				a.fileHistoryList.ScrollTo(index, ui.Center)
 				if err != nil {
@@ -163,6 +164,7 @@ func (a *app) openFileHistoryFrom(path string, origin repository.Commit) {
 			// Select through the list, not only the index: it tracks the
 			// chosen row by key, so a stale choice from an earlier open
 			// would otherwise leave the first commit unhighlighted.
+			a.fileHistorySelected = 0
 			a.fileHistoryList.Choose(0)
 			a.fileHistoryList.ScrollTo(0, ui.Start)
 			a.loadFileHistoryCommit(a.fileHistoryCommits[0], true)
@@ -263,7 +265,8 @@ func (a *app) storeFileHistoryPage(commits []repository.Commit, read int, more b
 		}
 	}
 	if selected != "" {
-		a.fileHistoryList.Choose(selectedCommitIndex(a.fileHistoryCommits, selected))
+		a.fileHistorySelected = selectedCommitIndex(a.fileHistoryCommits, selected)
+		a.fileHistoryList.Choose(a.fileHistorySelected)
 	}
 }
 
@@ -392,6 +395,7 @@ func (a *app) loadFileHistoryCommit(commit repository.Commit, force bool) {
 					break
 				}
 			}
+			a.fileHistorySelectedFile = choice
 			a.fileHistoryFileList.Choose(choice)
 			a.fileHistoryFileList.ScrollTo(choice, ui.Center)
 			a.loadFileHistoryDiff(commit, files[choice], true)
@@ -476,26 +480,24 @@ func (a *app) fileHistoryDrawer(c *ui.Context, overlayTopInset float32) {
 			if a.fileHistoryWidth < 30 {
 				a.fileHistoryWidth = 80
 			}
-			a.fileHistoryShown = 100 - a.fileHistoryWidth
-			paneSplitPercent(c, &a.fileHistoryShown, func() {
-				ui.Box(c).Fill().Tooltip(tr("Close the file history")).
-					OnClick(a.closeFileHistory)
-			}, func() {
-				panel := ui.Column(c).FillHeight().Padding(islandGap / 2).Gap(0).
-					Background(islandBackdrop(theme)).
-					Role(ui.RoleDialog).Label(tr("File history")).
-					Children(func() {
-						a.fileHistoryPanel(c)
-					})
-				_ = panel
-			}).Fill()
-			if a.fileHistoryShown != 100-a.fileHistoryWidth {
-				a.fileHistoryWidth = 100 - a.fileHistoryShown
-				if a.fileHistoryWidth < 30 {
-					a.fileHistoryWidth = 30
-				}
-				if a.fileHistoryWidth > 96 {
-					a.fileHistoryWidth = 96
+			if a.fileHistoryWidth > 96 {
+				a.fileHistoryWidth = 96
+			}
+			// Click-away area, drawer, and an invisible handle on the drawer's
+			// left edge: no line or grip is drawn, only the resize cursor.
+			ui.Box(c).Absolute().Left(0).Top(0).Bottom(0).WidthPercent(100 - a.fileHistoryWidth).
+				Tooltip(tr("Close the file history")).OnClick(a.closeFileHistory)
+			ui.Column(c).Absolute().Right(0).Top(0).Bottom(0).WidthPercent(a.fileHistoryWidth).
+				Padding(islandGap / 2).Gap(0).Background(islandBackdrop(theme)).
+				Role(ui.RoleDialog).Label(tr("File history")).
+				Children(func() {
+					a.fileHistoryPanel(c)
+				})
+			handle := ui.Box(c).Absolute().Top(0).Bottom(0).LeftPercent(100-a.fileHistoryWidth).Width(10).
+				Translate(-5, 0).Cursor(ui.CursorResizeEW).Label(tr("Drag to resize"))
+			if dx, _, held := handle.Dragged(); held && dx != 0 {
+				if total := back.Bounds().W; total > 0 {
+					a.fileHistoryWidth = min(max(a.fileHistoryWidth-dx*100/total, 30), 96)
 				}
 			}
 			if back.OverlayShortcut(0, ui.KeyEscape) {
@@ -511,6 +513,7 @@ func (a *app) fileHistoryPanel(c *ui.Context) {
 	theme := c.Theme()
 	islandCard(c, ui.Column(c).Gap(5).Padding(10, 12)).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+			iconButton(c, "Close file history", "Escape", chevronLeftIcon, false, a.closeFileHistory)
 			ui.Icon(c, historyIcon).FontSize(15).TextColor(theme.Accent)
 			ui.Text(c, tr("File history")).FontSize(16).Bold().Grow(1)
 			if n := len(a.fileHistoryCommits); n > 0 {
@@ -553,8 +556,13 @@ func (a *app) fileHistoryCommitsView(c *ui.Context) {
 		ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 			ui.Icon(c, commitIcon).FontSize(13).TextColor(theme.TextMuted)
 			ui.Text(c, tr("Commits")).Bold().Grow(1)
+			a.fileHistoryFinderButton(c)
 			paneCollapseButton(c, &a.fileHistoryCommitsCollapsed, "Collapse file history commits")
 		})
+		visible := a.fileHistoryVisibleCommits()
+		a.fileHistoryRows = visible
+		a.syncFileHistoryRow()
+		a.fileHistoryFinderRow(c, len(visible), len(a.fileHistoryCommits))
 		switch {
 		case a.fileHistoryLoading && len(a.fileHistoryCommits) == 0:
 			loadingPane(c, "Loading file history", "Reading the file's history…")
@@ -569,12 +577,14 @@ func (a *app) fileHistoryCommitsView(c *ui.Context) {
 			ui.Column(c).Grow(1).Center().Children(func() {
 				ui.Text(c, tr("No commits changed this file.")).TextColor(theme.TextMuted)
 			})
+		case len(visible) == 0:
+			listSearchEmpty(c, "No commits match this filter")
 		default:
-			list := a.keyboardList(c, &a.fileHistoryList, len(a.fileHistoryCommits)).Grow(1).Rows(func(row ui.ListRow) {
-				if row.Index >= len(a.fileHistoryCommits) {
+			list := a.keyboardList(c, &a.fileHistoryList, len(visible)).Grow(1).Rows(func(row ui.ListRow) {
+				if row.Index >= len(visible) {
 					return
 				}
-				commit := a.fileHistoryCommits[row.Index]
+				commit := a.fileHistoryCommits[visible[row.Index]]
 				services := row.Context.Services()
 				element := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).
 					Padding(6, 8+scrollbarGutter(theme), 6, 8)
@@ -602,13 +612,15 @@ func (a *app) fileHistoryCommitsView(c *ui.Context) {
 							})
 					}
 				}).OnClick(func() {
-					a.fileHistorySelected = row.Index
+					a.fileHistorySelected = visible[row.Index]
+					a.fileHistoryRow = row.Index
 					a.loadFileHistoryCommit(commit, false)
 				}).PopoverMenu(func(m *ui.Menu) {
 					a.commitRowMenu(m, commit, services)
 				})
 			})
-			if a.keyboardListChanged(&a.fileHistoryList, list) && a.fileHistorySelected >= 0 && a.fileHistorySelected < len(a.fileHistoryCommits) {
+			if a.keyboardListChanged(&a.fileHistoryList, list) && a.fileHistoryRow >= 0 && a.fileHistoryRow < len(visible) {
+				a.fileHistorySelected = visible[a.fileHistoryRow]
 				a.loadFileHistoryCommit(a.fileHistoryCommits[a.fileHistorySelected], false)
 			}
 			// Scrolling to the last commit reads the page below it, so the
@@ -659,8 +671,13 @@ func (a *app) fileHistoryFilesView(c *ui.Context) {
 			if a.fileHistorySelected >= 0 && a.fileHistorySelected < len(a.fileHistoryCommits) {
 				ui.Badge(c, a.fileHistoryCommits[a.fileHistorySelected].ShortHash)
 			}
+			a.fileHistoryFilesFinderButton(c)
 			paneCollapseButton(c, &a.fileHistoryFilesCollapsed, "Collapse changed files")
 		})
+		visibleFiles := a.fileHistoryVisibleFiles()
+		a.fileHistoryFileRows = visibleFiles
+		a.syncFileHistoryFileRow()
+		a.fileHistoryFilesFinderRow(c, len(visibleFiles), len(a.fileHistoryFiles))
 		switch {
 		case a.fileHistoryFilesLoading:
 			loadingPane(c, "Loading commit files", "Reading the commit's files…")
@@ -683,13 +700,18 @@ func (a *app) fileHistoryFilesView(c *ui.Context) {
 				return
 			}
 			commit := a.fileHistoryCommits[a.fileHistorySelected]
-			list := a.keyboardList(c, &a.fileHistoryFileList, len(a.fileHistoryFiles)).Grow(1).Rows(func(row ui.ListRow) {
+			if len(visibleFiles) == 0 {
+				listSearchEmpty(c, "No files match this filter")
+				return
+			}
+			list := a.keyboardList(c, &a.fileHistoryFileList, len(visibleFiles)).Grow(1).Rows(func(row ui.ListRow) {
 				// A menu action on an earlier row (View file changes…) reloads the
 				// drawer and empties the list while its rows are still drawing.
-				if row.Index >= len(a.fileHistoryFiles) {
+				if row.Index >= len(visibleFiles) || visibleFiles[row.Index] >= len(a.fileHistoryFiles) {
 					return
 				}
-				file := a.fileHistoryFiles[row.Index]
+				source := visibleFiles[row.Index]
+				file := a.fileHistoryFiles[source]
 				style := diffFileStyle(theme, file.Status)
 				ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(6, 8).Children(func() {
 					fileTypeMark(row.Context, file.Path, 13, row.Selected())
@@ -700,14 +722,17 @@ func (a *app) fileHistoryFilesView(c *ui.Context) {
 					}
 					statusSlot(row.Context, statusLetter(file.Status), rowStatusColor(theme, row, style))
 				}).OnClick(func() {
-					a.fileHistorySelectedFile = row.Index
+					a.fileHistorySelectedFile = source
+					a.fileHistoryFileRow = row.Index
 					a.loadFileHistoryDiff(commit, file, false)
 				}).PopoverMenu(func(m *ui.Menu) {
-					a.fileHistorySelectedFile = row.Index
+					a.fileHistorySelectedFile = source
+					a.fileHistoryFileRow = row.Index
 					a.commitFileMenu(m, &commit, file, row.Context.Services())
 				})
 			})
-			if a.keyboardListChanged(&a.fileHistoryFileList, list) && a.fileHistorySelectedFile >= 0 && a.fileHistorySelectedFile < len(a.fileHistoryFiles) {
+			if a.keyboardListChanged(&a.fileHistoryFileList, list) && a.fileHistoryFileRow >= 0 && a.fileHistoryFileRow < len(visibleFiles) {
+				a.fileHistorySelectedFile = visibleFiles[a.fileHistoryFileRow]
 				a.loadFileHistoryDiff(commit, a.fileHistoryFiles[a.fileHistorySelectedFile], false)
 			}
 		}

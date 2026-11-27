@@ -328,7 +328,7 @@ func commandQueryMode(query string) (byte, string) {
 		return 0, ""
 	}
 	switch query[0] {
-	case '>', '@', '#', '/', '!', '~':
+	case '>', '@', '#', '/', '!', '~', '^':
 		rest := query[1:]
 		if query[0] != '!' {
 			rest = strings.TrimSpace(rest)
@@ -648,6 +648,12 @@ func buildStaticCommandSpecs() []commandSpec {
 			},
 			Run: func(ctx commandContext) { ctx.App.openHistoryChanges(nil) }},
 		{ID: "history/search-code-changes", Label: historyChangesLabel, Keywords: []string{"git log", "pickaxe", "diff", "history", "code"}, Group: commandGroupHistory, Glyph: searchIcon, Resolve: historyChangesCommandState, Run: func(ctx commandContext) { ctx.App.openHistoryChanges(nil) }},
+		{ID: "history/search-file-history", Label: "Search file history…", Detail: "Find a file and open its history (type ^ in the palette)", Keywords: []string{"file history", "log", "blame", "history", "file"}, Group: commandGroupHistory, Glyph: historyIcon, KeepOpen: true, Resolve: repositoryStateAllowBusy,
+			Run: func(ctx commandContext) {
+				ctx.Shell.palette.query = "^"
+				ctx.Shell.palette.selected = 0
+				ctx.Shell.palette.actionIndex = 0
+			}},
 		{ID: commandOpenPRChecks, Label: "Open Pull Request Checks", Keywords: []string{"checks", "ci", "pull request", "github", "view", "merge request", "gitlab"}, Group: commandGroupBranches, Icon: commandIconActivity, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openPullRequestChecks() }},
 		{ID: "branches/pr-create", Label: "Create pull request…", Detail: "Open a pull or merge request for the current branch (gh for GitHub, glab for GitLab)", Keywords: []string{"pull request", "merge request", "pr", "mr", "github", "gitlab", "new"}, Group: commandGroupBranches, Icon: commandIconDefault, Glyph: externalLinkIcon, Resolve: pullRequestCommandState, Run: func(ctx commandContext) { ctx.App.openCreatePullRequestForm() }},
 		{ID: "branches/pr-open", Label: "Open pull request in browser", Detail: "Show the current branch's pull or merge request on the web", Keywords: []string{"pull request", "merge request", "pr", "mr", "github", "gitlab", "browser", "web"}, Group: commandGroupBranches, Icon: commandIconDefault, Glyph: externalLinkIcon, Resolve: pullRequestCommandState, Run: func(ctx commandContext) { ctx.App.confirmOpenPullRequest() }},

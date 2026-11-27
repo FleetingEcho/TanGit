@@ -572,8 +572,8 @@ func (a *app) keyboardListMenu(c *ui.Context, s *ui.ListState, m *ui.Menu) {
 			a.commitRowMenuWithHistory(m, a.branchCommits[index], services, a.currentBranchName() == a.branchCommitsBranch)
 		}
 	case &a.fileHistoryList:
-		if index < len(a.fileHistoryCommits) {
-			a.commitRowMenu(m, a.fileHistoryCommits[index], services)
+		if index >= 0 && index < len(a.fileHistoryRows) && a.fileHistoryRows[index] < len(a.fileHistoryCommits) {
+			a.commitRowMenu(m, a.fileHistoryCommits[a.fileHistoryRows[index]], services)
 		}
 	case &a.stashFileList:
 		if a.selectedStash >= 0 && a.selectedStash < len(a.snapshot.Stashes) && a.selectedStashFile >= 0 && a.selectedStashFile < len(a.stashFiles) {

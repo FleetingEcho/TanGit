@@ -665,7 +665,7 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 							}
 							ui.Badge(c, fmt.Sprintf("%d", len(candidates)))
 						} else if mode != 'a' {
-							ui.Text(c, tr("> commands · @ branches · # commits · / files · ~ repos · ! shell")).TextColor(theme.TextMuted).
+							ui.Text(c, tr("> commands · @ branches · # commits · / files · ^ file history · ~ repos · ! shell")).TextColor(theme.TextMuted).
 								FontSize(theme.FontSize - 1)
 						}
 					})
@@ -934,6 +934,8 @@ func commandModeLabel(mode byte) string {
 		return "Files"
 	case '~':
 		return "Recent repositories"
+	case '^':
+		return "File history"
 	case 'a':
 		return "Commit actions"
 	case '!':
@@ -1096,6 +1098,8 @@ func paletteTitle(query string, actions bool) string {
 		return tr("Search files")
 	case '~':
 		return tr("Switch Repository")
+	case '^':
+		return tr("Search file history")
 	case '!':
 		return tr("Run Shell Command")
 	}

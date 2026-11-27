@@ -397,6 +397,10 @@ func (a *app) headerViewWithID(c *ui.Context, keyboardID string) {
 	compactOperation := !a.editorOnlyWorkspace() && a.snapshot.Operation != "" &&
 		(headerWidth <= 0 || headerWidth < 800)
 	header.Children(func() {
+		if keyboardID == "fullscreen-toolbar" {
+			// The full-window diff offers the way back where the eye starts.
+			iconButton(c, "Restore diff view", "Restore diff view", chevronLeftIcon, false, a.closeDiffFullscreen)
+		}
 		base := filepath.Base(a.snapshot.Root)
 		if base == "." || base == string(filepath.Separator) || base == "" {
 			base = a.snapshot.Root
