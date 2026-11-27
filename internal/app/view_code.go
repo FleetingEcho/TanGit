@@ -776,7 +776,7 @@ func (a *app) codeBlameButton(c *ui.Context, document *codeDocument) {
 	case document.blameFull:
 		tooltip = tr("Hide full-file Git blame; keep the selected-line annotation")
 	}
-	flatToggleIconButton(c, tr("Git Blame"), tooltip, personIcon, 15, 4,
+	flatToggleIconButton(c, tr("Git Blame"), tooltip, blameIcon, 15, 4,
 		document.blameFull, func() { a.toggleCodeBlame(document) })
 }
 

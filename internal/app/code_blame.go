@@ -189,8 +189,10 @@ func (a *app) syncCodeBlameGutter(document *codeDocument) {
 		// Details open from the info button; hovering or clicking the gutter's
 		// text does nothing, so moving across it never pops a card up.
 		annotation.DetailsClick = func() { a.openCodeBlameDetails(document, line) }
+		annotation.DetailsTooltip = tr("Show commit details")
 		if committedBlameHash(blame.Hash) && blame.PreviousHash != "" && !document.blameNavigationLoading {
 			annotation.ActionClick = func() { a.openPreviousCodeBlame(document, line) }
+			annotation.ActionTooltip = tr("View blame before this change")
 		}
 		annotations = append(annotations, annotation)
 		previousHash = blame.Hash

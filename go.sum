@@ -18,6 +18,8 @@ github.com/FleetingEcho/mygo v0.10.1-0.20261127013946-3a0c77ccfb33 h1:saL2w2Fksz
 github.com/FleetingEcho/mygo v0.10.1-0.20261127013946-3a0c77ccfb33/go.mod h1:Hw9sxdSQ4tHuehHw5Q6alR1qTS8kgv3oSFxEejg+7qo=
 github.com/FleetingEcho/mygo v0.10.1-0.20261127014630-faf53d8ae288 h1:2WW9iQ4H6sgkEPacWClTVgZ12Lb8ifN4ylIBkohsj1w=
 github.com/FleetingEcho/mygo v0.10.1-0.20261127014630-faf53d8ae288/go.mod h1:Hw9sxdSQ4tHuehHw5Q6alR1qTS8kgv3oSFxEejg+7qo=
+github.com/FleetingEcho/mygo v0.10.1-0.20261127015109-e1c1b9570579 h1:d1RPNE8Mc2k7kzYCL5AZBNdRk5ATho2ocGp6i6E4jdc=
+github.com/FleetingEcho/mygo v0.10.1-0.20261127015109-e1c1b9570579/go.mod h1:Hw9sxdSQ4tHuehHw5Q6alR1qTS8kgv3oSFxEejg+7qo=
 github.com/ProtonMail/go-crypto v1.4.1 h1:9RfcZHqEQUvP8RzecWEUafnZVtEvrBVL9BiF67IQOfM=
 github.com/ProtonMail/go-crypto v1.4.1/go.mod h1:e1OaTyu5SYVrO9gKOEhTc+5UcXtTUa+P3uLudwcgPqo=
 github.com/RoaringBitmap/roaring/v2 v2.30.0 h1:1sD4xsCenNd9n/gOWaExCWanP9WTyiNuqLAvaDQ5jkY=
