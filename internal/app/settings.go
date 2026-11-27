@@ -634,6 +634,7 @@ type themeChoice struct {
 var themeNames = []string{
 	"System",
 	"High Contrast Light",
+	"Light Modern",
 	"Ayu Light",
 	"One Light",
 	"GitHub Light",
@@ -652,6 +653,7 @@ var themeNames = []string{
 	"Ayu Mirage",
 	"Kanagawa Wave",
 	"Catppuccin Mocha",
+	"Dark Modern",
 	"Tokyo Night",
 	"Rosé Pine",
 	"GitHub Dark",
@@ -668,6 +670,31 @@ var themeChoices = map[string]themeChoice{
 			accentPressed: "#5f7bd0", accentText: "#1a1b26", danger: "#f7768e",
 			warning: "#e0af68", success: "#9ece6a",
 			selection: ui.RGBA(122, 162, 247, 0.3), focus: ui.RGBA(122, 162, 247, 0.6),
+		})
+	}},
+	// VS Code's Dark Modern, the default dark theme since 2023: a near-black
+	// #1f1f1f editor, #cccccc text and the #0078d4 blue VS Code uses for focus
+	// and buttons.
+	"Dark Modern": {build: func() *ui.Theme {
+		return palette(ui.DarkTheme(), paletteColors{
+			background: "#1f1f1f", surface: "#262626", surfaceHover: "#313131",
+			surfacePressed: "#3c3c3c", border: "#3c3c3c", text: "#cccccc",
+			textMuted: "#9d9d9d", accent: "#0078d4", accentHover: "#026ec1",
+			accentPressed: "#0b5cad", accentText: "#ffffff", danger: "#f85149",
+			warning: "#cca700", success: "#2ea043",
+			selection: ui.RGBA(0, 120, 212, 0.32), focus: ui.RGBA(0, 120, 212, 0.75),
+		})
+	}},
+	// VS Code's Light Modern, its default light theme: a white editor, #3b3b3b
+	// text and the #005fb8 blue of its buttons and focus rings.
+	"Light Modern": {build: func() *ui.Theme {
+		return palette(ui.LightTheme(), paletteColors{
+			background: "#ffffff", surface: "#f3f3f3", surfaceHover: "#e8e8e8",
+			surfacePressed: "#dcdcdc", border: "#d4d4d4", text: "#3b3b3b",
+			textMuted: "#616161", accent: "#005fb8", accentHover: "#0258a8",
+			accentPressed: "#004a94", accentText: "#ffffff", danger: "#cd3131",
+			warning: "#bf8803", success: "#107c10",
+			selection: ui.RGBA(0, 95, 184, 0.2), focus: ui.RGBA(0, 95, 184, 0.55),
 		})
 	}},
 	"Dracula": {build: func() *ui.Theme {

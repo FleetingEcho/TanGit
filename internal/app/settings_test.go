@@ -526,7 +526,7 @@ func TestThemeCatalogAppliesMetricsAndFollowsSystem(t *testing.T) {
 func TestPopularThemeAdditionsAreCatalogued(t *testing.T) {
 	dark := []string{
 		"Solarized Dark", "Catppuccin Frappé", "Catppuccin Macchiato",
-		"Rosé Pine", "Kanagawa Wave", "Everforest Dark", "Ayu Mirage",
+		"Rosé Pine", "Kanagawa Wave", "Everforest Dark", "Ayu Mirage", "Dark Modern",
 	}
 	for _, name := range dark {
 		if !slices.Contains(themeNames, name) {
@@ -536,6 +536,9 @@ func TestPopularThemeAdditionsAreCatalogued(t *testing.T) {
 		if theme := themeForSettings(appSettings{Theme: name}, false); !theme.Dark {
 			t.Errorf("%s was not built as a dark palette", name)
 		}
+	}
+	if !slices.Contains(themeNames, "Light Modern") || themeForSettings(appSettings{Theme: "Light Modern"}, true).Dark {
+		t.Fatal("Light Modern is missing or was not built as a light palette")
 	}
 	if !slices.Contains(themeNames, "Rosé Pine Dawn") {
 		t.Fatal("the theme menu is missing Rosé Pine Dawn")
