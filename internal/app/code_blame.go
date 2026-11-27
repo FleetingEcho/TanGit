@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"hash/fnv"
 	"strings"
 	"time"
 
@@ -168,6 +169,7 @@ func (a *app) syncCodeBlameGutter(document *codeDocument) {
 	annotations := make([]editor.LineAnnotation, 0)
 	offsets := make(map[int]int)
 	previousHash := ""
+	previousSlot := -1
 	for line := 0; line < lineCount; line++ {
 		blame := document.blameLines[line]
 		if !committedBlameHash(blame.Hash) && !uncommittedBlameHash(blame.Hash) {
@@ -182,7 +184,7 @@ func (a *app) syncCodeBlameGutter(document *codeDocument) {
 		annotation := editor.LineAnnotation{
 			Line:     line,
 			LastLine: codeBlameRangeLastLine(document, line, blame.Hash),
-			Border:   avatarColor(blame.Author, blame.AuthorEmail),
+			Border:   codeBlameRangeColor(blame.Hash, &previousSlot),
 			Avatar:   a.codeBlameAnnotationAvatar(document, blame),
 		}
 		annotation.Date, annotation.Text = formatCodeBlameGutter(blame)
@@ -204,6 +206,20 @@ func (a *app) syncCodeBlameGutter(document *codeDocument) {
 	}
 	document.state.LineAnnotationWidth = width
 	document.state.SetLineAnnotations(annotations)
+}
+
+// codeBlameRangeColor colors a blame range by its commit, not its author, so
+// two ranges stay apart even when one person wrote both. The color follows the
+// commit hash and is moved on when it would repeat the range just above.
+func codeBlameRangeColor(hash string, previousSlot *int) ui.Color {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(hash))
+	slot := int(h.Sum32() % uint32(len(accentNames)))
+	if slot == *previousSlot {
+		slot = (slot + 1) % len(accentNames)
+	}
+	*previousSlot = slot
+	return accentChoices[accentNames[slot]]
 }
 
 func codeBlameRangeLastLine(document *codeDocument, line int, hash string) int {

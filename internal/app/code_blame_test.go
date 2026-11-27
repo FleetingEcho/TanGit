@@ -447,8 +447,8 @@ func TestCodeBlameFullGutterGroupsRangesAndKeepsActiveLine(t *testing.T) {
 		t.Fatalf("blame ranges were not grouped by commit: %#v", annotations)
 	}
 	if annotations[0].Border == (ui.Color{}) || annotations[1].Border == (ui.Color{}) ||
-		annotations[0].Border != annotations[0].Avatar.Background || annotations[1].Border != annotations[1].Avatar.Background {
-		t.Fatalf("blame range borders do not match their author colors: %#v", annotations)
+		annotations[0].Border == annotations[1].Border {
+		t.Fatalf("neighbouring blame ranges need their own border colors: %#v", annotations)
 	}
 	if annotations[0].DetailsClick == nil || annotations[1].DetailsClick == nil ||
 		annotations[0].Click != nil || annotations[1].Click != nil {
