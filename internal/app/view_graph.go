@@ -96,7 +96,7 @@ func (a *app) graphView(c *ui.Context) {
 								}
 							})
 						})
-						commitDiffStatBlocks(row.Context, commit.ShortHash, commit.LinesAdded, commit.LinesDeleted)
+						a.commitDiffStatBlocks(row.Context, commit)
 					})
 					if a.commitSelectionMode && line.RowClicked() {
 						a.toggleCommitForBatch(commit)

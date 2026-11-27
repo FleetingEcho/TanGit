@@ -283,10 +283,16 @@ func (a *app) openFileHistoryCommitInHistory(hash string) {
 // showCommitInHistory opens History on a commit, searching for it by hash when
 // the loaded page or the active filter does not contain it.
 func (a *app) showCommitInHistory(hash string) {
-	if !a.sectionVisible(sectionHistory) {
+	a.showCommitInSection(sectionHistory, hash)
+}
+
+// showCommitInSection is showCommitInHistory for either commit list, History
+// or Graph.
+func (a *app) showCommitInSection(section int, hash string) {
+	if !a.sectionVisible(section) {
 		return
 	}
-	a.setWorkspaceTab(sectionHistory)
+	a.setWorkspaceTab(section)
 	for index, commit := range a.visibleCommits() {
 		if commit.Hash == hash {
 			a.commitList.Choose(index)
@@ -296,14 +302,14 @@ func (a *app) showCommitInHistory(hash string) {
 	}
 
 	// The file's commits can be older than the loaded History page or outside its filter.
-	query := a.commitQueryFor(sectionHistory)
+	query := a.commitQueryFor(section)
 	query.reset()
 	query.applied = repository.CommitFilter{Query: hash}
 	query.draft = query.applied
 	query.limit = repository.SnapshotCommitLimit
 	a.commitList.Choose(-1)
 	a.resetCommitDetails()
-	a.runCommitFilter(sectionHistory, "")
+	a.runCommitFilter(section, "")
 }
 
 // resetFileHistoryCommit drops the second and third columns, and the reads
@@ -553,6 +559,9 @@ func (a *app) fileHistoryCommitsView(c *ui.Context) {
 			})
 		default:
 			list := a.keyboardList(c, &a.fileHistoryList, len(a.fileHistoryCommits)).Grow(1).Rows(func(row ui.ListRow) {
+				if row.Index >= len(a.fileHistoryCommits) {
+					return
+				}
 				commit := a.fileHistoryCommits[row.Index]
 				services := row.Context.Services()
 				element := ui.Row(row.Context).Gap(8).AlignItems(ui.Center).
@@ -663,6 +672,11 @@ func (a *app) fileHistoryFilesView(c *ui.Context) {
 			}
 			commit := a.fileHistoryCommits[a.fileHistorySelected]
 			list := a.keyboardList(c, &a.fileHistoryFileList, len(a.fileHistoryFiles)).Grow(1).Rows(func(row ui.ListRow) {
+				// A menu action on an earlier row (View file changes…) reloads the
+				// drawer and empties the list while its rows are still drawing.
+				if row.Index >= len(a.fileHistoryFiles) {
+					return
+				}
 				file := a.fileHistoryFiles[row.Index]
 				style := diffFileStyle(theme, file.Status)
 				ui.Row(row.Context).Gap(8).AlignItems(ui.Center).Padding(6, 8).Children(func() {

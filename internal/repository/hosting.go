@@ -36,6 +36,26 @@ var runLocalHostingCommand = func(ctx context.Context, directory, program string
 // PullRequestProvider finds a supported host from the configured remote URLs.
 // It deliberately considers transport URLs, not the visible web-URL aliases.
 func (s *gitSession) pullRequestProvider() PullRequestProvider {
+	if provider := s.pullRequestProviderFromRemotes(); provider != "" {
+		return provider
+	}
+	// A company host such as git.corp.example names neither provider. The web
+	// address the user set for the remote does, when it is a gitlab or github host.
+	s.hostingHintsMu.Lock()
+	hints := append([]string(nil), s.hostingHints...)
+	s.hostingHintsMu.Unlock()
+	return pullRequestProviderForHosts(hints)
+}
+
+// SetHostingHints gives the session the remotes' web addresses, so a custom
+// host the user marked as GitLab or GitHub gets the matching CLI.
+func (s *gitSession) SetHostingHints(addresses []string) {
+	s.hostingHintsMu.Lock()
+	s.hostingHints = append([]string(nil), addresses...)
+	s.hostingHintsMu.Unlock()
+}
+
+func (s *gitSession) pullRequestProviderFromRemotes() PullRequestProvider {
 	preferred := ""
 	if branch, err := s.currentBranch(); err == nil {
 		preferred = branch.PushRemote
@@ -50,6 +70,25 @@ func (s *gitSession) pullRequestProvider() PullRequestProvider {
 		provider := pullRequestProviderForURLs(append(append([]string{}, remote.Urls...), remote.PushUrls...))
 		if preferred != "" || provider != "" {
 			return provider
+		}
+	}
+	return ""
+}
+
+// pullRequestProviderForHosts reads the provider from the host names of web
+// addresses: only the host counts, never a path that happens to say "github".
+func pullRequestProviderForHosts(addresses []string) PullRequestProvider {
+	for _, address := range addresses {
+		parsed, err := url.Parse(strings.TrimSpace(address))
+		if err != nil {
+			continue
+		}
+		host := strings.ToLower(parsed.Hostname())
+		switch {
+		case strings.Contains(host, "github"):
+			return PullRequestGitHub
+		case strings.Contains(host, "gitlab"):
+			return PullRequestGitLab
 		}
 	}
 	return ""

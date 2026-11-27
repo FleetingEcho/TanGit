@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/FleetingEcho/lazygitGo/internal/sshworkspace"
@@ -122,6 +123,10 @@ type Commit struct {
 	UnixTimestamp int64
 	Tags          []string
 	Parents       []string
+	// StatsPending is true on commits published before their line counts are
+	// read, so the list can show that the counts are on their way instead of
+	// a commit that changed nothing.
+	StatsPending bool
 }
 
 // CommitFilter narrows the commits History and a branch's commit list show.
@@ -464,8 +469,16 @@ func (Opener) Open(ctx context.Context, path string) (Session, error) {
 }
 
 type gitSession struct {
-	git        *commands.GitCommand
-	commandLog *CommandLog
+	// hostingHints are web addresses of the repository's remotes that the user
+	// confirmed, which name the hosting provider when the remote URLs do not.
+	// deferCommitStats makes commit reads skip the line-count read: commits
+	// arrive with StatsPending set, and the caller asks CommitLineStats for the
+	// ones it shows. See SetDeferCommitStats.
+	deferCommitStats atomic.Bool
+	hostingHintsMu   sync.Mutex
+	hostingHints     []string
+	git              *commands.GitCommand
+	commandLog       *CommandLog
 	// detailsMu guards the quiet-refresh Details cache: the lists only change
 	// when refs, the bisect state, the safety journal or the worktree list do,
 	// so an unchanged fingerprint lets SnapshotQuiet reuse them verbatim.
@@ -826,6 +839,7 @@ func (s *gitSession) DetailsSnapshotWithCommitPage(ctx context.Context, publish 
 		commits = append(commits, snapshotCommit(commit))
 	}
 	if publish != nil && len(commits) > 0 && ctx.Err() == nil {
+		markStatsPending(commits)
 		publish(commits)
 		commits = slices.Clone(commits)
 	}
@@ -3753,6 +3767,7 @@ func (s *gitSession) SearchCommitsProgressively(ctx context.Context, filter Comm
 		return nil, err
 	}
 	if publish != nil && len(commits) > 0 && ctx.Err() == nil {
+		markStatsPending(commits)
 		publish(commits)
 		commits = slices.Clone(commits)
 	}

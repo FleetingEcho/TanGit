@@ -506,7 +506,7 @@ func collapsiblePaneSplitWithAxis(c *ui.Context, collapsed *bool,
 			if vertical {
 				const restoreHeight = paneToggleHeight + islandGap
 				ui.Box(c).Absolute().Left(0).Right(0).Top(0).Height(restoreHeight).
-					Background(islandBackdrop(theme)).PassThrough()
+					Background(collapsedRailBackground(theme)).PassThrough()
 				ui.Column(c).Fill().Padding(restoreHeight, 0, 0, 0).Children(second)
 				ui.Box(c).Absolute().Left(0).Right(0).Top(0).Height(1).
 					Background(theme.Border).PassThrough()
@@ -525,7 +525,7 @@ func collapsiblePaneSplitWithAxis(c *ui.Context, collapsed *bool,
 			// collapsed pane owns exactly one identical rail of its own.
 			const restoreWidth = paneToggleSize + islandGap
 			ui.Box(c).Absolute().Left(0).Top(0).Bottom(0).Width(restoreWidth).
-				Background(islandBackdrop(theme)).PassThrough()
+				Background(collapsedRailBackground(theme)).PassThrough()
 			ui.Column(c).Fill().Padding(0, 0, 0, restoreWidth).Children(second)
 			ui.Box(c).Absolute().Left(0).Top(0).Bottom(0).Width(1).
 				Background(theme.Border).PassThrough()
@@ -1002,4 +1002,14 @@ func rowActionIconSize(theme *ui.Theme) float32 {
 // action bar is denser and sits on the subject's line.
 func rowActionIconSizeCompact(theme *ui.Theme) float32 {
 	return min(max(theme.FontSize-2, 7), 12)
+}
+
+// collapsedRailBackground is the face of the slim rail a collapsed pane leaves
+// behind. In a dark theme the islands' backdrop is half black, which made the
+// rail read as a hole in the window; here it stays nearer the theme's own color.
+func collapsedRailBackground(theme *ui.Theme) ui.Color {
+	if theme.Dark {
+		return theme.Background.Mix(black, 0.15)
+	}
+	return islandBackdrop(theme)
 }

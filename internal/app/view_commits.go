@@ -99,13 +99,14 @@ func (a *app) commitRowMenu(m *ui.Menu, commit repository.Commit, services ui.Se
 // actions but not a rebase or reset of the branch that happens to be current.
 func (a *app) commitRowMenuWithHistory(m *ui.Menu, commit repository.Commit, services ui.Services, historyEditable bool) {
 	if a.workspaceTab == sectionHistory || a.workspaceTab == sectionGraph {
-		if m.Item(tr("Add all files to Custom Patch")).Shortcut(ui.Ctrl, ui.KeyB).Disabled(a.actionBusy).Chosen() {
-			a.beginAddCustomPatchCommit(commit)
-		}
-		if len(a.customPatch.entries) > 0 && m.Item(tr("Review Custom Patch")).Shortcut(ui.Shift, ui.KeyB).Disabled(a.actionBusy).Chosen() {
-			a.openCustomPatchBuilder()
-		}
-		m.Separator()
+		m.Submenu(tr("Custom Patch"), func(sub *ui.Menu) {
+			if sub.Item(tr("Add all files to Custom Patch")).Shortcut(ui.Ctrl, ui.KeyB).Disabled(a.actionBusy).Chosen() {
+				a.beginAddCustomPatchCommit(commit)
+			}
+			if len(a.customPatch.entries) > 0 && sub.Item(tr("Review Custom Patch")).Shortcut(ui.Shift, ui.KeyB).Disabled(a.actionBusy).Chosen() {
+				a.openCustomPatchBuilder()
+			}
+		})
 		if m.Item(tr("Toggle batch selection")).Shortcut(ui.Ctrl, ui.KeySpace).Disabled(a.actionBusy).Chosen() {
 			a.toggleCommitForBatch(commit)
 		}
@@ -115,104 +116,150 @@ func (a *app) commitRowMenuWithHistory(m *ui.Menu, commit repository.Commit, ser
 		m.Separator()
 	}
 
-	if m.Item(tr("Copy commit hash")).Chosen() {
-		a.notifyCopied(services, "commit hash", commit.Hash)
+	m.Submenu(tr("Copy"), func(sub *ui.Menu) {
+		if sub.Item(tr("Copy commit hash")).Chosen() {
+			a.notifyCopied(services, "commit hash", commit.Hash)
+		}
+		if sub.Item(tr("Copy short hash")).Chosen() {
+			a.notifyCopied(services, "short hash", commit.ShortHash)
+		}
+		if sub.Item(tr("Copy subject")).Chosen() {
+			a.notifyCopied(services, "subject", commit.Subject)
+		}
+		if sub.Item(tr("Copy commit message")).Disabled(a.session == nil).Chosen() {
+			a.copyCommitMessage(services, commit)
+		}
+		if sub.Item(tr("Copy author")).Disabled(commit.AuthorName == "" && commit.AuthorEmail == "").Chosen() {
+			a.notifyCopied(services, "author", strings.TrimSpace(commit.AuthorName+" <"+commit.AuthorEmail+">"))
+		}
+		sub.Separator()
+		webURL := a.commitWebURL(commit)
+		if sub.Item(tr("Copy web URL")).Disabled(webURL == "").Chosen() {
+			a.notifyCopied(services, "web URL", webURL)
+		}
+		if sub.Item(tr("Copy patch")).Disabled(a.session == nil).Chosen() {
+			a.copyCommitPatch(services, commit)
+		}
+	})
+	if webURL := a.commitWebURL(commit); m.Item(tr("Open on remote")).Disabled(webURL == "").Chosen() {
+		services.OpenURL(webURL)
+	}
+	if a.workspaceTab == sectionHistory || a.workspaceTab == sectionGraph {
+		label, target := "Show in Graph", sectionGraph
+		if a.workspaceTab == sectionGraph {
+			label, target = "Show in History", sectionHistory
+		}
+		if m.Item(tr(label)).Disabled(!a.sectionVisible(target)).Chosen() {
+			a.showCommitInOtherView(commit)
+		}
+	}
+	if m.Item(tr("Show in Branches")).Disabled(a.session == nil || !a.sectionVisible(sectionBranches)).Chosen() {
+		a.showCommitInBranches(commit)
 	}
 	m.Separator()
 	if historyEditable {
-		markLabel := tr("Mark as base commit for rebase")
-		if a.markedBaseCommit.Hash == commit.Hash {
-			markLabel = tr("Cancel marked base commit")
-		}
-		if m.Item(markLabel).Disabled(a.actionBusy || a.snapshot.Operation != "").Chosen() {
-			a.markRebaseBase(commit)
-		}
-		if a.markedBaseCommit.Hash != "" && m.Item(tr("Open Rebase TODO")).Disabled(a.actionBusy).Chosen() {
-			a.openRebaseWorkspace()
-		}
-		m.Separator()
-		if m.Item(tr("Edit commit (pause rebase)…")).Shortcut(0, ui.KeyE).Disabled(a.actionBusy).Chosen() {
-			a.confirmEditCommit(commit)
-		}
-		if m.Item(tr("Reword commit…")).Disabled(a.actionBusy).Chosen() {
-			a.openCommitRewordForm(commit)
-		}
-		if m.Item(tr("Amend with staged changes…")).Shortcut(ui.Shift, ui.KeyA).Disabled(a.actionBusy).Chosen() {
-			a.confirmAmendCommit(commit)
-		}
-		if m.Item(tr("Create fixup commit from staged changes…")).Disabled(a.actionBusy).Chosen() {
-			a.confirmCreateFixupCommit(commit)
-		}
-		if m.Item(tr("Apply fixups from this commit through HEAD…")).Disabled(a.actionBusy).Chosen() {
-			a.confirmApplyFixupCommits(commit)
-		}
-		m.Separator()
-		if m.Item(tr("Squash into older commit…")).Shortcut(0, ui.KeyS).Disabled(a.actionBusy).Chosen() {
-			a.confirmCombineCommit(commit, repository.CombineSquash)
-		}
-		if m.Item(tr("Fixup into older commit…")).Shortcut(0, ui.KeyF).Disabled(a.actionBusy).Chosen() {
-			a.confirmCombineCommit(commit, repository.CombineFixup)
-		}
-		if m.Item(tr("Move commit toward HEAD")).Shortcut(ui.Ctrl, ui.KeyK).Disabled(a.actionBusy).Chosen() {
-			a.confirmMoveCommit(commit, repository.MoveCommitNewer)
-		}
-		if m.Item(tr("Move commit toward older history")).Shortcut(ui.Ctrl, ui.KeyJ).Disabled(a.actionBusy).Chosen() {
-			a.confirmMoveCommit(commit, repository.MoveCommitOlder)
-		}
-		if m.Item(tr("Drop commit…")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
-			a.confirmDropCommit(commit)
-		}
-		m.Separator()
+		m.Submenu(tr("Rewrite history"), func(sub *ui.Menu) {
+			markLabel := tr("Mark as base commit for rebase")
+			if a.markedBaseCommit.Hash == commit.Hash {
+				markLabel = tr("Cancel marked base commit")
+			}
+			if sub.Item(markLabel).Disabled(a.actionBusy || a.snapshot.Operation != "").Chosen() {
+				a.markRebaseBase(commit)
+			}
+			if a.markedBaseCommit.Hash != "" && sub.Item(tr("Open Rebase TODO")).Disabled(a.actionBusy).Chosen() {
+				a.openRebaseWorkspace()
+			}
+			sub.Separator()
+			if sub.Item(tr("Edit commit (pause rebase)…")).Shortcut(0, ui.KeyE).Disabled(a.actionBusy).Chosen() {
+				a.confirmEditCommit(commit)
+			}
+			if sub.Item(tr("Reword commit…")).Disabled(a.actionBusy).Chosen() {
+				a.openCommitRewordForm(commit)
+			}
+			if sub.Item(tr("Drop commit…")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
+				a.confirmDropCommit(commit)
+			}
+			sub.Separator()
+			if sub.Item(tr("Amend with staged changes…")).Shortcut(ui.Shift, ui.KeyA).Disabled(a.actionBusy).Chosen() {
+				a.confirmAmendCommit(commit)
+			}
+			if sub.Item(tr("Create fixup commit from staged changes…")).Disabled(a.actionBusy).Chosen() {
+				a.confirmCreateFixupCommit(commit)
+			}
+			if sub.Item(tr("Apply fixups from this commit through HEAD…")).Disabled(a.actionBusy).Chosen() {
+				a.confirmApplyFixupCommits(commit)
+			}
+			sub.Separator()
+			if sub.Item(tr("Squash into older commit…")).Shortcut(0, ui.KeyS).Disabled(a.actionBusy).Chosen() {
+				a.confirmCombineCommit(commit, repository.CombineSquash)
+			}
+			if sub.Item(tr("Fixup into older commit…")).Shortcut(0, ui.KeyF).Disabled(a.actionBusy).Chosen() {
+				a.confirmCombineCommit(commit, repository.CombineFixup)
+			}
+			sub.Separator()
+			if sub.Item(tr("Move commit toward HEAD")).Shortcut(ui.Ctrl, ui.KeyK).Disabled(a.actionBusy).Chosen() {
+				a.confirmMoveCommit(commit, repository.MoveCommitNewer)
+			}
+			if sub.Item(tr("Move commit toward older history")).Shortcut(ui.Ctrl, ui.KeyJ).Disabled(a.actionBusy).Chosen() {
+				a.confirmMoveCommit(commit, repository.MoveCommitOlder)
+			}
+		})
 	}
 	if m.Item(tr("Checkout to this commit (detached)…")).Disabled(a.actionBusy).Chosen() {
 		a.confirmCheckoutCommit(commit)
 	}
 	if historyEditable {
-		m.Separator()
-		if a.canUndoLatestCommit(commit) {
-			if m.Item(tr("Undo latest commit and keep changes staged…")).Disabled(a.actionBusy).Chosen() {
-				a.confirmUndoLatestCommit(commit, repository.ResetSoft)
+		m.Submenu(tr("Reset"), func(sub *ui.Menu) {
+			if a.canUndoLatestCommit(commit) {
+				if sub.Item(tr("Undo latest commit and keep changes staged…")).Disabled(a.actionBusy).Chosen() {
+					a.confirmUndoLatestCommit(commit, repository.ResetSoft)
+				}
+				if sub.Item(tr("Undo latest commit and keep changes unstaged…")).Disabled(a.actionBusy).Chosen() {
+					a.confirmUndoLatestCommit(commit, repository.ResetMixed)
+				}
+				sub.Separator()
 			}
-			if m.Item(tr("Undo latest commit and keep changes unstaged…")).Disabled(a.actionBusy).Chosen() {
-				a.confirmUndoLatestCommit(commit, repository.ResetMixed)
+			if sub.Item(tr("Soft reset to this commit…")).Disabled(a.actionBusy).Chosen() {
+				a.confirmResetCommit(commit, repository.ResetSoft)
 			}
-			m.Separator()
-		}
-		if m.Item(tr("Soft reset to this commit…")).Disabled(a.actionBusy).Chosen() {
-			a.confirmResetCommit(commit, repository.ResetSoft)
-		}
-		if m.Item(tr("Mixed reset to this commit…")).Disabled(a.actionBusy).Chosen() {
-			a.confirmResetCommit(commit, repository.ResetMixed)
-		}
-		if m.Item(tr("Hard reset to this commit…")).Disabled(a.actionBusy).Chosen() {
-			a.confirmResetCommit(commit, repository.ResetHard)
-		}
+			if sub.Item(tr("Mixed reset to this commit…")).Disabled(a.actionBusy).Chosen() {
+				a.confirmResetCommit(commit, repository.ResetMixed)
+			}
+			if sub.Item(tr("Hard reset to this commit…")).Disabled(a.actionBusy).Chosen() {
+				a.confirmResetCommit(commit, repository.ResetHard)
+			}
+		})
 	}
 	m.Separator()
-	if m.Item(tr("Export as mailbox patch…")).Disabled(a.actionBusy).Chosen() {
-		a.openExportPatchForm([]repository.Commit{commit})
-	}
-	m.Separator()
-	if m.Item(tr("Create a tag here…")).Disabled(a.actionBusy).Chosen() {
-		a.openCommitTagForm(commit)
-	}
-	if m.Item(tr("Create a branch here…")).Disabled(a.actionBusy).Chosen() {
-		a.openCommitBranchForm(commit)
-	}
-	m.Separator()
-	if a.snapshot.Bisect != nil && a.snapshot.Bisect.Active {
-		if m.Item(tr("Mark commit good (bisect)")).Disabled(a.actionBusy).Chosen() {
-			a.confirmBisectMark("good", commit.Hash)
+	m.Submenu(tr("Create"), func(sub *ui.Menu) {
+		if sub.Item(tr("Create a tag here…")).Disabled(a.actionBusy).Chosen() {
+			a.openCommitTagForm(commit)
 		}
-		if m.Item(tr("Mark commit bad (bisect)")).Shortcut(0, ui.KeyB).Disabled(a.actionBusy).Chosen() {
-			a.confirmBisectMark("bad", commit.Hash)
+		if sub.Item(tr("Create a branch here…")).Disabled(a.actionBusy).Chosen() {
+			a.openCommitBranchForm(commit)
 		}
-		if m.Item(tr("Skip commit (bisect)")).Shortcut(0, ui.KeyK).Disabled(a.actionBusy).Chosen() {
-			a.confirmBisectMark("skip", commit.Hash)
+		if sub.Item(tr("Create worktree here…")).Disabled(a.actionBusy).Chosen() {
+			a.beginWorktreeAtCommit(commit)
 		}
-	} else if m.Item(tr("Start bisect from this commit…")).Shortcut(0, ui.KeyB).Disabled(a.actionBusy).Chosen() {
-		a.openBisectStartForm(commit)
-	}
+		if sub.Item(tr("Export as mailbox patch…")).Disabled(a.actionBusy).Chosen() {
+			a.openExportPatchForm([]repository.Commit{commit})
+		}
+	})
+	m.Submenu(tr("Bisect"), func(sub *ui.Menu) {
+		if a.snapshot.Bisect != nil && a.snapshot.Bisect.Active {
+			if sub.Item(tr("Mark commit good (bisect)")).Disabled(a.actionBusy).Chosen() {
+				a.confirmBisectMark("good", commit.Hash)
+			}
+			if sub.Item(tr("Mark commit bad (bisect)")).Shortcut(0, ui.KeyB).Disabled(a.actionBusy).Chosen() {
+				a.confirmBisectMark("bad", commit.Hash)
+			}
+			if sub.Item(tr("Skip commit (bisect)")).Shortcut(0, ui.KeyK).Disabled(a.actionBusy).Chosen() {
+				a.confirmBisectMark("skip", commit.Hash)
+			}
+		} else if sub.Item(tr("Start bisect from this commit…")).Shortcut(0, ui.KeyB).Disabled(a.actionBusy).Chosen() {
+			a.openBisectStartForm(commit)
+		}
+	})
 	m.Separator()
 	if m.Item(tr("Cherry-pick onto current branch…")).Disabled(a.actionBusy).Chosen() {
 		a.confirmCommitActionFor(commit, false)
@@ -221,13 +268,15 @@ func (a *app) commitRowMenuWithHistory(m *ui.Menu, commit repository.Commit, ser
 		a.confirmCommitActionFor(commit, true)
 	}
 	m.Separator()
-	if m.Item(tr("Compare commit with HEAD")).Shortcut(0, ui.KeyH).Disabled(a.session == nil).Chosen() {
-		a.compareCommit(commit, false)
-	}
-	if m.Item(tr("Compare first parent with commit")).Shortcut(ui.Shift, ui.KeyH).
-		Disabled(a.session == nil || len(commit.Parents) == 0).Chosen() {
-		a.compareCommit(commit, true)
-	}
+	m.Submenu(tr("Compare"), func(sub *ui.Menu) {
+		if sub.Item(tr("Compare commit with HEAD")).Shortcut(0, ui.KeyH).Disabled(a.session == nil).Chosen() {
+			a.compareCommit(commit, false)
+		}
+		if sub.Item(tr("Compare first parent with commit")).Shortcut(ui.Shift, ui.KeyH).
+			Disabled(a.session == nil || len(commit.Parents) == 0).Chosen() {
+			a.compareCommit(commit, true)
+		}
+	})
 }
 
 // canUndoLatestCommit limits single-commit undo to the current branch tip.

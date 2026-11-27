@@ -19,6 +19,7 @@ func (a *app) withPullRequestSetup(onReady func()) {
 	}
 	a.prSetupBusy = true
 	session := a.session
+	a.applyHostingHints(session)
 	generation := a.generation
 	ctx := a.repositoryWork.Context()
 	go func() {
@@ -141,6 +142,7 @@ func (a *app) requestPullRequestChecks() {
 	generation := a.generation
 	branch := a.snapshot.Branch
 	session := a.session
+	a.applyHostingHints(session)
 	ctx := a.repositoryWork.Context()
 	a.prChecksLoading = true
 	a.prChecksText = ""
@@ -185,6 +187,11 @@ func (a *app) pullRequestMenuButton(c *ui.Context) {
 		button.Background(theme.SurfaceHover)
 	}
 	button.PopoverMenuButton(func(m *ui.Menu) {
+		remote, hasRemote := a.webRemote()
+		if m.Item(tr("Set remote web address")).Disabled(!hasRemote).Chosen() {
+			a.openEditRemoteWebURL(remote)
+		}
+		m.Separator()
 		if m.Item(tr("Create pull request…")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0 || a.snapshot.Branch == "").Chosen() {
 			a.openCreatePullRequestForm()
 		}

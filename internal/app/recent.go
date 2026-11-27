@@ -41,6 +41,9 @@ type recentRepository struct {
 	// repository performance settings for this repository. It lives in the
 	// entry, so removing the entry from the recent list forgets the choice.
 	PerformanceHintOff bool `json:"performanceHintOff,omitempty"`
+	// Pinned keeps the card at the top of Home's list, whatever the sort, and
+	// keeps it from falling off the history's cap.
+	Pinned bool `json:"pinned,omitempty"`
 }
 
 // recentNameLimit bounds a card's name, in characters, so a long one cannot
@@ -148,6 +151,24 @@ func (a *app) rememberTabColor(path, hex string) {
 	}
 }
 
+// setRecentPinned pins or unpins the card for path in the given tab of Home,
+// and stores the history.
+func (a *app) setRecentPinned(path string, editorOnly, pinned bool) {
+	changed := false
+	for i := range a.recentRepositories {
+		r := &a.recentRepositories[i]
+		if r.EditorOnly != editorOnly || r.Path != path || r.Pinned == pinned {
+			continue
+		}
+		r.Pinned = pinned
+		changed = true
+	}
+	if changed {
+		a.historyRevision++
+		_ = saveRecentRepositories(a.dataDir(), a.recentRepositories)
+	}
+}
+
 // forgetTabColor clears path's remembered tab background, so the tab returns
 // to the theme's own colors.
 func (a *app) forgetTabColor(path string) {
@@ -239,9 +260,10 @@ func rememberRecentMode(repositories []recentRepository, path string, now int64,
 			out[0].Name = r.Name
 			out[0].TabColor = r.TabColor
 			out[0].PerformanceHintOff = r.PerformanceHintOff
+			out[0].Pinned = r.Pinned
 			continue
 		}
-		if kept < maxRecentRepositories {
+		if kept < maxRecentRepositories || r.Pinned {
 			out = append(out, r)
 			kept++
 		}

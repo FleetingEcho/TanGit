@@ -7,11 +7,60 @@ import (
 	"strings"
 )
 
+// CommitLineStats returns copies of commits with their added and deleted line
+// counts filled in and StatsPending cleared. It is how the progressive open
+// completes the commits it published without counts.
+func (s *gitSession) CommitLineStats(ctx context.Context, commits []Commit) ([]Commit, error) {
+	out := make([]Commit, len(commits))
+	copy(out, commits)
+	return s.readCommitLineStats(ctx, out)
+}
+
+// SetDeferCommitStats chooses whether commit reads wait for line counts. On a
+// large repository that read is by far the slowest part of listing commits, so
+// the app turns it off and asks for the counts of the commits it shows through
+// CommitLineStats. Counts already cached still arrive with the commits.
+func (s *gitSession) SetDeferCommitStats(deferred bool) {
+	s.deferCommitStats.Store(deferred)
+}
+
+func markStatsPending(commits []Commit) {
+	for i := range commits {
+		commits[i].StatsPending = true
+	}
+}
+
+func clearStatsPending(commits []Commit) {
+	for i := range commits {
+		commits[i].StatsPending = false
+	}
+}
+
 // withCommitLineStats reads a whole page in one command, including over SSH.
 // The first-parent comparison matches CommitFiles; roots compare to an empty
 // tree. Commit objects and their totals are immutable, so a session caches
 // them instead of repeating expensive diff-tree work on refresh or another view.
 func (s *gitSession) withCommitLineStats(ctx context.Context, commits []Commit) ([]Commit, error) {
+	if !s.deferCommitStats.Load() {
+		return s.readCommitLineStats(ctx, commits)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.commitTotalsMu.Lock()
+	defer s.commitTotalsMu.Unlock()
+	for i := range commits {
+		if stat, ok := s.commitTotals[commits[i].Hash]; ok {
+			commits[i].LinesAdded, commits[i].LinesDeleted = stat.added, stat.deleted
+			commits[i].StatsPending = false
+		} else {
+			commits[i].StatsPending = true
+		}
+	}
+	return commits, nil
+}
+
+func (s *gitSession) readCommitLineStats(ctx context.Context, commits []Commit) ([]Commit, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -54,6 +103,7 @@ func (s *gitSession) withCommitLineStats(ctx context.Context, commits []Commit) 
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
+			clearStatsPending(commits)
 			return commits, nil
 		}
 		stats := parseCommitTotals(output)
@@ -67,6 +117,7 @@ func (s *gitSession) withCommitLineStats(ctx context.Context, commits []Commit) 
 	for i := range commits {
 		stat := s.commitTotals[commits[i].Hash]
 		commits[i].LinesAdded, commits[i].LinesDeleted = stat.added, stat.deleted
+		commits[i].StatsPending = false
 	}
 	return commits, ctx.Err()
 }

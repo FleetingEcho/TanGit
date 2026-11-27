@@ -452,10 +452,16 @@ func (a *app) recentRowView(c *ui.Context, i int, height float32, showTime bool,
 				ui.Icon(c, folderIcon).FontSize(16).TextColor(theme.Accent)
 			})
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Padding(0, 0, 0, 4).Children(func() {
-				title := ui.Text(c, repo.displayName()).FontSize(14).Bold().SingleLine()
-				if repo.renamed() {
-					title.Tooltip(repo.Path)
-				}
+				ui.Row(c).AlignItems(ui.Center).Gap(6).MinWidth(0).Children(func() {
+					title := ui.Text(c, repo.displayName()).FontSize(14).Bold().SingleLine()
+					if repo.renamed() {
+						title.Tooltip(repo.Path)
+					}
+					if repo.Pinned {
+						ui.Icon(c, pinIcon).FontSize(12).TextColor(theme.Accent).Shrink(0).
+							Label(tr("Pinned")).Tooltip(tr("Pinned to the top"))
+					}
+				})
 				ui.Text(c, repo.Path).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).SingleLine().Tooltip(repo.Path)
 				identity := strings.TrimSpace(repo.Branch)
 				if identity == "(no branch)" {
@@ -568,11 +574,21 @@ func (a *app) recentRowMenu(m *ui.Menu, repo recentRepository, services ui.Servi
 	if !repo.EditorOnly && m.Item(tr("Open worktree")).Chosen() {
 		a.openHomeWorktrees(repo.Path)
 	}
+	pinLabel := "Pin to top"
+	if repo.Pinned {
+		pinLabel = "Unpin from top"
+	}
+	if m.Item(tr(pinLabel)).Chosen() {
+		a.setRecentPinned(repo.Path, repo.EditorOnly, !repo.Pinned)
+	}
 	if m.Item(tr("Copy path")).Chosen() {
 		a.notifyCopied(services, "repository path", repo.Path)
 	}
-	if m.Item(tr("Rename…")).Chosen() {
+	if m.Item(tr("Rename")).Chosen() {
 		a.openRecentRename(repo.Path)
+	}
+	if !repo.EditorOnly && m.Item(tr("Set remote web address")).Chosen() {
+		a.openRecentRemoteWebURL(repo.Path)
 	}
 	if m.Item(tr("Remove from list")).Chosen() {
 		// The menu must not rewrite the list this build is reading;
@@ -586,10 +602,20 @@ func (a *app) recentRowMenu(m *ui.Menu, repo recentRepository, services ui.Servi
 // last opened with the newest first, is the history's own order and is left
 // alone; the sort is stable, so ties keep that order.
 func (a *app) sortVisibleRecent() {
+	repos := a.recentRepositories
+	// Pinned cards stay on top in every order; the sort only orders each group.
+	defer slices.SortStableFunc(a.visibleRecent, func(left, right int) int {
+		switch {
+		case repos[left].Pinned == repos[right].Pinned:
+			return 0
+		case repos[left].Pinned:
+			return -1
+		}
+		return 1
+	})
 	if !a.recentSortByName && !a.recentSortReversed {
 		return
 	}
-	repos := a.recentRepositories
 	slices.SortStableFunc(a.visibleRecent, func(left, right int) int {
 		var order int
 		if a.recentSortByName {

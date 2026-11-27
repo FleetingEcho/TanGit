@@ -555,7 +555,7 @@ func (a *app) historyView(c *ui.Context) {
 								}
 							})
 						})
-						commitDiffStatBlocks(row.Context, commit.ShortHash, commit.LinesAdded, commit.LinesDeleted)
+						a.commitDiffStatBlocks(row.Context, commit)
 					})
 					if a.commitSelectionMode && rowElement.RowClicked() {
 						a.toggleCommitForBatch(commit)

@@ -525,6 +525,12 @@ func (a *app) branchListView(c *ui.Context) {
 			paneCollapseButton(c, &a.workspacePaneCollapsed[sectionBranches], "Collapse list pane")
 		})
 		if len(a.snapshot.Branches) == 0 {
+			if a.repositoryDetailsLoading {
+				// The branches arrive with the deferred details; saying "No
+				// branches" until then would read as an empty repository.
+				loadingPane(c, "Loading branches", "Reading the repository's branches…")
+				return
+			}
 			ui.Text(c, tr("No branches")).TextColor(theme.TextMuted)
 			return
 		}
@@ -1038,7 +1044,7 @@ func (a *app) branchCommitsView(c *ui.Context, branch repository.Branch) {
 						}
 					})
 				})
-				commitDiffStatBlocks(row.Context, commit.ShortHash, commit.LinesAdded, commit.LinesDeleted)
+				a.commitDiffStatBlocks(row.Context, commit)
 			}).PopoverMenu(func(m *ui.Menu) {
 				// History edits move the checked-out branch, so offer those only
 				// while this list shows it. Every other action uses commit directly,

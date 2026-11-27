@@ -1,9 +1,12 @@
 package app
 
 import (
+	"context"
 	"net/url"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -94,6 +97,9 @@ func remoteWebRepositoryPath(path string) string {
 }
 
 func (a *app) remoteWebRepositoryKey() string {
+	if home := strings.TrimSpace(a.remoteWebHomePath); home != "" {
+		return filepath.Clean(home)
+	}
 	root := strings.TrimSpace(a.snapshot.Root)
 	if root == "" {
 		root = strings.TrimSpace(a.path)
@@ -167,6 +173,58 @@ func (a *app) copyRemoteWebURL(services ui.Services, remote repository.Remote) {
 	}
 }
 
+// openRecentRemoteWebURL opens the web address form for a repository of Home's
+// list, which is not open: the form edits its origin remote, starting from the
+// saved address, else from what origin's URL derives to once Git has been asked.
+func (a *app) openRecentRemoteWebURL(path string) {
+	a.remoteWebHomePath = path
+	a.remoteWebOriginalName = "origin"
+	a.remoteWebURL = ""
+	if remotes := a.settings.RemoteWebURLs[a.remoteWebRepositoryKey()]; remotes != nil {
+		if webURL, ok := normalizeRemoteWebURL(remotes["origin"]); ok {
+			a.remoteWebURL = webURL
+		}
+	}
+	a.remoteWebURLError = ""
+	a.showRemoteCheckoutForm = false
+	a.showRemoteWebURLForm = true
+	if a.remoteWebURL != "" {
+		return
+	}
+	go func() {
+		defer a.recoverBackground()
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		output, err := exec.CommandContext(ctx, "git", "-C", path, "config", "--get", "remote.origin.url").Output()
+		if err != nil {
+			return
+		}
+		derived := deriveRemoteWebURL(string(output))
+		if derived == "" {
+			return
+		}
+		a.update(func() {
+			if a.showRemoteWebURLForm && a.remoteWebHomePath == path && a.remoteWebURL == "" {
+				a.remoteWebURL = derived
+			}
+		})
+	}()
+}
+
+// webRemote is the remote the status bar's web address button edits: origin,
+// else the first one.
+func (a *app) webRemote() (repository.Remote, bool) {
+	for _, remote := range a.snapshot.Remotes {
+		if remote.Name == "origin" {
+			return remote, true
+		}
+	}
+	if len(a.snapshot.Remotes) > 0 {
+		return a.snapshot.Remotes[0], true
+	}
+	return repository.Remote{}, false
+}
+
 func (a *app) selectedRemoteForWeb() (repository.Remote, bool) {
 	if a.selectedRemote < 0 || a.selectedRemote >= len(a.snapshot.Remotes) {
 		return repository.Remote{}, false
@@ -193,6 +251,7 @@ func (a *app) editSelectedRemoteWebURL() {
 }
 
 func (a *app) openEditRemoteWebURL(remote repository.Remote) {
+	a.remoteWebHomePath = ""
 	a.remoteWebOriginalName = remote.Name
 	a.remoteWebURL = a.remoteWebAddress(remote)
 	a.remoteWebURLError = ""
@@ -291,6 +350,8 @@ func (a *app) remoteWebURLFormModal(c *ui.Context) {
 				ui.TextInput(c, &a.remoteWebURL).Label(tr("Remote web URL")).
 					Placeholder(tr("https://example.com/team/project")).AutoFocus()
 				ui.Text(c, tr("Only HTTP(S) addresses without credentials are allowed.")).
+					TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+				ui.Text(c, trf("Remote: %s", a.remoteWebOriginalName)).
 					TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 				if a.remoteWebURLError != "" {
 					ui.Text(c, a.remoteWebURLError).TextColor(theme.Danger).FontSize(theme.FontSize - 1)

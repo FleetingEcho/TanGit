@@ -293,6 +293,9 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 	a.repositoryWork.Replace()
 	a.state = stateReady
 	a.session = session
+	if deferrer, ok := session.(interface{ SetDeferCommitStats(bool) }); ok {
+		deferrer.SetDeferCommitStats(true)
+	}
 	var commandLog *repository.CommandLog
 	if session != nil {
 		commandLog = session.CommandLog()

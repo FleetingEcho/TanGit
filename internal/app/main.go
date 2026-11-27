@@ -701,24 +701,33 @@ type app struct {
 	snapshotSeq              uint64
 	cancelRepositoryWatch    context.CancelFunc
 
-	showCommitForm          bool
-	commitSummary           string
-	commitBody              string
-	commitAmend             bool
-	showBranchForm          bool
-	newBranchName           string
-	newBranchBase           string
-	showMoveCommitsForm     bool
-	moveCommitsName         string
-	showRenameForm          bool
-	renameBranch            string
-	showRemoteForm          bool
-	remoteOriginalName      string
-	remoteOriginalURL       string
-	remoteName              string
-	remoteURL               string
-	showRemoteWebURLForm    bool
-	remoteWebOriginalName   string
+	showCommitForm        bool
+	commitSummary         string
+	commitBody            string
+	commitAmend           bool
+	showBranchForm        bool
+	newBranchName         string
+	newBranchBase         string
+	showMoveCommitsForm   bool
+	moveCommitsName       string
+	showRenameForm        bool
+	renameBranch          string
+	showRemoteForm        bool
+	remoteOriginalName    string
+	remoteOriginalURL     string
+	remoteName            string
+	remoteURL             string
+	showRemoteWebURLForm  bool
+	remoteWebOriginalName string
+	// remoteWebHomePath is the repository the web address form edits when it
+	// opens from Home's list, where no repository is open; "" otherwise.
+	remoteWebHomePath string
+	// commitCounts holds the line counts read for commits the session listed
+	// without them; the queue and flag drive that read (commit_stats_loader.go).
+	commitCounts            map[string]commitLineCount
+	commitCountQueue        []repository.Commit
+	commitCountsBusy        bool
+	commitCountsGeneration  uint64
 	remoteWebURL            string
 	remoteWebURLError       string
 	showRemoteCheckoutForm  bool
@@ -1281,14 +1290,34 @@ func newApp(opener repositoryOpener) *app {
 		return a.diffFullscreenRows[row].label
 	}
 	a.fileHistoryList.Selected = &a.fileHistorySelected
-	a.fileHistoryList.Key = func(row int) any { return a.fileHistoryCommits[row].Hash }
-	a.fileHistoryList.Label = func(row int) string { return a.fileHistoryCommits[row].Subject }
+	// The drawer reloads while its lists still draw, so a row can outlive the
+	// data it named for one frame; those callbacks must not index past it.
+	a.fileHistoryList.Key = func(row int) any {
+		if row < 0 || row >= len(a.fileHistoryCommits) {
+			return row
+		}
+		return a.fileHistoryCommits[row].Hash
+	}
+	a.fileHistoryList.Label = func(row int) string {
+		if row < 0 || row >= len(a.fileHistoryCommits) {
+			return ""
+		}
+		return a.fileHistoryCommits[row].Subject
+	}
 	a.fileHistoryFileList.Selected = &a.fileHistorySelectedFile
 	a.fileHistoryFileList.Key = func(row int) any {
+		if row < 0 || row >= len(a.fileHistoryFiles) {
+			return row
+		}
 		file := a.fileHistoryFiles[row]
 		return file.Path + "\x00" + file.Status
 	}
-	a.fileHistoryFileList.Label = func(row int) string { return a.fileHistoryFiles[row].Path }
+	a.fileHistoryFileList.Label = func(row int) string {
+		if row < 0 || row >= len(a.fileHistoryFiles) {
+			return ""
+		}
+		return a.fileHistoryFiles[row].Path
+	}
 	a.updateChanged = func(fn func() bool) {
 		a.update(func() { fn() })
 	}

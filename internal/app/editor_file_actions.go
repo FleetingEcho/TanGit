@@ -139,6 +139,9 @@ func (a *app) codeExplorerMenu(m *ui.Menu, item fileTreeRow, services ui.Service
 	if !a.editorOnlyWorkspace() && !item.isDirectory() && m.Item(tr("View File History…")).Chosen() {
 		a.openFileHistory(item.path)
 	}
+	if !a.editorOnlyWorkspace() && !item.isDirectory() && m.Item(tr("Blame")).Chosen() {
+		a.openGitFileBlameInBuiltInEditor(a.snapshot.Root, item.path)
+	}
 	if m.Item(tr("Rename…")).Disabled(a.code.fileOperationBusy).Chosen() {
 		a.openCodeFileForm(codeFileFormRename, directory, item.path)
 	}

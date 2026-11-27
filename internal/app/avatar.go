@@ -88,7 +88,19 @@ func drawAuthorAvatar(c *ui.Context, name, email string, size float32, bitmap *u
 	// Native Avatar owns the circular crop and photo path. Passing the
 	// established initial/palette preserves lazygitGo's identity across themes
 	// and its readable, single-letter presentation for ordinary authors.
-	ui.Avatar(c, initial, bitmap).Size(size, size).
+	if bitmap != nil {
+		// The native Avatar keeps its own radius and photo size, so any other
+		// size turns the circle into a rounded square. A photo covers the whole
+		// circle, so it also gets no palette fill, which would only show as a
+		// colored fringe on the anti-aliased edge.
+		photo := ui.Row(c).Width(size).Height(size).Radius(size / 2).Center().
+			Label(authorLabel(name, email)).Shrink(0).Clip()
+		photo.Children(func() {
+			ui.Image(c, bitmap).Fit(ui.Cover).Size(size, size)
+		})
+		return
+	}
+	ui.Avatar(c, initial, nil).Size(size, size).Radius(size / 2).
 		Background(avatarColor(name, email)).Label(authorLabel(name, email))
 }
 

@@ -59,6 +59,24 @@ func requireWorktreeSession(session repository.Session) repository.WorktreeSessi
 	return session.(repository.WorktreeSession)
 }
 
+// applyHostingHints tells the session the web addresses of the remotes, which
+// settle the hosting provider for company hosts. It runs on the UI goroutine,
+// before the work that needs the provider starts, because the addresses come
+// from settings.
+func (a *app) applyHostingHints(session repository.Session) {
+	hinter, ok := session.(interface{ SetHostingHints([]string) })
+	if !ok {
+		return
+	}
+	var addresses []string
+	for _, remote := range a.snapshot.Remotes {
+		if web := a.remoteWebAddress(remote); web != "" {
+			addresses = append(addresses, web)
+		}
+	}
+	hinter.SetHostingHints(addresses)
+}
+
 func requireHostingSession(session repository.Session) repository.HostingSession {
 	return session.(repository.HostingSession)
 }

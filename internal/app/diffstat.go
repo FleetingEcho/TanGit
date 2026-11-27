@@ -2,14 +2,23 @@ package app
 
 import (
 	"math"
+	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // commitDiffStatBlocks keeps a fixed six-square footprint for every commit.
 // Mixed changes always show both colors, even for a very small minority.
-func commitDiffStatBlocks(c *ui.Context, hash string, added, deleted int) {
-	commitDiffStatBlocksSized(c, hash, added, deleted, max(float32(6), c.Theme().FontSize/2))
+func (a *app) commitDiffStatBlocks(c *ui.Context, commit repository.Commit) {
+	size := max(float32(6), c.Theme().FontSize/2)
+	added, deleted, ready := a.commitLineCounts(commit)
+	if !ready {
+		pendingDiffStatBlocks(c, commit.ShortHash, size)
+		return
+	}
+	commitDiffStatBlocksSized(c, commit.ShortHash, added, deleted, size)
 }
 
 // commitDiffStatBlocksSized is commitDiffStatBlocks with squares of the given
@@ -65,4 +74,30 @@ func fileDiffStatCounts(c *ui.Context, path string, added, deleted int) {
 		ui.Textf(c, "+%d", added).TextColor(theme.Success).FontSize(theme.FontSize - 1)
 		ui.Textf(c, "−%d", deleted).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
 	})
+}
+
+// pendingDiffStatBlocks is the diff statistic's six squares while the counts are
+// still being read: the same squares, lit one after another, so the row says
+// they are loading instead of showing a commit that changed nothing. Each frame
+// schedules the next while it is drawn, so the animation stops by itself once
+// the row is no longer shown.
+func pendingDiffStatBlocks(c *ui.Context, hash string, size float32) {
+	theme := c.Theme()
+	const count = 6
+	const step = 130 * time.Millisecond
+	phase := int(time.Now().UnixMilli()/step.Milliseconds()) % (count + 2)
+	label := trf("Reading the diff statistics of %s", hash)
+	ui.Row(c).Gap(2).Shrink(0).AlignItems(ui.Center).Label(label).Description(label).Children(func() {
+		for i := 0; i < count; i++ {
+			alpha := float32(0.25)
+			switch phase - i {
+			case 0:
+				alpha = 1
+			case 1:
+				alpha = 0.6
+			}
+			ui.Box(c).Size(size, size).Shrink(0).Radius(1).Background(theme.TextMuted.Alpha(0.2 + 0.6*alpha))
+		}
+	})
+	time.AfterFunc(step, c.Services().Invalidate)
 }
