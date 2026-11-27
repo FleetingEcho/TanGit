@@ -3,6 +3,7 @@ package i18n
 // Overview commit filters and the expanded commit's quick actions.
 var overviewActionTranslations = map[string]map[string]string{
 	"zh-Hans": {
+		"New":              "新",
 		"Undo Replace All": "撤销全部替换",
 		"Put back the original text in the files this replacement changed on disk": "把这次替换在磁盘上改动的文件恢复为原文",
 		"Restoring files…":                    "正在恢复文件…",
@@ -44,6 +45,7 @@ var overviewActionTranslations = map[string]map[string]string{
 		"Search every followed repository for %s": "在所有关注的仓库中搜索 %s",
 	},
 	"zh-Hant": {
+		"New":              "新",
 		"Undo Replace All": "復原全部取代",
 		"Put back the original text in the files this replacement changed on disk": "將此次取代在磁碟上變更的檔案還原為原文",
 		"Restoring files…":                    "正在還原檔案…",
@@ -85,6 +87,7 @@ var overviewActionTranslations = map[string]map[string]string{
 		"Search every followed repository for %s": "在所有追蹤的儲存庫中搜尋 %s",
 	},
 	"ja": {
+		"New":              "新着",
 		"Undo Replace All": "すべて置換を元に戻す",
 		"Put back the original text in the files this replacement changed on disk": "この置換でディスク上のファイルに加えた変更を元に戻します",
 		"Restoring files…":                    "ファイルを復元しています…",
@@ -126,6 +129,7 @@ var overviewActionTranslations = map[string]map[string]string{
 		"Search every followed repository for %s": "フォロー中の全リポジトリで %s を検索",
 	},
 	"es": {
+		"New":              "Nuevo",
 		"Undo Replace All": "Deshacer Reemplazar todo",
 		"Put back the original text in the files this replacement changed on disk": "Restaura el texto original de los archivos que este reemplazo cambió en el disco",
 		"Restoring files…":                    "Restaurando archivos…",
@@ -167,6 +171,7 @@ var overviewActionTranslations = map[string]map[string]string{
 		"Search every followed repository for %s": "Buscar %s en todos los repositorios seguidos",
 	},
 	"fr": {
+		"New":              "Nouveau",
 		"Undo Replace All": "Annuler Tout remplacer",
 		"Put back the original text in the files this replacement changed on disk": "Restaure le texte d’origine des fichiers modifiés sur le disque par ce remplacement",
 		"Restoring files…":                    "Restauration des fichiers…",

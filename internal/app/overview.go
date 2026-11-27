@@ -1336,7 +1336,10 @@ func (a *app) overviewCommitHeading(c *ui.Context, o *overviewState, row overvie
 		})
 		ui.Text(c, commit.ShortHash).Width(64).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).SingleLine()
 		if o.seenBefore > 0 && commit.UnixTimestamp > o.seenBefore {
-			ui.Box(c).Size(6, 6).Shrink(0).Radius(3).Background(theme.Accent).Tooltip(tr("New since you last opened this Overview"))
+			ui.Row(c).Padding(0, 6).Shrink(0).Radius(theme.Radius).Background(theme.Accent.Alpha(0.18)).
+				Tooltip(tr("New since you last opened this Overview")).Children(func() {
+				ui.Text(c, tr("New")).FontSize(theme.FontSize - 3).Bold().TextColor(theme.Accent).SingleLine()
+			})
 		}
 		ui.Text(c, commit.Subject).Grow(1).MinWidth(0).SingleLine()
 		if shared := o.mrCounts[row.MR]; row.MR != "" && shared > 1 {
