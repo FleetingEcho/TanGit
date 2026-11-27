@@ -929,7 +929,7 @@ func newApp(opener repositoryOpener) *app {
 		selectedFile:                -1,
 		review:                      newReviewUIState(),
 		fileTreeMode:                true,
-		filePaneWidth:               340,
+		filePaneWidth:               400,
 		navPaneWidth:                navPaneDefault,
 		selectedCommit:              -1,
 		selectedRebaseStep:          -1,
