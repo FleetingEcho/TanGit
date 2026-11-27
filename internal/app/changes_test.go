@@ -720,7 +720,9 @@ func TestFileHistoryAppendsLaterPagesInGitOrderWithoutMovingSelection(t *testing
 	a.fileHistoryCommits = []repository.Commit{
 		{Hash: "newest", UnixTimestamp: 10}, origin,
 	}
+	// Filtered lists keep the visible row and source selection separately.
 	a.fileHistoryList.Choose(1)
+	a.fileHistorySelected = 1
 
 	// A newer timestamp in an older page must not reorder the Git log.
 	a.storeFileHistoryPage([]repository.Commit{

@@ -102,11 +102,22 @@ func continueHarness(t *testing.T, required, optional string, runner continueTes
 
 func waitContinueComplete(t *testing.T, h *harness) {
 	t.Helper()
-	h.waitFor(t, "Continue checks to finish", func() bool {
+	// A live repository can publish watcher and snapshot updates while the
+	// checks run. Measure the wait by elapsed time instead of letting unrelated
+	// updates exhaust a small, fixed redraw budget.
+	deadline := time.Now().Add(30 * time.Second)
+	for {
 		review := h.app.continuePreflight.review
-		return review != nil && review.complete
-	})
-	h.tester.Frame()
+		if review != nil && review.complete {
+			h.tester.Frame()
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for Continue checks to finish (review=%+v)", review)
+		}
+		h.updates.waitForUpdate(t)
+		h.tester.Frame()
+	}
 }
 
 func TestContinueRequiredCommandMustBeConfigured(t *testing.T) {

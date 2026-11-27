@@ -30,7 +30,9 @@ func actionCommandSpec(id commandID, group commandGroup, actionFor func(*app) ac
 			}
 			return commandState{
 				Visible: true, Enabled: !current.disabled && current.run != nil,
-				DisabledReason: current.disabledReason, ContextScore: 15,
+				// These controls are specific to the current workflow, so they
+				// must not fall out of the bounded empty-query list behind global commands.
+				DisabledReason: current.disabledReason, ContextScore: 10000,
 			}
 		},
 		Run: func(ctx commandContext) {

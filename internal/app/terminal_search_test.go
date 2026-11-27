@@ -209,7 +209,10 @@ func TestTerminalOpenLinkUsesEditorForRepositoryFilesAndLeavesURLsAlone(t *testi
 	}
 	h.waitFor(t, "the terminal link in Code", func() bool {
 		document := h.app.code.documents["src/main.go"]
-		return document != nil && document.state != nil && h.app.selectedCodePath() == "src/main.go"
+		// Opening creates the document and editor State before reading the file.
+		// Wait for the read and pending navigation, not just the initial selection.
+		return document != nil && document.loaded && document.pendingLine == 0 &&
+			document.state != nil && h.app.selectedCodePath() == "src/main.go"
 	})
 	if h.app.workspaceTab != sectionCode || h.app.code.active != "src/main.go" {
 		t.Fatalf("the terminal link opened section=%d file=%q", h.app.workspaceTab, h.app.code.active)
