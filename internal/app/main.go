@@ -216,11 +216,20 @@ type app struct {
 	// recentFilter narrows the rows by their display name or path.
 	// visibleRecent holds original history indices for the filtered list, so
 	// opening, renaming, and removing a match always affect the right entry.
-	recentFilter   string
-	visibleRecent  []int
-	selectedRecent int
-	revealRecent   bool
-	homeWorktrees  homeWorktreePickerState
+	recentFilter string
+	// recentSortByName and recentSortReversed order the list by the column the
+	// user clicked. The zero values are the original order: last opened, newest
+	// first.
+	// startSectionOnce is the section the next opened repository starts on, as
+	// section+1, 0 for none: the Open in editor buttons use it once to land on
+	// the Code page instead of the start page the settings choose.
+	startSectionOnce   int
+	recentSortByName   bool
+	recentSortReversed bool
+	visibleRecent      []int
+	selectedRecent     int
+	revealRecent       bool
+	homeWorktrees      homeWorktreePickerState
 
 	// pathCopiedAt is when the status bar's path was put on the clipboard,
 	// zero while the bar shows the path itself. It shows "Copied" in its

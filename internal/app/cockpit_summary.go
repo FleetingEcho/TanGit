@@ -312,6 +312,9 @@ func cockpitAttentions(input cockpitInput, summary cockpitSummary) []cockpitAtte
 // page a window has before anything is chosen) is the last resort. Editor-only
 // folders always use Code.
 func (a *app) repositoryStartSection() int {
+	if a != nil && a.startSectionOnce > 0 {
+		return a.startSectionOnce - 1
+	}
 	if a == nil || !a.settingsLoaded || a.editorOnlyWorkspace() {
 		return sectionCode
 	}

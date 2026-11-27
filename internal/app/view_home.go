@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strconv"
@@ -40,6 +41,7 @@ func (a *app) welcomeView(c *ui.Context, topInset float32) {
 	hasHistory := len(all) > 0
 	split := hasHistory && !a.pickerStacked && width >= pickerSplitMinWidth
 	a.visibleRecent = filterRecentMode(a.recentRepositories, a.recentFilter, &editorMode)
+	a.sortVisibleRecent()
 	if !slices.Contains(a.visibleRecent, a.selectedRecent) {
 		a.selectedRecent = -1
 		if len(a.visibleRecent) > 0 {
@@ -147,7 +149,10 @@ func (a *app) pickerFooterView(c *ui.Context) {
 			ui.Text(c, tr("Keyboard shortcuts")).FontSize(11).SingleLine()
 		}).OnClick(a.openKeybindings)
 		ui.Row(c).Grow(1).MinWidth(0).Justify(ui.End).Children(func() {
-			ui.Text(c, "lazygitGo <path>").FontSize(11).SingleLine().TextColor(theme.TextMuted)
+			ui.Text(c, "lazygitGo <path>").FontSize(11).SingleLine().TextColor(theme.TextMuted).
+				Tooltip(tr("Open a repository or folder from the terminal:") +
+					"\n  lazygitGo .\n  lazygitGo ~/work/project\n  lazygitGo ssh://user@host/path\n" +
+					tr("If the app is already running, the path opens in a new tab."))
 		})
 	})
 }
@@ -358,11 +363,11 @@ func (a *app) recentSectionView(c *ui.Context, total int, split bool) {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Grow(1).Children(func() {
 				ui.Text(c, tr(title)).FontSize(20).Bold()
-				ui.Text(c, strconv.Itoa(total)).FontSize(11).TextColor(theme.TextMuted)
+				ui.Text(c, strconv.Itoa(total)).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
 			})
 			ui.SearchField(c.Key("recent-filter"), &a.recentFilter).
 				Label(tr(searchLabel)).Placeholder(tr("Filter by name or path…")).
-				Width(234).MaxWidthPercent(100).Height(recentSearchHeight).FontSize(12).Radius(8).
+				Width(234).MaxWidthPercent(100).Height(recentSearchHeight).FontSize(theme.FontSize).Radius(8).
 				OnSubmit(func() {
 					if a.selectedRecent >= 0 {
 						a.openRecent(a.recentRepositories[a.selectedRecent].Path)
@@ -373,11 +378,9 @@ func (a *app) recentSectionView(c *ui.Context, total int, split bool) {
 		ui.Column(c).FillWidth().Grow(1).Background(theme.Surface).Border(1, theme.Border).Radius(12).Clip().Children(func() {
 			ui.Row(c).FillWidth().Height(recentHeaderHeight).Padding(0, 16+recentListPadding+recentScrollbarGap, 0, 16+recentListPadding).AlignItems(ui.Center).
 				Background(theme.SurfaceHover).Gap(8).Children(func() {
-				ui.Text(c, tr(columnLabel)).Grow(1).MinWidth(0).FontSize(11).
-					SingleLine().TextColor(theme.TextMuted)
+				a.recentSortHeader(c, columnLabel, true, 0)
 				if showTime {
-					ui.Text(c, tr("Last opened")+" ↓").Width(98).SingleLine().FontSize(11).
-						TextColor(theme.TextMuted)
+					a.recentSortHeader(c, "Last opened", false, recentTimeWidth)
 				}
 				ui.Box(c).Width(actionWidth)
 			})
@@ -409,8 +412,7 @@ func (a *app) recentSectionView(c *ui.Context, total int, split bool) {
 					countLabel = singular
 				}
 				ui.Text(c, trf(countLabel, count)).Grow(1).MinWidth(0).
-					SingleLine().FontSize(11).TextColor(theme.TextMuted)
-				ui.Text(c, tr("Sorted by last opened")).SingleLine().FontSize(11).TextColor(theme.TextMuted)
+					SingleLine().FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
 			})
 		})
 	})
@@ -454,7 +456,7 @@ func (a *app) recentRowView(c *ui.Context, i int, height float32, showTime bool,
 				if repo.renamed() {
 					title.Tooltip(repo.Path)
 				}
-				ui.Text(c, repo.Path).FontSize(11).TextColor(theme.TextMuted).SingleLine().Tooltip(repo.Path)
+				ui.Text(c, repo.Path).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).SingleLine().Tooltip(repo.Path)
 				identity := strings.TrimSpace(repo.Branch)
 				if identity == "(no branch)" {
 					identity = ""
@@ -472,19 +474,19 @@ func (a *app) recentRowView(c *ui.Context, i int, height float32, showTime bool,
 				if !repo.EditorOnly && identity != "" {
 					ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
 						ui.Icon(c, branchIcon).FontSize(12).TextColor(theme.TextMuted)
-						ui.Text(c, identity).MinWidth(0).MaxWidth(240).SingleLine().FontSize(11).
+						ui.Text(c, identity).MinWidth(0).MaxWidth(240).SingleLine().FontSize(theme.FontSize - 1).
 							TextColor(theme.TextMuted).Tooltip(identity)
 						if ownerPath := strings.TrimSpace(repo.RepositoryPath); repo.Worktree && ownerPath != "" {
 							ui.Text(c, tr("Main worktree")+" · "+repoName(ownerPath)).
-								MinWidth(0).SingleLine().FontSize(11).TextColor(theme.TextMuted).
+								MinWidth(0).SingleLine().FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).
 								Tooltip(tr("Main worktree") + ": " + ownerPath)
 						}
 					})
 				}
 			})
 			if showTime {
-				ui.Text(c, relTime(repo.LastOpened)).Width(98).Shrink(0).
-					SingleLine().FontSize(11).TextColor(theme.TextMuted)
+				ui.Text(c, relTime(repo.LastOpened)).Width(recentTimeWidth).Shrink(0).
+					SingleLine().FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
 			}
 			a.recentRowActions(c, repo, services)
 		})
@@ -522,9 +524,9 @@ func (a *app) recentRowActions(c *ui.Context, repo recentRepository, services ui
 				a.homeWorktreeMenu(m, repo.Path)
 			}, menuOptions)
 		}
-		editorTooltip := "Open this repository in your editor"
+		editorTooltip := "Open this repository in the editor"
 		if repo.EditorOnly {
-			editorTooltip = "Open this folder in your editor"
+			editorTooltip = "Open this folder in the editor"
 		}
 		editor := ui.ButtonBase(c).Size(28, 30).Radius(theme.Radius).Center().
 			Label(trf("Open %s in editor", repo.Path)).
@@ -536,7 +538,7 @@ func (a *app) recentRowActions(c *ui.Context, repo recentRepository, services ui
 			ui.Icon(c, fileCodeIcon).FontSize(16).TextColor(theme.TextMuted)
 		})
 		if editor.Clicked() {
-			a.launchEditor(repo.Path, 0)
+			a.openRecentInEditor(repo.Path)
 		}
 		more := ui.ButtonBase(c).Size(28, 30).Radius(theme.Radius).Center().
 			Label(tr("More actions") + " " + repo.Path).Tooltip(tr("More actions"))
@@ -558,7 +560,7 @@ func (a *app) recentRowMenu(m *ui.Menu, repo recentRepository, services ui.Servi
 		a.openRecent(repo.Path)
 	}
 	if m.Item(tr("Open in editor")).Chosen() {
-		a.launchEditor(repo.Path, 0)
+		a.openRecentInEditor(repo.Path)
 	}
 	if !repo.EditorOnly && a.openTab != nil && m.Item(tr("Open in new tab")).Chosen() {
 		a.openTab(repo.Path, a.pickerOpenPolicy())
@@ -579,3 +581,90 @@ func (a *app) recentRowMenu(m *ui.Menu, repo recentRepository, services ui.Servi
 		a.pendingForgetEditorOnly = repo.EditorOnly
 	}
 }
+
+// sortVisibleRecent orders the filtered list by the clicked column. The default,
+// last opened with the newest first, is the history's own order and is left
+// alone; the sort is stable, so ties keep that order.
+func (a *app) sortVisibleRecent() {
+	if !a.recentSortByName && !a.recentSortReversed {
+		return
+	}
+	repos := a.recentRepositories
+	slices.SortStableFunc(a.visibleRecent, func(left, right int) int {
+		var order int
+		if a.recentSortByName {
+			order = strings.Compare(strings.ToLower(repos[left].displayName()), strings.ToLower(repos[right].displayName()))
+		} else {
+			// Newest first.
+			order = cmp.Compare(repos[right].LastOpened, repos[left].LastOpened)
+		}
+		if a.recentSortReversed {
+			order = -order
+		}
+		return order
+	})
+}
+
+// recentSortHeader is one column title that sorts by itself when clicked: a
+// first click picks the column, the next ones flip its direction. The active
+// column shows its direction with a sort icon; the other shows one on hover.
+// Each column starts in the direction people expect: names from A to Z, and
+// times with the newest first.
+func (a *app) recentSortHeader(c *ui.Context, label string, byName bool, width float32) {
+	theme := c.Theme()
+	active := a.recentSortByName == byName
+	name := strings.ToLower(tr(label))
+	button := ui.ButtonBase(c).Padding(2, 0).AlignItems(ui.Center).Justify(ui.Start).Gap(5)
+	button.Label(trf("Sort by %s", name)).Checked(active)
+	tooltip := trf("Sort by %s", name)
+	switch {
+	case active && !a.recentSortReversed:
+		tooltip = trf("Sorted by %s. Click to reverse.", name)
+	case active:
+		tooltip = trf("Sorted by %s, reversed. Click to restore.", name)
+	}
+	button.Tooltip(tooltip)
+	if width > 0 {
+		button.Width(width)
+	} else {
+		button.Grow(1).MinWidth(0)
+	}
+	hovered := button.Hovered()
+	if button.Clicked() {
+		if active {
+			a.recentSortReversed = !a.recentSortReversed
+		} else {
+			a.recentSortByName, a.recentSortReversed = byName, false
+		}
+	}
+	button.Children(func() {
+		color, alpha := theme.TextMuted, float32(0.55)
+		if active {
+			color, alpha = theme.Text, 1
+		}
+		ui.Text(c, tr(label)).SingleLine().FontSize(theme.FontSize - 1).TextColor(color).Shrink(1).MinWidth(0)
+		if active || hovered {
+			// Names run A to Z and times newest first, so reversing flips each.
+			glyph := sortDescendingIcon
+			if byName != (active && a.recentSortReversed) {
+				glyph = sortAscendingIcon
+			}
+			ui.Icon(c, glyph).FontSize(theme.FontSize - 1).TextColor(color.Alpha(alpha)).Shrink(0)
+		}
+	})
+}
+
+// openRecentInEditor opens the repository in a tab and lands on the Code page,
+// where its files and the editor are, instead of on the page the settings pick.
+func (a *app) openRecentInEditor(path string) {
+	if !a.sectionVisible(sectionCode) {
+		a.setSectionVisible(sectionCode, true)
+		a.saveSettings()
+	}
+	a.startSectionOnce = sectionCode + 1
+	a.openRecent(path)
+}
+
+// recentTimeWidth is the last-opened column's width, in the header and in every
+// row, wide enough for its title and the sort icon beside it.
+const recentTimeWidth = float32(112)

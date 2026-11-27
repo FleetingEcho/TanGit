@@ -255,6 +255,7 @@ func (a *app) setOpenError(path string, generation uint64, err error) {
 		return
 	}
 	a.openTerminalOnReady = false
+	a.startSectionOnce = 0
 	a.overviewCommitTarget = repository.Commit{}
 	a.cancelOpen = nil
 	if errors.Is(err, os.ErrNotExist) && a.recentWorktree(path) {
@@ -321,6 +322,7 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 	if a.editorOnlyWorkspace() {
 		// Plain folders borrow the local Editor without creating or guessing a
 		// Git session. Their one visible section is independent of preferences.
+		a.startSectionOnce = 0
 		a.workspaceTab = sectionCode
 		a.syncNavSelection()
 		a.stopRepositoryWatch()
@@ -336,6 +338,7 @@ func (a *app) installOpenedRepository(session repository.Session, snapshot repos
 		default:
 			a.setWorkspaceTab(start)
 		}
+		a.startSectionOnce = 0
 		a.startRepositoryWatch(session)
 		a.suggestRepositoryPerformance()
 		// Reading the file list in the background lets the search index start
@@ -686,8 +689,9 @@ func (a *app) beginBlame() {
 
 	// Blame belongs beside the source it describes. Open the working-tree file
 	// in Code, pin its tab, and turn on the editor's active-line annotation and
-	// commit-details hover. This is the same surface used by an editor tab opened
-	// directly, so blame no longer replaces the diff with a second text editor.
+	// commit-details hover, and show the full-file blame gutter. This is the same
+	// surface used by an editor tab opened directly, so blame no longer replaces
+	// the diff with a second text editor.
 	a.closeBlame()
 	path := change.file.Path
 	a.openGitFileInBuiltInEditor(a.snapshot.Root, path)
@@ -707,6 +711,10 @@ func (a *app) beginBlame() {
 	}
 	if document.loaded {
 		a.requestCodeBlame(document)
+		a.showFullCodeBlame(document)
+	} else {
+		// The file is still being read: the gutter turns on once it has loaded.
+		document.pendingFullBlame = true
 	}
 	a.keyboardFocus = "code-editor"
 }

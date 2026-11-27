@@ -30,6 +30,11 @@ var (
 	closeIcon     = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="m4 4 8 8"/><path d="m12 4-8 8"/></svg>`))
 	searchIcon    = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>`))
 	filterIcon    = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5h12"/><path d="M4.2 8h7.6"/><path d="M6.2 12.5h3.6"/></svg>`))
+	// sortAscendingIcon and sortDescendingIcon are the column-sort pair: a
+	// stem with an arrowhead and three bars that grow or shrink, so the glyph says
+	// which way the list runs without leaning on a bare arrow.
+	sortAscendingIcon  = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13V3"/><path d="m1.8 5.2 2.2-2.2 2.2 2.2"/><path d="M8.5 3.5h2.5M8.5 7h4M8.5 10.5h5.5"/></svg>`))
+	sortDescendingIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3v10"/><path d="m1.8 10.8 2.2 2.2 2.2-2.2"/><path d="M8.5 3.5h5.5M8.5 7h4M8.5 10.5h2.5"/></svg>`))
 	// blameIcon is git blame's own picture: commit nodes joined by a branch
 	// line, so it reads as "who changed this" rather than a user account.
 	blameIcon       = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.6" r="1.7"/><circle cx="4.5" cy="12.4" r="1.7"/><circle cx="11.6" cy="6.2" r="1.7"/><path d="M4.5 5.3v5.4"/><path d="M4.5 10.7c0-2.6 7.1-1.2 7.1-2.8"/></svg>`))
