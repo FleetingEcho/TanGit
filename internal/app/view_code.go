@@ -324,8 +324,15 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 			SingleLine().Ellipsis("…").Tooltip(a.code.searchReplaceError)
 	}
 	if a.code.searchReplaceStatus != "" {
-		ui.Text(c, a.code.searchReplaceStatus).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).
-			SingleLine().Ellipsis("…").Tooltip(a.code.searchReplaceStatus)
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+			ui.Text(c, a.code.searchReplaceStatus).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).
+				SingleLine().Ellipsis("…").Tooltip(a.code.searchReplaceStatus).Grow(1).MinWidth(0)
+			if len(a.code.searchReplaceUndo.files) > 0 && !a.code.searchReplaceRunning {
+				ui.Button(c, tr("Undo")).Label(tr("Undo Replace All")).
+					Tooltip(tr("Put back the original text in the files this replacement changed on disk")).
+					OnClick(a.undoCodeSearchReplace)
+			}
+		})
 	}
 	if a.code.searchError != "" {
 		ui.Text(c, a.code.searchError).TextColor(theme.Danger).FontSize(theme.FontSize - 1).SingleLine().Ellipsis("…").Tooltip(a.code.searchError)

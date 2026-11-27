@@ -28,6 +28,8 @@ type codeSearchReplaceOutcome struct {
 	count      int
 	files      int
 	failures   []string
+	undo       codeSearchReplaceUndo
+	undoOff    bool
 	root       string
 	generation uint64
 }
@@ -156,6 +158,7 @@ func (a *app) startCodeSearchReplaceAllWithClient(client remoteWorkspaceClient) 
 	a.code.searchReplaceToken++
 	token := a.code.searchReplaceToken
 	a.code.searchReplaceRunning = true
+	a.code.searchReplaceUndo = codeSearchReplaceUndo{}
 	a.code.searchReplaceStatus = ""
 	a.code.searchReplaceError = ""
 	ctx, cancel := context.WithCancel(a.repositoryWork.Context())
@@ -183,7 +186,16 @@ func (a *app) startCodeSearchReplaceAllWithClient(client remoteWorkspaceClient) 
 					count, err = replaceRemoteWorkspaceFile(ctx, client, root, candidate, options, replacement, preserveCase)
 				}
 			} else {
-				count, err = replaceLocalWorkspaceFile(ctx, root, candidate, options, replacement, preserveCase)
+				var undo codeSearchReplaceUndoFile
+				var undoSize int
+				count, undo, undoSize, err = replaceLocalWorkspaceFileRecorded(ctx, root, candidate, options, replacement, preserveCase, !outcome.undoOff)
+				if err == nil && count > 0 && !outcome.undoOff {
+					outcome.undo.files = append(outcome.undo.files, undo)
+					if outcome.undo.bytes += undoSize; outcome.undo.bytes > codeSearchReplaceUndoLimit {
+						// Too much to hold: stop keeping it, and keep no undo at all.
+						outcome.undo, outcome.undoOff = codeSearchReplaceUndo{}, true
+					}
+				}
 			}
 			if err != nil {
 				if ctx.Err() != nil {
@@ -278,6 +290,11 @@ func (a *app) finishCodeSearchReplace(token uint64, outcome codeSearchReplaceOut
 	}
 	a.code.searchReplaceRunning = false
 	a.code.searchReplaceCancel = nil
+	a.code.searchReplaceUndo = codeSearchReplaceUndo{}
+	if !outcome.undoOff && len(outcome.undo.files) > 0 {
+		outcome.undo.root = outcome.root
+		a.code.searchReplaceUndo = outcome.undo
+	}
 	a.code.searchReplaceStatus = trf("%d replacements in %d files", outcome.count, outcome.files)
 	if outcome.count == 0 {
 		a.code.searchReplaceStatus = tr("No matches to replace")
@@ -293,48 +310,61 @@ func (a *app) finishCodeSearchReplace(token uint64, outcome codeSearchReplaceOut
 }
 
 func replaceLocalWorkspaceFile(ctx context.Context, root, name string, options workspaceSearchOptions, replacement string, preserveCase bool) (int, error) {
+	count, _, _, err := replaceLocalWorkspaceFileRecorded(ctx, root, name, options, replacement, preserveCase, false)
+	return count, err
+}
+
+// replaceLocalWorkspaceFileRecorded also returns what an undo needs when asked.
+func replaceLocalWorkspaceFileRecorded(ctx context.Context, root, name string, options workspaceSearchOptions, replacement string, preserveCase, record bool) (int, codeSearchReplaceUndoFile, int, error) {
+	var undo codeSearchReplaceUndoFile
+	undoSize := 0
+	fail := func(err error) (int, codeSearchReplaceUndoFile, int, error) { return 0, undo, 0, err }
 	cleaned, ok := cleanWorkspaceSearchPath(name)
 	if !ok || !options.pathIncluded(cleaned) {
-		return 0, nil
+		return 0, undo, 0, nil
 	}
 	resolvedRoot, err := resolvedCodeSearchIndexRoot(root)
 	if err != nil {
-		return 0, err
+		return fail(err)
 	}
 	filename, ok := resolveWorkspaceSearchPath(resolvedRoot, cleaned)
 	if !ok {
-		return 0, nil
+		return 0, undo, 0, nil
 	}
 	before, err := os.Stat(filename)
 	if err != nil || !before.Mode().IsRegular() || before.Size() > workspaceSearchMaxFileSize {
-		return 0, nil
+		return 0, undo, 0, nil
 	}
 	data, err := readWorkingFile(filename)
 	if err != nil {
-		return 0, nil
+		return 0, undo, 0, nil
 	}
 	after, err := os.Stat(filename)
 	if err != nil || !sameCodeSearchReplaceFile(before, after) {
-		return 0, errors.New("file changed while it was being read")
+		return fail(errors.New("file changed while it was being read"))
 	}
 	if len(data) == 0 || len(data) > workspaceSearchMaxFileSize || bytes.IndexByte(data, 0) >= 0 || ctx.Err() != nil {
-		return 0, nil
+		return 0, undo, 0, nil
 	}
 	changes, err := planWorkspaceSearchReplacement(string(data), options, replacement, preserveCase)
 	if err != nil || changes.count == 0 {
-		return 0, err
+		return 0, undo, 0, err
 	}
 	current, err := os.Stat(filename)
 	if err != nil || !sameCodeSearchReplaceFile(after, current) {
-		return 0, errors.New("file changed before it could be replaced")
+		return fail(errors.New("file changed before it could be replaced"))
 	}
 	if err = ctx.Err(); err != nil {
-		return 0, err
+		return fail(err)
 	}
 	if err = writeWorkingFile(filename, []byte(changes.text)); err != nil {
-		return 0, err
+		return fail(err)
 	}
-	return changes.count, nil
+	if record {
+		// Only after a successful write, from the text already in memory.
+		undo, undoSize = newCodeSearchReplaceUndoFile(cleaned, string(data), changes)
+	}
+	return changes.count, undo, undoSize, nil
 }
 
 func sameCodeSearchReplaceFile(left, right os.FileInfo) bool {

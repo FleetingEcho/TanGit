@@ -234,22 +234,25 @@ type codeState struct {
 	back    []codeNavigationLocation
 	forward []codeNavigationLocation
 
-	sidebar                int
-	searchFocus            ui.Handle
-	searchList             ui.ListState
-	searchSelected         int
-	searchSelectedRow      int
-	searchRows             []codeSearchRow
-	searchCollapsed        map[string]bool
-	searchCollapsedSeq     uint64
-	searchQuery            string
-	searchSubmitted        string
-	searchReplaceOpen      bool
-	searchReplaceQuery     string
-	searchPreserveCase     bool
-	searchReplaceFocus     ui.Handle
-	searchReplaceRunning   bool
-	searchReplaceStatus    string
+	sidebar              int
+	searchFocus          ui.Handle
+	searchList           ui.ListState
+	searchSelected       int
+	searchSelectedRow    int
+	searchRows           []codeSearchRow
+	searchCollapsed      map[string]bool
+	searchCollapsedSeq   uint64
+	searchQuery          string
+	searchSubmitted      string
+	searchReplaceOpen    bool
+	searchReplaceQuery   string
+	searchPreserveCase   bool
+	searchReplaceFocus   ui.Handle
+	searchReplaceRunning bool
+	searchReplaceStatus  string
+	// searchReplaceUndo is what the last Replace All changed on disk, so it can
+	// be taken back while those files are as it left them.
+	searchReplaceUndo      codeSearchReplaceUndo
 	searchReplaceError     string
 	searchReplaceToken     uint64
 	searchReplaceCancel    context.CancelFunc
@@ -373,6 +376,7 @@ func (a *app) resetCode() {
 	a.code.searchReplaceRunning = false
 	a.code.searchReplaceStatus = ""
 	a.code.searchReplaceError = ""
+	a.code.searchReplaceUndo = codeSearchReplaceUndo{}
 	a.code.searchReplaceToken++
 	a.code.searchReplaceCancel = nil
 	a.code.searchSubmittedOptions = workspaceSearchOptions{}
