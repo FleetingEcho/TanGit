@@ -186,7 +186,9 @@ func (a *app) syncCodeBlameGutter(document *codeDocument) {
 			Avatar:   a.codeBlameAnnotationAvatar(document, blame),
 		}
 		annotation.Date, annotation.Text = formatCodeBlameGutter(blame)
-		annotation.Click = func() { a.openCodeBlameDetails(document, line) }
+		// Details open from the info button; hovering or clicking the gutter's
+		// text does nothing, so moving across it never pops a card up.
+		annotation.DetailsClick = func() { a.openCodeBlameDetails(document, line) }
 		if committedBlameHash(blame.Hash) && blame.PreviousHash != "" && !document.blameNavigationLoading {
 			annotation.ActionClick = func() { a.openPreviousCodeBlame(document, line) }
 		}
@@ -530,10 +532,9 @@ func codeBlameAt(document *codeDocument, request editor.HoverRequest) (int, bool
 		document.state.Buffer.Version() != document.blameVersion {
 		return 0, false
 	}
+	// Only the editor's own trailing annotation opens its card on hover. The
+	// full-file gutter has its own button.
 	line, ok := document.blameOffsets[request.Offset]
-	if !ok && document.blameFull {
-		line, ok = document.blameGutterOffsets[request.Offset]
-	}
 	return line, ok
 }
 

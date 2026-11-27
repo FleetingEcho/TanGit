@@ -450,8 +450,9 @@ func TestCodeBlameFullGutterGroupsRangesAndKeepsActiveLine(t *testing.T) {
 		annotations[0].Border != annotations[0].Avatar.Background || annotations[1].Border != annotations[1].Avatar.Background {
 		t.Fatalf("blame range borders do not match their author colors: %#v", annotations)
 	}
-	if annotations[0].Click == nil || annotations[1].Click == nil {
-		t.Fatalf("range starts should own summary click handlers: %#v", annotations)
+	if annotations[0].DetailsClick == nil || annotations[1].DetailsClick == nil ||
+		annotations[0].Click != nil || annotations[1].Click != nil {
+		t.Fatalf("range starts should open details from a button, not a summary click: %#v", annotations)
 	}
 	if annotations[0].Avatar == nil || annotations[0].Avatar.Initial != "A" ||
 		annotations[1].Avatar == nil || annotations[1].Avatar.Initial != "G" ||
@@ -470,7 +471,7 @@ func TestCodeBlameFullGutterGroupsRangesAndKeepsActiveLine(t *testing.T) {
 		saveScreenshot(t, dir, "code-blame-full-gutter", h.tester)
 	}
 
-	annotations[1].Click()
+	annotations[1].DetailsClick()
 	h.waitFor(t, "the full-gutter commit details", func() bool {
 		return h.app.codeBlameHover.open && !h.app.codeBlameHover.loading
 	})
