@@ -1186,6 +1186,10 @@ func (a *app) overviewToolbar(c *ui.Context, o *overviewState) {
 			ui.TextInputBase(c, &o.query).Label(tr("Search commits")).
 				Placeholder(tr("Search message, hash or repository — by:name filters the author")).
 				Height(32).Grow(1).OnChange(func() { a.overviewSearchChanged(o) })
+			if fresh := o.newCommitCount(); fresh > 0 {
+				flatIconButton(c, "Mark all as read", trf("Mark the %d new commits as read", fresh), markReviewedIcon, 15, 4, false,
+					func() { a.markOverviewRead(o) })
+			}
 			flatToggleIconButton(c, "Only my commits", "Only my commits (by:@me, each repository's own git identity)",
 				overviewMineIcon, 15, 4, overviewQueryIsMine(o.query), func() {
 					o.query = overviewToggleMine(o.query)

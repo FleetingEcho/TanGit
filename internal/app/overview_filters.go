@@ -254,3 +254,34 @@ func (o *overviewState) markSeen(dataDir string) {
 		o.config = saved
 	}
 }
+
+// newCommitCount is how many loaded commits are newer than the last visit. It
+// is one integer compare per loaded row, so it costs nothing next to drawing.
+func (o *overviewState) newCommitCount() int {
+	if o.seenBefore <= 0 {
+		return 0
+	}
+	count := 0
+	for _, row := range o.commits {
+		if row.Commit.UnixTimestamp > o.seenBefore {
+			count++
+		}
+	}
+	return count
+}
+
+// markOverviewRead clears every New mark by moving the visit time to now, and
+// keeps it, so the next opening starts from here as well.
+func (a *app) markOverviewRead(o *overviewState) {
+	now := time.Now().Unix()
+	o.seenBefore = now
+	current := o.cur()
+	if current == nil {
+		return
+	}
+	def := *current
+	def.LastSeen = now
+	if saved, err := saveOverviewDef(a.dataDir(), def, false); err == nil {
+		o.config = saved
+	}
+}
