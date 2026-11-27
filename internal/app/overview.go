@@ -38,6 +38,11 @@ var overviewIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/sv
 type overviewCommit struct {
 	Repo   string
 	Commit repository.Commit
+	// Issue is the tracker number found in the subject, read once when the row
+	// is loaded so drawing a frame never scans text.
+	Issue string
+	// MR is the merge request number ("!20450") found in the subject.
+	MR string
 }
 
 // overviewRepoState is how far reading one repository got.
@@ -70,7 +75,10 @@ type overviewCommitDetail struct {
 	loading bool
 	body    string
 	files   []repository.CommitFile
-	err     string
+	// folders summarises files by directory, computed once when they arrive.
+	folders       []overviewFolderCount
+	foldersOthers int
+	err           string
 }
 
 // overviewSetup is the "choose repositories" dialog. Its draft is applied only
@@ -114,6 +122,19 @@ type overviewState struct {
 	rename         overviewRepo
 	renameErr      string
 	detail         *overviewCommitDetail
+	// issueRepos maps an issue number to the repositories whose loaded commits
+	// mention it, kept as rows arrive so a row looks its link up in O(1).
+	issueRepos map[string]map[string]struct{}
+	// mrCounts counts loaded commits per merge request, kept as rows arrive.
+	mrCounts map[string]int
+	// sync is each repository's ahead/behind/dirty state. It is read after the
+	// commits, never blocks them, and survives searches so typing does not
+	// re-read every working tree.
+	sync map[string]*repository.RepoSyncStatus
+	// seenBefore is when this Overview was last opened; newer commits get a dot.
+	seenBefore int64
+	// colors gives each followed repository its own color in this Overview.
+	colors map[string]ui.Color
 }
 
 // cur is the Overview on show, nil when the user has none yet.
@@ -149,7 +170,9 @@ func (a *app) saveOverviewRange() {
 	if def := o.cur(); def != nil {
 		def.Days = overviewRanges[o.rangeIdx]
 		def.Period = o.period
-		_ = saveOverviewConfig(a.dataDir(), o.config)
+		if saved, err := saveOverviewDef(a.dataDir(), *def, false); err == nil {
+			o.config = saved
+		}
 	}
 }
 
@@ -188,7 +211,9 @@ func (a *app) applyOverviewRequest(id string, intent overviewIntent) {
 	}
 	o.filter, o.query = "", ""
 	o.rename = overviewRepo{}
+	o.sync = nil
 	o.syncRange()
+	o.markSeen(a.dataDir())
 	a.closeOverviewSetup()
 	switch {
 	case intent == overviewCreate:
@@ -233,7 +258,7 @@ func (a *app) reloadOverview() {
 	}
 	a.stopOverview()
 	o.requestedQuery = strings.TrimSpace(o.query)
-	o.commits = nil
+	o.commits, o.issueRepos, o.mrCounts = nil, nil, nil
 	o.repos = map[string]*overviewRepoState{}
 	o.resetTimeline()
 	o.loaded = time.Time{}
@@ -273,6 +298,8 @@ func (a *app) readOverviewPages(o *overviewState, initial bool) {
 	}
 	ctx, token, period, opener := o.ctx, o.token, o.readPeriod, a.opener
 	slots := make(chan struct{}, overviewConcurrency)
+	syncSlots := make(chan struct{}, 2)
+	readSync := initial && !o.searching()
 	filter := o.activeRepoFilter()
 	for _, repo := range o.followed() {
 		path := repo.Path
@@ -291,9 +318,31 @@ func (a *app) readOverviewPages(o *overviewState, initial bool) {
 			case <-ctx.Done():
 				return
 			}
-			defer func() { <-slots }()
 			result, err := readOverviewCommits(ctx, opener, path, period, search, offset, page, initial)
+			<-slots
 			a.update(func() { a.finishOverviewRepo(token, path, result, err) })
+			if !readSync || err != nil {
+				return
+			}
+			// Status never delays the commits above, and a repository too big
+			// to check quickly just shows no state.
+			select {
+			case syncSlots <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-syncSlots }()
+			status, ok := readOverviewSync(ctx, opener, path)
+			if ok {
+				a.update(func() {
+					if a.overview == o && o.token == token {
+						if o.sync == nil {
+							o.sync = map[string]*repository.RepoSyncStatus{}
+						}
+						o.sync[path] = &status
+					}
+				})
+			}
 		}()
 	}
 }
@@ -354,7 +403,24 @@ func (a *app) finishOverviewRepo(token uint64, path string, page overviewRepoPag
 	}
 	state.count += len(commits)
 	for _, commit := range commits {
-		o.commits = append(o.commits, overviewCommit{Repo: path, Commit: commit})
+		issue := overviewIssueID(commit.Subject)
+		mr := overviewMRID(commit.Subject)
+		o.commits = append(o.commits, overviewCommit{Repo: path, Commit: commit, Issue: issue, MR: mr})
+		if mr != "" {
+			if o.mrCounts == nil {
+				o.mrCounts = map[string]int{}
+			}
+			o.mrCounts[mr]++
+		}
+		if issue != "" {
+			if o.issueRepos == nil {
+				o.issueRepos = map[string]map[string]struct{}{}
+			}
+			if o.issueRepos[issue] == nil {
+				o.issueRepos[issue] = map[string]struct{}{}
+			}
+			o.issueRepos[issue][path] = struct{}{}
+		}
 	}
 	sort.SliceStable(o.commits, func(i, j int) bool {
 		left, right := o.commits[i], o.commits[j]
@@ -433,6 +499,35 @@ func overviewRepoColor(path string) ui.Color {
 	return overviewHashColor(path)
 }
 
+// repoColor is the repository's color in this Overview. Each follows its hashed
+// preferred color, and one that would repeat another's takes the next free one,
+// so no two repeat until there are more repositories than colors. The result is
+// the same every time for the same set, and cached until the set changes.
+func (o *overviewState) repoColor(path string) ui.Color {
+	repos := o.followed()
+	if color, ok := o.colors[path]; ok && len(o.colors) == len(repos) {
+		return color
+	}
+	names := accentNames
+	used := make(map[int]bool, len(repos))
+	colors := make(map[string]ui.Color, len(repos))
+	for _, repo := range repos {
+		h := fnv.New32a()
+		_, _ = h.Write([]byte(strings.ToLower(repo.Path)))
+		slot := int(h.Sum32()) % len(names)
+		for step := 0; step < len(names) && used[slot]; step++ {
+			slot = (slot + 1) % len(names)
+		}
+		used[slot] = true
+		colors[repo.Path] = accentChoices[names[slot]]
+	}
+	o.colors = colors
+	if color, ok := colors[path]; ok {
+		return color
+	}
+	return overviewRepoColor(path)
+}
+
 func overviewHashColor(value string) ui.Color {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(strings.ToLower(value)))
@@ -498,7 +593,7 @@ func (a *app) openOverviewSetup() {
 func (a *app) newOverview() { a.beginOverviewSetup(true) }
 
 func (a *app) beginOverviewSetup(isNew bool) {
-	o := a.overview
+	o := a.setupHost()
 	if o == nil {
 		return
 	}
@@ -563,7 +658,7 @@ func (a *app) matchOverviewRecentRoots(o *overviewState, known map[string]string
 			}
 		}
 		a.update(func() {
-			if a.overview != o || o.setupVersion != version {
+			if a.setupHost() != o || o.setupVersion != version {
 				return
 			}
 			setup := &o.setup
@@ -586,16 +681,51 @@ func (a *app) matchOverviewRecentRoots(o *overviewState, known map[string]string
 }
 
 func (a *app) closeOverviewSetup() {
-	if o := a.overview; o != nil {
+	if o := a.setupHost(); o != nil {
 		o.setupVersion++
 		o.setup = overviewSetup{}
+		if o == a.pickerEdit {
+			a.pickerEdit = nil
+		}
 	}
+}
+
+// setupHost owns the setup dialog: the Overview tab's state, or on the home page
+// the throwaway state the picker's Edit button opens it with.
+func (a *app) setupHost() *overviewState {
+	if a.overview != nil {
+		return a.overview
+	}
+	return a.pickerEdit
+}
+
+// newOverviewFromPicker opens the setup dialog for an additional Overview
+// without opening the Overview page; the new one is added to the picker's list.
+func (a *app) newOverviewFromPicker() {
+	o := newOverviewState()
+	o.config = loadOverviewConfig(a.dataDir())
+	a.pickerEdit = o
+	a.beginOverviewSetup(true)
+}
+
+// editOverviewFromPicker opens the setup dialog for one saved Overview without
+// leaving the picker or opening the Overview page.
+func (a *app) editOverviewFromPicker(id string) {
+	config := loadOverviewConfig(a.dataDir())
+	if config.byID(id) == nil {
+		return
+	}
+	o := newOverviewState()
+	o.config = config
+	o.config.Active = id
+	a.pickerEdit = o
+	a.beginOverviewSetup(false)
 }
 
 // applyOverviewSetup stores the draft: a new Overview, or the changes to the
 // one on show, and reads it.
 func (a *app) applyOverviewSetup() {
-	o := a.overview
+	o := a.setupHost()
 	if o == nil || !o.setup.open || o.setup.resolving {
 		return
 	}
@@ -610,12 +740,24 @@ func (a *app) applyOverviewSetup() {
 		repos = append(repos, overviewRepo{Path: path, Name: o.setup.names[path], Custom: true})
 	}
 	repos = normalizeOverviewRepos(repos)
+	isNew := o.setup.isNew
 	name := cleanOverviewName(o.setup.name)
 	if name == "" {
 		name = tr("Overview")
 	}
+	exceptID := ""
+	if !o.setup.isNew {
+		if def := o.cur(); def != nil {
+			exceptID = def.ID
+		}
+	}
+	// Other tabs and the picker may have added or renamed Overviews since this
+	// one loaded, so the check reads the file.
+	if overviewNameTaken(loadOverviewConfig(a.dataDir()).Overviews, name, exceptID) {
+		o.setup.err = trf("An Overview named \"%s\" already exists. Choose a different name.", name)
+		return
+	}
 	if o.setup.isNew {
-		name = uniqueOverviewName(o.config.Overviews, name, "")
 		id := newOverviewID(o.config.Overviews)
 		o.config.Overviews = append(o.config.Overviews, overviewDef{
 			ID: id, Name: name, Repos: repos, Days: overviewRanges[overviewDefaultRange],
@@ -623,11 +765,32 @@ func (a *app) applyOverviewSetup() {
 		o.config.Active = id
 		o.syncRange()
 	} else if def := o.cur(); def != nil {
-		def.Name = uniqueOverviewName(o.config.Overviews, name, def.ID)
+		def.Name = name
 		def.Repos = repos
 	}
 	o.filter, o.query = "", ""
-	_ = saveOverviewConfig(a.dataDir(), o.config)
+	if o == a.pickerEdit {
+		// Only the saved list changes; the picker's own choice of Overview stays.
+		created := ""
+		if isNew {
+			created = o.config.Active
+		}
+		o.config.Active = a.overviewPicker.config.Active
+		_ = saveOverviewConfig(a.dataDir(), o.config)
+		a.overviewPicker.config = o.config
+		a.overviewPicker.open = true
+		a.closeOverviewSetup()
+		if created != "" {
+			// A new Overview opens on its own page; edits stay in the list.
+			a.chooseOverview(created, overviewShow)
+		}
+		return
+	}
+	if def := o.cur(); def != nil {
+		if saved, err := saveOverviewDef(a.dataDir(), *def, isNew); err == nil {
+			o.config = saved
+		}
+	}
 	a.closeOverviewSetup()
 	a.reloadOverview()
 }
@@ -646,7 +809,7 @@ func (o *overviewState) selectedCount() int {
 // it to the draft. Opening it is the check: it is the same test the picker
 // applies, so a folder accepted here is one a tab can open later.
 func (a *app) addOverviewFolder() {
-	o := a.overview
+	o := a.setupHost()
 	if o == nil || o.setup.resolving || o.setup.checking || a.opener == nil {
 		return
 	}
@@ -673,7 +836,7 @@ func (a *app) addOverviewFolder() {
 			err = openErr
 		}
 		a.update(func() {
-			if a.overview != o || version != o.setupVersion || !o.setup.open {
+			if a.setupHost() != o || version != o.setupVersion || !o.setup.open {
 				return
 			}
 			o.setup.checking = false
@@ -706,7 +869,7 @@ func openOverviewWorkspaceRoot(ctx context.Context, opener repositoryOpener, pat
 // addOverviewDraftPath adds a folder to the draft: ticking it when it is one of
 // the recent repositories, listing it under added folders otherwise.
 func (a *app) addOverviewDraftPath(path string) {
-	o := a.overview
+	o := a.setupHost()
 	local, _ := a.followableRecents()
 	for _, repo := range local {
 		if cleanRepoPath(repo.Path) == path {
@@ -850,7 +1013,10 @@ func (a *app) overviewSidebar(c *ui.Context, o *overviewState) {
 							}
 						}
 					}
-					a.overviewSidebarRow(c, repo.Path, repo.displayName(), branch, overviewRepoColor(repo.Path),
+					if branch != "" {
+						branch += overviewSyncLabel(o.sync[repo.Path])
+					}
+					a.overviewSidebarRow(c, repo.Path, repo.displayName(), branch, o.repoColor(repo.Path),
 						filter == repo.Path, badge, problem, func() {
 							if o.filter == repo.Path {
 								o.filter = ""
@@ -940,15 +1106,18 @@ func (a *app) confirmRemoveOverviewRepo(path, name string) {
 }
 
 func (a *app) removeOverviewRepo(o *overviewState, id, path string) {
-	config := o.config
-	config.Overviews = slices.Clone(config.Overviews)
-	def := config.byID(id)
+	current := o.config.byID(id)
+	if current == nil {
+		return
+	}
+	def := *current
 	def.Repos = slices.DeleteFunc(slices.Clone(def.Repos), func(repo overviewRepo) bool { return repo.Path == path })
-	if err := saveOverviewConfig(a.dataDir(), config); err != nil {
+	saved, err := saveOverviewDef(a.dataDir(), def, false)
+	if err != nil {
 		a.notifyError(err)
 		return
 	}
-	o.config = config
+	o.config = saved
 	delete(o.repos, path)
 	o.commits = slices.DeleteFunc(o.commits, func(row overviewCommit) bool { return row.Repo == path })
 	if o.detail != nil && o.detail.row.Repo == path {
@@ -1017,6 +1186,18 @@ func (a *app) overviewToolbar(c *ui.Context, o *overviewState) {
 			ui.TextInputBase(c, &o.query).Label(tr("Search commits")).
 				Placeholder(tr("Search message, hash or repository — by:name filters the author")).
 				Height(32).Grow(1).OnChange(func() { a.overviewSearchChanged(o) })
+			flatToggleIconButton(c, "Only my commits", "Only my commits (by:@me, each repository's own git identity)",
+				overviewMineIcon, 15, 4, overviewQueryIsMine(o.query), func() {
+					o.query = overviewToggleMine(o.query)
+					a.overviewSearchChanged(o)
+				})
+			flatToggleIconButton(c, "Unpushed commits", "Only commits that are not on the remote yet (is:unpushed)",
+				overviewUnpushedIcon, 15, 4, overviewQueryIsUnpushed(o.query), func() {
+					o.query = overviewToggleUnpushed(o.query)
+					a.overviewSearchChanged(o)
+				})
+			flatIconButton(c, "Export commits", "Save the loaded commits as a Markdown or CSV file…", overviewExportIcon, 15, 4,
+				len(o.commits) == 0, func() { a.exportOverview(o) })
 			if strings.TrimSpace(o.query) != "" {
 				iconButton(c, "Clear search", "Clear search", closeIcon, false, func() {
 					o.query = ""
@@ -1125,17 +1306,17 @@ func (a *app) overviewRow(c *ui.Context, o *overviewState, row overviewCommit, n
 	detail := o.detail
 	expanded := detail != nil && detail.row.Repo == row.Repo && detail.row.Commit.Hash == row.Commit.Hash
 	ui.Column(c).Key("overview-commit:" + row.Repo + ":" + row.Commit.Hash).FillWidth().Children(func() {
-		a.overviewCommitHeading(c, row, name, made, expanded)
+		a.overviewCommitHeading(c, o, row, name, made, expanded)
 		if expanded {
-			a.overviewCommitPreview(c, detail, made)
+			a.overviewCommitPreview(c, o, detail, made)
 		}
 	})
 }
 
-func (a *app) overviewCommitHeading(c *ui.Context, row overviewCommit, name string, made time.Time, expanded bool) {
+func (a *app) overviewCommitHeading(c *ui.Context, o *overviewState, row overviewCommit, name string, made time.Time, expanded bool) {
 	theme := c.Theme()
 	commit := row.Commit
-	color := overviewRepoColor(row.Repo)
+	color := o.repoColor(row.Repo)
 	line := ui.ButtonBase(c).FillWidth().AlignItems(ui.Center).Justify(ui.Start).
 		Gap(12).Padding(8, 10).Radius(theme.Radius)
 	line.Label(name + " " + commit.ShortHash + " " + commit.Subject).
@@ -1154,7 +1335,22 @@ func (a *app) overviewCommitHeading(c *ui.Context, row overviewCommit, name stri
 			})
 		})
 		ui.Text(c, commit.ShortHash).Width(64).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).SingleLine()
+		if o.seenBefore > 0 && commit.UnixTimestamp > o.seenBefore {
+			ui.Box(c).Size(6, 6).Shrink(0).Radius(3).Background(theme.Accent).Tooltip(tr("New since you last opened this Overview"))
+		}
 		ui.Text(c, commit.Subject).Grow(1).MinWidth(0).SingleLine()
+		if shared := o.mrCounts[row.MR]; row.MR != "" && shared > 1 {
+			ui.Row(c).Padding(1, 6).Radius(theme.Radius).Background(theme.Accent.Alpha(0.14)).
+				Tooltip(trf("Merge request %s has %d commits here", row.MR, shared)).Children(func() {
+				ui.Text(c, trf("%s ×%d", row.MR, shared)).FontSize(theme.FontSize - 2).TextColor(theme.Accent).SingleLine()
+			})
+		}
+		if linked := len(o.issueRepos[row.Issue]); row.Issue != "" && linked > 1 {
+			ui.Row(c).Padding(1, 6).Radius(theme.Radius).Background(theme.Accent.Alpha(0.14)).
+				Tooltip(trf("Issue %s appears in %d repositories", row.Issue, linked)).Children(func() {
+				ui.Text(c, trf("%d repos", linked)).FontSize(theme.FontSize - 2).TextColor(theme.Accent).SingleLine()
+			})
+		}
 		ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 			ui.Box(c).Size(20, 20).Radius(10).Center().
 				Background(overviewHashColor(commit.AuthorEmail + commit.AuthorName).Alpha(0.22)).Children(func() {
@@ -1181,21 +1377,33 @@ func (a *app) saveOverviewRepoName(o *overviewState) {
 	if def == nil || o.rename.Path == "" {
 		return
 	}
+	// Two repositories in one Overview must not read the same in the sidebar
+	// and the timeline pills.
+	want := strings.TrimSpace(o.rename.Name)
+	if want == "" {
+		want = repoName(o.rename.Path)
+	}
+	for _, repo := range def.Repos {
+		if repo.Path != o.rename.Path && strings.EqualFold(repo.displayName(), want) {
+			o.renameErr = trf("Another repository in this Overview is already named \"%s\".", want)
+			return
+		}
+	}
+	o.renameErr = ""
 	// Copy the draft before persisting so a failed save leaves the visible name intact.
-	config := o.config
-	config.Overviews = append([]overviewDef(nil), config.Overviews...)
-	target := config.byID(def.ID)
+	target := *def
 	target.Repos = append([]overviewRepo(nil), target.Repos...)
 	for i := range target.Repos {
 		if target.Repos[i].Path != o.rename.Path {
 			continue
 		}
 		target.Repos[i].Name = recentNameForStorage(o.rename.Path, o.rename.Name)
-		if err := saveOverviewConfig(a.dataDir(), config); err != nil {
+		saved, err := saveOverviewDef(a.dataDir(), target, false)
+		if err != nil {
 			o.renameErr = safeError(err)
 			return
 		}
-		o.config = config
+		o.config = saved
 		o.rename = overviewRepo{}
 		if o.searching() {
 			a.reloadOverview()
@@ -1294,7 +1502,8 @@ func (a *app) overviewSetupModal(c *ui.Context, o *overviewState) {
 						})
 					})
 					ui.Scroll(c).Grow(1).FillWidth().Label(tr("Repositories to follow")).Children(func() {
-						ui.Column(c).FillWidth().Gap(6).Children(func() {
+						// Keep the rows clear of the floating scroll bar.
+						ui.Column(c).FillWidth().Gap(6).Padding(0, scrollbarGutter(theme)+8, 0, 0).Children(func() {
 							if setup.resolving {
 								ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 									ui.Spinner(c)
@@ -1328,7 +1537,7 @@ func (a *app) overviewSetupModal(c *ui.Context, o *overviewState) {
 						}
 						confirmLabel := tr("Save")
 						if setup.isNew {
-							confirmLabel = tr("Create overview")
+							confirmLabel = tr("Create")
 						}
 						confirm := ui.PrimaryButton(c, confirmLabel).Label(confirmLabel).
 							Tooltip(tr("Read the selected repositories")).Disabled(setup.resolving || o.selectedCount() == 0)
@@ -1348,15 +1557,25 @@ func (a *app) overviewSetupModal(c *ui.Context, o *overviewState) {
 func (a *app) overviewSetupRecents(c *ui.Context, o *overviewState, local, remote []recentRepository) {
 	theme := c.Theme()
 	setup := &o.setup
-	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+	// One checkbox over the rows' own, in the same column: ticked when every
+	// recent repository is followed, and a click ticks or clears them all.
+	selected := 0
+	for _, repo := range local {
+		if setup.selected[repo.Path] {
+			selected++
+		}
+	}
+	all := len(local) > 0 && selected == len(local)
+	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Padding(0, 10).Children(func() {
+		value := all
+		ui.Checkbox(c, &value, "").Label(tr("Select all recent repositories")).Disabled(len(local) == 0)
 		ui.Text(c, tr("Recent repositories")).Bold().TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1)
-		if len(local) > 0 {
-			if ui.Button(c, tr("Select all")).Label(tr("Select all recent repositories")).Clicked() {
+		if value != all {
+			if value {
 				for _, repo := range local {
 					setup.selected[repo.Path] = true
 				}
-			}
-			if ui.Button(c, tr("Clear")).Label(tr("Deselect all recent repositories")).Clicked() {
+			} else {
 				setup.selected = map[string]bool{}
 			}
 		}
@@ -1443,3 +1662,11 @@ func (a *app) overviewSetupCustom(c *ui.Context, o *overviewState) {
 		setup.custom = kept
 	}
 }
+
+// Icons that say what the search-bar buttons do: a person marked as "me", a
+// cloud crossed out for "not on the remote", and a document with an arrow out.
+var (
+	overviewMineIcon     = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.2" cy="5" r="2.4"/><path d="M1.8 13.4c.4-2.4 2.2-3.8 4.4-3.8s4 1.4 4.4 3.8"/><path d="m10.6 6.6 1.6 1.6 2.8-3"/></svg>`))
+	overviewUnpushedIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 12.4h6.6a2.6 2.6 0 0 0 .5-5.1 3.7 3.7 0 0 0-7.1-.9 2.9 2.9 0 0 0 0 6z"/><path d="M2.2 2.2l11.6 11.6"/></svg>`))
+	overviewExportIcon   = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.2 1.8H4.4a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.2a1 1 0 0 0 1-1V5.4z"/><path d="M9.2 1.8v3.6h3.6"/><path d="M8 7.6v4.2"/><path d="m6.2 10.2 1.8 1.8 1.8-1.8"/></svg>`))
+)

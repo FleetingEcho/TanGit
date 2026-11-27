@@ -193,6 +193,7 @@ func (a *app) requestRemoteCodeDocument(document *codeDocument) {
 			a.configureCodeBlame(document)
 			a.revealCodeLine(document)
 			a.requestCodeBlame(document)
+			a.applyPendingFullBlame(document)
 			return a.workspaceTab == sectionCode && a.activeCodeDocument() == document
 		})
 	}()

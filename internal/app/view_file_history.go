@@ -22,6 +22,9 @@ func (a *app) commitFileMenu(m *ui.Menu, commit *repository.Commit, file reposit
 	if m.Item(tr("Open in built-in editor")).Chosen() {
 		a.openGitFileInBuiltInEditor(root, file.Path)
 	}
+	if m.Item(tr("Blame")).Chosen() {
+		a.openGitFileBlameInBuiltInEditor(root, file.Path)
+	}
 	m.Separator()
 	if m.Item(tr("View file changes…")).Chosen() {
 		if commit == nil {

@@ -19,6 +19,7 @@ func codeBlameCardWidth(c *ui.Context) float32 {
 // A blame card must not inherit the language server's smaller scrolling
 // container. The editor still owns anchoring, pointer capture and Escape.
 func (a *app) renderCodeBlameHover(c *ui.Context, panel ui.Element, hover *editor.HoverCard) {
+	defer a.guardCodeBlame(a.codeBlameHover.source)
 	theme := c.Theme()
 	// Anchor at the range's midpoint instead of requiring all of a large
 	// card to fit strictly above or below it. AttachTo can then shift the
@@ -56,6 +57,7 @@ func codeBlameCurrentFileIndex(hover *codeBlameHoverState) int {
 // codeBlameDetailsCard stays inside the editor-owned interactive hover, so
 // moving into the card keeps it open and Escape returns to the editor.
 func (a *app) codeBlameDetailsCard(c *ui.Context) {
+	defer a.guardCodeBlame(a.codeBlameHover.source)
 	hover := &a.codeBlameHover
 	if !hover.open {
 		return

@@ -63,57 +63,60 @@ type codeDocument struct {
 	state    *editor.State
 	// loaded says the file's contents, rather than just its persistent
 	// editor State, are ready for language services and pending navigation.
-	loaded                 bool
-	generation             uint64
-	loading                bool
-	binary                 bool
-	imagePreview           *mediaPreview
-	loadError              string
-	saveError              string
-	branchNotice           string
-	pendingLine            int
-	pendingColumn          int
-	pendingUTF16           bool
-	pendingSelection       bool
-	pendingSearchOptions   workspaceSearchOptions
-	hoverSeq               uint64
-	hoverState             *editor.State
-	hoverScroll            ui.ScrollState
-	definitionSeq          uint64
-	completionSeq          uint64
-	languageActionSeq      uint64
-	languageRenameSeq      uint64
-	languageReferenceSeq   uint64
-	signatureSeq           uint64
-	signatureVersion       uint64
-	signatureRequested     bool
-	symbolSeq              uint64
-	symbolVersion          uint64
-	symbolsRequested       bool
-	symbolsLoading         bool
-	symbols                []languageServerDocumentSymbol
-	inlaySeq               uint64
-	inlayVersion           uint64
-	inlayRequested         bool
-	languageInlays         []editor.Inlay
-	semanticSeq            uint64
-	semanticVersion        uint64
-	semanticRequested      bool
-	formatSeq              uint64
-	formatting             bool
-	languageDiagnostics    map[string][]editor.Diagnostic
-	blameEnabled           bool
-	blameLoading           bool
-	blameLoaded            bool
-	blameError             string
-	blameToken             uint64
-	blameVersion           uint64
-	blameLines             []repository.BlameLine
-	blameInlays            []editor.Inlay
-	blameOffsets           map[int]int
-	blameGutterOffsets     map[int]int
-	blameGutterWidth       float32
-	blameFull              bool
+	loaded               bool
+	generation           uint64
+	loading              bool
+	binary               bool
+	imagePreview         *mediaPreview
+	loadError            string
+	saveError            string
+	branchNotice         string
+	pendingLine          int
+	pendingColumn        int
+	pendingUTF16         bool
+	pendingSelection     bool
+	pendingSearchOptions workspaceSearchOptions
+	hoverSeq             uint64
+	hoverState           *editor.State
+	hoverScroll          ui.ScrollState
+	definitionSeq        uint64
+	completionSeq        uint64
+	languageActionSeq    uint64
+	languageRenameSeq    uint64
+	languageReferenceSeq uint64
+	signatureSeq         uint64
+	signatureVersion     uint64
+	signatureRequested   bool
+	symbolSeq            uint64
+	symbolVersion        uint64
+	symbolsRequested     bool
+	symbolsLoading       bool
+	symbols              []languageServerDocumentSymbol
+	inlaySeq             uint64
+	inlayVersion         uint64
+	inlayRequested       bool
+	languageInlays       []editor.Inlay
+	semanticSeq          uint64
+	semanticVersion      uint64
+	semanticRequested    bool
+	formatSeq            uint64
+	formatting           bool
+	languageDiagnostics  map[string][]editor.Diagnostic
+	blameEnabled         bool
+	blameLoading         bool
+	blameLoaded          bool
+	blameError           string
+	blameToken           uint64
+	blameVersion         uint64
+	blameLines           []repository.BlameLine
+	blameInlays          []editor.Inlay
+	blameOffsets         map[int]int
+	blameGutterOffsets   map[int]int
+	blameGutterWidth     float32
+	blameFull            bool
+	// pendingFullBlame asks for the full-file blame once the file has loaded,
+	// for a document opened by the context menu's Blame action.
+	pendingFullBlame       bool
 	blameRevision          string
 	blameRevisionPath      string
 	blameNewer             []codeBlameSnapshot
@@ -937,6 +940,7 @@ func (a *app) requestCodeDocument(document *codeDocument) {
 			a.configureCodeBlame(document)
 			a.revealCodeLine(document)
 			a.requestCodeBlame(document)
+			a.applyPendingFullBlame(document)
 			return a.workspaceTab == sectionCode && a.activeCodeDocument() == document
 		})
 	}()

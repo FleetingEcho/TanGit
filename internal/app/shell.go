@@ -119,6 +119,9 @@ func (a *app) openedLinkedWorktree() bool {
 // title itself rather than relying on an ambiguous icon alone.
 func (t *tab) title() string {
 	if t.isOverview() {
+		if def := t.app.overview.cur(); def != nil && strings.TrimSpace(def.Name) != "" {
+			return def.Name
+		}
 		return tr("Overview")
 	}
 	title := tr("Home")
@@ -875,10 +878,18 @@ func (s *shell) showHome() {
 // what to do on arrival. It reads no repository itself, so the repository cap
 // does not apply.
 func (s *shell) showOverview(id string, intent overviewIntent) {
+	// Each Overview gets its own tab, so two can be open side by side. One
+	// that is already open is brought forward, not read again.
 	for i, t := range s.tabs {
-		if t.isOverview() {
+		if !t.isOverview() || intent == overviewCreate {
+			continue
+		}
+		shown := t.app.overview.cur()
+		if id == "" || (shown != nil && shown.ID == id) {
 			s.activate(i)
-			t.app.applyOverviewRequest(id, intent)
+			if intent == overviewEdit {
+				t.app.applyOverviewRequest(id, intent)
+			}
 			return
 		}
 	}
@@ -1458,13 +1469,15 @@ func (s *shell) tabView(c *ui.Context, i int, width float32) {
 	hovered := pill.Hovered()
 	// A remembered tab background belongs to the repository, not the session:
 	// the pill keeps it through every start until the user resets it.
-	tabColor, hasTabColor := t.app.recentTabColor(t.path())
+	tabColor, hasTabColor := t.tabColor()
 	switch {
 	case active:
 		if hasTabColor {
 			pill.Background(tabColor).Border(1, tabColor.Mix(ui.Hex("#000000"), 0.25))
 		} else {
-			pill.Background(theme.Surface).Border(1, theme.Border)
+			// The open tab is tinted with the accent so it stands out from the
+			// quiet outlines of the others.
+			pill.Background(theme.Accent.Alpha(0.2)).Border(1, theme.Accent.Alpha(0.55))
 		}
 	case hovered:
 		if hasTabColor {
@@ -1474,7 +1487,7 @@ func (s *shell) tabView(c *ui.Context, i int, width float32) {
 		}
 	default:
 		if hasTabColor {
-			pill.Background(tabColor.Alpha(0.82)).Border(1, tabColor.Mix(ui.Hex("#000000"), 0.2).Alpha(0.6))
+			pill.Background(tabColor.Alpha(0.5)).Border(1, tabColor.Mix(ui.Hex("#000000"), 0.2).Alpha(0.4))
 		} else {
 			// A quiet outline, lighter than the active tab's, so every tab
 			// reads as a tab rather than loose text.
@@ -1537,6 +1550,16 @@ func (s *shell) tabView(c *ui.Context, i int, width float32) {
 			closeClicked = s.tabCloseButton(c, t, foreground)
 		}
 	})
+	// Dragging a pill onto another moves it there. The payload names the tab
+	// itself, not its position, so a drop still lands right if the strip changed.
+	pill.Drag(tabDrag{tab: t})
+	if dragged, over := ui.DragOver[tabDrag](pill); over && dragged.tab != t && dragged.tab.pinned == t.pinned {
+		pill.Border(2, theme.Accent)
+	}
+	if dragged, dropped := ui.Drop[tabDrag](pill); dropped {
+		source := dragged.tab
+		s.request(func() { s.moveTab(source, t) })
+	}
 	if pill.Clicked() && !closeClicked {
 		s.request(func() { s.activateTab(t) })
 	}
@@ -1572,7 +1595,16 @@ func (s *shell) tabCloseButton(c *ui.Context, t *tab, foreground ui.Color) bool 
 // renameTab asks for the name of the page's repository. The page is brought
 // forward first, so the modal that takes the name sits on it.
 func (s *shell) renameTab(t *tab) {
-	if t == nil || t.app == nil || !t.repository() {
+	if t == nil || t.app == nil {
+		return
+	}
+	if t.isOverview() {
+		// An Overview is named in its own dialog, which also checks for a duplicate.
+		s.activateTab(t)
+		t.app.openOverviewSetup()
+		return
+	}
+	if !t.repository() {
 		return
 	}
 	s.activateTab(t)
@@ -1594,7 +1626,7 @@ func (s *shell) spreadRecentName(source *app, path, name string) {
 // tabMenu is Chrome's tab menu in the app's own look: pin, close, close the
 // neighbours, close all, then the repository's path.
 func (s *shell) tabMenu(m *ui.Menu, t *tab, services ui.Services) {
-	if t.repository() {
+	if t.repository() || t.isOverview() {
 		if m.Item(tr("Rename tab")).Chosen() {
 			s.request(func() { s.renameTab(t) })
 		}
@@ -1644,15 +1676,14 @@ func (s *shell) tabMenu(m *ui.Menu, t *tab, services ui.Services) {
 // follows the repository into every future opening.
 func (s *shell) tabColorPanel(c *ui.Context, t *tab) {
 	theme := c.Theme()
-	a := t.app
-	hex, has := a.recentTabColorHex(t.path())
+	hex, has := t.tabColorHex()
 	ui.Column(c).Gap(10).Padding(12).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 			ui.Text(c, tr("Tab color")).Bold()
 			ui.Spacer(c).Grow(1)
 			if has {
 				if ui.Button(c, tr("Reset tab color")).Clicked() {
-					a.forgetTabColor(t.path())
+					t.clearTabColor()
 					s.tabColorOpen = false
 					s.tabColorTab = nil
 				}
@@ -1677,7 +1708,7 @@ func (s *shell) tabColorPanel(c *ui.Context, t *tab) {
 				})
 				if swatch.Clicked() {
 					// A swatch is a finished choice: apply it and put the palette away.
-					a.rememberTabColor(t.path(), formatCustomAccent(color))
+					t.setTabColor(formatCustomAccent(color))
 					s.tabColorOpen = false
 					s.tabColorTab = nil
 				}
@@ -1692,7 +1723,7 @@ func (s *shell) tabColorPanel(c *ui.Context, t *tab) {
 			well := ui.ColorWell(c, &s.tabColorCustom).Label(tr("Custom tab color")).
 				Tooltip(tr("Choose a custom tab color"))
 			if well.Changed() {
-				a.rememberTabColor(t.path(), formatCustomAccent(
+				t.setTabColor(formatCustomAccent(
 					ui.RGB(s.tabColorCustom.R, s.tabColorCustom.G, s.tabColorCustom.B)))
 			}
 		})
@@ -1806,4 +1837,85 @@ func (s *shell) shutdown() {
 		}
 	}
 	s.tabs = nil
+}
+
+// tabColorHex is the background the tab keeps: the repository's remembered one,
+// or the Overview's own.
+func (t *tab) tabColorHex() (string, bool) {
+	if t == nil || t.app == nil {
+		return "", false
+	}
+	if t.isOverview() {
+		if def := t.app.overview.cur(); def != nil && def.TabColor != "" {
+			return def.TabColor, true
+		}
+		return "", false
+	}
+	return t.app.recentTabColorHex(t.path())
+}
+
+func (t *tab) tabColor() (ui.Color, bool) {
+	hex, ok := t.tabColorHex()
+	if !ok {
+		return ui.Color{}, false
+	}
+	return parseCustomAccent(hex)
+}
+
+func (t *tab) setTabColor(hex string) {
+	if _, ok := parseCustomAccent(hex); !ok || t == nil || t.app == nil {
+		return
+	}
+	if t.isOverview() {
+		t.app.overview.saveTabColor(t.app, hex)
+		return
+	}
+	t.app.rememberTabColor(t.path(), hex)
+}
+
+func (t *tab) clearTabColor() {
+	if t == nil || t.app == nil {
+		return
+	}
+	if t.isOverview() {
+		t.app.overview.saveTabColor(t.app, "")
+		return
+	}
+	t.app.forgetTabColor(t.path())
+}
+
+// saveTabColor stores the tab background on the Overview on show.
+func (o *overviewState) saveTabColor(a *app, hex string) {
+	current := o.cur()
+	if current == nil {
+		return
+	}
+	def := *current
+	def.TabColor = hex
+	if saved, err := saveOverviewDef(a.dataDir(), def, false); err == nil {
+		o.config = saved
+	}
+}
+
+// tabDrag is what a dragged tab pill carries.
+type tabDrag struct{ tab *tab }
+
+// moveTab puts src where dst is. Pinned tabs stay in front of the others, so a
+// tab only moves among tabs of its own kind, and the page on show stays on show.
+func (s *shell) moveTab(src, dst *tab) {
+	from, to := s.indexOf(src), s.indexOf(dst)
+	if src == nil || dst == nil || from < 0 || to < 0 || from == to || src.pinned != dst.pinned {
+		return
+	}
+	s.pullSettings()
+	var shown *tab
+	if s.active >= 0 && s.active < len(s.tabs) {
+		shown = s.tabs[s.active]
+	}
+	s.tabs = append(s.tabs[:from], s.tabs[from+1:]...)
+	s.tabs = append(s.tabs[:to], append([]*tab{src}, s.tabs[to:]...)...)
+	if shown != nil {
+		s.active = s.indexOf(shown)
+	}
+	s.invalidate()
 }

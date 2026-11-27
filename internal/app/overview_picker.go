@@ -10,7 +10,7 @@ const (
 	overviewPickerHeaderHeight = 76
 	overviewPickerFooterHeight = 64
 	overviewPickerListPadding  = 24
-	overviewPickerRowHeight    = 72
+	overviewPickerRowHeight    = 56
 	overviewPickerRowGap       = 8
 )
 
@@ -28,9 +28,7 @@ type overviewPickerState struct {
 func (a *app) openOverviewPicker() {
 	config := loadOverviewConfig(a.dataDir())
 	if len(config.Overviews) == 0 {
-		if a.openOverviewTab != nil {
-			a.openOverviewTab("", overviewCreate)
-		}
+		a.newOverviewFromPicker()
 		return
 	}
 	a.overviewPicker = overviewPickerState{open: true, config: config}
@@ -158,13 +156,13 @@ func (a *app) overviewPickerModal(c *ui.Context) {
 					ui.Row(c).Height(overviewPickerFooterHeight).Shrink(0).Padding(0, 18).
 						AlignItems(ui.Center).Justify(ui.End).Children(func() {
 						ui.PrimaryButton(c, "").Label(tr("New overview")).Height(36).Padding(0, 14).Gap(8).Radius(theme.Radius + 2).
-							OnClick(func() { a.chooseOverview("", overviewCreate) }).Children(func() {
+							OnClick(a.newOverviewFromPicker).Children(func() {
 							ui.Icon(c, plusIcon).FontSize(15)
 							ui.Text(c, tr("New overview")).FontSize(12).SingleLine()
 						})
 					})
 				})
-			if a.confirm == nil && (panel.PressedOutside() || a.onOverlayShortcut(back, 0, ui.KeyEscape,
+			if a.confirm == nil && a.pickerEdit == nil && (panel.PressedOutside() || a.onOverlayShortcut(back, 0, ui.KeyEscape,
 				shortcut("overview/picker-close", "Escape", tr("Close")), nil)) {
 				a.closeOverviewPicker()
 			}
@@ -201,7 +199,7 @@ func (a *app) overviewPickerRow(c *ui.Context, def overviewDef) {
 			ui.Icon(c, chevronRightIcon).FontSize(13).TextColor(theme.TextMuted).Shrink(0)
 		})
 		flatIconButton(c, "Edit "+def.Name, "Rename this Overview or change its repositories", editIcon, 14, 6, a.confirm != nil,
-			func() { a.chooseOverview(def.ID, overviewEdit) })
+			func() { a.editOverviewFromPicker(def.ID) })
 		flatIconButton(c, "Delete "+def.Name, "Delete this Overview", trashIcon, 14, 6, a.confirm != nil,
 			func() { a.confirmDeleteOverviewByID(def.ID) })
 	})

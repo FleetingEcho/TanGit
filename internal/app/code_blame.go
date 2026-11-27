@@ -77,6 +77,7 @@ func invalidateCodeBlame(document *codeDocument) {
 }
 
 func (a *app) syncCodeBlame(document *codeDocument) {
+	defer a.guardCodeBlame(document)
 	if !codeBlameAvailable(document) || !document.blameEnabled {
 		return
 	}
@@ -100,6 +101,7 @@ func (a *app) syncCodeBlame(document *codeDocument) {
 // Data for the other lines remains cached, so cursor movement is local and does
 // not rerun Git or fetch commit details.
 func (a *app) syncCodeBlameActiveLine(document *codeDocument) {
+	defer a.guardCodeBlame(document)
 	if !codeBlameAvailable(document) || !document.blameEnabled || !document.blameLoaded ||
 		document.state.Buffer.Modified() {
 		return
@@ -150,6 +152,7 @@ func (a *app) codeBlameAnnotationAvatar(document *codeDocument, blame repository
 // allocating invisible gutter entries; selecting any line still reveals its
 // own trailing annotation and hover target.
 func (a *app) syncCodeBlameGutter(document *codeDocument) {
+	defer a.guardCodeBlame(document)
 	if document == nil || document.state == nil {
 		return
 	}
@@ -218,6 +221,7 @@ func syncCodeDocumentInlays(document *codeDocument) {
 }
 
 func (a *app) toggleCodeBlame(document *codeDocument) {
+	defer a.guardCodeBlame(document)
 	if !codeBlameAvailable(document) {
 		return
 	}
@@ -248,7 +252,39 @@ func (a *app) toggleCodeBlame(document *codeDocument) {
 	a.syncCodeBlameActiveLine(document)
 }
 
+// openGitFileBlameInBuiltInEditor opens the file in the editor with the
+// full-file blame gutter showing, once the file has loaded.
+func (a *app) openGitFileBlameInBuiltInEditor(root, relative string) {
+	a.openGitFileInBuiltInEditor(root, relative)
+	document := a.code.documents[relative]
+	if document == nil || a.code.active != relative {
+		return
+	}
+	if document.loaded {
+		a.showFullCodeBlame(document)
+		return
+	}
+	document.pendingFullBlame = true
+}
+
+func (a *app) applyPendingFullBlame(document *codeDocument) {
+	if document == nil || !document.pendingFullBlame {
+		return
+	}
+	document.pendingFullBlame = false
+	a.showFullCodeBlame(document)
+}
+
+// showFullCodeBlame turns the full-file gutter on, never off, so choosing Blame
+// twice leaves it showing.
+func (a *app) showFullCodeBlame(document *codeDocument) {
+	if codeBlameAvailable(document) && !document.blameFull {
+		a.toggleCodeBlame(document)
+	}
+}
+
 func (a *app) requestCodeBlame(document *codeDocument) {
+	defer a.guardCodeBlame(document)
 	if !codeBlameAvailable(document) || !document.blameEnabled {
 		return
 	}
@@ -278,6 +314,7 @@ func (a *app) requestCodeBlame(document *codeDocument) {
 		defer a.recoverBackground()
 		lines, err := requireHistorySession(session).BlameWorkingTreeFile(ctx, path)
 		a.updateChanged(func() bool {
+			defer a.guardCodeBlame(document)
 			if repositoryGeneration != a.generation || documentGeneration != document.generation ||
 				token != document.blameToken || !document.blameEnabled || document.state != state ||
 				a.code.documents[path] != document || state.Buffer.Version() != version {
@@ -410,6 +447,47 @@ func codeBlameRelativeTime(unix int64) string {
 	}
 }
 
+// guardCodeBlame is deferred by every blame entry point that runs on the UI
+// thread. A fault there must never take the app down: it turns blame off for
+// the document, closes its card, and says so.
+func (a *app) guardCodeBlame(document *codeDocument) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	a.disableCodeBlameAfterFault(document, describeFault(r))
+}
+
+func (a *app) disableCodeBlameAfterFault(document *codeDocument, reason string) {
+	defer func() { _ = recover() }()
+	a.codeBlameHover = codeBlameHoverState{token: a.codeBlameHover.token + 1}
+	if document != nil {
+		document.blameEnabled = false
+		document.blameFull = false
+		document.blameToken++
+		document.blameError = reason
+		document.blameNavigationLoading = false
+		document.blameLoading = false
+		document.blameLoaded = false
+		document.blameLines = nil
+		document.blameInlays = nil
+		document.blameOffsets = nil
+		document.blameGutterOffsets = nil
+		document.blameAnnotationSet = false
+		if document.state != nil {
+			document.state.HoverDelay = 0
+			func() {
+				defer func() { _ = recover() }()
+				document.state.ShowHover(-1, -1, "", nil)
+			}()
+			document.state.LineAnnotationWidth = 0
+			document.state.SetLineAnnotations(nil)
+			syncCodeDocumentInlays(document)
+		}
+	}
+	a.notify("error", tr("Git blame failed"), reason)
+}
+
 func (a *app) configureCodeBlame(document *codeDocument) {
 	if document == nil || document.state == nil {
 		return
@@ -460,6 +538,7 @@ func codeBlameAt(document *codeDocument, request editor.HoverRequest) (int, bool
 }
 
 func (a *app) openCodeBlameDetails(document *codeDocument, line int) {
+	defer a.guardCodeBlame(document)
 	if !codeBlameAvailable(document) || line < 0 || line >= len(document.blameLines) {
 		return
 	}
@@ -516,6 +595,7 @@ func (a *app) openCodeBlameDetails(document *codeDocument, line int) {
 			files, filesErr = requireHistorySession(session).CommitFiles(ctx, commits[0])
 		}
 		a.updateChanged(func() bool {
+			defer a.guardCodeBlame(document)
 			if repositoryGeneration != a.generation || token != hover.token || !hover.open || hover.blame.Hash != blame.Hash ||
 				document.generation != documentGeneration || document.blameToken != blameToken ||
 				document.path != sourcePath || a.code.documents[sourcePath] != document ||

@@ -147,6 +147,9 @@ type app struct {
 	// overviewPicker is the home page's list of saved Overviews, shown when its
 	// Overview entry is clicked.
 	overviewPicker overviewPickerState
+	// pickerEdit holds the setup dialog the picker's Edit button opens, so an
+	// Overview can be renamed without opening its page.
+	pickerEdit *overviewState
 	// Shell-owned workflows are hooked rather than stored MyGo elements or
 	// contexts, keeping standalone app tests independent of window chrome.
 	shellOverlayOpen    func() bool

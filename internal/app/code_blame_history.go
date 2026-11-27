@@ -77,6 +77,7 @@ func (a *app) installCodeBlameSnapshot(document *codeDocument, snapshot codeBlam
 // openPreviousCodeBlame follows Git's own pre-change coordinates. A commit with
 // no previous header is the file's initial addition and offers no further step.
 func (a *app) openPreviousCodeBlame(document *codeDocument, line int) {
+	defer a.guardCodeBlame(document)
 	if !codeBlameAvailable(document) || !document.blameEnabled || !document.blameLoaded ||
 		document.blameNavigationLoading || line < 0 || line >= len(document.blameLines) || a.session == nil {
 		return
@@ -111,6 +112,7 @@ func (a *app) openPreviousCodeBlame(document *codeDocument, line int) {
 		defer a.recoverBackground()
 		revisionBlame, err := requireHistorySession(session).BlameFileRevision(ctx, revision, path)
 		a.updateChanged(func() bool {
+			defer a.guardCodeBlame(document)
 			if repositoryGeneration != a.generation || documentGeneration != document.generation ||
 				token != document.blameNavigationToken || blameToken != document.blameToken ||
 				document.state != state || a.code.documents[document.path] != document {

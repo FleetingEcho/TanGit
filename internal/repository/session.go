@@ -3785,7 +3785,14 @@ func (s *gitSession) CommitHistoryHead(ctx context.Context) (branch, revision st
 type CommitHistorySearch struct {
 	Terms  []string
 	Author string
+	// Unpushed limits the walk to commits the upstream does not have yet. It
+	// ignores the period, and a branch without an upstream yields nothing.
+	Unpushed bool
 }
+
+// CommitAuthorMe stands for the repository's own configured identity, resolved
+// where the repository is read so each one answers with its own user.email.
+const CommitAuthorMe = "@me"
 
 // CommitHistoryOrder indexes the captured revision by committer time, so later
 // pages can read metadata without traversing history again. Bounds are inclusive
@@ -3797,8 +3804,30 @@ func (s *gitSession) CommitHistoryOrder(ctx context.Context, revision string, fr
 	if !from.IsZero() && !to.IsZero() && from.After(to) {
 		return nil, fmt.Errorf("invalid commit history period")
 	}
+	if search.Author == CommitAuthorMe {
+		// Without a configured identity nothing is "mine", rather than everything.
+		output, err := s.cmd.New([]string{"git", "config", "user.email"}).DontLog().RunWithOutput()
+		search.Author = strings.TrimSpace(output)
+		if err != nil || search.Author == "" {
+			return nil, nil
+		}
+	}
+	if search.Unpushed {
+		from, to = time.Time{}, time.Time{}
+		check, err := s.commandContext(ctx, []string{"git", "rev-parse", "--verify", "--quiet", "@{u}"})
+		if err != nil {
+			return nil, err
+		}
+		if _, err := s.runWithOutputContext(ctx, check); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+			return nil, nil
+		}
+		revision = "@{u}.." + revision
+	}
 	args := []string{"git", "rev-list", "--timestamp"}
-	if len(search.Terms) == 1 && from.IsZero() && to.IsZero() {
+	if len(search.Terms) == 1 && from.IsZero() && to.IsZero() && !search.Unpushed {
 		commits, matchedHash, err := s.searchCommitHash(ctx, CommitFilter{}, search.Terms[0], revision)
 		if matchedHash {
 			author := strings.ToLower(search.Author)

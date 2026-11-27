@@ -527,6 +527,9 @@ func (a *app) fileRowMenu(m *ui.Menu, index int, services ui.Services) {
 	if m.Item(tr("Open in built-in editor")).Chosen() {
 		a.openGitFileInBuiltInEditor(root, file.Path)
 	}
+	if file.Tracked && !file.Deleted && m.Item(tr("Blame")).Chosen() {
+		a.openGitFileBlameInBuiltInEditor(root, file.Path)
+	}
 	m.Separator()
 	// A right-click selects the row it acts on, as VS Code's Source Control
 	// view does, so the details pane follows what the menu changes.

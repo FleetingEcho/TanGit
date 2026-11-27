@@ -141,6 +141,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.submoduleFormModal(c)
 	a.homeWorktreesModal(c)
 	a.overviewPickerModal(c)
+	a.overviewSetupModal(c, a.pickerEdit)
 	a.recentRenameModal(c)
 	a.codeFileFormModal(c)
 	a.codeWorkspaceFolderModal(c)

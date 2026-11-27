@@ -21,8 +21,10 @@ func (o *overviewState) activeRepoFilter() string {
 }
 
 func overviewSearchForRepo(query string, repo overviewRepo) repository.CommitHistorySearch {
+	unpushed := overviewQueryIsUnpushed(query)
+	query = overviewDropUnpushed(query)
 	filter, _ := parseCommitSearch(query)
-	search := repository.CommitHistorySearch{Author: strings.TrimSpace(filter.Author)}
+	search := repository.CommitHistorySearch{Author: strings.TrimSpace(filter.Author), Unpushed: unpushed}
 	words := strings.Fields(strings.ToLower(filter.Query))
 	if len(words) == 0 && search.Author == "" && strings.TrimSpace(query) != "" {
 		words = []string{strings.ToLower(strings.TrimSpace(query))}

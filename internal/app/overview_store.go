@@ -55,6 +55,11 @@ type overviewDef struct {
 	// Days is the time window the user last chose; 0 means the default.
 	Days   int             `json:"days,omitempty"`
 	Period *overviewPeriod `json:"period,omitempty"`
+	// LastSeen is when the page was last opened on this Overview, in Unix
+	// seconds. Commits newer than it are marked as new the next time.
+	LastSeen int64 `json:"lastSeen,omitempty"`
+	// TabColor is the background this Overview's tab keeps, as "#rrggbb".
+	TabColor string `json:"tabColor,omitempty"`
 }
 
 // overviewConfig is what the Overview page remembers between starts.
@@ -119,6 +124,17 @@ func cleanOverviewName(name string) string {
 	return name
 }
 
+// overviewNameTaken says whether another Overview already has name, ignoring
+// case. except is the ID being renamed.
+func overviewNameTaken(defs []overviewDef, name, except string) bool {
+	for _, def := range defs {
+		if def.ID != except && strings.EqualFold(def.Name, name) {
+			return true
+		}
+	}
+	return false
+}
+
 // uniqueOverviewName returns name, or name with a number, so two Overviews
 // never read the same in the dropdown. except is the ID being renamed.
 func uniqueOverviewName(defs []overviewDef, name, except string) string {
@@ -180,6 +196,23 @@ func loadOverviewConfig(dir string) overviewConfig {
 		}
 	}
 	return config
+}
+
+// saveOverviewDef writes one Overview into the file as it is on disk now, so
+// several Overview tabs can each keep their own copy without one tab's save
+// bringing back what another renamed or deleted. create adds the Overview when
+// the file lacks it; otherwise a missing one was deleted elsewhere and stays gone.
+func saveOverviewDef(dir string, def overviewDef, create bool) (overviewConfig, error) {
+	disk := loadOverviewConfig(dir)
+	if existing := disk.byID(def.ID); existing != nil {
+		*existing = def
+	} else if create {
+		disk.Overviews = append(disk.Overviews, def)
+	} else {
+		return disk, nil
+	}
+	disk.Active = def.ID
+	return disk, saveOverviewConfig(dir, disk)
 }
 
 // saveOverviewConfig writes the set atomically, as the recent history does: a
