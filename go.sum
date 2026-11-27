@@ -6,6 +6,14 @@ github.com/FleetingEcho/mygo v0.10.1-0.20261124050423-812ce5a42493 h1:7vypeZPFu0
 github.com/FleetingEcho/mygo v0.10.1-0.20261124050423-812ce5a42493/go.mod h1:Hw9sxdSQ4tHuehHw5Q6alR1qTS8kgv3oSFxEejg+7qo=
 github.com/FleetingEcho/mygo v0.10.1-0.20261126221347-35b81ead44c9 h1:LTSAw2ZDWjRpc6lGfzdjh4NybWdc0eMUAgL6ZvjpVyg=
 github.com/FleetingEcho/mygo v0.10.1-0.20261126221347-35b81ead44c9/go.mod h1:Hw9sxdSQ4tHuehHw5Q6alR1qTS8kgv3oSFxEejg+7qo=
+github.com/FleetingEcho/mygo v0.10.1-0.20261126224641-8639c64c4b63 h1:DuOCLXBqUr6jNMR1DEu4nnWSDVdh4yB9tXs8yBWF720=
+github.com/FleetingEcho/mygo v0.10.1-0.20261126224641-8639c64c4b63/go.mod h1:Hw9sxdSQ4tHuehHw5Q6alR1qTS8kgv3oSFxEejg+7qo=
+github.com/FleetingEcho/mygo v0.10.1-0.20261126232043-d777b0f2971a h1:tFgwVaTw23IYyjG3NP2/3A4QMJLlqJa5rc32aAjSeIU=
+github.com/FleetingEcho/mygo v0.10.1-0.20261126232043-d777b0f2971a/go.mod h1:Hw9sxdSQ4tHuehHw5Q6alR1qTS8kgv3oSFxEejg+7qo=
+github.com/FleetingEcho/mygo v0.10.1-0.20261126235005-ed19cb44f0e2 h1:o49J9/l3e/VYx+4DTNM7sHiuc8IqXBGlH8Fdv6bgvrQ=
+github.com/FleetingEcho/mygo v0.10.1-0.20261126235005-ed19cb44f0e2/go.mod h1:Hw9sxdSQ4tHuehHw5Q6alR1qTS8kgv3oSFxEejg+7qo=
+github.com/FleetingEcho/mygo v0.10.1-0.20261127000416-6be5f088924b h1:OM5K2vw47VteFNKl77D1Q8vWVL8+DHLcmbuOD90O1Oo=
+github.com/FleetingEcho/mygo v0.10.1-0.20261127000416-6be5f088924b/go.mod h1:Hw9sxdSQ4tHuehHw5Q6alR1qTS8kgv3oSFxEejg+7qo=
 github.com/ProtonMail/go-crypto v1.4.1 h1:9RfcZHqEQUvP8RzecWEUafnZVtEvrBVL9BiF67IQOfM=
 github.com/ProtonMail/go-crypto v1.4.1/go.mod h1:e1OaTyu5SYVrO9gKOEhTc+5UcXtTUa+P3uLudwcgPqo=
 github.com/RoaringBitmap/roaring/v2 v2.30.0 h1:1sD4xsCenNd9n/gOWaExCWanP9WTyiNuqLAvaDQ5jkY=

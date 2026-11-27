@@ -34,31 +34,41 @@ var avatarPalette = []ui.Color{
 // for white, in either theme.
 var avatarTextColor = ui.RGB(255, 255, 255)
 
-// authorAvatar shows a cached hosting photo when available, and keeps the
-// generated initial while a lookup is pending or unavailable.
-func (a *app) authorAvatar(c *ui.Context, commit repository.Commit, size float32) {
-	var bitmap *ui.Bitmap
-	if a.authorAvatars != nil {
-		remotes := a.snapshot.Remotes
-		// Prefer origin; a fork's upstream must not override its configured host.
-		for pass := 0; pass < 2; pass++ {
-			found := false
-			for _, remote := range remotes {
-				if (remote.Name == "origin") != (pass == 0) {
-					continue
-				}
-				if source, ok := avatarSourceFor(a.remoteWebAddress(remote), commit); ok {
-					services := c.Services()
-					bitmap = a.authorAvatars.lookup(source, services.Invalidate)
-					found = true
-					break
-				}
+// authorAvatarBitmap returns the cached hosting photo for a commit. The
+// caller owns the non-blocking cache lookup and supplies only its redraw hook,
+// never a Context or Element, so painter and widget callers share one store.
+func (a *app) authorAvatarBitmap(commit repository.Commit, invalidate func()) *ui.Bitmap {
+	if a.authorAvatars == nil {
+		return nil
+	}
+	remotes := a.snapshot.Remotes
+	// Prefer origin; a fork's upstream must not override its configured host.
+	for pass := 0; pass < 2; pass++ {
+		found := false
+		for _, remote := range remotes {
+			if (remote.Name == "origin") != (pass == 0) {
+				continue
 			}
-			if found {
+			if source, ok := avatarSourceFor(a.remoteWebAddress(remote), commit); ok {
+				bitmap := a.authorAvatars.lookup(source, invalidate)
+				found = true
+				if bitmap != nil {
+					return bitmap
+				}
 				break
 			}
 		}
+		if found {
+			break
+		}
 	}
+	return nil
+}
+
+// authorAvatar shows a cached hosting photo when available, and keeps the
+// generated initial while a lookup is pending or unavailable.
+func (a *app) authorAvatar(c *ui.Context, commit repository.Commit, size float32) {
+	bitmap := a.authorAvatarBitmap(commit, c.Services().Invalidate)
 	drawAuthorAvatar(c, commit.AuthorName, commit.AuthorEmail, size, bitmap)
 }
 

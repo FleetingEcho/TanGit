@@ -685,6 +685,11 @@ func (f fakeSession) BlameWorkingTreeFile(_ context.Context, path string) ([]rep
 	return []repository.BlameLine{{Hash: "a1b2c3d4e5f60718", Author: "Ada", Date: "2026-01-01", Text: "changed"}}, nil
 }
 
+func (f fakeSession) BlameFileRevision(_ context.Context, revision, path string) (repository.RevisionBlame, error) {
+	f.calls.record("blame-revision:" + revision + ":" + path)
+	return repository.RevisionBlame{}, nil
+}
+
 func (f fakeSession) CommitFiles(_ context.Context, commit repository.Commit) ([]repository.CommitFile, error) {
 	f.calls.record("commit-files:" + commit.Hash)
 	// Two files, so a test can choose the second and see the diff move.

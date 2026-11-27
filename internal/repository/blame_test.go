@@ -66,6 +66,31 @@ func TestBlameReadsAllHEADLinesDespiteWorkingTreeChanges(t *testing.T) {
 		!workingTree[0].Current || !workingTree[1].Current {
 		t.Fatalf("working-tree commit metadata = %#v", workingTree[:2])
 	}
+	if workingTree[0].PreviousHash != "" || workingTree[1].PreviousHash != first ||
+		workingTree[2].PreviousHash != first || workingTree[1].PreviousPath != "file.txt" {
+		t.Fatalf("working-tree previous coordinates = %#v", workingTree[:3])
+	}
+
+	revision, err := session.BlameFileRevision(context.Background(), second, "file.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if revision.Content != "first\nchanged\nthird\n" || len(revision.Lines) != 3 ||
+		revision.Lines[1].PreviousHash != first || revision.Lines[1].PreviousPath != "file.txt" {
+		t.Fatalf("historical blame = %#v", revision)
+	}
+	initial, err := session.BlameFileRevision(context.Background(), first, "file.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initial.Content != "first\n\tindented\n" || len(initial.Lines) != 2 {
+		t.Fatalf("initial historical blame = %#v", initial)
+	}
+	for _, line := range initial.Lines {
+		if line.PreviousHash != "" || line.PreviousPath != "" {
+			t.Fatalf("initial file addition retained previous coordinates: %#v", line)
+		}
+	}
 	for _, line := range workingTree[3:] {
 		if strings.Trim(line.Hash, "0") != "" || line.Author != "Not Committed Yet" {
 			t.Fatalf("uncommitted line has committed identity: %#v", line)
@@ -101,6 +126,9 @@ func TestBlamePreservesCommitCoordinatesAcrossRenameAndLineShift(t *testing.T) {
 	}
 	if len(lines) != 3 || lines[0].CommitPath != "new.txt" || lines[0].CommitLine != 1 {
 		t.Fatalf("inserted-line coordinates = %#v", lines)
+	}
+	if lines[0].Hash == first || lines[0].PreviousHash != first || lines[0].PreviousPath != "old.txt" {
+		t.Fatalf("rename commit lost its previous coordinates: %#v", lines[0])
 	}
 	for index, line := range lines[1:] {
 		if line.Hash != first || line.CommitPath != "old.txt" || line.CommitLine != index+1 {

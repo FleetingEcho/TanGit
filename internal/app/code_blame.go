@@ -131,6 +131,20 @@ func (a *app) syncCodeBlameActiveLine(document *codeDocument) {
 	syncCodeDocumentInlays(document)
 }
 
+func (a *app) codeBlameAnnotationAvatar(document *codeDocument, blame repository.BlameLine) *editor.LineAnnotationAvatar {
+	if document == nil || !committedBlameHash(blame.Hash) {
+		return nil
+	}
+	commit := repository.Commit{Hash: blame.Hash, AuthorName: blame.Author, AuthorEmail: blame.AuthorEmail}
+	return &editor.LineAnnotationAvatar{
+		Initial:    authorInitial(blame.Author, blame.AuthorEmail),
+		Background: avatarColor(blame.Author, blame.AuthorEmail),
+		Bitmap: func() *ui.Bitmap {
+			return a.authorAvatarBitmap(commit, document.blameAvatarInvalidate)
+		},
+	}
+}
+
 // syncCodeBlameGutter shows a compact commit summary at the first line of
 // every contiguous blamed range. Continuation lines stay blank without
 // allocating invisible gutter entries; selecting any line still reveals its
@@ -162,15 +176,35 @@ func (a *app) syncCodeBlameGutter(document *codeDocument) {
 		}
 		offsets[snapshot.LineEnd(line)] = line
 		line := line
-		annotation := editor.LineAnnotation{Line: line}
-		annotation.Text, annotation.Detail = formatCodeBlameGutter(blame)
+		annotation := editor.LineAnnotation{
+			Line:     line,
+			LastLine: codeBlameRangeLastLine(document, line, blame.Hash),
+			Border:   avatarColor(blame.Author, blame.AuthorEmail),
+			Avatar:   a.codeBlameAnnotationAvatar(document, blame),
+		}
+		annotation.Date, annotation.Text = formatCodeBlameGutter(blame)
 		annotation.Click = func() { a.openCodeBlameDetails(document, line) }
+		if committedBlameHash(blame.Hash) && blame.PreviousHash != "" && !document.blameNavigationLoading {
+			annotation.ActionClick = func() { a.openPreviousCodeBlame(document, line) }
+		}
 		annotations = append(annotations, annotation)
 		previousHash = blame.Hash
 	}
 	document.blameGutterOffsets = offsets
-	document.state.LineAnnotationWidth = codeBlameGutterWidth
+	width := document.blameGutterWidth
+	if width <= 0 {
+		width = codeBlameGutterWidth
+	}
+	document.state.LineAnnotationWidth = width
 	document.state.SetLineAnnotations(annotations)
+}
+
+func codeBlameRangeLastLine(document *codeDocument, line int, hash string) int {
+	lastLine := line
+	for lastLine+1 < len(document.blameLines) && document.blameLines[lastLine+1].Hash == hash {
+		lastLine++
+	}
+	return lastLine
 }
 
 func syncCodeDocumentInlays(document *codeDocument) {
@@ -195,6 +229,17 @@ func (a *app) toggleCodeBlame(document *codeDocument) {
 		return
 	}
 	document.blameFull = !document.blameFull
+	restoreWorking := !document.blameFull &&
+		(document.blameRevision != "" || document.blameNavigationLoading)
+	if restoreWorking {
+		a.restoreWorkingCodeBlame(document)
+	}
+	if restoreWorking {
+		// Historical lines belong to the read-only parent snapshot, not to the
+		// restored working copy. Re-blame the final code instead of reusing them.
+		a.requestCodeBlame(document)
+		return
+	}
 	if !document.blameLoaded && !document.blameLoading {
 		a.requestCodeBlame(document)
 		return
@@ -207,6 +252,7 @@ func (a *app) requestCodeBlame(document *codeDocument) {
 	if !codeBlameAvailable(document) || !document.blameEnabled {
 		return
 	}
+	a.restoreWorkingCodeBlame(document)
 	a.closeCodeBlameDetailsFor(document)
 	invalidateCodeBlame(document)
 	document.state.HoverDelay = codeBlameHoverDelay
@@ -300,7 +346,7 @@ func formatCodeBlame(line repository.BlameLine) string {
 
 func formatCodeBlameGutter(line repository.BlameLine) (string, string) {
 	if uncommittedBlameHash(line.Hash) {
-		return tr("Uncommitted changes"), ""
+		return "", tr("Uncommitted changes")
 	}
 	author := line.Author
 	if author == "" {
@@ -316,11 +362,19 @@ func formatCodeBlameGutter(line repository.BlameLine) (string, string) {
 	if subject == "" {
 		subject = shortBlameHash(line.Hash)
 	}
-	when := codeBlameRelativeTime(line.UnixTimestamp)
-	if when == "" {
-		when = line.Date
+	return formatCodeBlameGutterDate(line), author + " • " + subject
+}
+
+func formatCodeBlameGutterDate(line repository.BlameLine) string {
+	// Prefer the author timezone already recorded by Git, so a commit never
+	// moves to an adjacent day because the developer viewing it is elsewhere.
+	if date, err := time.Parse("2006-01-02", line.Date); err == nil {
+		return date.Format("Jan 2,2006")
 	}
-	return author + " • " + subject, when
+	if line.UnixTimestamp > 0 {
+		return time.Unix(line.UnixTimestamp, 0).UTC().Format("Jan 2,2006")
+	}
+	return line.Date
 }
 
 func codeBlameRelativeTime(unix int64) string {
@@ -359,6 +413,10 @@ func codeBlameRelativeTime(unix int64) string {
 func (a *app) configureCodeBlame(document *codeDocument) {
 	if document == nil || document.state == nil {
 		return
+	}
+	document.state.OnLineAnnotationResize = func(width float32) {
+		document.blameGutterWidth = width
+		document.state.LineAnnotationWidth = width
 	}
 	previous := document.state.OnHover
 	previousRender := document.state.RenderHover

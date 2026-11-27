@@ -702,7 +702,10 @@ func (a *app) codeEditorPane(c *ui.Context) {
 					breadcrumb = document.breadcrumbMemo.cachedSymbolBreadcrumb(document.state.Buffer, document.symbols, offset)
 				}
 			}
-			location := document.path
+			location := currentCodeBlamePath(document)
+			if document.blameRevision != "" {
+				location += " @ " + shortBlameHash(document.blameRevision)
+			}
 			if breadcrumb != "" {
 				location += "  ›  " + breadcrumb
 			}
@@ -721,6 +724,7 @@ func (a *app) codeEditorPane(c *ui.Context) {
 					a.navigateCodeHistory(false)
 				}
 			}
+			a.codeBlameNavigation(c, document)
 			flatIconButton(c, "Outline", "Symbols in the current document", fileBracesIcon, 14, 4, false, func() {
 				a.openLanguageSymbols(document)
 			})
@@ -738,6 +742,11 @@ func (a *app) codeEditorPane(c *ui.Context) {
 			}
 			if document.saveError != "" {
 				ui.Text(c, tr("Could not save")+": "+document.saveError).TextColor(theme.Danger).FontSize(theme.FontSize - 1)
+			} else if document.blameNavigationError != "" {
+				ui.Text(c, document.blameNavigationError).TextColor(theme.Warning).FontSize(theme.FontSize - 1).
+					SingleLine().Ellipsis("…").Tooltip(document.blameNavigationError)
+			} else if document.blameNavigationLoading {
+				ui.Text(c, tr("Loading earlier Git blame…")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 			} else if document.branchNotice != "" {
 				ui.Text(c, document.branchNotice).TextColor(theme.Warning).FontSize(theme.FontSize - 1).
 					SingleLine().Ellipsis("…").Tooltip(document.branchNotice)
@@ -856,17 +865,18 @@ func (a *app) codeDocumentView(c *ui.Context, document *codeDocument) {
 		return
 	}
 	a.applyCodeEditorPreferences(document.state)
+	document.blameAvatarInvalidate = c.Services().Invalidate
 	a.syncLanguageDocumentFeatures(document)
 	a.syncCodeBlame(document)
 	settings := effectiveBuiltInEditorPreferences(a.settings)
 	source := func() {
 		if !settings.EditorMinimap {
-			editorView := editor.View(c, document.state).Grow(1).FillWidth().ReadOnly(document.readOnly || document.loading)
+			editorView := editor.View(c, document.state).Grow(1).FillWidth().ReadOnly(document.readOnly || document.loading || document.blameRevision != "")
 			a.keyboardPane(c, "code-editor", editorView).Label(tr("Code editor")).MinWidth(0)
 			return
 		}
 		ui.Row(c).Grow(1).FillWidth().MinWidth(0).Children(func() {
-			editorView := editor.View(c, document.state).Grow(1).FillWidth().FillHeight().ReadOnly(document.readOnly || document.loading)
+			editorView := editor.View(c, document.state).Grow(1).FillWidth().FillHeight().ReadOnly(document.readOnly || document.loading || document.blameRevision != "")
 			a.keyboardPane(c, "code-editor", editorView).Label(tr("Code editor")).MinWidth(0)
 			a.codeMinimap(c, document)
 		})

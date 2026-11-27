@@ -79,6 +79,8 @@ type HistorySession interface {
 	// BlameWorkingTreeFile attributes saved working-tree lines, including new
 	// or changed lines that have no commit identity yet.
 	BlameWorkingTreeFile(context.Context, string) ([]BlameLine, error)
+	// BlameFileRevision reads an immutable blob and its blame at revision.
+	BlameFileRevision(context.Context, string, string) (RevisionBlame, error)
 	CommitFiles(context.Context, Commit) ([]CommitFile, error)
 	// CommitFilesWithoutStats reads paths and change statuses for file history.
 	CommitFilesWithoutStats(context.Context, Commit) ([]CommitFile, error)

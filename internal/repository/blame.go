@@ -16,8 +16,12 @@ type BlameLine struct {
 	Hash string
 	// CommitPath and CommitLine locate this source in its blamed revision,
 	// which can differ from the working tree after renames and later edits.
-	CommitPath    string
-	CommitLine    int
+	CommitPath string
+	CommitLine int
+	// PreviousHash and PreviousPath locate the file immediately before the
+	// blamed change, including renames. A file's initial addition has neither.
+	PreviousHash  string
+	PreviousPath  string
 	Author        string
 	AuthorEmail   string
 	Date          string
@@ -89,10 +93,46 @@ func (s *gitSession) BlameWorkingTreeFile(ctx context.Context, path string) ([]B
 	return uncommitted, nil
 }
 
+// RevisionBlame is an immutable file snapshot and its attribution at one
+// commit. Content is the exact blob text, including its final-newline state.
+type RevisionBlame struct {
+	Content string
+	Lines   []BlameLine
+}
+
+// BlameFileRevision reads blame and file content at revision rather than from
+// the mutable working tree. The revision and path normally come from a line's
+// PreviousHash and PreviousPath, so repeated navigation follows renames.
+func (s *gitSession) BlameFileRevision(ctx context.Context, revision, path string) (RevisionBlame, error) {
+	if err := ctx.Err(); err != nil {
+		return RevisionBlame{}, err
+	}
+	lines, err := s.blameRevision(ctx, revision, path)
+	if err != nil {
+		return RevisionBlame{}, err
+	}
+	content, stderr, err := s.output(s.cmd.New([]string{"git", "cat-file", "blob", revision + ":" + path}).DontLog())
+	if err != nil {
+		return RevisionBlame{}, fmt.Errorf("read blamed revision %s:%s: %w: %s", revision, path, err, strings.TrimSpace(string(stderr)))
+	}
+	if err := ctx.Err(); err != nil {
+		return RevisionBlame{}, err
+	}
+	return RevisionBlame{Content: string(content), Lines: lines}, nil
+}
+
 func (s *gitSession) blameFile(ctx context.Context, path string, head bool) ([]BlameLine, error) {
-	args := []string{"git", "blame", "--line-porcelain"}
+	revision := ""
 	if head {
-		args = append(args, "HEAD")
+		revision = "HEAD"
+	}
+	return s.blameRevision(ctx, revision, path)
+}
+
+func (s *gitSession) blameRevision(ctx context.Context, revision, path string) ([]BlameLine, error) {
+	args := []string{"git", "blame", "--line-porcelain"}
+	if revision != "" {
+		args = append(args, revision)
 	}
 	args = append(args, "--", path)
 	output, err := s.cmd.New(args).DontLog().RunWithOutput()
@@ -110,12 +150,14 @@ func (s *gitSession) blameFile(ctx context.Context, path string, head bool) ([]B
 }
 
 type blameCommit struct {
-	path        string
-	author      string
-	authorEmail string
-	date        string
-	unix        int64
-	subject     string
+	path         string
+	previousHash string
+	previousPath string
+	author       string
+	authorEmail  string
+	date         string
+	unix         int64
+	subject      string
 }
 
 func parseBlamePorcelain(output string) ([]BlameLine, error) {
@@ -173,6 +215,8 @@ func parseBlamePorcelain(output string) ([]BlameLine, error) {
 				timezone = value
 			case "summary":
 				commit.subject = value
+			case "previous":
+				commit.previousHash, commit.previousPath, _ = strings.Cut(value, " ")
 			case "filename":
 				commit.path = value
 			}
@@ -187,6 +231,7 @@ func parseBlamePorcelain(output string) ([]BlameLine, error) {
 		commits[hash] = commit
 		result = append(result, BlameLine{
 			Hash: hash, CommitPath: commit.path, CommitLine: sourceLine,
+			PreviousHash: commit.previousHash, PreviousPath: commit.previousPath,
 			Author: commit.author, AuthorEmail: commit.authorEmail, Date: commit.date,
 			UnixTimestamp: commit.unix, Subject: commit.subject, Text: content,
 		})

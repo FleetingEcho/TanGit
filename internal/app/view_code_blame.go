@@ -128,7 +128,13 @@ func (a *app) codeBlameDetailsCard(c *ui.Context) {
 			}
 			ui.Text(c, subject).FillWidth().MinWidth(0).Bold().FontSize(theme.FontSize + 2)
 			if hover.description != "" {
-				ui.Text(c, hover.description).FillWidth().MinWidth(0).TextColor(theme.TextMuted)
+				// A long body scrolls inside its own bounded region instead of
+				// pushing the changed files out of the card.
+				descriptionHeight := min(float32(180), max(float32(80), height*0.3))
+				ui.Scroll(c.Key(fmt.Sprintf("blame-card-description-%d", hover.token))).Label(tr("Commit description")).
+					FillWidth().MaxHeight(descriptionHeight).Children(func() {
+					ui.Text(c, hover.description).FillWidth().MinWidth(0).TextColor(theme.TextMuted)
+				})
 			}
 			if a.snapshot.HeadHash == hover.blame.Hash || len(hover.commit.Tags) > 0 {
 				ui.Row(c).Gap(6).Wrap().AlignItems(ui.Center).Children(func() {

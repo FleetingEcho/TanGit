@@ -18,18 +18,22 @@ import (
 
 type codeBlameTestSession struct {
 	fakeSession
-	lines         []repository.BlameLine
-	commits       []repository.Commit
-	blameStarted  chan struct{}
-	blameRelease  chan struct{}
-	searchStarted chan struct{}
-	searchRelease chan struct{}
-	message       *repository.CommitMessage
-	messageError  error
-	files         []repository.CommitFile
-	filesError    error
-	filesStarted  chan struct{}
-	filesRelease  chan struct{}
+	lines           []repository.BlameLine
+	commits         []repository.Commit
+	blameStarted    chan struct{}
+	blameRelease    chan struct{}
+	revisions       map[string]repository.RevisionBlame
+	revisionStarted chan struct{}
+	revisionRelease chan struct{}
+	revisionError   error
+	searchStarted   chan struct{}
+	searchRelease   chan struct{}
+	message         *repository.CommitMessage
+	messageError    error
+	files           []repository.CommitFile
+	filesError      error
+	filesStarted    chan struct{}
+	filesRelease    chan struct{}
 }
 
 func (s *codeBlameTestSession) CommitMessage(ctx context.Context, commit repository.Commit) (repository.CommitMessage, error) {
@@ -67,6 +71,28 @@ func (s *codeBlameTestSession) BlameWorkingTreeFile(_ context.Context, path stri
 		<-s.blameRelease
 	}
 	return append([]repository.BlameLine(nil), s.lines...), nil
+}
+
+func (s *codeBlameTestSession) BlameFileRevision(ctx context.Context, revision, path string) (repository.RevisionBlame, error) {
+	s.calls.record("code-blame-revision:" + revision + ":" + path)
+	if s.revisionStarted != nil {
+		close(s.revisionStarted)
+	}
+	if s.revisionRelease != nil {
+		select {
+		case <-s.revisionRelease:
+		case <-ctx.Done():
+			return repository.RevisionBlame{}, ctx.Err()
+		}
+	}
+	if s.revisionError != nil {
+		return repository.RevisionBlame{}, s.revisionError
+	}
+	if revisionBlame, ok := s.revisions[revision+"\x00"+path]; ok {
+		revisionBlame.Lines = append([]repository.BlameLine(nil), revisionBlame.Lines...)
+		return revisionBlame, nil
+	}
+	return repository.RevisionBlame{}, fmt.Errorf("historical blame fixture missing for %s:%s", revision, path)
 }
 
 func (s *codeBlameTestSession) SearchCommits(_ context.Context, filter repository.CommitFilter) ([]repository.Commit, error) {
@@ -378,6 +404,16 @@ func TestCodeBlameRefreshesAfterSameBranchRepositoryMutation(t *testing.T) {
 	})
 }
 
+func TestCodeBlameGutterUsesAbsoluteAuthorDate(t *testing.T) {
+	date, text := formatCodeBlameGutter(repository.BlameLine{
+		Hash: strings.Repeat("a", 40), Author: "Ada", Subject: "A change",
+		Date: "2020-03-05", UnixTimestamp: 1,
+	})
+	if date != "Mar 5,2020" || text != "Ada • A change" {
+		t.Fatalf("blame gutter = %q %q, want Mar 5,2020 Ada • A change", date, text)
+	}
+}
+
 func TestCodeBlameFullGutterGroupsRangesAndKeepsActiveLine(t *testing.T) {
 	firstHash := strings.Repeat("a", 40)
 	secondHash := strings.Repeat("b", 40)
@@ -385,8 +421,8 @@ func TestCodeBlameFullGutterGroupsRangesAndKeepsActiveLine(t *testing.T) {
 		lines: []repository.BlameLine{
 			{Hash: firstHash, Author: "Ada", Subject: "First change", Date: "2026-01-02", Text: "one"},
 			{Hash: firstHash, Author: "Ada", Subject: "First change", Date: "2026-01-02", Text: "two"},
-			{Hash: secondHash, Author: "Grace", Subject: "Second change", Date: "2026-02-03", Text: "three"},
-			{Hash: secondHash, Author: "Grace", Subject: "Second change", Date: "2026-02-03", Text: "four"},
+			{Hash: secondHash, Author: "Grace", Subject: "Second change", Date: "2026-02-03", Text: "three", PreviousHash: firstHash, PreviousPath: "notes.txt"},
+			{Hash: secondHash, Author: "Grace", Subject: "Second change", Date: "2026-02-03", Text: "four", PreviousHash: firstHash, PreviousPath: "notes.txt"},
 		},
 		commits: []repository.Commit{
 			{Hash: firstHash, ShortHash: "aaaaaaa", Subject: "First change", AuthorName: "Ada"},
@@ -404,15 +440,31 @@ func TestCodeBlameFullGutterGroupsRangesAndKeepsActiveLine(t *testing.T) {
 	if !document.blameFull || len(annotations) != 2 || len(document.blameGutterOffsets) != 2 {
 		t.Fatalf("full gutter annotations = %#v offsets = %#v", annotations, document.blameGutterOffsets)
 	}
-	if annotations[0].Line != 0 || annotations[0].Text != "Ada • First change" || annotations[0].Detail != "2026-01-02" ||
-		annotations[1].Line != 2 || annotations[1].Text != "Grace • Second change" || annotations[1].Detail != "2026-02-03" {
+	if annotations[0].Line != 0 || annotations[0].LastLine != 1 ||
+		annotations[0].Date != "Jan 2,2026" || annotations[0].Text != "Ada • First change" ||
+		annotations[1].Line != 2 || annotations[1].LastLine != 3 ||
+		annotations[1].Date != "Feb 3,2026" || annotations[1].Text != "Grace • Second change" {
 		t.Fatalf("blame ranges were not grouped by commit: %#v", annotations)
+	}
+	if annotations[0].Border == (ui.Color{}) || annotations[1].Border == (ui.Color{}) ||
+		annotations[0].Border != annotations[0].Avatar.Background || annotations[1].Border != annotations[1].Avatar.Background {
+		t.Fatalf("blame range borders do not match their author colors: %#v", annotations)
 	}
 	if annotations[0].Click == nil || annotations[1].Click == nil {
 		t.Fatalf("range starts should own summary click handlers: %#v", annotations)
 	}
+	if annotations[0].Avatar == nil || annotations[0].Avatar.Initial != "A" ||
+		annotations[1].Avatar == nil || annotations[1].Avatar.Initial != "G" ||
+		annotations[0].Avatar.Bitmap == nil || annotations[1].Avatar.Bitmap == nil {
+		t.Fatalf("range authors have no avatar or fallback: %#v", annotations)
+	}
 	if len(document.blameInlays) != 1 {
 		t.Fatal("the full gutter removed the selected-line blame")
+	}
+	document.state.OnLineAnnotationResize(285)
+	if document.blameGutterWidth != 285 || document.state.LineAnnotationWidth != 285 {
+		t.Fatalf("resized width was not retained by the document: %v / %v",
+			document.blameGutterWidth, document.state.LineAnnotationWidth)
 	}
 	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
 		saveScreenshot(t, dir, "code-blame-full-gutter", h.tester)
@@ -441,6 +493,171 @@ func TestCodeBlameFullGutterGroupsRangesAndKeepsActiveLine(t *testing.T) {
 		len(document.blameInlays) != 1 || len(document.state.LineAnnotations()) != 0 {
 		t.Fatalf("hiding the full gutter did not preserve selected-line blame: full=%v enabled=%v loaded=%v inlays=%#v annotations=%#v",
 			document.blameFull, document.blameEnabled, document.blameLoaded, document.blameInlays, document.state.LineAnnotations())
+	}
+}
+
+func TestCodeBlameFullModeOffRestoresFinalCode(t *testing.T) {
+	workingHash, initialHash := strings.Repeat("c", 40), strings.Repeat("a", 40)
+	session := &codeBlameTestSession{
+		lines: []repository.BlameLine{{
+			Hash: workingHash, Author: "Current Author", Subject: "Current change", Text: "final",
+			PreviousHash: initialHash, PreviousPath: "old.txt",
+		}},
+		revisions: map[string]repository.RevisionBlame{
+			initialHash + "\x00old.txt": {
+				Content: "original\n",
+				Lines: []repository.BlameLine{{
+					Hash: initialHash, Author: "Initial Author", Subject: "Initial change", Text: "original",
+				}},
+			},
+		},
+	}
+	h, document := openCodeBlameTextDocument(t, session, "final\n")
+	h.waitFor(t, "working blame before its historical snapshot", func() bool { return document.blameLoaded })
+	h.clickAndSettle(t, "Git Blame")
+	annotations := document.state.LineAnnotations()
+	if len(annotations) != 1 || annotations[0].ActionClick == nil {
+		t.Fatalf("working blame has no historical action: %#v", annotations)
+	}
+	annotations[0].ActionClick()
+	h.waitFor(t, "the historical code", func() bool { return document.blameRevision == initialHash })
+	if document.state.Buffer.String() != "original\n" || !document.state.ReadOnly {
+		t.Fatalf("expected a read-only historical buffer, got %q read-only %v",
+			document.state.Buffer.String(), document.state.ReadOnly)
+	}
+
+	h.clickAndSettle(t, "Git Blame")
+	h.waitFor(t, "final-code blame after closing the full gutter", func() bool {
+		return !document.blameFull && document.blameRevision == "" && document.blameLoaded
+	})
+	if document.state.Buffer.String() != "final\n" || document.state.ReadOnly || len(document.blameNewer) != 0 {
+		t.Fatalf("closing full mode did not restore final code: %q read-only %v history %d",
+			document.state.Buffer.String(), document.state.ReadOnly, len(document.blameNewer))
+	}
+	if len(document.state.LineAnnotations()) != 0 || len(document.blameInlays) != 1 ||
+		!strings.Contains(document.blameInlays[0].Text, "Current change") {
+		t.Fatalf("final code does not retain selected-line blame: %q inlays %#v annotations %#v",
+			document.state.Buffer.String(), document.blameInlays, document.state.LineAnnotations())
+	}
+}
+
+func TestCodeBlameNavigatesPreviousRevisionsAndBack(t *testing.T) {
+	workingHash := strings.Repeat("c", 40)
+	middleHash := strings.Repeat("b", 40)
+	initialHash := strings.Repeat("a", 40)
+	session := &codeBlameTestSession{
+		lines: []repository.BlameLine{
+			{Hash: workingHash, Author: "Current Author", Subject: "Current change", Text: "current", PreviousHash: middleHash, PreviousPath: "middle.txt"},
+			{Hash: workingHash, Author: "Current Author", Subject: "Current change", Text: "second", PreviousHash: middleHash, PreviousPath: "middle.txt"},
+		},
+		revisions: map[string]repository.RevisionBlame{
+			middleHash + "\x00middle.txt": {
+				Content: "middle\n",
+				Lines:   []repository.BlameLine{{Hash: middleHash, Author: "Middle Author", Subject: "Middle change", Text: "middle", PreviousHash: initialHash, PreviousPath: "old.txt"}},
+			},
+			initialHash + "\x00old.txt": {
+				Content: "original\n",
+				Lines:   []repository.BlameLine{{Hash: initialHash, Author: "Initial Author", Subject: "Initial change", Text: "original"}},
+			},
+		},
+	}
+	h, document := openCodeBlameTextDocument(t, session, "current\nsecond\n")
+	h.waitFor(t, "working-tree blame before history navigation", func() bool { return document.blameLoaded })
+	h.clickAndSettle(t, "Git Blame")
+	annotations := document.state.LineAnnotations()
+	if len(annotations) != 1 || annotations[0].ActionClick == nil {
+		t.Fatalf("working blame has no previous-version action: %#v", annotations)
+	}
+
+	annotations[0].ActionClick()
+	h.waitFor(t, "the middle revision", func() bool { return document.blameRevision == middleHash })
+	if got := document.state.Buffer.String(); got != "middle\n" || !document.state.ReadOnly || currentCodeBlamePath(document) != "middle.txt" {
+		t.Fatalf("middle snapshot = %q read-only %v path %q", got, document.state.ReadOnly, currentCodeBlamePath(document))
+	}
+	if len(document.blameInlays) != 1 || !strings.Contains(document.blameInlays[0].Text, "Middle change") {
+		t.Fatalf("middle selected-line blame = %#v", document.blameInlays)
+	}
+	annotations = document.state.LineAnnotations()
+	if len(annotations) != 1 || annotations[0].ActionClick == nil || !session.calls.has("code-blame-revision:"+middleHash+":middle.txt") {
+		t.Fatalf("middle revision cannot continue backwards: %#v calls %v", annotations, session.calls.all())
+	}
+
+	annotations[0].ActionClick()
+	h.waitFor(t, "the initial file addition", func() bool { return document.blameRevision == initialHash })
+	annotations = document.state.LineAnnotations()
+	if got := document.state.Buffer.String(); got != "original\n" || currentCodeBlamePath(document) != "old.txt" {
+		t.Fatalf("initial snapshot = %q path %q", got, currentCodeBlamePath(document))
+	}
+	if !session.calls.has("code-blame-revision:" + initialHash + ":old.txt") {
+		t.Fatalf("initial revision did not follow the rename: %v", session.calls.all())
+	}
+	if len(annotations) != 1 || annotations[0].ActionClick != nil {
+		t.Fatalf("initial file addition still offers an older version: %#v", annotations)
+	}
+	if dir := os.Getenv("MYGO_SHOTS"); dir != "" {
+		h.tester.Frame()
+		saveScreenshot(t, dir, "code-blame-history-initial", h.tester)
+	}
+
+	h.clickAndSettle(t, "Newer blame")
+	if document.blameRevision != middleHash || document.state.Buffer.String() != "middle\n" {
+		t.Fatalf("newer blame did not restore the middle snapshot: revision %q text %q", document.blameRevision, document.state.Buffer.String())
+	}
+	h.clickAndSettle(t, "Newer blame")
+	if document.blameRevision != "" || document.state.Buffer.String() != "current\nsecond\n" || document.state.ReadOnly || len(document.blameNewer) != 0 {
+		t.Fatalf("return to working tree = revision %q text %q read-only %v stack %d",
+			document.blameRevision, document.state.Buffer.String(), document.state.ReadOnly, len(document.blameNewer))
+	}
+	if len(document.blameInlays) != 1 || !strings.Contains(document.blameInlays[0].Text, "Current change") {
+		t.Fatalf("working selected-line blame was not restored: %#v", document.blameInlays)
+	}
+}
+
+func TestCodeBlameRejectsLatePreviousRevisionAfterCancel(t *testing.T) {
+	workingHash, initialHash := strings.Repeat("c", 40), strings.Repeat("a", 40)
+	started, release := make(chan struct{}), make(chan struct{})
+	session := &codeBlameTestSession{
+		lines: []repository.BlameLine{{Hash: workingHash, Author: "Current", Subject: "Current change", Text: "current", PreviousHash: initialHash, PreviousPath: "notes.txt"}},
+		revisions: map[string]repository.RevisionBlame{
+			initialHash + "\x00notes.txt": {
+				Content: "original\n",
+				Lines:   []repository.BlameLine{{Hash: initialHash, Author: "Initial", Text: "original"}},
+			},
+		},
+		revisionStarted: started,
+		revisionRelease: release,
+	}
+	h, document := openCodeBlameTextDocument(t, session, "current\n")
+	h.waitFor(t, "working blame before cancellation", func() bool { return document.blameLoaded })
+	h.clickAndSettle(t, "Git Blame")
+	document.state.LineAnnotations()[0].ActionClick()
+	<-started
+	h.app.openNewerCodeBlame(document)
+	close(release)
+	h.settle(t)
+	if document.blameRevision != "" || document.state.Buffer.String() != "current\n" || document.state.ReadOnly ||
+		document.blameNavigationLoading || len(document.blameNewer) != 0 {
+		t.Fatalf("late revision replaced the canceled working view: %#v", document)
+	}
+}
+
+func TestCodeBlamePreviousRevisionFailureKeepsCurrentSnapshot(t *testing.T) {
+	workingHash, initialHash := strings.Repeat("c", 40), strings.Repeat("a", 40)
+	session := &codeBlameTestSession{
+		lines:         []repository.BlameLine{{Hash: workingHash, Author: "Current", Subject: "Current change", Text: "current", PreviousHash: initialHash, PreviousPath: "old.txt"}},
+		revisionError: errors.New("history unavailable"),
+	}
+	h, document := openCodeBlameTextDocument(t, session, "current\n")
+	h.waitFor(t, "working blame before failed navigation", func() bool { return document.blameLoaded })
+	h.clickAndSettle(t, "Git Blame")
+	document.state.LineAnnotations()[0].ActionClick()
+	h.waitFor(t, "failed previous version", func() bool { return document.blameNavigationError != "" })
+	if document.blameRevision != "" || document.state.Buffer.String() != "current\n" || document.state.ReadOnly ||
+		document.blameNavigationLoading || len(document.blameNewer) != 0 {
+		t.Fatalf("failed navigation discarded the current snapshot: revision %q text %q", document.blameRevision, document.state.Buffer.String())
+	}
+	if document.state.LineAnnotations()[0].ActionClick == nil {
+		t.Fatal("failed navigation did not restore the previous-version action")
 	}
 }
 
