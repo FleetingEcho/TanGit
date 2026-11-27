@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/FleetingEcho/lazygitGo/internal/agentwork"
+	"github.com/egoist/mygo/ui"
 )
 
 // This file contains the second Command Catalog migration batch. It adapts
@@ -252,4 +253,141 @@ func workflowActionSpecs(ctx commandContext) []commandSpec {
 	specs = append(specs, conflictActionControlsForCatalog(ctx.App)...)
 	specs = append(specs, agentActionControlsForCatalog(ctx.App)...)
 	return specs
+}
+
+// workspaceExtraSpecs puts actions that used to live only in toolbars and
+// menus into the palette: patches, bulk change actions, the Overview's
+// controls and the tab menu. Each uses the very method the button calls.
+func workspaceExtraSpecs() []commandSpec {
+	changes := func(ctx commandContext, need func(*app) string) commandState {
+		state := repositoryState(ctx)
+		if state.Enabled && ctx.App != nil && need != nil {
+			if reason := need(ctx.App); reason != "" {
+				state.Enabled = false
+				state.DisabledReason = reason
+			}
+		}
+		return state
+	}
+	overview := func(need func(*overviewState) string) func(commandContext) commandState {
+		return func(ctx commandContext) commandState {
+			if ctx.App == nil || ctx.App.overview == nil || ctx.App.state == stateReady {
+				return commandState{Visible: false}
+			}
+			state := commandState{Visible: true, Enabled: true, ContextScore: 10000}
+			if ctx.App.overview.cur() == nil {
+				state.Enabled, state.DisabledReason = false, "No Overview is open"
+			} else if reason := need(ctx.App.overview); reason != "" {
+				state.Enabled, state.DisabledReason = false, reason
+			}
+			return state
+		}
+	}
+	tabState := func(need func(*shell, *tab) string) func(commandContext) commandState {
+		return func(ctx commandContext) commandState {
+			state := shellState(ctx)
+			if !state.Enabled {
+				return state
+			}
+			t := ctx.Shell.activeTab()
+			if t == nil {
+				state.Enabled, state.DisabledReason = false, "No tab is open"
+			} else if reason := need(ctx.Shell, t); reason != "" {
+				state.Enabled, state.DisabledReason = false, reason
+			}
+			return state
+		}
+	}
+	noChanges := func(a *app) string {
+		if len(a.snapshot.Files) == 0 {
+			return "There are no changes"
+		}
+		return ""
+	}
+	return []commandSpec{
+		{ID: "changes/apply-patch", Label: "Apply patch…", Detail: "Apply a .patch or .diff file (from git diff) to the working tree as uncommitted changes", Keywords: []string{"patch", "diff", "apply", "import", "git apply"}, Group: commandGroupChanges, Chord: cmdShortcutChord() + "+I", Glyph: patchImportIcon, Resolve: func(ctx commandContext) commandState { return changes(ctx, nil) }, Run: func(ctx commandContext) { ctx.App.beginPatchImport() }},
+		{ID: "changes/apply-mailbox-patch", Label: "Apply mailbox patch…", Detail: "Apply a git format-patch / .mbox series as commits, keeping the original authors and messages", Keywords: []string{"mailbox", "mbox", "am", "format-patch", "patch", "apply"}, Group: commandGroupChanges, Glyph: patchImportIcon, Resolve: func(ctx commandContext) commandState { return changes(ctx, nil) }, Run: func(ctx commandContext) { ctx.App.beginMailboxPatchImport() }},
+		{ID: "changes/stash-staged", Label: "Stash staged changes", Detail: "Stash the staged files, leaving the rest in the tree", Keywords: []string{"stash", "staged", "shelve"}, Group: commandGroupStash, Glyph: stashIcon, Resolve: func(ctx commandContext) commandState {
+			return changes(ctx, func(a *app) string {
+				if !hasStagedFiles(a.snapshot.Files) {
+					return "No staged changes to stash"
+				}
+				return ""
+			})
+		}, Run: func(ctx commandContext) { ctx.App.stashStagedChanges() }},
+		{ID: "changes/discard-all", Label: "Discard all changes", Detail: "Throw away every change in the working tree, after a confirmation", Keywords: []string{"discard", "reset", "revert", "clean", "undo", "throw away"}, Group: commandGroupChanges, Glyph: undoIcon, Resolve: func(ctx commandContext) commandState { return changes(ctx, noChanges) }, Run: func(ctx commandContext) { ctx.App.confirmDiscardAllChanges() }},
+		{ID: "overview/refresh", Label: "Refresh overview", Detail: "Read the repositories again (does not fetch)", Keywords: []string{"overview", "reload", "refresh", "update"}, Group: commandGroupApplication, Glyph: refreshIcon, Resolve: overview(func(o *overviewState) string {
+			if len(o.followed()) == 0 {
+				return "This Overview follows no repositories"
+			}
+			return ""
+		}), Run: func(ctx commandContext) { ctx.App.reloadOverview() }},
+		{ID: "overview/edit", Label: "Edit overview", Detail: "Rename this Overview or change its repositories", Keywords: []string{"overview", "rename", "repositories", "choose", "follow"}, Group: commandGroupApplication, Glyph: folderIcon, Resolve: overview(func(*overviewState) string { return "" }), Run: func(ctx commandContext) { ctx.App.openOverviewSetup() }},
+		{ID: "overview/mark-read", Label: "Mark all as read", Detail: "Clear the New badges on the Overview's commits", Keywords: []string{"overview", "read", "new", "badge", "seen"}, Group: commandGroupApplication, Glyph: markReviewedIcon, Resolve: overview(func(o *overviewState) string {
+			if o.newCommitCount() == 0 {
+				return "No new commits"
+			}
+			return ""
+		}), Run: func(ctx commandContext) { ctx.App.markOverviewRead(ctx.App.overview) }},
+		{ID: "overview/export", Label: "Export commits", Detail: "Save the loaded commits as a Markdown or CSV file", Keywords: []string{"overview", "export", "save", "markdown", "csv", "report"}, Group: commandGroupApplication, Glyph: overviewExportIcon, Resolve: overview(func(o *overviewState) string {
+			if len(o.visibleCommits()) == 0 {
+				return "No commits are loaded"
+			}
+			return ""
+		}), Run: func(ctx commandContext) { ctx.App.exportOverview(ctx.App.overview) }},
+		{ID: "overview/period", Label: "Custom period", Detail: "Choose the dates the Overview reads", Keywords: []string{"overview", "period", "range", "dates", "time"}, Group: commandGroupApplication, Glyph: historyIcon, Resolve: overview(func(*overviewState) string { return "" }), Run: func(ctx commandContext) { ctx.App.openOverviewPeriod(ctx.App.overview) }},
+		{ID: "overview/period-reset", Label: "Reset period", Detail: "Go back to the Overview's time range instead of a custom period", Keywords: []string{"overview", "period", "range", "reset", "clear"}, Group: commandGroupApplication, Glyph: closeIcon, Resolve: overview(func(o *overviewState) string {
+			if o.period == nil {
+				return "No custom period is set"
+			}
+			return ""
+		}), Run: func(ctx commandContext) { ctx.App.selectOverviewPreset(ctx.App.overview, ctx.App.overview.rangeIdx) }},
+		{ID: "tabs/rename", Label: "Rename tab", Keywords: []string{"tab", "title", "name"}, Group: commandGroupApplication, Glyph: editIcon, Resolve: tabState(func(_ *shell, t *tab) string {
+			if !t.repository() && !t.isOverview() {
+				return "This tab cannot be renamed"
+			}
+			return ""
+		}), Run: func(ctx commandContext) {
+			if t := ctx.Shell.activeTab(); t != nil {
+				ctx.Shell.request(func() { ctx.Shell.renameTab(t) })
+			}
+		}},
+		{ID: "tabs/color", Label: "Tab color…", Keywords: []string{"tab", "color", "accent", "paint"}, Group: commandGroupApplication, Glyph: themeIcon, Resolve: tabState(func(_ *shell, t *tab) string {
+			if !t.repository() && !t.isOverview() {
+				return "This tab has no color"
+			}
+			return ""
+		}), Run: func(ctx commandContext) {
+			if t := ctx.Shell.activeTab(); t != nil {
+				s := ctx.Shell
+				s.request(func() { s.tabColorTab = t; s.tabColorOpen = true; s.tabColorCustom = ui.Color{} })
+			}
+		}},
+		{ID: "tabs/close-others", Label: "Close other tabs", Keywords: []string{"tab", "close", "others"}, Group: commandGroupApplication, Glyph: closeIcon, Resolve: tabState(func(s *shell, t *tab) string {
+			if !s.hasOtherClosable(t) {
+				return "There are no other tabs to close"
+			}
+			return ""
+		}), Run: func(ctx commandContext) {
+			if t := ctx.Shell.activeTab(); t != nil {
+				ctx.Shell.request(func() { ctx.Shell.closeOthers(t) })
+			}
+		}},
+		{ID: "tabs/close-right", Label: "Close tabs to the right", Keywords: []string{"tab", "close", "right"}, Group: commandGroupApplication, Glyph: closeIcon, Resolve: tabState(func(s *shell, t *tab) string {
+			if !s.hasClosableRight(t) {
+				return "There are no tabs to the right"
+			}
+			return ""
+		}), Run: func(ctx commandContext) {
+			if t := ctx.Shell.activeTab(); t != nil {
+				ctx.Shell.request(func() { ctx.Shell.closeRight(t) })
+			}
+		}},
+		{ID: "tabs/close-all", Label: "Close all tabs", Keywords: []string{"tab", "close", "all"}, Group: commandGroupApplication, Glyph: closeIcon, Resolve: tabState(func(s *shell, _ *tab) string {
+			if len(s.tabs) < 2 {
+				return "Only one tab is open"
+			}
+			return ""
+		}), Run: func(ctx commandContext) { ctx.Shell.request(ctx.Shell.closeAll) }},
+	}
 }

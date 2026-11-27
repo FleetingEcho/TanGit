@@ -320,25 +320,59 @@ func (s *shell) paletteHistoryView(c *ui.Context) {
 				h.cursor = 0
 			})
 	})
-	ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
-		selectButton := compactIconButton(ui.ButtonBase(c)).Label(tr("Select history entries")).Tooltip(tr("Select history entries")).
-			Checked(h.multi).Disabled(len(h.Entries) == 0 || h.clear).Radius(theme.Radius)
+	toolbar := ui.Row(c).AlignItems(ui.Center).Gap(6)
+	if h.multi {
+		// The rows' checkboxes sit inside their buttons' padding; start this
+		// one at the same edge so the column of boxes lines up.
+		toolbar.Padding(0, 0, 0, 10)
+	}
+	toolbar.Children(func() {
 		if h.multi {
-			selectButton.Background(theme.Accent.Alpha(0.2))
-		} else {
-			selectButton.Background(theme.Surface)
-		}
-		selectButton.OnClick(func() {
-			h.multi = !h.multi
-			h.selected = nil
-			h.focusList = true
-		}).Children(func() { ui.Icon(c, selectCommitsIcon).FontSize(14) })
-		ui.Text(c, tr("Newest first")).TextColor(theme.TextMuted)
-		ui.Badge(c, trf("%d items", len(h.Entries))).Tooltip(tr("Entries saved in Recent"))
-		ui.Spacer(c).Grow(1)
-		if h.multi {
+			// In selection mode the sort and count give way to the one control
+			// that matters first: choose every entry the search leaves showing.
+			shown := h.visibleEntries()
+			all := len(shown) > 0
+			for _, entry := range shown {
+				if !h.selected[entry.ID] {
+					all = false
+					break
+				}
+			}
+			// The same checkbox the rows wear, so one box above the list
+			// chooses every row the search leaves showing.
+			checked := all
+			label, tooltip := "Select all", "Select every entry shown"
+			if all {
+				label, tooltip = "Deselect all", "Clear the selection of the entries shown"
+			}
+			ui.Checkbox(c, &checked, "").Label(tr(label)).Tooltip(tr(tooltip)).
+				Disabled(len(shown) == 0 || h.loadFailed).OnClick(func() {
+				if all {
+					for _, entry := range shown {
+						delete(h.selected, entry.ID)
+					}
+					return
+				}
+				if h.selected == nil {
+					h.selected = make(map[uint64]bool, len(shown))
+				}
+				for _, entry := range shown {
+					h.selected[entry.ID] = true
+				}
+			})
 			ui.Text(c, trf("%d selected", len(h.selected))).TextColor(theme.TextMuted)
+		} else {
+			selectButton := compactIconButton(ui.ButtonBase(c)).Label(tr("Select history entries")).Tooltip(tr("Select history entries")).
+				Disabled(len(h.Entries) == 0 || h.clear).Radius(theme.Radius).Background(theme.Surface)
+			selectButton.OnClick(func() {
+				h.multi = true
+				h.selected = nil
+				h.focusList = true
+			}).Children(func() { ui.Icon(c, selectCommitsIcon).FontSize(14) })
+			ui.Text(c, tr("Newest first")).TextColor(theme.TextMuted)
+			ui.Badge(c, trf("%d items", len(h.Entries))).Tooltip(tr("Entries saved in Recent"))
 		}
+		ui.Spacer(c).Grow(1)
 		if !h.multi {
 			s.paletteHistoryLimitSelect(c)
 		}
@@ -613,4 +647,18 @@ func (s *shell) runPaletteHistoryCommand(a *app, entry paletteHistoryEntry) {
 		return
 	}
 	s.togglePaletteHistory(false)
+}
+
+// visibleEntries are the history entries the "Find in history" box leaves
+// showing, newest first.
+func (h *paletteHistoryState) visibleEntries() []paletteHistoryEntry {
+	needle := strings.ToLower(strings.TrimSpace(h.filter))
+	shown := make([]paletteHistoryEntry, 0, len(h.Entries))
+	for i := len(h.Entries) - 1; i >= 0; i-- {
+		entry := h.Entries[i]
+		if needle == "" || strings.Contains(strings.ToLower(paletteHistoryText(entry)+" "+entry.Text+" "+entry.Workspace), needle) {
+			shown = append(shown, entry)
+		}
+	}
+	return shown
 }

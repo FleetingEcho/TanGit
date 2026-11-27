@@ -286,6 +286,9 @@ func (a *app) requestCommitDetails(commit repository.Commit) {
 			a.commitFiles = files
 			if len(files) == 0 {
 				a.historyDiffTarget = nil
+				// Nothing changed against the first parent (a merge whose result
+				// equals it): the previous commit's diff must not stay behind.
+				a.clearCommitDiff()
 				a.selectedCommitFileRow = -1
 				a.selectedCommitFile = -1
 				return a.commitDetailsVisible()
@@ -677,8 +680,14 @@ func (a *app) selectCommitFileRow(row int) {
 	if a.selectedCommitFile >= 0 {
 		return
 	}
-	// A directory has no diff. Cancel and version the old request so even a
-	// non-cooperative reader cannot repaint or populate this row later.
+	// A directory has no diff.
+	a.clearCommitDiff()
+}
+
+// clearCommitDiff cancels and versions the old diff request, so even a
+// non-cooperative reader cannot repaint or populate the pane later, and drops
+// the diff on screen. A commit with no files, or a folder row, shows none.
+func (a *app) clearCommitDiff() {
 	if a.cancelCommitDiff != nil {
 		a.cancelCommitDiff()
 		a.cancelCommitDiff = nil
@@ -1008,6 +1017,8 @@ func (a *app) commitDetailBodyWithOptions(c *ui.Context, commit *repository.Comm
 					ui.Text(c, *state.diffError).TextColor(theme.Danger)
 				case *state.diffState != nil:
 					a.keyboardDiffViewer(c, *state.diffState)
+				case len(files) == 0 && !*state.filesLoading && *state.filesError == "":
+					emptyCommitNotice(c, *commit)
 				default:
 					noTextualDiffOrMedia(c, *state.diffMedia, *state.diffPath)
 				}
@@ -1020,4 +1031,27 @@ func (a *app) commitDetailBodyWithOptions(c *ui.Context, commit *repository.Comm
 	}
 	a.commitMessageBody(c, *commit, state)
 	filesAndDiff()
+}
+
+// emptyCommitNotice says why a commit lists no files. A merge is compared with
+// its first parent, so one whose result equals it kept nothing from the other
+// parents; that is a finding about the merge, not a failed read.
+func emptyCommitNotice(c *ui.Context, commit repository.Commit) {
+	theme := c.Theme()
+	title, detail := tr("This commit changes no files"), ""
+	if len(commit.Parents) > 1 {
+		title = tr("No changes against the first parent")
+		detail = trf("This merge produced the same files as its first parent (%s), so nothing from the other parent changed the result. Its other parents differ from it, but those changes were not kept.",
+			shortParentHash(commit.Parents[0]))
+	}
+	ui.Column(c).Grow(1).Center().Gap(6).Padding(16).Children(func() {
+		ui.Text(c, title).Bold().TextAlign(ui.Center)
+		if detail != "" {
+			ui.Text(c, detail).TextColor(theme.TextMuted).TextAlign(ui.Center).FontSize(theme.FontSize - 1)
+		}
+	})
+}
+
+func shortParentHash(hash string) string {
+	return hash[:min(len(hash), 7)]
 }

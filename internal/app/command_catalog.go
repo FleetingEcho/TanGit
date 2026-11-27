@@ -648,7 +648,14 @@ func buildStaticCommandSpecs() []commandSpec {
 			},
 			Run: func(ctx commandContext) { ctx.App.openHistoryChanges(nil) }},
 		{ID: "history/search-code-changes", Label: historyChangesLabel, Keywords: []string{"git log", "pickaxe", "diff", "history", "code"}, Group: commandGroupHistory, Glyph: searchIcon, Resolve: historyChangesCommandState, Run: func(ctx commandContext) { ctx.App.openHistoryChanges(nil) }},
-		{ID: commandOpenPRChecks, Label: "Open Pull Request Checks", Keywords: []string{"checks", "ci", "pull request", "github"}, Group: commandGroupBranches, Icon: commandIconActivity, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openPullRequestChecks() }},
+		{ID: commandOpenPRChecks, Label: "Open Pull Request Checks", Keywords: []string{"checks", "ci", "pull request", "github", "view", "merge request", "gitlab"}, Group: commandGroupBranches, Icon: commandIconActivity, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openPullRequestChecks() }},
+		{ID: "branches/pr-create", Label: "Create pull request…", Detail: "Open a pull or merge request for the current branch (gh for GitHub, glab for GitLab)", Keywords: []string{"pull request", "merge request", "pr", "mr", "github", "gitlab", "new"}, Group: commandGroupBranches, Icon: commandIconDefault, Glyph: externalLinkIcon, Resolve: pullRequestCommandState, Run: func(ctx commandContext) { ctx.App.openCreatePullRequestForm() }},
+		{ID: "branches/pr-open", Label: "Open pull request in browser", Detail: "Show the current branch's pull or merge request on the web", Keywords: []string{"pull request", "merge request", "pr", "mr", "github", "gitlab", "browser", "web"}, Group: commandGroupBranches, Icon: commandIconDefault, Glyph: externalLinkIcon, Resolve: pullRequestCommandState, Run: func(ctx commandContext) { ctx.App.confirmOpenPullRequest() }},
+		{ID: "remotes/web-address", Label: "Set remote web address", Detail: "Tell pull requests and the browser where this repository lives on the web", Keywords: []string{"remote", "web", "url", "address", "origin", "browser", "pull request"}, Group: commandGroupRemotes, Icon: commandIconDefault, Glyph: externalLinkIcon, Resolve: remoteWebAddressCommandState, Run: func(ctx commandContext) {
+			if remote, ok := ctx.App.webRemote(); ok {
+				ctx.App.openEditRemoteWebURL(remote)
+			}
+		}},
 	}
 	specs = append(specs, commandSpec{ID: "activity/open", Label: "Open Activity Center", Detail: "Commands, Safety Journal, Agent tasks, transfers and notices across open repositories", Keywords: []string{"activity", "history", "notifications", "log", "recent", "journal"}, Group: commandGroupApplication, Chord: cmdShortcutChord() + "+Shift+A", Glyph: historyIcon, Resolve: shellState, Run: func(ctx commandContext) { ctx.Shell.openActivityCenter() }})
 	specs = append(specs, commandSpec{ID: "activity/contributors", Label: "Show contributors", Detail: "Who contributed to this repository, how much, and what they committed", Keywords: []string{"contributors", "authors", "people", "who", "committers", "team"}, Group: commandGroupApplication, Glyph: personIcon, Resolve: func(ctx commandContext) commandState {
@@ -778,6 +785,7 @@ func buildStaticCommandSpecs() []commandSpec {
 			},
 		})
 	}
+	specs = append(specs, workspaceExtraSpecs()...)
 	return specs
 }
 
@@ -813,6 +821,42 @@ func repositoryStateAllowBusy(ctx commandContext) commandState {
 	}
 	if state.Enabled {
 		state.ContextScore = 15
+	}
+	return state
+}
+
+// pullRequestCommandState serves the header's pull-request menu from any
+// section. In Branches the same two actions already appear with their keys, so
+// the plain copies stay out of the way there.
+func pullRequestCommandState(ctx commandContext) commandState {
+	state := repositoryState(ctx)
+	if ctx.App == nil || ctx.App.state != stateReady {
+		return state
+	}
+	if currentKeyboardGroup(ctx.App) == "Branches" {
+		state.Visible = false
+		return state
+	}
+	if state.Enabled && len(ctx.App.snapshot.Remotes) == 0 {
+		state.Enabled = false
+		state.DisabledReason = "This repository has no remote"
+	} else if state.Enabled && ctx.App.snapshot.Branch == "" {
+		state.Enabled = false
+		state.DisabledReason = "No branch is checked out"
+	}
+	return state
+}
+
+func remoteWebAddressCommandState(ctx commandContext) commandState {
+	state := repositoryStateAllowBusy(ctx)
+	if ctx.App == nil || ctx.App.state != stateReady {
+		return state
+	}
+	if state.Enabled {
+		if _, ok := ctx.App.webRemote(); !ok {
+			state.Enabled = false
+			state.DisabledReason = "This repository has no remote"
+		}
 	}
 	return state
 }
