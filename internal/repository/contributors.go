@@ -64,6 +64,9 @@ func (s *gitSession) ContributorSummarySince(ctx context.Context, branch string,
 	if strings.HasPrefix(branch, "-") {
 		return ContributorSummary{}, fmt.Errorf("read contributors: invalid branch %q", branch)
 	}
+	if !s.historyReadable(branch) {
+		return ContributorSummary{}, nil
+	}
 	args := []string{"git", "log", fmt.Sprintf("--max-count=%d", contributorCommitLimit), "--format=%aN%x1f%aE%x1f%at"}
 	if since > 0 {
 		args = append(args, fmt.Sprintf("--since=%d", since))

@@ -29,7 +29,7 @@ var continuePreflightTranslations = map[string][]string{
 	"Required":      {"必需", "必要", "必須", "Obligatoria", "Obligatoire"},
 	"Optional":      {"可选", "可選", "任意", "Opcional", "Facultative"},
 	"Source review": {"源状态审查", "來源狀態審查", "ソースレビュー", "Revisión de la fuente", "Examen de la source"},
-	"Capturing the operation, canonical index, and working-tree content…": {"正在捕获操作、规范化索引和工作树内容…", "正在擷取操作、規範化索引與工作樹內容…", "操作、正規化されたインデックス、作業ツリーの内容を取得中…", "Capturando la operación, el índice canónico y el contenido del árbol de trabajo…", "Capture de l’opération, de l’index canonique et du contenu de l’arbre de travail…"},
+	"Capturing the operation, canonical index, and working-tree content…": {"正在捕获操作、规范化索引和工作树内容", "正在擷取操作、規範化索引與工作樹內容", "操作、正規化されたインデックス、作業ツリーの内容を取得中", "Capturando la operación, el índice canónico y el contenido del árbol de trabajo", "Capture de l’opération, de l’index canonique et du contenu de l’arbre de travail"},
 	"Operation changed during checks":                                     {"操作在检查期间发生变化", "操作在檢查期間發生變更", "チェック中に操作が変化しました", "La operación cambió durante las comprobaciones", "L’opération a changé pendant les vérifications"},
 	"Changes made by checks":                                              {"检查产生的更改", "檢查產生的變更", "チェックによる変更", "Cambios realizados por las comprobaciones", "Modifications faites par les vérifications"},
 	"No changes":                                                          {"没有更改", "沒有變更", "変更なし", "Sin cambios", "Aucune modification"},

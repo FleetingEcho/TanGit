@@ -307,8 +307,8 @@ func workspaceExtraSpecs() []commandSpec {
 		return ""
 	}
 	return []commandSpec{
-		{ID: "changes/apply-patch", Label: "Apply patch…", Detail: "Apply a .patch or .diff file (from git diff) to the working tree as uncommitted changes", Keywords: []string{"patch", "diff", "apply", "import", "git apply"}, Group: commandGroupChanges, Chord: cmdShortcutChord() + "+I", Glyph: patchImportIcon, Resolve: func(ctx commandContext) commandState { return changes(ctx, nil) }, Run: func(ctx commandContext) { ctx.App.beginPatchImport() }},
-		{ID: "changes/apply-mailbox-patch", Label: "Apply mailbox patch…", Detail: "Apply a git format-patch / .mbox series as commits, keeping the original authors and messages", Keywords: []string{"mailbox", "mbox", "am", "format-patch", "patch", "apply"}, Group: commandGroupChanges, Glyph: patchImportIcon, Resolve: func(ctx commandContext) commandState { return changes(ctx, nil) }, Run: func(ctx commandContext) { ctx.App.beginMailboxPatchImport() }},
+		{ID: "changes/apply-patch", Label: "Apply patch", Detail: "Apply a .patch or .diff file (from git diff) to the working tree as uncommitted changes", Keywords: []string{"patch", "diff", "apply", "import", "git apply"}, Group: commandGroupChanges, Chord: cmdShortcutChord() + "+I", Glyph: patchImportIcon, Resolve: func(ctx commandContext) commandState { return changes(ctx, nil) }, Run: func(ctx commandContext) { ctx.App.beginPatchImport() }},
+		{ID: "changes/apply-mailbox-patch", Label: "Apply mailbox patch", Detail: "Apply a git format-patch / .mbox series as commits, keeping the original authors and messages", Keywords: []string{"mailbox", "mbox", "am", "format-patch", "patch", "apply"}, Group: commandGroupChanges, Glyph: patchImportIcon, Resolve: func(ctx commandContext) commandState { return changes(ctx, nil) }, Run: func(ctx commandContext) { ctx.App.beginMailboxPatchImport() }},
 		{ID: "changes/stash-staged", Label: "Stash staged changes", Detail: "Stash the staged files, leaving the rest in the tree", Keywords: []string{"stash", "staged", "shelve"}, Group: commandGroupStash, Glyph: stashIcon, Resolve: func(ctx commandContext) commandState {
 			return changes(ctx, func(a *app) string {
 				if !hasStagedFiles(a.snapshot.Files) {
@@ -354,7 +354,7 @@ func workspaceExtraSpecs() []commandSpec {
 				ctx.Shell.request(func() { ctx.Shell.renameTab(t) })
 			}
 		}},
-		{ID: "tabs/color", Label: "Tab color…", Keywords: []string{"tab", "color", "accent", "paint"}, Group: commandGroupApplication, Glyph: themeIcon, Resolve: tabState(func(_ *shell, t *tab) string {
+		{ID: "tabs/color", Label: "Tab color", Keywords: []string{"tab", "color", "accent", "paint"}, Group: commandGroupApplication, Glyph: themeIcon, Resolve: tabState(func(_ *shell, t *tab) string {
 			if !t.repository() && !t.isOverview() {
 				return "This tab has no color"
 			}

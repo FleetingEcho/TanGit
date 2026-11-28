@@ -38,6 +38,9 @@ func (s *gitSession) CodeVolume(ctx context.Context, branch string, since int64,
 	if strings.HasPrefix(branch, "-") {
 		return CodeVolume{}, fmt.Errorf("read code changes: invalid branch %q", branch)
 	}
+	if !s.historyReadable(branch) {
+		return CodeVolume{}, nil
+	}
 	if maxCommits <= 0 {
 		maxCommits = 20000
 	}

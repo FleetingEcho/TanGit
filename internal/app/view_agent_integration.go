@@ -134,12 +134,12 @@ func (a *app) agentIntegrationModal(c *ui.Context) {
 			ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
 				if !state.completed {
 					selected := a.agentIntegrationSelectionCount()
-					if ui.PrimaryButton(c, tr("Review dry-run confirmation…")).Disabled(state.running || state.cleaning || selected == 0).Clicked() {
+					if ui.PrimaryButton(c, tr("Review dry-run confirmation")).Disabled(state.running || state.cleaning || selected == 0).Clicked() {
 						a.beginAgentIntegrationDryRun()
 					}
 				}
 				if state.worktreeCreated {
-					if ui.Button(c, tr("Force remove isolated worktree…")).Disabled(state.running || state.cleaning).Clicked() {
+					if ui.Button(c, tr("Force remove isolated worktree")).Disabled(state.running || state.cleaning).Clicked() {
 						a.confirmAgentIntegrationCleanup()
 					}
 				}

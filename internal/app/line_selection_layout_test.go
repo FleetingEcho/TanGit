@@ -58,7 +58,7 @@ func TestLineSelectionToolbarFitsNarrowPanes(t *testing.T) {
 					t.Fatal("Cancel should be small and right aligned")
 				}
 				if !staged {
-					stash := find("Stash selected lines…")
+					stash := find("Stash selected lines")
 					if stash.H > 22 || stash.W > 120 {
 						t.Fatalf("the stash action is too large: %+v", stash)
 					}

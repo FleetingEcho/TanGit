@@ -94,7 +94,7 @@ func TestPatchImportPreviewsThenAppliesTheSameFile(t *testing.T) {
 	dialog := &openPatchDialog{path: path, done: make(chan struct{})}
 	stubOpenPatchDialog(t, dialog)
 
-	if err := h.tester.Click("Apply patch…"); err != nil {
+	if err := h.tester.Click("Apply patch"); err != nil {
 		t.Fatalf("open patch import: %v", err)
 	}
 	<-dialog.done

@@ -156,7 +156,7 @@ func (a *app) themeMenuItems(m *ui.Menu, c *ui.Context) {
 		}
 	}
 	m.Separator()
-	if m.Item(tr("Customize theme…")).Chosen() {
+	if m.Item(tr("Customize theme")).Chosen() {
 		a.openThemeEditor()
 	}
 }
@@ -538,7 +538,7 @@ func (a *app) appearanceSettings(c *ui.Context) {
 			if selects.Changed() {
 				a.settingsChanged(c)
 			}
-			iconTextButton(c, "Customize…", "Build your own theme with a color picker", themeIcon, false, a.openThemeEditor)
+			iconTextButton(c, "Customize", "Build your own theme with a color picker", themeIcon, false, a.openThemeEditor)
 		})
 		a.themePreview(c)
 		settingRow(c, "Accent color", "Buttons and highlights", func() {
@@ -554,7 +554,7 @@ func (a *app) appearanceSettings(c *ui.Context) {
 				}
 			}
 			choose := func() {
-				iconTextButton(c, "Choose image…", "Choose a PNG, JPEG, GIF, WebP, or BMP image, up to 10 MiB",
+				iconTextButton(c, "Choose image", "Choose a PNG, JPEG, GIF, WebP, or BMP image, up to 10 MiB",
 					fileImageIcon, false, a.browseHomeBackground)
 			}
 			if a.settings.HomeBackgroundPath == "" {
@@ -767,7 +767,7 @@ func (a *app) backgroundFetchIntervalChoice(c *ui.Context) {
 	for _, minutes := range backgroundFetchIntervals {
 		labels = append(labels, trf("%d min", minutes))
 	}
-	custom := tr("Custom…")
+	custom := tr("Custom")
 	labels = append(labels, custom)
 	current := custom
 	if a.settingsUI.autoFetchChoice != backgroundFetchCustomChoice {
@@ -908,7 +908,7 @@ func (a *app) editorSettings(c *ui.Context) {
 					a.settingsChanged(c)
 				}
 			}
-			flatIconButton(c, "Add editor…", "Add a custom external editor", plusIcon, 14, 4,
+			flatIconButton(c, "Add editor", "Add a custom external editor", plusIcon, 14, 4,
 				a.settingsUI.customEditorFormOpen, a.openCustomEditorForm)
 		})
 		a.customEditorForm(c)

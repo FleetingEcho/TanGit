@@ -47,11 +47,11 @@ func TestChangesOfferHunkAndSelectedLineActionsTogether(t *testing.T) {
 			t.Errorf("hunk action %q is missing", action)
 		}
 	}
-	if h.tester.HasText("Unstage hunk") || h.tester.HasText("Stash hunk…") {
+	if h.tester.HasText("Unstage hunk") || h.tester.HasText("Stash hunk") {
 		t.Fatal("the working-tree side offers an action for the wrong target")
 	}
 	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1})
-	for _, action := range []string{"Stage selected lines", "Stash selected lines…", "Stage hunk"} {
+	for _, action := range []string{"Stage selected lines", "Stash selected lines", "Stage hunk"} {
 		if !h.tester.HasText(action) {
 			t.Errorf("action %q disappeared after selecting lines", action)
 		}

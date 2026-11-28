@@ -110,7 +110,7 @@ func TestHomeBackgroundUploadPreviewsAndPersists(t *testing.T) {
 	}
 	t.Cleanup(func() { chooseHomeBackgroundPath = restore })
 
-	if err := tt.Click("Choose image…"); err != nil {
+	if err := tt.Click("Choose image"); err != nil {
 		t.Fatalf("choose a background: %v", err)
 	}
 	updated.waitForUpdate(t)
@@ -271,7 +271,7 @@ func TestHomeBackgroundRejectsDisguisedNonImageAndKeepsPrevious(t *testing.T) {
 	t.Cleanup(func() { chooseHomeBackgroundPath = restore })
 	tt.Frame()
 
-	if err := tt.Click("Choose image…"); err != nil {
+	if err := tt.Click("Choose image"); err != nil {
 		t.Fatal(err)
 	}
 	updated.waitForUpdate(t)
@@ -413,7 +413,7 @@ func TestHomeBackgroundPreviewKeepsActionsToTheRight(t *testing.T) {
 	if !found {
 		t.Fatal("Home background preview is missing")
 	}
-	for _, label := range []string{"Enable Home background", "Choose image…", "Remove"} {
+	for _, label := range []string{"Enable Home background", "Choose image", "Remove"} {
 		control, found := tt.Find(label)
 		if !found || control.X < preview.X+preview.W {
 			t.Fatalf("%q is not to the right of the preview: preview=%+v control=%+v", label, preview, control)
@@ -636,7 +636,7 @@ func TestHomeBackgroundValidationDescriptionIsTranslated(t *testing.T) {
 	}
 	t.Cleanup(func() { chooseHomeBackgroundPath = restore })
 
-	if err := tt.Click("选择图片…"); err != nil {
+	if err := tt.Click("选择图片"); err != nil {
 		t.Fatalf("choose an invalid background: %v", err)
 	}
 	updated.waitForUpdate(t)

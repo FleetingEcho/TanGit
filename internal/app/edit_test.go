@@ -69,7 +69,7 @@ func TestFilePaneEditsTheWorkingFile(t *testing.T) {
 	}
 	// The editor owns the file whole: the header keeps only the way back, so
 	// the file cannot be staged or discarded while it is half edited.
-	for _, gone := range []string{"File actions", "Blame", "Stage", "Unstage", "Discard changes…", "Open file in editor"} {
+	for _, gone := range []string{"File actions", "Blame", "Stage", "Unstage", "Discard changes", "Open file in editor"} {
 		if slices.Contains(h.texts(), gone) {
 			t.Fatalf("%q still shows while the editor is open: %q", gone, h.texts())
 		}

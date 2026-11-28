@@ -199,7 +199,7 @@ func TestRealAppConflictUseCurrentRestartRestoreUnresolved(t *testing.T) {
 		t.Fatalf("Operation recovery entry missing after restart: %v; texts=%q", err, restarted.texts())
 	}
 	restarted.tester.Frame()
-	if err := restarted.tester.Click("Restore unresolved…"); err != nil {
+	if err := restarted.tester.Click("Restore unresolved"); err != nil {
 		t.Fatalf("recovery-panel restore entry: %v; texts=%q", err, restarted.texts())
 	}
 	restarted.tester.Frame()
@@ -390,7 +390,7 @@ func TestRealAppFileRecoveryAfterStateChangedPreservesNewWork(t *testing.T) {
 	a.showRecoveryModal = true
 	tester := ui.NewTester(a.view, 1000, 800)
 	tester.Frame()
-	if _, found := tester.Find("Retry…"); !found {
+	if _, found := tester.Find("Retry"); !found {
 		t.Fatalf("interrupted recovery has no Retry UI: %q", tester.Texts())
 	}
 }
@@ -453,7 +453,7 @@ func TestRealAppInterruptedIndexRecoveryRetriesFromPanel(t *testing.T) {
 	if !h.tester.HasText("Interrupted · index pending") {
 		t.Fatalf("atomic index interruption is not explained: %q", h.texts())
 	}
-	if err := h.tester.Click("Retry…"); err != nil {
+	if err := h.tester.Click("Retry"); err != nil {
 		t.Fatalf("Retry button: %v; texts=%q", err, h.texts())
 	}
 	h.tester.Frame()

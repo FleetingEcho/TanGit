@@ -208,7 +208,7 @@ func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 	h.tester.Frame()
 
 	h.rightClick(t, "Open source/old.txt")
-	h.requireMenuLabels(t, "New File…", "New Folder…", "Open in explorer", "View File History…", "Rename…", "Delete…", "Copy path", "Copy relative path")
+	h.requireMenuLabels(t, "New File", "New Folder", "Open in explorer", "View File History", "Rename", "Delete", "Copy path", "Copy relative path")
 	h.chooseMenuItem(t, "Copy relative path")
 	if got := h.tester.Clipboard(); got != "source/old.txt" {
 		t.Fatalf("explorer copied relative path %q", got)
@@ -224,7 +224,7 @@ func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 		t.Fatalf("Open in explorer revealed %q, want %q", revealed, want)
 	}
 	h.rightClick(t, "Open source/old.txt")
-	h.chooseMenuItem(t, "View File History…")
+	h.chooseMenuItem(t, "View File History")
 	h.waitFor(t, "the Editor file history", func() bool {
 		return h.app.fileHistoryOpen && h.app.fileHistoryPath == "source/old.txt"
 	})
@@ -234,7 +234,7 @@ func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 	// A folder's New Folder action creates inside that folder, and the explicit
 	// empty-directory row survives the next Git-file-index refresh.
 	h.rightClick(t, "Collapse directory source")
-	h.chooseMenuItem(t, "New Folder…")
+	h.chooseMenuItem(t, "New Folder")
 	if got := h.app.code.fileFormDirectory; got != "source" {
 		t.Fatalf("New Folder targets %q, want source", got)
 	}
@@ -262,7 +262,7 @@ func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 	if err := h.tester.Click("More actions"); err != nil {
 		t.Fatal(err)
 	}
-	h.chooseMenuItem(t, "New File…")
+	h.chooseMenuItem(t, "New File")
 	if got := h.app.code.fileFormDirectory; h.app.code.fileForm != codeFileFormNewFile || got != "source" {
 		t.Fatalf("toolbar New File targets form=%v directory=%q", h.app.code.fileForm, got)
 	}
@@ -285,7 +285,7 @@ func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 		t.Fatalf("old file is not visible after creation: form=%v rows=%+v texts=%q", h.app.code.fileForm, h.app.code.rows, h.texts())
 	}
 	h.rightClick(t, "Open source/old.txt")
-	h.chooseMenuItem(t, "Rename…")
+	h.chooseMenuItem(t, "Rename")
 	h.tester.Key(ui.Cmd, ui.KeyA)
 	h.tester.Type("renamed.txt")
 	h.tester.Key(0, ui.KeyEnter)
@@ -294,7 +294,7 @@ func TestCodeExplorerMenuCreatesRenamesDeletesAndCopies(t *testing.T) {
 	assertCodeFileContent(t, root, "source/renamed.txt", "old\n")
 
 	h.rightClick(t, "Open source/renamed.txt")
-	h.chooseMenuItem(t, "Delete…")
+	h.chooseMenuItem(t, "Delete")
 	if h.app.confirm == nil {
 		t.Fatal("Delete opened no confirmation")
 	}
@@ -387,7 +387,7 @@ func TestCodeFolderSearchUsesLiteralScopeAndRetainsRename(t *testing.T) {
 	h.app.code.searchQuery = "needle"
 
 	h.rightClick(t, "Collapse directory "+folder)
-	h.requireMenuLabels(t, "Open folder as workspace", "Rename…")
+	h.requireMenuLabels(t, "Open folder as workspace", "Rename")
 	h.chooseMenuItem(t, "Open folder as workspace")
 	if h.app.code.searchInclude != "" || h.app.code.searchFolder != folder {
 		t.Fatalf("folder search scope include=%q literal=%q, want an independent %q", h.app.code.searchInclude, h.app.code.searchFolder, folder)
@@ -847,7 +847,7 @@ func TestCodeRepositoryRootCreatesAndAcceptsDrops(t *testing.T) {
 
 	openRealCodeDocument(t, h, "source/note.txt")
 	h.rightClick(t, "Repository root")
-	h.chooseMenuItem(t, "New File…")
+	h.chooseMenuItem(t, "New File")
 	if got := h.app.code.fileFormDirectory; got != "" {
 		t.Fatalf("root New File targets %q", got)
 	}
@@ -892,7 +892,7 @@ func TestCodeNestedWorkspaceRootCreatesAndAcceptsDrops(t *testing.T) {
 	h.tester.Frame()
 
 	h.rightClick(t, "Workspace root nested/deep")
-	h.chooseMenuItem(t, "New File…")
+	h.chooseMenuItem(t, "New File")
 	if got := h.app.code.fileFormDirectory; got != "nested/deep" {
 		t.Fatalf("workspace-root New File targets %q", got)
 	}

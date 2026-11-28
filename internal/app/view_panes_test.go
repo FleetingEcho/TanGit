@@ -164,7 +164,7 @@ func TestEveryDetailPageCollapsesAndRestoresItsListPane(t *testing.T) {
 		{"history", sectionHistory, "Commits"},
 		{"graph", sectionGraph, "Commit graph"},
 		{"branches", sectionBranches, "Local branches"},
-		{"remotes", sectionRemotes, "Add remote…"},
+		{"remotes", sectionRemotes, "Add remote"},
 		{"stash", sectionStash, "Saved work"},
 		{"tags", sectionTags, "Repository tags"},
 		{"worktrees", sectionWorktrees, "Linked worktrees"},

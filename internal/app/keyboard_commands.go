@@ -33,7 +33,7 @@ func keyboardCommands() []keyboardCommand {
 		}},
 		{"Changes", "Ctrl+Enter", "Commit the staged changes", ui.Ctrl, ui.KeyEnter, (*app).beginCommit},
 		{"Changes", "Ctrl+I", "Preview and apply a patch or diff file", ui.Ctrl, ui.KeyI, (*app).beginPatchImport},
-		{"Changes", "M", "Apply a mailbox patch with a three-way fallback…", ui.Shift, ui.KeyM, (*app).beginMailboxPatchImport},
+		{"Changes", "M", "Apply a mailbox patch with a three-way fallback", ui.Shift, ui.KeyM, (*app).beginMailboxPatchImport},
 		{"Changes", "A", "Amend the chosen commit with staged changes", ui.Shift, ui.KeyA, func(a *app) {
 			if hasStagedFiles(a.snapshot.Files) {
 				a.commitAmend = true
@@ -47,7 +47,7 @@ func keyboardCommands() []keyboardCommand {
 			}
 			a.beginRepositoryAction("", func(ctx context.Context, s repository.Session) error { return requireChangesSession(s).StageAll(ctx) }, func() { a.notifyUndoable(tr("Staged all changes")) })
 		}},
-		{"Changes", "s", "Stash changes…", 0, ui.KeyS, (*app).openStashForm},
+		{"Changes", "s", "Stash changes", 0, ui.KeyS, (*app).openStashForm},
 		{"Changes", "f", "Fetch from the remotes", 0, ui.KeyF, (*app).beginFetch},
 		{"Changes", "i", "Ignore file in .gitignore", 0, ui.KeyI, func(a *app) { a.ignoreSelectedFile(false) }},
 		{"Changes", "I", "Exclude file locally", ui.Shift, ui.KeyI, func(a *app) { a.ignoreSelectedFile(true) }},
@@ -81,12 +81,12 @@ func keyboardCommands() []keyboardCommand {
 		{"History and graph", "A", "Amend the chosen commit with staged changes", ui.Shift, ui.KeyA, (*app).confirmSelectedAmendCommit},
 		{"History and graph", "s", "Squash the chosen commit into its older neighbor", 0, ui.KeyS, func(a *app) { a.confirmSelectedCombineCommit(repository.CombineSquash) }},
 		{"History and graph", "f", "Fix up the chosen commit into its older neighbor", 0, ui.KeyF, func(a *app) { a.confirmSelectedCombineCommit(repository.CombineFixup) }},
-		{"History and graph", "F", "Create fixup commit from staged changes…", ui.Shift, ui.KeyF, func(a *app) {
+		{"History and graph", "F", "Create fixup commit from staged changes", ui.Shift, ui.KeyF, func(a *app) {
 			if c, ok := a.selectedVisibleCommit(); ok {
 				a.confirmCreateFixupCommit(c)
 			}
 		}},
-		{"History and graph", "S", "Apply fixups from this commit through HEAD…", ui.Shift, ui.KeyS, func(a *app) {
+		{"History and graph", "S", "Apply fixups from this commit through HEAD", ui.Shift, ui.KeyS, func(a *app) {
 			if c, ok := a.selectedVisibleCommit(); ok {
 				a.confirmApplyFixupCommits(c)
 			}
@@ -114,7 +114,7 @@ func keyboardCommands() []keyboardCommand {
 		}},
 		{"Branches", "Space", "Check out the chosen branch", 0, ui.KeySpace, (*app).checkoutSelectedBranch},
 		{"Branches", "n", "Create a branch", 0, ui.KeyN, (*app).beginNewBranch},
-		{"Branches", "M", "Merge into current…", ui.Shift, ui.KeyM, (*app).confirmMergeSelectedBranch},
+		{"Branches", "M", "Merge into current", ui.Shift, ui.KeyM, (*app).confirmMergeSelectedBranch},
 		{"Branches", "f", "Fast-forward", 0, ui.KeyF, func(a *app) {
 			if branch, ok := a.branchAt(a.selectedBranchRow); ok {
 				a.beginFastForwardBranch(branch)
@@ -131,53 +131,53 @@ func keyboardCommands() []keyboardCommand {
 				a.showRenameForm = true
 			}
 		}},
-		{"Branches", "r", "Rebase current onto this…", 0, ui.KeyR, func(a *app) {
+		{"Branches", "r", "Rebase current onto this", 0, ui.KeyR, func(a *app) {
 			if b, ok := a.branchAt(a.selectedBranchRow); ok {
 				a.confirmRebaseOntoBranch(b)
 			}
 		}},
 		{"Branches", "d", "Delete the chosen branch", 0, ui.KeyD, (*app).confirmDeleteSelectedBranch},
 		{"Branches", "u", "Unset upstream", 0, ui.KeyU, (*app).unsetSelectedUpstream},
-		{"Branches", "Shift+O", "Create pull request…", ui.Shift, ui.KeyO, (*app).openCreatePullRequestForm},
+		{"Branches", "Shift+O", "Create pull request", ui.Shift, ui.KeyO, (*app).openCreatePullRequestForm},
 		{"Branches", "Shift+G", "Open pull request in browser", ui.Shift, ui.KeyG, (*app).confirmOpenPullRequest},
 		{"Branches", "Shift+K", "View pull request checks", ui.Shift, ui.KeyK, (*app).openPullRequestChecks},
 		{"Remotes", "n", "Add remote", 0, ui.KeyN, (*app).openAddRemote},
 		{"Remotes", "f", "Fetch remote", 0, ui.KeyF, (*app).fetchSelectedRemote},
-		{"Remotes", "e", "Edit remote…", 0, ui.KeyE, (*app).editSelectedRemote},
+		{"Remotes", "e", "Edit remote", 0, ui.KeyE, (*app).editSelectedRemote},
 		{"Remotes", "o", "Open the remote in a browser", 0, ui.KeyO, (*app).openSelectedRemoteWebURL},
 		{"Remotes", "c", "Copy the remote's web URL", 0, ui.KeyC, (*app).copySelectedRemoteWebURL},
-		{"Remotes", "Shift+O", "Edit the remote's web URL…", ui.Shift, ui.KeyO, (*app).editSelectedRemoteWebURL},
-		{"Remotes", "d", "Remove remote…", 0, ui.KeyD, (*app).confirmRemoveSelectedRemote},
+		{"Remotes", "Shift+O", "Edit the remote's web URL", ui.Shift, ui.KeyO, (*app).editSelectedRemoteWebURL},
+		{"Remotes", "d", "Remove remote", 0, ui.KeyD, (*app).confirmRemoveSelectedRemote},
 		{"Remote branches", "Space", "Check out the chosen remote branch", 0, ui.KeySpace, (*app).checkoutSelectedRemoteBranch},
-		{"Remote branches", "Shift+Space", "Checkout detached…", ui.Shift, ui.KeySpace, (*app).confirmCheckoutSelectedRemoteBranch},
+		{"Remote branches", "Shift+Space", "Checkout detached", ui.Shift, ui.KeySpace, (*app).confirmCheckoutSelectedRemoteBranch},
 		{"Remote branches", "u", "Set upstream", 0, ui.KeyU, (*app).setSelectedRemoteBranchUpstream},
-		{"Remote branches", "M", "Merge into current…", ui.Shift, ui.KeyM, (*app).confirmMergeSelectedRemoteBranch},
-		{"Remote branches", "r", "Rebase current onto this…", 0, ui.KeyR, (*app).confirmRebaseSelectedRemoteBranch},
-		{"Remote branches", "d", "Delete remote branch…", 0, ui.KeyD, (*app).confirmDeleteSelectedRemoteBranch},
+		{"Remote branches", "M", "Merge into current", ui.Shift, ui.KeyM, (*app).confirmMergeSelectedRemoteBranch},
+		{"Remote branches", "r", "Rebase current onto this", 0, ui.KeyR, (*app).confirmRebaseSelectedRemoteBranch},
+		{"Remote branches", "d", "Delete remote branch", 0, ui.KeyD, (*app).confirmDeleteSelectedRemoteBranch},
 		{"Stash", "Space", "Apply the chosen stash", 0, ui.KeySpace, (*app).applySelectedStash},
 		{"Stash", "r", "Rename stash", 0, ui.KeyR, func(a *app) {
 			if a.selectedStash >= 0 && a.selectedStash < len(a.snapshot.Stashes) {
 				a.showStashRenameForm = true
 			}
 		}},
-		{"Stash", "g", "Pop (apply and drop)…", 0, ui.KeyG, func(a *app) { a.confirmStashMutation(true) }},
+		{"Stash", "g", "Pop (apply and drop)", 0, ui.KeyG, func(a *app) { a.confirmStashMutation(true) }},
 		{"Stash", "d", "Drop the chosen stash", 0, ui.KeyD, func(a *app) { a.confirmStashMutation(false) }},
 		{"Tags", "n", "Create tag", 0, ui.KeyN, (*app).openTagForm},
-		{"Tags", "d", "Delete tag…", 0, ui.KeyD, (*app).confirmDeleteSelectedTag},
-		{"Tags", "Shift+P", "Push tag…", ui.Shift, ui.KeyP, (*app).beginPushSelectedTag},
-		{"Tags", "Shift+A", "Push all tags…", ui.Shift, ui.KeyA, (*app).beginPushAllTags},
+		{"Tags", "d", "Delete tag", 0, ui.KeyD, (*app).confirmDeleteSelectedTag},
+		{"Tags", "Shift+P", "Push tag", ui.Shift, ui.KeyP, (*app).beginPushSelectedTag},
+		{"Tags", "Shift+A", "Push all tags", ui.Shift, ui.KeyA, (*app).beginPushAllTags},
 		{"Worktrees", "n", "Create worktree", 0, ui.KeyN, (*app).beginNewWorktree},
 		{"Worktrees", "Space", "Open worktree", 0, ui.KeySpace, (*app).openSelectedWorktree},
 		{"Worktrees", "o", "Open worktree", 0, ui.KeyO, (*app).openSelectedWorktree},
 		{"Worktrees", "e", "Open worktree in editor", 0, ui.KeyE, (*app).openSelectedWorktreeInEditor},
 		{"Worktrees", "t", "Open worktree terminal", 0, ui.KeyT, (*app).openSelectedWorktreeTerminal},
-		{"Worktrees", "m", "Move worktree…", 0, ui.KeyM, (*app).openSelectedWorktreeMoveForm},
+		{"Worktrees", "m", "Move worktree", 0, ui.KeyM, (*app).openSelectedWorktreeMoveForm},
 		{"Worktrees", "f", "Fetch worktree", 0, ui.KeyF, (*app).fetchSelectedWorktree},
 		{"Worktrees", "l", "Lock or unlock worktree", 0, ui.KeyL, (*app).toggleSelectedWorktreeLock},
-		{"Worktrees", "p", "Prune stale worktree records…", 0, ui.KeyP, (*app).confirmPruneWorktrees},
+		{"Worktrees", "p", "Prune stale worktree records", 0, ui.KeyP, (*app).confirmPruneWorktrees},
 		{"Worktrees", "r", "Repair worktree metadata", 0, ui.KeyR, (*app).repairWorktrees},
-		{"Worktrees", "d", "Remove worktree…", 0, ui.KeyD, (*app).confirmDeleteSelectedWorktree},
-		{"Worktrees", "Shift+D", "Force remove worktree…", ui.Shift, ui.KeyD, (*app).confirmForceDeleteSelectedWorktree},
+		{"Worktrees", "d", "Remove worktree", 0, ui.KeyD, (*app).confirmDeleteSelectedWorktree},
+		{"Worktrees", "Shift+D", "Force remove worktree", ui.Shift, ui.KeyD, (*app).confirmForceDeleteSelectedWorktree},
 		{"Agent tasks", "n", "New Agent Task", 0, ui.KeyN, (*app).beginNewAgentTask},
 		{"Agent tasks", "r", "Launch or resume selected agent", 0, ui.KeyR, func(a *app) {
 			if task, ok := a.selectedAgentTask(); ok {
@@ -187,7 +187,7 @@ func keyboardCommands() []keyboardCommand {
 		{"Agent tasks", "o", "Open task worktree", 0, ui.KeyO, (*app).openSelectedAgentWorktree},
 		{"Submodules", "n", "Add Submodule", 0, ui.KeyN, func(a *app) { a.showSubmoduleForm = true }},
 		{"Submodules", "u", "Update submodule", 0, ui.KeyU, (*app).updateSelectedSubmodule},
-		{"Submodules", "d", "Delete submodule…", 0, ui.KeyD, (*app).confirmDeleteSelectedSubmodule},
+		{"Submodules", "d", "Delete submodule", 0, ui.KeyD, (*app).confirmDeleteSelectedSubmodule},
 	}
 	for _, group := range []string{"History and graph", "Historical files"} {
 		commands = append(commands,

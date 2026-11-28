@@ -14,7 +14,7 @@ func TestStashChangesModalNamesTheStash(t *testing.T) {
 	h, _ := menuTestAppWithCalls(t)
 	h.app.setWorkspaceTab(sectionStash)
 	h.tester.Frame()
-	if err := h.tester.Click("Stash changes…"); err != nil {
+	if err := h.tester.Click("Stash changes"); err != nil {
 		t.Fatalf("open the stash form: %v", err)
 	}
 	h.tester.Frame()
@@ -38,7 +38,7 @@ func TestStashChangesModalNamesTheStash(t *testing.T) {
 
 	// Reopen and fill it in: the message field is focused, and the
 	// checkbox comes with the untracked files.
-	if err := h.tester.Click("Stash changes…"); err != nil {
+	if err := h.tester.Click("Stash changes"); err != nil {
 		t.Fatalf("reopen the stash form: %v", err)
 	}
 	h.tester.Frame()
@@ -63,7 +63,7 @@ func TestStashChangesModalNamesTheStash(t *testing.T) {
 // there is the name the stash is saved under.
 func TestChangesHeaderStashesWithAMessage(t *testing.T) {
 	h, calls := changesTestApp(t, sectionedFiles())
-	if err := h.tester.Click("Stash changes…"); err != nil {
+	if err := h.tester.Click("Stash changes"); err != nil {
 		t.Fatalf("open the stash form from Changes: %v", err)
 	}
 	h.tester.Frame()
@@ -92,7 +92,7 @@ func TestChangesHeaderStashesWithAMessage(t *testing.T) {
 // quick stash never asks for a name it does not need.
 func TestChangesHeaderStashesWithADefaultMessage(t *testing.T) {
 	h, calls := changesTestApp(t, sectionedFiles())
-	if err := h.tester.Click("Stash changes…"); err != nil {
+	if err := h.tester.Click("Stash changes"); err != nil {
 		t.Fatalf("open the stash form from Changes: %v", err)
 	}
 	h.tester.Frame()
@@ -118,7 +118,7 @@ func TestChangesHeaderStashesWithADefaultMessage(t *testing.T) {
 // the stash finishes.
 func TestStashFormClosesAsSoonAsTheStashStarts(t *testing.T) {
 	h, _ := changesTestApp(t, sectionedFiles())
-	if err := h.tester.Click("Stash changes…"); err != nil {
+	if err := h.tester.Click("Stash changes"); err != nil {
 		t.Fatalf("open the stash form from Changes: %v", err)
 	}
 	h.tester.Frame()

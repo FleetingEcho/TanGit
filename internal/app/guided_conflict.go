@@ -223,9 +223,9 @@ func (a *app) guidedOperationGuide(c *ui.Context) {
 		}
 		ui.Row(c).FillWidth().MinWidth(0).Gap(7).AlignItems(ui.Center).Wrap().Children(func() {
 			ui.Badge(c, status).Background(statusColor.Alpha(0.14)).TextColor(statusColor).Tooltip(tr(statusTip))
-			actionLabel := tr("Restore unresolved…")
+			actionLabel := tr("Restore unresolved")
 			if record.Status == repository.FileRecoveryInterrupted {
-				actionLabel = tr("Retry…")
+				actionLabel = tr("Retry")
 			}
 			button := compactTextButton(ui.Button(c, actionLabel)).Label(actionLabel).
 				Tooltip(tr("Restore this saved state; newer changes to the same file stop the compare-and-swap")).

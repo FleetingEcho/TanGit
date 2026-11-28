@@ -31,7 +31,7 @@ func TestHomeLayoutSwitchKeepsRecentRowsAndFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	browse, browseOK := tt.Find("Browse files…")
+	browse, browseOK := tt.Find("Browse files")
 	second, secondOK = tt.Find("Open /work/second")
 	if !a.pickerStacked || !browseOK || !secondOK || second.Y <= browse.Y+browse.H ||
 		tt.HasText("/work/first") || second.H != recentRowHeight {
@@ -47,7 +47,7 @@ func TestHomeLayoutSwitchKeepsRecentRowsAndFilter(t *testing.T) {
 
 	tt.SetSize(720, 800)
 	tt.Frame()
-	browse, browseOK = tt.Find("Browse files…")
+	browse, browseOK = tt.Find("Browse files")
 	second, secondOK = tt.Find("Open /work/second")
 	if !browseOK || !secondOK || second.Y <= browse.Y+browse.H || a.pickerStacked {
 		t.Fatalf("narrow window must stack without changing the layout preference: browse=%+v second=%+v", browse, second)
@@ -88,7 +88,7 @@ func TestHomeCentersLauncherWhenCurrentModeHasNoHistory(t *testing.T) {
 	}
 	tt.Frame()
 	hero, heroOK := tt.Find("Open a workspace.")
-	browse, browseOK := tt.Find("Browse files…")
+	browse, browseOK := tt.Find("Browse files")
 	if !heroOK || !browseOK || hero.Y < 230 || browse.Y+browse.H/2 < 400 || a.recentFilter != "" ||
 		tt.HasText("Recent repositories") || tt.HasText("Recent folders") {
 		t.Fatalf("empty Editor mode must center the launcher: hero=%+v browse=%+v texts=%q", hero, browse, tt.Texts())

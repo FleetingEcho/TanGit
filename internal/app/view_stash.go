@@ -470,7 +470,7 @@ func (a *app) stashFileMenu(m *ui.Menu, stash repository.Stash, file repository.
 	if m.Item(tr("Apply this file")).Shortcut(0, ui.KeySpace).Disabled(a.actionBusy).Chosen() {
 		a.applyStashFile(stash, file)
 	}
-	if m.Item(tr("Discard this file…")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Discard this file")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
 		a.confirmDiscardStashFile(stash, file)
 	}
 	m.Separator()
@@ -509,17 +509,17 @@ func (a *app) stashRowMenu(m *ui.Menu, row ui.ListRow) {
 		a.selectStashRow(row.Index)
 		a.applyStash(stash)
 	}
-	if m.Item(tr("Pop (apply and drop)…")).Shortcut(0, ui.KeyG).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Pop (apply and drop)")).Shortcut(0, ui.KeyG).Disabled(a.actionBusy).Chosen() {
 		a.selectStashRow(row.Index)
 		a.confirmStashMutationFor(stash, true)
 	}
 	m.Separator()
-	if m.Item(tr("Rename…")).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Rename")).Disabled(a.actionBusy).Chosen() {
 		a.selectStashRow(row.Index)
 		a.stashRename = stash.Name
 		a.showStashRenameForm = true
 	}
-	if m.Item(tr("Drop…")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Drop")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
 		a.selectStashRow(row.Index)
 		a.confirmStashMutationFor(stash, false)
 	}
@@ -538,7 +538,7 @@ func (a *app) stashView(c *ui.Context) {
 						rowIconButton(c, "Recovery & checkpoints", "Recovery & checkpoints", softResetIcon, func() {
 							a.showRecoveryModal = true
 						})
-						rowIconButton(c, "Stash changes…", "Save the working tree away",
+						rowIconButton(c, "Stash changes", "Save the working tree away",
 							stashIcon, a.openStashForm)
 						paneCollapseButton(c, &a.workspacePaneCollapsed[sectionStash], "Collapse list pane")
 					})
@@ -572,7 +572,7 @@ func (a *app) stashView(c *ui.Context) {
 										a.selectStashRow(row.Index)
 										a.applyStash(stash)
 									})
-									rowIconButton(row.Context, "Discard "+stash.Name, "Discard this saved work…", revertIcon, func() {
+									rowIconButton(row.Context, "Discard "+stash.Name, "Discard this saved work", revertIcon, func() {
 										a.selectStashRow(row.Index)
 										a.confirmStashMutationFor(stash, false)
 									})
@@ -597,17 +597,17 @@ func (a *app) stashView(c *ui.Context) {
 					stash := a.snapshot.Stashes[a.selectedStash]
 					ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
 						ui.Text(c, stash.Name).FontSize(18).Bold().Grow(1).SingleLine().Tooltip(stash.Name)
-						if ui.Button(c, tr("Rename…")).Disabled(a.actionBusy).Clicked() {
+						if ui.Button(c, tr("Rename")).Disabled(a.actionBusy).Clicked() {
 							a.showStashRenameForm = true
 							a.stashRename = stash.Name
 						}
 						if ui.Button(c, tr("Apply")).Disabled(a.actionBusy).Clicked() {
 							a.applyStash(stash)
 						}
-						if ui.Button(c, tr("Pop…")).Disabled(a.actionBusy).Clicked() {
+						if ui.Button(c, tr("Pop")).Disabled(a.actionBusy).Clicked() {
 							a.confirmStashMutation(true)
 						}
-						if ui.Button(c, tr("Drop…")).Disabled(a.actionBusy).Clicked() {
+						if ui.Button(c, tr("Drop")).Disabled(a.actionBusy).Clicked() {
 							a.confirmStashMutation(false)
 						}
 					})

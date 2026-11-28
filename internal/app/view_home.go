@@ -141,7 +141,15 @@ func (a *app) pickerFooterView(c *ui.Context) {
 	theme := c.Theme()
 	ui.Row(c).FillWidth().Height(pickerFooterHeight).Shrink(0).Padding(0, 20).
 		AlignItems(ui.Center).Gap(10).Children(func() {
-		ui.Box(c).Grow(1).MinWidth(0)
+		ui.Row(c).Grow(1).MinWidth(0).Justify(ui.Start).Children(func() {
+			icon := gitlabIcon
+			if len(a.settings.HostingAccounts) > 0 {
+				icon = hostingProviderIcon(hostingProviderName(a.settings.HostingAccounts[0].Provider))
+			}
+			ui.ButtonBase(c).Label(tr("Git hosting settings")).Tooltip(tr("Create, edit and load named Git hosting settings")).
+				Height(26).Padding(0, 7).AlignItems(ui.Center).TextColor(theme.TextMuted).
+				Children(func() { ui.Icon(c, icon).FontSize(14) }).OnClick(a.openHostingAccess)
+		})
 		ui.ButtonBase(c).Label(tr("Keyboard shortcuts")).Height(26).Padding(0, 6).
 			AlignItems(ui.Center).Gap(7).TextColor(theme.TextMuted).Children(func() {
 			ui.Icon(c, keyboardIcon).FontSize(12)
@@ -149,11 +157,39 @@ func (a *app) pickerFooterView(c *ui.Context) {
 			ui.Text(c, tr("Keyboard shortcuts")).FontSize(11).SingleLine()
 		}).OnClick(a.openKeybindings)
 		ui.Row(c).Grow(1).MinWidth(0).Justify(ui.End).Children(func() {
-			ui.Text(c, "lazygitGo <path>").FontSize(11).SingleLine().TextColor(theme.TextMuted).
-				Tooltip(tr("Open a repository or folder from the terminal:") +
-					"\n  lazygitGo .\n  lazygitGo ~/work/project\n  lazygitGo ssh://user@host/path\n" +
-					tr("If the app is already running, the path opens in a new tab."))
+			hint := ui.Text(c, "lazygitGo <path>").FontSize(11).SingleLine().TextColor(theme.TextMuted)
+			a.terminalLaunchTooltip(c, hint)
 		})
+	})
+}
+
+// terminalLaunchTooltip explains opening a path from the terminal. The commands
+// sit in monospace badges so they read as something to type, apart from the
+// sentences around them.
+func (a *app) terminalLaunchTooltip(c *ui.Context, anchor ui.Element) {
+	theme := c.Theme()
+	ui.TooltipBase(c, anchor, func(tip ui.Element) {
+		tip.Padding(10, 12).Radius(theme.Radius+2).Background(theme.Surface).Border(1, theme.Border).
+			Shadow(0, 2, 10, 0, ui.RGBA(0, 0, 0, 0.25)).Margin(0, 0, 6, 0).
+			Children(func() {
+				ui.Column(c).Gap(8).Children(func() {
+					ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
+						ui.Icon(c, terminalIcon).FontSize(14).TextColor(theme.Accent)
+						ui.Text(c, tr("Open a repository or folder from the terminal")).Bold().TextColor(theme.Text)
+					})
+					ui.Column(c).Gap(5).Children(func() {
+						for _, command := range []string{"lazygitGo .", "lazygitGo ~/work/project", "lazygitGo ssh://user@host/path"} {
+							ui.Box(c).Padding(3, 8).Radius(theme.Radius).
+								Background(theme.Accent.Alpha(0.12)).Border(1, theme.Accent.Alpha(0.3)).Children(func() {
+								ui.Text(c, command).Font(a.settings.BufferFont).FontSize(theme.FontSize - 1).
+									TextColor(theme.Text).SingleLine()
+							})
+						}
+					})
+					ui.Text(c, tr("If the app is already running, the path opens in a new tab.")).
+						TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+				})
+			})
 	})
 }
 
@@ -273,7 +309,7 @@ func (a *app) pickerPathView(c *ui.Context, editorMode, split bool) {
 					Grow(1).MinWidth(0).Height(38).OnSubmit(a.openFromPicker)
 			})
 			browse := ui.PrimaryButton(c.Key("workspace-browse"), "").
-				Label(tr("Browse files…")).Tooltip(tr("Choose a folder — it opens once you pick it")).
+				Label(tr("Browse files")).Tooltip(tr("Choose a folder — it opens once you pick it")).
 				Height(44).Padding(0, 18).Radius(8).Center().Gap(9)
 			if stack {
 				browse.FillWidth()
@@ -282,7 +318,7 @@ func (a *app) pickerPathView(c *ui.Context, editorMode, split bool) {
 			}
 			browse.Children(func() {
 				ui.Icon(c, folderIcon).FontSize(16)
-				ui.Text(c, tr("Browse files…")).Bold().SingleLine()
+				ui.Text(c, tr("Browse files")).Bold().SingleLine()
 			}).OnClick(a.browse)
 		})
 		ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
@@ -366,7 +402,7 @@ func (a *app) recentSectionView(c *ui.Context, total int, split bool) {
 				ui.Text(c, strconv.Itoa(total)).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted)
 			})
 			ui.SearchField(c.Key("recent-filter"), &a.recentFilter).
-				Label(tr(searchLabel)).Placeholder(tr("Filter by name or path…")).
+				Label(tr(searchLabel)).Placeholder(tr("Filter by name or path")).
 				Width(234).MaxWidthPercent(100).Height(recentSearchHeight).FontSize(theme.FontSize).Radius(8).
 				OnSubmit(func() {
 					if a.selectedRecent >= 0 {
@@ -585,11 +621,8 @@ func (a *app) recentRowMenu(m *ui.Menu, repo recentRepository, services ui.Servi
 	if m.Item(tr("Rename")).Chosen() {
 		a.openRecentRename(repo.Path)
 	}
-	if !repo.EditorOnly && m.Item(tr("Set remote web address")).Chosen() {
-		a.openRecentRemoteWebURL(repo.Path)
-	}
-	if !repo.EditorOnly && m.Item(tr("Config PR/MR host")).Chosen() {
-		a.openHostingAccess()
+	if !repo.EditorOnly && m.Item(tr("Git hosting settings")).Chosen() {
+		a.openHostingAccessForRepository(repo.Path)
 	}
 	if m.Item(tr("Remove from list")).Chosen() {
 		// The menu must not rewrite the list this build is reading;

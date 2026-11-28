@@ -23,15 +23,15 @@ type customPatchHistoryState struct {
 func historyPatchKindLabel(kind repository.HistoryPatchKind) string {
 	switch kind {
 	case repository.HistoryPatchRemove:
-		return tr("Remove from original commit…")
+		return tr("Remove from original commit")
 	case repository.HistoryPatchMoveIndex:
-		return tr("Move out into index…")
+		return tr("Move out into index")
 	case repository.HistoryPatchMoveCommit:
-		return tr("Move to selected commit…")
+		return tr("Move to selected commit")
 	case repository.HistoryPatchNewBefore:
-		return tr("New commit before original…")
+		return tr("New commit before original")
 	case repository.HistoryPatchNewAfter:
-		return tr("New commit after original…")
+		return tr("New commit after original")
 	default:
 		return tr("Custom Patch history action")
 	}

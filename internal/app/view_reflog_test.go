@@ -58,18 +58,18 @@ func TestReflogMenuOffersRecoveryActions(t *testing.T) {
 	h.rightClick(t, "reset: moving to HEAD")
 	h.requireMenuLabels(t,
 		"Copy commit hash",
-		"Checkout commit (detached)…",
-		"Create a branch here…",
-		"Soft reset here…",
-		"Mixed reset here…",
-		"Hard reset here…",
+		"Checkout commit (detached)",
+		"Create a branch here",
+		"Soft reset here",
+		"Mixed reset here",
+		"Hard reset here",
 	)
 }
 
 func TestReflogCheckoutConfirmsAndDetaches(t *testing.T) {
 	h, calls := reflogHarness(t)
 	h.rightClick(t, "reset: moving to HEAD")
-	h.chooseMenuItem(t, "Checkout commit (detached)…")
+	h.chooseMenuItem(t, "Checkout commit (detached)")
 	if h.app.confirm == nil {
 		t.Fatal("detached checkout asked no confirmation")
 	}
@@ -84,7 +84,7 @@ func TestReflogCheckoutConfirmsAndDetaches(t *testing.T) {
 func TestReflogCanCreateBranchAtEntry(t *testing.T) {
 	h, calls := reflogHarness(t)
 	h.rightClick(t, "checkout: moving to main")
-	h.chooseMenuItem(t, "Create a branch here…")
+	h.chooseMenuItem(t, "Create a branch here")
 	if !h.app.showCommitBranchForm || h.app.commitBranchCommit.Hash != "cafebabe" {
 		t.Fatalf("branch form targets %#v, want cafebabe", h.app.commitBranchCommit)
 	}

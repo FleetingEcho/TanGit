@@ -203,7 +203,7 @@ func (a *app) suggestRepositoryPerformance() {
 				title: "Large repository",
 				description: trf("%d tracked files. Reading this repository's status was slow. Git's file system monitor, untracked cache and commit-graph can make status and history much faster.",
 					report.TrackedFiles),
-				action:   "Optimize…",
+				action:   "Optimize",
 				onAction: a.openRepositoryPerformance,
 				moreActions: []appToastAction{{label: "Don't remind me for this repository", onAction: func() {
 					a.mutePerformanceHint(path)

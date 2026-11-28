@@ -105,14 +105,14 @@ func TestChangeRequestFailureUsesNotificationAndRefresh(t *testing.T) {
 	})
 	h.tester.Frame()
 
-	const guidance = "Check your PR/MR host configuration, then click Refresh to try again."
+	const guidance = "Check your Git hosting settings, then click Refresh to try again."
 	if !h.tester.HasText("Git action failed") || !h.tester.HasText("glab: host is not configured") {
 		t.Fatalf("failure did not produce an error notification: %q", h.texts())
 	}
 	if !h.tester.HasText(guidance) || h.tester.HasText("Retry") {
 		t.Fatalf("error pane should contain only configuration guidance: %q", h.texts())
 	}
-	if _, ok := h.tester.Find("Config PR/MR host"); !ok {
+	if _, ok := h.tester.Find("Git hosting settings"); !ok {
 		t.Fatalf("error pane has no host configuration action: %q", h.texts())
 	}
 

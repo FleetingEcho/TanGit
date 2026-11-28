@@ -165,6 +165,9 @@ type app struct {
 	// onRecentRenamed carries a name given to one page's repository to the
 	// window's other pages, so a pill, a card, and the next opening agree.
 	onRecentRenamed func(path, name string)
+	// onHostingAccessChanged shares edited named profiles and bindings across
+	// open tabs without writing tokens into their settings.
+	onHostingAccessChanged func()
 	// externalRefresh lets the shell limit filesystem-triggered reads to the
 	// page the user can see. Nil means a standalone app refreshes directly.
 	externalRefresh func()
@@ -266,7 +269,10 @@ type app struct {
 	// printed; commandLog is that record, nil until a repository opens.
 	// openExternalURL launches external URLs in the user's desktop browser,
 	// never on an SSH server. Header capture binds this to a live UI service.
-	openExternalURL   func(string)
+	openExternalURL func(string)
+	// webReachable remembers hosts whose web page answered, by host, for a few
+	// minutes, so repeated Open on remote clicks do not probe every time.
+	webReachable      map[string]time.Time
 	commandLogOpen    bool
 	commandLog        *repository.CommandLog
 	commandLogVisible atomic.Bool

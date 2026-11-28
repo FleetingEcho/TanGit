@@ -253,7 +253,7 @@ func TestStashFileMenuOffersApplyAndDiscard(t *testing.T) {
 	})
 
 	h.rightClick(t, "one.txt")
-	h.requireMenuLabels(t, "Apply this file", "Discard this file…")
+	h.requireMenuLabels(t, "Apply this file", "Discard this file")
 	h.chooseMenuItem(t, "Apply this file")
 	h.confirmAttentionForTest(t)
 	h.waitFor(t, "the file apply", func() bool { return calls.has("stash-apply-file:0:one.txt") && !h.app.actionBusy })
@@ -268,7 +268,7 @@ func TestStashFileMenuOffersApplyAndDiscard(t *testing.T) {
 		return ok
 	})
 	h.rightClick(t, "one.txt")
-	h.chooseMenuItem(t, "Discard this file…")
+	h.chooseMenuItem(t, "Discard this file")
 	h.tester.Frame()
 	if h.app.confirm == nil {
 		t.Fatal("the menu discarded the saved work without asking")
@@ -290,7 +290,7 @@ func TestStashFileMenuOffersApplyAndDiscard(t *testing.T) {
 		return ok
 	})
 	h.rightClick(t, "one.txt")
-	h.chooseMenuItem(t, "Discard this file…")
+	h.chooseMenuItem(t, "Discard this file")
 	h.tester.Frame()
 	if err := h.tester.Click("Discard"); err != nil {
 		t.Fatalf("confirm the file discard: %v", err)

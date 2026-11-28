@@ -184,7 +184,7 @@ func trayMenu() *mygo.Menu {
 	}
 	items = append(items,
 		mygo.Separator(),
-		&mygo.MenuItem{Label: tr("Settings…"), Click: func(*mygo.MenuItem, *mygo.Window) {
+		&mygo.MenuItem{Label: tr("Settings"), Click: func(*mygo.MenuItem, *mygo.Window) {
 			// Show the window first, then open the dialog on the page now in
 			// front, so Settings appears over what the user returns to.
 			showMainWindow()
@@ -194,7 +194,7 @@ func trayMenu() *mygo.Menu {
 				}
 			})
 		}},
-		&mygo.MenuItem{Label: tr("Check for updates…"), Click: func(*mygo.MenuItem, *mygo.Window) {
+		&mygo.MenuItem{Label: tr("Check for updates"), Click: func(*mygo.MenuItem, *mygo.Window) {
 			showMainWindow()
 			s.checkForUpdates()
 		}},

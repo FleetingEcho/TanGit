@@ -92,7 +92,7 @@ func TestOperationContextShowsRealRefsAndProgress(t *testing.T) {
 	}
 	h.tester.Move(0, 0)
 	h.tester.Advance(2 * time.Second)
-	if _, found := h.tester.Find("Skip…"); !found {
+	if _, found := h.tester.Find("Skip"); !found {
 		t.Fatal("rebase Skip entry is missing")
 	}
 }
@@ -105,8 +105,8 @@ func TestOperationControlsDriveConfirmedFingerprint(t *testing.T) {
 		t.Run(string(action), func(t *testing.T) {
 			h, calls := operationTestApp(t, richRebaseOperation())
 			button := map[repository.OperationAction]string{
-				repository.OperationActionSkip:  "Skip…",
-				repository.OperationActionAbort: "Abort…",
+				repository.OperationActionSkip:  "Skip",
+				repository.OperationActionAbort: "Abort",
 			}[action]
 			if err := h.tester.Click(button); err != nil {
 				t.Fatalf("open %s confirmation: %v", action, err)
@@ -132,8 +132,8 @@ func TestGuidedStyleKeepsExistingOperationDrivers(t *testing.T) {
 		button string
 	}{
 		{action: repository.OperationActionContinue, button: "Continue operation"},
-		{action: repository.OperationActionSkip, button: "Skip…"},
-		{action: repository.OperationActionAbort, button: "Abort…"},
+		{action: repository.OperationActionSkip, button: "Skip"},
+		{action: repository.OperationActionAbort, button: "Abort"},
 	} {
 		t.Run(string(test.action), func(t *testing.T) {
 			h, _, calls := continueHarness(t, "required", "", continueTestRunnerFunc(func(context.Context, string, string) (string, error) {
@@ -179,7 +179,7 @@ func TestMergeDoesNotOfferSkip(t *testing.T) {
 	state.Actions = []repository.OperationAction{repository.OperationActionContinue, repository.OperationActionAbort}
 	h, _ := operationTestApp(t, state)
 	h.tester.Frame()
-	if _, found := h.tester.Find("Skip…"); found {
+	if _, found := h.tester.Find("Skip"); found {
 		t.Fatal("merge offered an unsupported Skip action")
 	}
 }

@@ -92,7 +92,7 @@ func TestOperationTextButtonsLiveInChangesCard(t *testing.T) {
 	h.tester.Frame()
 	header := requireRect(t, h.tester, "Repository header")
 	card := requireRect(t, h.tester, "Operation context")
-	for _, label := range []string{"Continue", "Abort…"} {
+	for _, label := range []string{"Continue", "Abort"} {
 		button := requireRect(t, h.tester, label)
 		requireRectInside(t, label, button, card)
 		if button.Y < header.Y+header.H {

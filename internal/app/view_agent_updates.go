@@ -111,10 +111,10 @@ func (a *app) agentUpdateModal(c *ui.Context) {
 								}
 								if result.Status == agentUpdateConflicted {
 									ui.Row(c).Gap(8).Children(func() {
-										if ui.Button(c, tr("Continue rebase…")).Disabled(busy).Clicked() {
+										if ui.Button(c, tr("Continue rebase")).Disabled(busy).Clicked() {
 											a.confirmAgentUpdateRecovery(result.TaskID, false)
 										}
-										if ui.Button(c, tr("Abort rebase…")).Disabled(busy).Clicked() {
+										if ui.Button(c, tr("Abort rebase")).Disabled(busy).Clicked() {
 											a.confirmAgentUpdateRecovery(result.TaskID, true)
 										}
 									})

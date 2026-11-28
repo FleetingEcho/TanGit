@@ -179,9 +179,13 @@ type appSettings struct {
 	// SSHProfiles contains connection settings only. Passwords and private-key
 	// passphrases live under SecretRef accounts in the system keychain instead.
 	SSHProfiles []sshworkspace.Profile `json:"sshProfiles,omitempty"`
-	// HostingAccounts name the GitHub/GitLab servers the user connected in the
-	// Pull Requests page. Tokens live in the system keychain, never here.
+	// HostingAccounts are named global profiles. Only non-secret connection
+	// fields live here; tokens remain in the system keychain under profile IDs.
 	HostingAccounts []hostingAccount `json:"hostingAccounts,omitempty"`
+	// HostingBindings maps a repository root to the profile it selected and its
+	// project-specific fields. Repositories choosing one profile share its host
+	// settings and credentials without sharing its Project or issue URLs.
+	HostingBindings map[string]hostingBinding `json:"hostingBindings,omitempty"`
 	// HiddenRequestParts lists the parts of a pull/merge request the user
 	// turned off in the Pull Requests page. Empty shows everything.
 	HiddenRequestParts []string `json:"hiddenRequestParts,omitempty"`
@@ -389,6 +393,7 @@ func normalizeSettings(s appSettings) appSettings {
 	s.RemoteWebURLs = normalizeRemoteWebURLs(s.RemoteWebURLs)
 	s.SSHProfiles = normalizeSSHProfiles(s.SSHProfiles)
 	s.HostingAccounts = normalizeHostingAccounts(s.HostingAccounts)
+	s.HostingBindings = normalizeHostingBindings(s.HostingBindings)
 	return s
 }
 

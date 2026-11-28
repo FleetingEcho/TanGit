@@ -142,12 +142,12 @@ func commitCommands() []commitCommand {
 	return []commitCommand{
 		{
 			name:     "edit commit pauses a rebase",
-			controls: []commitControl{menuControl("Edit commit (pause rebase)…")},
+			controls: []commitControl{menuControl("Edit commit (pause rebase)")},
 			verify:   confirmed("", "edit-commit:"+coverageHash),
 		},
 		{
 			name:     "reword",
-			controls: []commitControl{menuControl("Reword commit…"), barControl("Reword this commit")},
+			controls: []commitControl{menuControl("Reword commit"), barControl("Reword this commit")},
 			verify: func(t *testing.T, h *harness, calls *callRecorder) {
 				h.waitFor(t, "the reword form", func() bool {
 					return h.app.showCommitRewordForm && !h.app.commitRewordLoading
@@ -163,27 +163,27 @@ func commitCommands() []commitCommand {
 		},
 		{
 			name:     "amend with staged changes",
-			controls: []commitControl{menuControl("Amend with staged changes…")},
+			controls: []commitControl{menuControl("Amend with staged changes")},
 			verify:   confirmed("Amend Commit with Staged Changes", "amend-to:"+coverageHash),
 		},
 		{
 			name:     "create fixup commit",
-			controls: []commitControl{menuControl("Create fixup commit from staged changes…")},
+			controls: []commitControl{menuControl("Create fixup commit from staged changes")},
 			verify:   confirmed("Create Fixup Commit", "fixup-for:"+coverageHash),
 		},
 		{
 			name:     "apply fixups",
-			controls: []commitControl{menuControl("Apply fixups from this commit through HEAD…")},
+			controls: []commitControl{menuControl("Apply fixups from this commit through HEAD")},
 			verify:   confirmed("Apply Fixup Commits", "apply-fixups:"+coverageHash),
 		},
 		{
 			name:     "squash into older commit",
-			controls: []commitControl{menuControl("Squash into older commit…")},
+			controls: []commitControl{menuControl("Squash into older commit")},
 			verify:   confirmed("Squash Commit", "combine:0:"+coverageHash),
 		},
 		{
 			name:     "fixup into older commit",
-			controls: []commitControl{menuControl("Fixup into older commit…")},
+			controls: []commitControl{menuControl("Fixup into older commit")},
 			verify:   confirmed("Fixup Commit", "combine:1:"+coverageHash),
 		},
 		{
@@ -198,42 +198,42 @@ func commitCommands() []commitCommand {
 		},
 		{
 			name:     "drop commit",
-			controls: []commitControl{menuControl("Drop commit…")},
+			controls: []commitControl{menuControl("Drop commit")},
 			verify:   confirmed("Drop Commit", "drop:"+coverageHash),
 		},
 		{
 			name:     "checkout detached",
-			controls: []commitControl{menuControl("Checkout to this commit (detached)…"), barControl("Checkout this commit")},
+			controls: []commitControl{menuControl("Checkout to this commit (detached)"), barControl("Checkout this commit")},
 			verify:   confirmed("Checkout Commit", "checkout-commit:"+coverageHash),
 		},
 		{
 			name:     "undo latest commit keeping changes staged",
-			controls: []commitControl{menuControl("Undo latest commit and keep changes staged…")},
+			controls: []commitControl{menuControl("Undo latest commit and keep changes staged")},
 			verify:   confirmed("", "undo-latest-branch:main", "reset-soft:"+coverageParent),
 		},
 		{
 			name:     "undo latest commit keeping changes unstaged",
-			controls: []commitControl{menuControl("Undo latest commit and keep changes unstaged…")},
+			controls: []commitControl{menuControl("Undo latest commit and keep changes unstaged")},
 			verify:   confirmed("", "undo-latest-branch:main", "reset-mixed:"+coverageParent),
 		},
 		{
 			name:     "soft reset",
-			controls: []commitControl{menuControl("Soft reset to this commit…"), barControl("Soft reset to this commit")},
+			controls: []commitControl{menuControl("Soft reset to this commit"), barControl("Soft reset to this commit")},
 			verify:   confirmed("Soft Reset", "reset-soft:"+coverageHash),
 		},
 		{
 			name:     "mixed reset",
-			controls: []commitControl{menuControl("Mixed reset to this commit…"), barControl("Mixed reset to this commit")},
+			controls: []commitControl{menuControl("Mixed reset to this commit"), barControl("Mixed reset to this commit")},
 			verify:   confirmed("Mixed Reset", "reset-mixed:"+coverageHash),
 		},
 		{
 			name:     "hard reset",
-			controls: []commitControl{menuControl("Hard reset to this commit…"), barControl("Hard reset to this commit")},
+			controls: []commitControl{menuControl("Hard reset to this commit"), barControl("Hard reset to this commit")},
 			verify:   confirmed("Hard Reset", "reset-hard:"+coverageHash),
 		},
 		{
 			name:     "export as mailbox patch",
-			controls: []commitControl{menuControl("Export as mailbox patch…")},
+			controls: []commitControl{menuControl("Export as mailbox patch")},
 			verify: func(t *testing.T, h *harness, calls *callRecorder) {
 				if !h.app.showExportPatchForm {
 					t.Fatal("the export form did not open")
@@ -247,7 +247,7 @@ func commitCommands() []commitCommand {
 		},
 		{
 			name:     "create a tag",
-			controls: []commitControl{menuControl("Create a tag here…"), barControl("Create a tag here")},
+			controls: []commitControl{menuControl("Create a tag here"), barControl("Create a tag here")},
 			verify: func(t *testing.T, h *harness, calls *callRecorder) {
 				if !h.app.showCommitTagForm {
 					t.Fatal("the tag form did not open")
@@ -260,7 +260,7 @@ func commitCommands() []commitCommand {
 		},
 		{
 			name:     "create a branch",
-			controls: []commitControl{menuControl("Create a branch here…"), barControl("Create a branch here")},
+			controls: []commitControl{menuControl("Create a branch here"), barControl("Create a branch here")},
 			verify: func(t *testing.T, h *harness, calls *callRecorder) {
 				if !h.app.showCommitBranchForm {
 					t.Fatal("the branch form did not open")
@@ -273,7 +273,7 @@ func commitCommands() []commitCommand {
 		},
 		{
 			name:     "start bisect",
-			controls: []commitControl{menuControl("Start bisect from this commit…")},
+			controls: []commitControl{menuControl("Start bisect from this commit")},
 			verify: func(t *testing.T, h *harness, calls *callRecorder) {
 				if !h.app.showBisectForm {
 					t.Fatal("the bisect form did not open")
@@ -304,12 +304,12 @@ func commitCommands() []commitCommand {
 		},
 		{
 			name:     "cherry-pick",
-			controls: []commitControl{menuControl("Cherry-pick onto current branch…"), barControl("Cherry-pick this commit")},
+			controls: []commitControl{menuControl("Cherry-pick onto current branch"), barControl("Cherry-pick this commit")},
 			verify:   confirmed("Cherry-pick Commit", "cherry-pick:"+coverageHash),
 		},
 		{
 			name:     "revert",
-			controls: []commitControl{menuControl("Revert commit…")},
+			controls: []commitControl{menuControl("Revert commit")},
 			verify:   confirmed("Revert Commit", "revert:"+coverageHash),
 		},
 		{
@@ -441,8 +441,8 @@ func TestCommitMenuOmitsCommandsThatCannotApply(t *testing.T) {
 	h, _ := historyHarness(t)
 	h.rightClick(t, "Initial commit")
 	for _, label := range []string{
-		"Undo latest commit and keep changes staged…",
-		"Undo latest commit and keep changes unstaged…",
+		"Undo latest commit and keep changes staged",
+		"Undo latest commit and keep changes unstaged",
 	} {
 		if h.menuOffers(label) {
 			t.Errorf("a commit that is not the branch tip offers %q", label)

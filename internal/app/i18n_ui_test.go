@@ -33,11 +33,11 @@ func TestLocalizedSSHProfileSettings(t *testing.T) {
 				"SSH profiles",
 				"Remote Git workspaces, without credentials in settings",
 				"Passwords and key passphrases use the system keychain when available.",
-				"Add SSH profile…",
+				"Add SSH profile",
 				"No SSH profiles yet",
 				"Add a host to open a Git folder on it from Home.",
 			)
-			if err := tester.Click(tr("Add SSH profile…")); err != nil {
+			if err := tester.Click(tr("Add SSH profile")); err != nil {
 				t.Fatalf("open translated SSH profile form: %v", err)
 			}
 			tester.Frame()

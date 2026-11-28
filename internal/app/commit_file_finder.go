@@ -89,7 +89,7 @@ func (a *app) commitFileFinderRow(c *ui.Context, files []repository.CommitFile) 
 	input.Children(func() {
 		ui.Icon(c, searchIcon).FontSize(14).TextColor(theme.TextMuted)
 		field = ui.TextInputBase(c, &a.commitFileSearch).Grow(1).MinWidth(0).Bind(&a.commitFileSearchFocus).
-			AutoFocus().Label(tr("Find a file")).Placeholder(tr("Find a file…"))
+			AutoFocus().Label(tr("Find a file")).Placeholder(tr("Find a file"))
 		if strings.TrimSpace(a.commitFileSearch) != "" {
 			ui.Text(c, trf("%d / %d", a.commitFileMatchCount(files), len(files))).
 				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
@@ -165,7 +165,7 @@ func (a *app) fullscreenFileFinderRow(c *ui.Context, matches, total int) {
 		Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius).Children(func() {
 		ui.Icon(c, searchIcon).FontSize(14).TextColor(theme.TextMuted)
 		field = ui.TextInputBase(c, &a.fullscreenFileSearch).Grow(1).MinWidth(0).Bind(&a.fullscreenFileSearchFocus).
-			AutoFocus().Label(tr("Find a file")).Placeholder(tr("Find a file…"))
+			AutoFocus().Label(tr("Find a file")).Placeholder(tr("Find a file"))
 		if strings.TrimSpace(a.fullscreenFileSearch) != "" {
 			ui.Text(c, trf("%d / %d", matches, total)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 			flatIconButton(c, "Clear file search", "Show every file", closeIcon, 11, 3, false, func() {
@@ -243,7 +243,7 @@ func (a *app) fileHistoryFinderRow(c *ui.Context, matches, total int) {
 		Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius).Children(func() {
 		ui.Icon(c, searchIcon).FontSize(14).TextColor(theme.TextMuted)
 		field = ui.TextInputBase(c, &a.fileHistorySearch).Grow(1).MinWidth(0).Bind(&a.fileHistorySearchFocus).
-			AutoFocus().Label(tr("Find a commit")).Placeholder(tr("Find a commit…"))
+			AutoFocus().Label(tr("Find a commit")).Placeholder(tr("Find a commit"))
 		if strings.TrimSpace(a.fileHistorySearch) != "" {
 			ui.Text(c, trf("%d / %d", matches, total)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 			flatIconButton(c, "Clear commit search", "Show every commit", closeIcon, 11, 3, false, func() {
@@ -317,7 +317,7 @@ func (a *app) fileHistoryFilesFinderRow(c *ui.Context, matches, total int) {
 		Background(theme.Surface).Border(1, theme.Border).Radius(theme.Radius).Children(func() {
 		ui.Icon(c, searchIcon).FontSize(14).TextColor(theme.TextMuted)
 		field = ui.TextInputBase(c, &a.fileHistoryFilesSearch).Grow(1).MinWidth(0).Bind(&a.fileHistoryFilesSearchFocus).
-			AutoFocus().Label(tr("Find a file")).Placeholder(tr("Find a file…"))
+			AutoFocus().Label(tr("Find a file")).Placeholder(tr("Find a file"))
 		if strings.TrimSpace(a.fileHistoryFilesSearch) != "" {
 			ui.Text(c, trf("%d / %d", matches, total)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 			flatIconButton(c, "Clear file search", "Show every file", closeIcon, 11, 3, false, func() {

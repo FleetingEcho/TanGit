@@ -352,6 +352,7 @@ func (s *shell) newTab(path string) *tab {
 	}
 	a.closeTab = func() { s.closeTabFor(a) }
 	a.onRecentRenamed = func(path, name string) { s.spreadRecentName(a, path, name) }
+	a.onHostingAccessChanged = func() { s.spreadHostingAccess(a) }
 	a.cacheOpenRoots = func() []string {
 		roots := make([]string, 0, len(s.tabs))
 		for _, t := range s.tabs {
@@ -543,6 +544,40 @@ func (s *shell) applyPending() {
 func (s *shell) request(fn func()) {
 	s.pending = append(s.pending, fn)
 	s.invalidate()
+}
+
+func cloneHostingConfiguration(accounts []hostingAccount, bindings map[string]hostingBinding) ([]hostingAccount, map[string]hostingBinding) {
+	accounts = append([]hostingAccount(nil), accounts...)
+	for index := range accounts {
+		accounts[index].Aliases = append([]string(nil), accounts[index].Aliases...)
+	}
+	clonedBindings := make(map[string]hostingBinding, len(bindings))
+	for path, binding := range bindings {
+		clonedBindings[path] = binding
+	}
+	return accounts, clonedBindings
+}
+
+// spreadHostingAccess shares profile edits with every open page. Tokens never
+// pass through settings; the keychain is addressed by the same profile ID.
+func (s *shell) spreadHostingAccess(source *app) {
+	if source == nil {
+		return
+	}
+	accounts, bindings := cloneHostingConfiguration(source.settings.HostingAccounts, source.settings.HostingBindings)
+	s.settings.HostingAccounts, s.settings.HostingBindings = accounts, bindings
+	for _, tab := range s.tabs {
+		if tab == nil || tab.app == nil || tab.app == source {
+			continue
+		}
+		tab.app.settings.HostingAccounts, tab.app.settings.HostingBindings = cloneHostingConfiguration(accounts, bindings)
+		if tab.app.session != nil {
+			tab.app.applyHostingAccess(tab.app.session)
+			if tab.app.changeRequests.loaded || tab.app.workspaceTab == sectionPullRequests {
+				tab.app.reloadChangeRequestsAfterAccessChange()
+			}
+		}
+	}
 }
 
 // pullSettings takes the preferences the active page edited, so the chrome and
@@ -1630,7 +1665,7 @@ func (s *shell) tabMenu(m *ui.Menu, t *tab, services ui.Services) {
 		if m.Item(tr("Rename tab")).Chosen() {
 			s.request(func() { s.renameTab(t) })
 		}
-		if m.Item(tr("Tab color…")).Chosen() {
+		if m.Item(tr("Tab color")).Chosen() {
 			s.request(func() { s.tabColorTab = t; s.tabColorOpen = true; s.tabColorCustom = ui.Color{} })
 		}
 		m.Separator()

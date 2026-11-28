@@ -407,7 +407,7 @@ func (a *app) cloneModal(c *ui.Context) {
 								}
 							}).Error(a.cloneDestinationError)
 							ui.Row(c).Justify(ui.End).Children(func() {
-								if ui.Button(c, tr("Choose parent folder…")).
+								if ui.Button(c, tr("Choose parent folder")).
 									Tooltip(tr("Choose a parent folder; the repository name comes from the remote URL")).Clicked() {
 									a.browseCloneParent()
 								}
@@ -424,7 +424,7 @@ func (a *app) cloneModal(c *ui.Context) {
 						})
 					})
 					ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
-						if ui.Button(c, tr("Cancel")).Tooltip(tr("Cancel (Escape)")).Clicked() {
+						if cloneCancel(c, a, tr("Cancel"), "", "Esc") {
 							a.closeCloneForm()
 						}
 						if ui.PrimaryButton(c, tr("Clone and open")).Tooltip(tr("Clone and open (C opens this form)")).Clicked() {
@@ -477,7 +477,7 @@ func (a *app) cloneProgressView(c *ui.Context) {
 				ui.Spinner(c).Label(tr("Cloning repository"))
 				ui.Text(c, tr("Waiting for Git progress…")).TextColor(theme.TextMuted)
 			}
-			if ui.Button(c, tr("Cancel")).Tooltip(tr("Cancel cloning (Escape); the destination is not deleted")).Clicked() {
+			if cloneCancel(c, a, tr("Cancel cloning"), tr("The destination is not deleted."), "Esc") {
 				a.cancelCloneOperation()
 			}
 		})
@@ -527,4 +527,12 @@ func (a *app) cloneSpeedOptions(c *ui.Context) {
 			a.beginClone()
 		}
 	}).Error(a.cloneSparseError)
+}
+
+// cloneCancel is the clone form's Cancel button with a tooltip that names its
+// shortcut and, while cloning, what Cancel leaves behind.
+func cloneCancel(c *ui.Context, a *app, title, body, shortcut string) bool {
+	button := ui.Button(c, tr("Cancel"))
+	richTooltip(c, button, richTip{Title: title, Body: body, Shortcut: shortcut})
+	return button.Clicked()
 }

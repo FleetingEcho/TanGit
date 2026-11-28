@@ -39,7 +39,7 @@ func TestFileActionsMenuOpensNewFileBlameInPinnedEditorTab(t *testing.T) {
 	})
 	prepareBlameWorkspace(t, h, map[string]string{"new.go": "package new\n"})
 	h.openFileActions(t)
-	h.requireMenuLabels(t, "Blame", "Unstage", "Stash selected file…", "Discard changes…")
+	h.requireMenuLabels(t, "Blame", "Unstage", "Stash selected file", "Discard changes")
 	h.chooseMenuItem(t, "Blame")
 	document := waitForCodeDocument(t, h, "new.go")
 	h.waitFor(t, "the editor blame", func() bool { return document.blameLoaded })

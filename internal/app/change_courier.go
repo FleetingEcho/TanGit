@@ -433,7 +433,7 @@ func (a *app) changeCourierBody(c *ui.Context) {
 			ui.Text(c, tr("Destination worktree or checked-out branch")).Bold()
 			if len(a.courier.destinations) == 0 {
 				ui.Text(c, tr("No other available worktrees. Create a worktree for the destination branch first.")).TextColor(theme.TextMuted)
-				if ui.Button(c, tr("Create worktree…")).Disabled(a.actionBusy).Clicked() {
+				if ui.Button(c, tr("Create worktree")).Disabled(a.actionBusy).Clicked() {
 					a.resetChangeCourier()
 					a.showWorktreeForm = true
 					a.worktreeBase = "HEAD"

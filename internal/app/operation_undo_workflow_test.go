@@ -201,7 +201,7 @@ func TestRealAppCtrlZAfterAbortRestoresConflictWithSafetyJournalOff(t *testing.T
 		return h.app.snapshot.OperationState != nil && h.app.snapshot.OperationState.Type == repository.OperationTypeMerge
 	})
 	h.tester.Frame()
-	if err := h.tester.Click("Abort…"); err != nil {
+	if err := h.tester.Click("Abort"); err != nil {
 		t.Fatalf("open Abort confirmation: %v; texts=%q", err, h.texts())
 	}
 	h.tester.Frame()
@@ -261,7 +261,7 @@ func TestRealAppEmptyChangesHintsCtrlZAfterAbortAndExpires(t *testing.T) {
 		return h.app.snapshot.OperationState != nil
 	})
 	h.tester.Frame()
-	if err := h.tester.Click("Abort…"); err != nil {
+	if err := h.tester.Click("Abort"); err != nil {
 		t.Fatalf("open Abort confirmation: %v; texts=%q", err, h.texts())
 	}
 	h.tester.Frame()

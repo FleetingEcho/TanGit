@@ -44,7 +44,7 @@ func TestTagCreateFormSubmitsLightweightAndAnnotatedTags(t *testing.T) {
 	} {
 		t.Run(variant.name, func(t *testing.T) {
 			h, calls := tagActionsTestApp(t)
-			h.clickButton(t, "Create tag…")
+			h.clickButton(t, "Create tag")
 			if !h.app.showTagForm || h.app.tagRef != "HEAD" {
 				t.Fatalf("create form open=%t target=%q, want HEAD", h.app.showTagForm, h.app.tagRef)
 			}
@@ -86,13 +86,13 @@ func TestTagToolbarAndMenuConfirmActions(t *testing.T) {
 		item, submit, confirm, call string
 		inMenu                      bool
 	}{
-		{"Push tag…", "Push selected tag", "Continue", "push-tag:origin:build/interim", true},
-		{"Delete tag…", "", "Delete", "delete-tag:build/interim", true},
-		{"Delete remote tag…", "Delete remote tag", "Delete remote tag", "delete-remote-tag:origin:build/interim", true},
-		{"Push tag…", "Push selected tag", "Continue", "push-tag:origin:build/interim", false},
-		{"Delete tag…", "", "Delete", "delete-tag:build/interim", false},
-		{"Delete remote tag…", "Delete remote tag", "Delete remote tag", "delete-remote-tag:origin:build/interim", false},
-		{"Push all tags…", "", "Continue", "push-all-tags", false},
+		{"Push tag", "Push selected tag", "Continue", "push-tag:origin:build/interim", true},
+		{"Delete tag", "", "Delete", "delete-tag:build/interim", true},
+		{"Delete remote tag", "Delete remote tag", "Delete remote tag", "delete-remote-tag:origin:build/interim", true},
+		{"Push tag", "Push selected tag", "Continue", "push-tag:origin:build/interim", false},
+		{"Delete tag", "", "Delete", "delete-tag:build/interim", false},
+		{"Delete remote tag", "Delete remote tag", "Delete remote tag", "delete-remote-tag:origin:build/interim", false},
+		{"Push all tags", "", "Continue", "push-all-tags", false},
 	} {
 		entry := "toolbar"
 		if action.inMenu {

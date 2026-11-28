@@ -34,7 +34,7 @@ func TestCurrentBranchMenuConfirmedGitActions(t *testing.T) {
 	}{
 		{"Push", "Push", "Continue", "push"},
 		{"Push with tags", "Push with tags", "Continue", "push-follow-tags"},
-		{"Force push with lease…", "Force Push with Lease", "Force push with lease", "force-push-with-lease"},
+		{"Force push with lease", "Force Push with Lease", "Force push with lease", "force-push-with-lease"},
 		{"Pull latest", "Pull", "Continue", "pull-branch:main"},
 		{"Fast-forward", "Fast-forward", "Continue", "fast-forward:main"},
 		{"Unset upstream", "Unset upstream", "Continue", "unset-upstream:main"},
@@ -60,7 +60,7 @@ func TestCurrentBranchMenuConfirmedGitActions(t *testing.T) {
 func TestCurrentBranchMenuPullRequests(t *testing.T) {
 	t.Run("Create pull request", func(t *testing.T) {
 		h, calls := openCurrentBranchMenu(t)
-		h.chooseMenuItem(t, "Create pull request…")
+		h.chooseMenuItem(t, "Create pull request")
 		h.waitFor(t, "the pull request form", func() bool { return h.app.showPRForm })
 		if h.app.prTitle != "main" || h.app.prBase != "main" {
 			t.Fatalf("pull request defaults = %q / %q, want main / main", h.app.prTitle, h.app.prBase)
@@ -105,7 +105,7 @@ func TestCurrentBranchMenuPullRequests(t *testing.T) {
 func TestCurrentBranchMenuBranchFormsAndCopy(t *testing.T) {
 	t.Run("Move unpushed commits to new branch", func(t *testing.T) {
 		h, calls := openCurrentBranchMenu(t)
-		h.chooseMenuItem(t, "Move unpushed commits to new branch…")
+		h.chooseMenuItem(t, "Move unpushed commits to new branch")
 		if !h.app.showMoveCommitsForm {
 			t.Fatal("the move commits form did not open")
 		}
@@ -124,7 +124,7 @@ func TestCurrentBranchMenuBranchFormsAndCopy(t *testing.T) {
 
 	t.Run("Rename", func(t *testing.T) {
 		h, calls := openCurrentBranchMenu(t)
-		h.chooseMenuItem(t, "Rename…")
+		h.chooseMenuItem(t, "Rename")
 		if !h.app.showRenameForm || h.app.renameBranch != "main" {
 			t.Fatalf("rename field = %q, want main", h.app.renameBranch)
 		}
@@ -138,7 +138,7 @@ func TestCurrentBranchMenuBranchFormsAndCopy(t *testing.T) {
 
 	t.Run("New branch here", func(t *testing.T) {
 		h, calls := openCurrentBranchMenu(t)
-		h.chooseMenuItem(t, "New branch here…")
+		h.chooseMenuItem(t, "New branch here")
 		if !h.app.showBranchForm || h.app.newBranchBase != "main" {
 			t.Fatalf("new branch base = %q, want main", h.app.newBranchBase)
 		}

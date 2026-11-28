@@ -89,7 +89,7 @@ func TestStackSyncPreviewProvidesFreshSourceAndShowsBranchActions(t *testing.T) 
 	plan := stackSyncTestPlan("preview-one", "feature/stack")
 	session := &stackSyncTestSession{plans: []repository.StackSyncPlan{plan}}
 	h := stackSyncUIHarness(t, session)
-	if err := h.tester.Click("Sync stack…"); err != nil {
+	if err := h.tester.Click("Sync stack"); err != nil {
 		t.Fatal(err)
 	}
 	h.waitFor(t, "stack sync preview", func() bool { return h.app.stackSync.plan != nil && !h.app.stackSync.loading })
@@ -130,7 +130,7 @@ func TestStackSyncRejectsOldPlanAndProvidesReplacement(t *testing.T) {
 		applyErr: repository.ErrStackSyncChanged, applyErrOnce: true,
 	}
 	h := stackSyncUIHarness(t, session)
-	if err := h.tester.Click("Sync stack…"); err != nil {
+	if err := h.tester.Click("Sync stack"); err != nil {
 		t.Fatal(err)
 	}
 	h.waitFor(t, "old plan", func() bool { return h.app.stackSync.plan != nil })
@@ -168,7 +168,7 @@ func TestStackSyncShowsUpdateRefsAndIndependentRemoteResults(t *testing.T) {
 	}
 	session := &stackSyncTestSession{plans: []repository.StackSyncPlan{plan}, applyResult: result}
 	h := stackSyncUIHarness(t, session)
-	if err := h.tester.Click("Sync stack…"); err != nil {
+	if err := h.tester.Click("Sync stack"); err != nil {
 		t.Fatal(err)
 	}
 	h.waitFor(t, "plan before apply", func() bool { return h.app.stackSync.plan != nil })

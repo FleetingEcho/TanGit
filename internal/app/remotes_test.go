@@ -75,7 +75,7 @@ func TestEditRemoteUsesTheFilteredMenuRow(t *testing.T) {
 	h.tester.Type("upstream")
 	h.tester.Frame()
 	h.rightClick(t, "upstream")
-	h.chooseMenuItem(t, "Edit remote…")
+	h.chooseMenuItem(t, "Edit remote")
 	h.tester.Frame()
 
 	if h.app.remoteName != "upstream" || h.app.remoteURL != "https://example.com/upstream.git" {
@@ -162,7 +162,7 @@ func TestRemoteBranchHasNoUpstreamActionWhileDetached(t *testing.T) {
 	h.tester.Frame()
 
 	h.rightClick(t, "feature/menus")
-	h.requireMenuLabels(t, "Checkout detached…", "Merge into current…")
+	h.requireMenuLabels(t, "Checkout detached", "Merge into current")
 	if strings.Contains(strings.Join(h.tester.Texts(), " "), "Set as upstream") {
 		t.Fatal("detached HEAD offers an upstream for a local branch that does not exist")
 	}
@@ -202,7 +202,7 @@ func TestRemoteBranchActionsUseTheFilteredRow(t *testing.T) {
 	}
 
 	h.rightClick(t, "feature/menus")
-	h.chooseMenuItem(t, "Checkout detached…")
+	h.chooseMenuItem(t, "Checkout detached")
 	if h.app.confirm == nil || !strings.Contains(h.app.confirm.message, "origin/feature/menus") {
 		t.Fatal("detached checkout did not confirm the filtered remote branch")
 	}
@@ -214,7 +214,7 @@ func TestRemoteBranchActionsUseTheFilteredRow(t *testing.T) {
 	})
 
 	h.rightClick(t, "feature/menus")
-	h.chooseMenuItem(t, "Merge into current…")
+	h.chooseMenuItem(t, "Merge into current")
 	if h.app.confirm == nil {
 		t.Fatal("merge asked no confirmation")
 	}
@@ -224,7 +224,7 @@ func TestRemoteBranchActionsUseTheFilteredRow(t *testing.T) {
 	h.waitFor(t, "the remote branch merge", func() bool { return calls.has("merge:origin/feature/menus") })
 
 	h.rightClick(t, "feature/menus")
-	h.chooseMenuItem(t, "Rebase current onto this…")
+	h.chooseMenuItem(t, "Rebase current onto this")
 	if h.app.confirm == nil {
 		t.Fatal("rebase asked no confirmation")
 	}
@@ -234,7 +234,7 @@ func TestRemoteBranchActionsUseTheFilteredRow(t *testing.T) {
 	h.waitFor(t, "the remote branch rebase", func() bool { return calls.has("rebase-onto:origin/feature/menus") })
 
 	h.rightClick(t, "feature/menus")
-	h.chooseMenuItem(t, "Delete remote branch…")
+	h.chooseMenuItem(t, "Delete remote branch")
 	if h.app.confirm == nil || !h.app.confirm.destructive {
 		t.Fatal("remote deletion did not ask for destructive confirmation")
 	}
@@ -272,7 +272,7 @@ func TestRemoteBranchSearchFiltersWithoutChangingCheckoutTarget(t *testing.T) {
 	if h.app.selectedRemoteBranch != 1 {
 		t.Fatalf("filtered selection targets source branch %d, want 1", h.app.selectedRemoteBranch)
 	}
-	if err := h.tester.Click("Checkout as local…"); err != nil {
+	if err := h.tester.Click("Checkout as local"); err != nil {
 		t.Fatalf("open checkout form: %v", err)
 	}
 	if h.app.remoteLocalBranch != "feature/menus" {

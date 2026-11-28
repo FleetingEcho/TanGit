@@ -45,7 +45,7 @@ func TestHomeAutomaticallyOpensPlainFolderAndExplainsEditorMode(t *testing.T) {
 			switch source {
 			case "Browse":
 				started, release := holdRepositoryFolderDialog(t)
-				if err := tt.Click("Browse files…"); err != nil {
+				if err := tt.Click("Browse files"); err != nil {
 					t.Fatal(err)
 				}
 				<-started
@@ -383,7 +383,7 @@ func TestPlainFolderEditorTreeSearchSaveAndChrome(t *testing.T) {
 	}
 
 	h.rightClick(t, "note.txt")
-	if h.tester.HasText("View File History…") {
+	if h.tester.HasText("View File History") {
 		t.Fatalf("plain file menu offers Git history: %q", h.texts())
 	}
 	h.tester.Key(0, ui.KeyEscape)

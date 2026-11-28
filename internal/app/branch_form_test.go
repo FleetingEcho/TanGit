@@ -13,7 +13,7 @@ import (
 func TestBranchCreateModalPicksTheBase(t *testing.T) {
 	h, calls := menuTestAppWithCalls(t)
 	h.press(t, sectionKeys[sectionBranches])
-	if err := h.tester.Click("New branch…"); err != nil {
+	if err := h.tester.Click("New branch"); err != nil {
 		t.Fatalf("open the branch form: %v", err)
 	}
 	h.tester.Frame()
@@ -37,7 +37,7 @@ func TestBranchCreateModalPicksTheBase(t *testing.T) {
 
 	// Reopen, type the name into the focused field, and choose the base
 	// branch from the select with the keyboard.
-	if err := h.tester.Click("New branch…"); err != nil {
+	if err := h.tester.Click("New branch"); err != nil {
 		t.Fatalf("reopen the branch form: %v", err)
 	}
 	h.tester.Frame()

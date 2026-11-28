@@ -49,23 +49,23 @@ func TestCommitRowMenuOffersTheActions(t *testing.T) {
 	h.rightClick(t, "Second commit")
 	h.requireMenuLabels(t,
 		"Copy commit hash",
-		"Reword commit…",
-		"Amend with staged changes…",
-		"Create fixup commit from staged changes…",
-		"Apply fixups from this commit through HEAD…",
-		"Squash into older commit…",
-		"Fixup into older commit…",
+		"Reword commit",
+		"Amend with staged changes",
+		"Create fixup commit from staged changes",
+		"Apply fixups from this commit through HEAD",
+		"Squash into older commit",
+		"Fixup into older commit",
 		"Move commit toward HEAD",
 		"Move commit toward older history",
-		"Drop commit…",
-		"Checkout to this commit (detached)…",
-		"Soft reset to this commit…",
-		"Mixed reset to this commit…",
-		"Hard reset to this commit…",
-		"Create a tag here…",
-		"Create a branch here…",
-		"Cherry-pick onto current branch…",
-		"Revert commit…",
+		"Drop commit",
+		"Checkout to this commit (detached)",
+		"Soft reset to this commit",
+		"Mixed reset to this commit",
+		"Hard reset to this commit",
+		"Create a tag here",
+		"Create a branch here",
+		"Cherry-pick onto current branch",
+		"Revert commit",
 	)
 }
 
@@ -76,8 +76,8 @@ func TestUndoLatestCommitMenuActions(t *testing.T) {
 		mode      repository.ResetMode
 		placement string
 	}{
-		{name: "staged", menu: "Undo latest commit and keep changes staged…", mode: repository.ResetSoft, placement: "staged"},
-		{name: "unstaged", menu: "Undo latest commit and keep changes unstaged…", mode: repository.ResetMixed, placement: "unstaged in Changes"},
+		{name: "staged", menu: "Undo latest commit and keep changes staged", mode: repository.ResetSoft, placement: "staged"},
+		{name: "unstaged", menu: "Undo latest commit and keep changes unstaged", mode: repository.ResetMixed, placement: "unstaged in Changes"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -103,7 +103,7 @@ func TestUndoLatestCommitMenuActions(t *testing.T) {
 func TestUndoLatestCommitConfirmationRetainsApprovedBranch(t *testing.T) {
 	h, calls := historyHarness(t)
 	h.rightClick(t, "Second commit")
-	h.chooseMenuItem(t, "Undo latest commit and keep changes staged…")
+	h.chooseMenuItem(t, "Undo latest commit and keep changes staged")
 	if h.app.confirm == nil {
 		t.Fatal("missing latest-commit confirmation")
 	}
@@ -122,7 +122,7 @@ func TestUndoLatestCommitUsesResolvedHeadAcrossAllRefs(t *testing.T) {
 	h.app.snapshot.Commits = append([]repository.Commit{{
 		Hash: "f3f3f3f3", ShortHash: "f3f3f3f", Subject: "Newer commit on another branch", Parents: []string{"c2c2c2c2"},
 	}}, h.app.snapshot.Commits...)
-	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
+	for _, label := range []string{"Undo latest commit and keep changes staged", "Undo latest commit and keep changes unstaged"} {
 		h.rightClick(t, "Second commit")
 		if !h.menuOffers(label) {
 			t.Fatalf("resolved HEAD does not offer %q when another ref is newer", label)
@@ -134,7 +134,7 @@ func TestUndoLatestCommitUsesResolvedHeadAcrossAllRefs(t *testing.T) {
 func TestUndoLatestCommitMenuIsLimitedToAttachedHeadWithAParent(t *testing.T) {
 	h, _ := historyHarness(t)
 	h.rightClick(t, "Initial commit")
-	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
+	for _, label := range []string{"Undo latest commit and keep changes staged", "Undo latest commit and keep changes unstaged"} {
 		if h.menuOffers(label) {
 			t.Fatalf("a non-HEAD commit offers %q", label)
 		}
@@ -143,7 +143,7 @@ func TestUndoLatestCommitMenuIsLimitedToAttachedHeadWithAParent(t *testing.T) {
 	h.app.snapshot.Commits = h.app.snapshot.Commits[1:]
 	h.app.snapshot.HeadHash = "c1c1c1c1"
 	h.rightClick(t, "Initial commit")
-	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
+	for _, label := range []string{"Undo latest commit and keep changes staged", "Undo latest commit and keep changes unstaged"} {
 		if h.menuOffers(label) {
 			t.Fatalf("a root commit offers %q", label)
 		}
@@ -153,7 +153,7 @@ func TestUndoLatestCommitMenuIsLimitedToAttachedHeadWithAParent(t *testing.T) {
 	h.app.snapshot.Head = "c1c1c1c1"
 	h.app.snapshot.Branches[0].DetachedHead = true
 	h.rightClick(t, "Initial commit")
-	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
+	for _, label := range []string{"Undo latest commit and keep changes staged", "Undo latest commit and keep changes unstaged"} {
 		if h.menuOffers(label) {
 			t.Fatalf("detached HEAD offers %q", label)
 		}
@@ -164,7 +164,7 @@ func TestUndoLatestCommitIsNotOfferedDuringAnOperation(t *testing.T) {
 	h, _ := historyHarness(t)
 	h.app.snapshot.Operation = "merge"
 	h.rightClick(t, "Second commit")
-	for _, label := range []string{"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…"} {
+	for _, label := range []string{"Undo latest commit and keep changes staged", "Undo latest commit and keep changes unstaged"} {
 		if slices.Contains(h.texts(), label) {
 			t.Fatalf("in-progress operation offers %q", label)
 		}
@@ -175,7 +175,7 @@ func TestUndoLatestCommitWarnsAboutUnresolvedConflicts(t *testing.T) {
 	h, calls := historyHarness(t)
 	h.app.snapshot.Files = append(h.app.snapshot.Files, repository.File{Path: "conflict.txt", HasMergeConflicts: true})
 	h.rightClick(t, "Second commit")
-	h.chooseMenuItem(t, "Undo latest commit and keep changes staged…")
+	h.chooseMenuItem(t, "Undo latest commit and keep changes staged")
 	if h.app.confirm != nil {
 		t.Fatal("unresolved conflicts opened a destructive confirmation")
 	}
@@ -190,26 +190,26 @@ func TestUndoLatestCommitWarnsAboutUnresolvedConflicts(t *testing.T) {
 
 var safeCommitMenuItems = []string{
 	"Copy commit hash",
-	"Checkout to this commit (detached)…",
-	"Create a tag here…",
-	"Create a branch here…",
-	"Cherry-pick onto current branch…",
-	"Revert commit…",
+	"Checkout to this commit (detached)",
+	"Create a tag here",
+	"Create a branch here",
+	"Cherry-pick onto current branch",
+	"Revert commit",
 }
 
 var historyOnlyCommitMenuItems = []string{
-	"Reword commit…",
-	"Amend with staged changes…",
-	"Create fixup commit from staged changes…",
-	"Apply fixups from this commit through HEAD…",
-	"Squash into older commit…",
-	"Fixup into older commit…",
+	"Reword commit",
+	"Amend with staged changes",
+	"Create fixup commit from staged changes",
+	"Apply fixups from this commit through HEAD",
+	"Squash into older commit",
+	"Fixup into older commit",
 	"Move commit toward HEAD",
 	"Move commit toward older history",
-	"Drop commit…",
-	"Soft reset to this commit…",
-	"Mixed reset to this commit…",
-	"Hard reset to this commit…",
+	"Drop commit",
+	"Soft reset to this commit",
+	"Mixed reset to this commit",
+	"Hard reset to this commit",
 }
 
 // branchCommitHarness opens the Branches page on either the checked-out
@@ -261,20 +261,20 @@ func TestBranchCommitRowMenuActionsAskAndUseTheClickedCommit(t *testing.T) {
 		confirm  string
 		wantCall string
 	}{
-		{menu: "Amend with staged changes…", confirm: "Amend commit", wantCall: "amend-to:c2c2c2c2"},
-		{menu: "Create fixup commit from staged changes…", confirm: "Create fixup", wantCall: "fixup-for:c2c2c2c2"},
-		{menu: "Apply fixups from this commit through HEAD…", confirm: "Apply fixups", wantCall: "apply-fixups:c2c2c2c2"},
-		{menu: "Squash into older commit…", confirm: "Squash commit", wantCall: "combine:0:c2c2c2c2"},
-		{menu: "Fixup into older commit…", confirm: "Fixup commit", wantCall: "combine:1:c2c2c2c2"},
+		{menu: "Amend with staged changes", confirm: "Amend commit", wantCall: "amend-to:c2c2c2c2"},
+		{menu: "Create fixup commit from staged changes", confirm: "Create fixup", wantCall: "fixup-for:c2c2c2c2"},
+		{menu: "Apply fixups from this commit through HEAD", confirm: "Apply fixups", wantCall: "apply-fixups:c2c2c2c2"},
+		{menu: "Squash into older commit", confirm: "Squash commit", wantCall: "combine:0:c2c2c2c2"},
+		{menu: "Fixup into older commit", confirm: "Fixup commit", wantCall: "combine:1:c2c2c2c2"},
 		{menu: "Move commit toward HEAD", confirm: "Move commit", wantCall: "move:-1:c2c2c2c2"},
 		{menu: "Move commit toward older history", confirm: "Move commit", wantCall: "move:1:c2c2c2c2"},
-		{menu: "Drop commit…", confirm: "Drop commit", wantCall: "drop:c2c2c2c2"},
-		{menu: "Soft reset to this commit…", confirm: "Soft reset", wantCall: "reset-soft:c2c2c2c2"},
-		{menu: "Mixed reset to this commit…", confirm: "Mixed reset", wantCall: "reset-mixed:c2c2c2c2"},
-		{menu: "Hard reset to this commit…", confirm: "Hard reset", wantCall: "reset-hard:c2c2c2c2"},
-		{other: true, menu: "Checkout to this commit (detached)…", confirm: "Checkout commit", wantCall: "checkout-commit:c1c1c1c1"},
-		{other: true, menu: "Cherry-pick onto current branch…", confirm: "Cherry-pick", wantCall: "cherry-pick:c1c1c1c1"},
-		{other: true, menu: "Revert commit…", confirm: "Revert", wantCall: "revert:c1c1c1c1"},
+		{menu: "Drop commit", confirm: "Drop commit", wantCall: "drop:c2c2c2c2"},
+		{menu: "Soft reset to this commit", confirm: "Soft reset", wantCall: "reset-soft:c2c2c2c2"},
+		{menu: "Mixed reset to this commit", confirm: "Mixed reset", wantCall: "reset-mixed:c2c2c2c2"},
+		{menu: "Hard reset to this commit", confirm: "Hard reset", wantCall: "reset-hard:c2c2c2c2"},
+		{other: true, menu: "Checkout to this commit (detached)", confirm: "Checkout commit", wantCall: "checkout-commit:c1c1c1c1"},
+		{other: true, menu: "Cherry-pick onto current branch", confirm: "Cherry-pick", wantCall: "cherry-pick:c1c1c1c1"},
+		{other: true, menu: "Revert commit", confirm: "Revert", wantCall: "revert:c1c1c1c1"},
 	}
 	for _, test := range tests {
 		t.Run(test.menu, func(t *testing.T) {
@@ -304,7 +304,7 @@ func TestBranchCommitRowMenuActionsAskAndUseTheClickedCommit(t *testing.T) {
 func TestCurrentBranchCommitRowMenuRewordsTheSelectedCommit(t *testing.T) {
 	h, calls := branchCommitHarness(t, false)
 	h.rightClick(t, "Second commit")
-	h.chooseMenuItem(t, "Reword commit…")
+	h.chooseMenuItem(t, "Reword commit")
 	h.waitFor(t, "the full commit message", func() bool {
 		return !h.app.commitRewordLoading && h.app.commitRewordBody == "Existing body"
 	})
@@ -346,7 +346,7 @@ func TestOtherBranchCommitRowMenuCopiesTheSelectedHash(t *testing.T) {
 func TestOtherBranchCommitRowMenuCreatesATagAtTheSelectedCommit(t *testing.T) {
 	h, calls := branchCommitHarness(t, true)
 	h.rightClick(t, "Initial commit")
-	h.chooseMenuItem(t, "Create a tag here…")
+	h.chooseMenuItem(t, "Create a tag here")
 	if !h.app.showCommitTagForm || h.app.commitTagCommit.Hash != "c1c1c1c1" {
 		t.Fatalf("the tag form targets %q, want c1c1c1c1", h.app.commitTagCommit.Hash)
 	}
@@ -370,7 +370,7 @@ func TestOtherBranchCommitRowMenuCreatesATagAtTheSelectedCommit(t *testing.T) {
 func TestOtherBranchCommitRowMenuCreatesABranchAtTheSelectedCommit(t *testing.T) {
 	h, calls := branchCommitHarness(t, true)
 	h.rightClick(t, "Initial commit")
-	h.chooseMenuItem(t, "Create a branch here…")
+	h.chooseMenuItem(t, "Create a branch here")
 	if !h.app.showCommitBranchForm || h.app.commitBranchCommit.Hash != "c1c1c1c1" {
 		t.Fatalf("the branch form targets %q, want c1c1c1c1", h.app.commitBranchCommit.Hash)
 	}
@@ -421,7 +421,7 @@ func TestOtherBranchCommitDetailOmitsHistoryEditIcons(t *testing.T) {
 func TestCommitRowMenuRewordsTheSelectedCommit(t *testing.T) {
 	h, calls := historyHarness(t)
 	h.rightClick(t, "Second commit")
-	h.chooseMenuItem(t, "Reword commit…")
+	h.chooseMenuItem(t, "Reword commit")
 	h.waitFor(t, "the full commit message", func() bool {
 		return !h.app.commitRewordLoading && h.app.commitRewordBody == "Existing body"
 	})
@@ -457,14 +457,14 @@ func TestCommitHistoryActionsRequireConfirmation(t *testing.T) {
 		confirm  string
 		wantCall string
 	}{
-		{menu: "Amend with staged changes…", confirm: "Amend commit", wantCall: "amend-to:c2c2c2c2"},
-		{menu: "Create fixup commit from staged changes…", confirm: "Create fixup", wantCall: "fixup-for:c2c2c2c2"},
-		{menu: "Apply fixups from this commit through HEAD…", confirm: "Apply fixups", wantCall: "apply-fixups:c2c2c2c2"},
-		{menu: "Squash into older commit…", confirm: "Squash commit", wantCall: "combine:0:c2c2c2c2"},
-		{menu: "Fixup into older commit…", confirm: "Fixup commit", wantCall: "combine:1:c2c2c2c2"},
+		{menu: "Amend with staged changes", confirm: "Amend commit", wantCall: "amend-to:c2c2c2c2"},
+		{menu: "Create fixup commit from staged changes", confirm: "Create fixup", wantCall: "fixup-for:c2c2c2c2"},
+		{menu: "Apply fixups from this commit through HEAD", confirm: "Apply fixups", wantCall: "apply-fixups:c2c2c2c2"},
+		{menu: "Squash into older commit", confirm: "Squash commit", wantCall: "combine:0:c2c2c2c2"},
+		{menu: "Fixup into older commit", confirm: "Fixup commit", wantCall: "combine:1:c2c2c2c2"},
 		{menu: "Move commit toward HEAD", confirm: "Move commit", wantCall: "move:-1:c2c2c2c2"},
 		{menu: "Move commit toward older history", confirm: "Move commit", wantCall: "move:1:c2c2c2c2"},
-		{menu: "Drop commit…", confirm: "Drop commit", wantCall: "drop:c2c2c2c2"},
+		{menu: "Drop commit", confirm: "Drop commit", wantCall: "drop:c2c2c2c2"},
 	}
 	for _, test := range tests {
 		t.Run(test.menu, func(t *testing.T) {
@@ -501,7 +501,7 @@ func TestRewordShortcutLoadsTheMessageAndEscapeCloses(t *testing.T) {
 func TestCommitRowMenuCreatesATagAtTheCommit(t *testing.T) {
 	h, calls := historyHarness(t)
 	h.rightClick(t, "Second commit")
-	h.chooseMenuItem(t, "Create a tag here…")
+	h.chooseMenuItem(t, "Create a tag here")
 	h.tester.Frame()
 	if !h.app.showCommitTagForm {
 		t.Fatal("the tag action opened no form")
@@ -531,7 +531,7 @@ func TestCommitRowMenuCreatesATagAtTheCommit(t *testing.T) {
 func TestCommitRowMenuCreatesABranchAtTheCommit(t *testing.T) {
 	h, calls := historyHarness(t)
 	h.rightClick(t, "Initial commit")
-	h.chooseMenuItem(t, "Create a branch here…")
+	h.chooseMenuItem(t, "Create a branch here")
 	h.tester.Frame()
 	if !h.app.showCommitBranchForm {
 		t.Fatal("the branch action opened no form")

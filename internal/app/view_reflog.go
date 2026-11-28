@@ -29,20 +29,20 @@ func (a *app) reflogRowMenu(m *ui.Menu, entry repository.Commit, services ui.Ser
 		a.notifyCopied(services, "commit hash", entry.Hash)
 	}
 	m.Separator()
-	if m.Item(tr("Checkout commit (detached)…")).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Checkout commit (detached)")).Disabled(a.actionBusy).Chosen() {
 		a.confirmCheckoutCommit(entry)
 	}
-	if m.Item(tr("Create a branch here…")).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Create a branch here")).Disabled(a.actionBusy).Chosen() {
 		a.openCommitBranchForm(entry)
 	}
 	m.Separator()
-	if m.Item(tr("Soft reset here…")).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Soft reset here")).Disabled(a.actionBusy).Chosen() {
 		a.confirmResetCommit(entry, repository.ResetSoft)
 	}
-	if m.Item(tr("Mixed reset here…")).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Mixed reset here")).Disabled(a.actionBusy).Chosen() {
 		a.confirmResetCommit(entry, repository.ResetMixed)
 	}
-	if m.Item(tr("Hard reset here…")).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Hard reset here")).Disabled(a.actionBusy).Chosen() {
 		a.confirmResetCommit(entry, repository.ResetHard)
 	}
 }

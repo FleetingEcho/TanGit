@@ -264,7 +264,7 @@ func (a *app) themeEditorBase(c *ui.Context) {
 				Tooltip(tr("Replace your colors with a built-in palette")).Gap(6)
 			copyFrom.Children(func() {
 				ui.Icon(c, themeIcon).FontSize(14)
-				ui.Text(c, tr("Copy from…"))
+				ui.Text(c, tr("Copy from"))
 			})
 			copyFrom.PopoverMenuButton(func(m *ui.Menu) {
 				light, dark := themeNamesByBrightness()

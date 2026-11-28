@@ -356,7 +356,7 @@ func (a *app) compareDiffViewOptions(c *ui.Context, fullscreen bool) {
 		compareDiffActionButton(c, "Toggle diff line wrapping", wrapTooltip, diffWrapIcon, a.diffWrap, false, a.toggleDiffWrap)
 
 		shown, ok := a.activeDiff()
-		compareDiffActionButton(c, "Save diff", "Save this diff to a file…", downloadIcon,
+		compareDiffActionButton(c, "Save diff", "Save this diff to a file", downloadIcon,
 			false, !ok || shown.patch == "", a.exportDiff)
 		if fullscreen {
 			compareDiffActionButton(c, "Restore diff view", "Restore diff view", shrinkIcon, false, false, a.closeDiffFullscreen)

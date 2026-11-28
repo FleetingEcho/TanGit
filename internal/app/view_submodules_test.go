@@ -58,7 +58,7 @@ func TestAddSubmoduleFormStagesRealGitSubmodule(t *testing.T) {
 		}
 	}
 	click("Submodules")
-	click("Add submodule…")
+	click("Add submodule")
 	checkSubmit(true)
 	const name, path = "shared-library", "vendor/library"
 	url := filepath.ToSlash(library)

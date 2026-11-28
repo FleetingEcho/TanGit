@@ -132,6 +132,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.stashFormModal(c)
 	a.remoteFormModal(c)
 	a.remoteWebURLFormModal(c)
+	a.commitFormModal(c)
 	a.tagFormModal(c)
 	a.worktreeFormModal(c)
 	a.agentTaskFormModal(c)
@@ -374,11 +375,7 @@ func (a *app) workspaceView(c *ui.Context) {
 			a.navView(c)
 		}, func() {
 			ui.Column(c).Grow(1).FillHeight().Children(func() {
-				if a.showCommitForm && a.workspaceTab == sectionChanges {
-					a.commitForm(c)
-				} else {
-					a.contentView(c)
-				}
+				a.contentView(c)
 			})
 		})
 }
@@ -413,8 +410,9 @@ func (a *app) headerViewWithID(c *ui.Context, keyboardID string) {
 				ui.Badge(c, tr("Linked worktree")).Tooltip(a.snapshot.Root)
 				if ownerPath := a.openedMainWorktreePath(); ownerPath != "" {
 					owner := tr("Main worktree") + " · " + repoName(ownerPath)
-					ui.Badge(c, owner).SingleLine().MaxWidth(240).MinWidth(0).
-						Label(tr("Main worktree") + ": " + ownerPath).Tooltip(owner + "\n" + ownerPath)
+					ownerBadge := ui.Badge(c, owner).SingleLine().MaxWidth(240).MinWidth(0).
+						Label(tr("Main worktree") + ": " + ownerPath)
+					richTooltip(c, ownerBadge, richTip{Title: owner, Mono: []string{ownerPath}, Font: a.settings.BufferFont})
 				}
 			}
 
@@ -856,7 +854,8 @@ func (a *app) statusBar(c *ui.Context) {
 			// in the command log, which the button beside it opens.
 			line := statusErrorLine(a.actionError)
 			errorButton := ui.ButtonBase(c).Padding(1, 3).Radius(theme.Radius).
-				Label(tr("Command log") + ": " + line).Tooltip(tr("Command log") + "\n" + shorten(a.actionError, 400))
+				Label(tr("Command log") + ": " + line)
+			richTooltip(c, errorButton, richTip{Title: tr("Command log"), Body: shorten(a.actionError, 400)})
 			errorButton.Children(func() {
 				ui.Text(c, line).TextColor(theme.Danger).
 					SingleLine().MaxWidth(520)

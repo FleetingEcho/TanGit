@@ -831,9 +831,9 @@ func (a *app) changesHeader(c *ui.Context) {
 				a.fileTreeMode = !a.fileTreeMode
 			})
 			flatIconButton(c, "Refresh", "F5", refreshIcon, 15, 5, a.actionBusy, a.beginRefresh)
-			flatIconButton(c, "Apply patch…", "Preview and apply a patch or diff file (Ctrl+I)", patchImportIcon, 15, 5,
+			flatIconButton(c, "Apply patch", "Preview and apply a patch or diff file (Ctrl+I)", patchImportIcon, 15, 5,
 				a.actionBusy || a.session == nil, a.beginPatchImport)
-			flatIconButton(c, "Stash changes…", "Stash the working tree", stashIcon, 15, 5,
+			flatIconButton(c, "Stash changes", "Stash the working tree", stashIcon, 15, 5,
 				a.actionBusy || len(a.snapshot.Files) == 0, a.openStashForm)
 			// The more button wears the dots itself: the toolbar widget's
 			// own overflow wears chevrons, which read as a different action.
@@ -843,17 +843,17 @@ func (a *app) changesHeader(c *ui.Context) {
 				ui.Text(c, "⋯").FontSize(16).TextColor(theme.TextMuted)
 			})
 			more.PopoverMenuButton(func(m *ui.Menu) {
-				if m.Item(tr("Apply patch…")).Disabled(a.actionBusy || a.session == nil).Chosen() {
+				if m.Item(tr("Apply patch")).Disabled(a.actionBusy || a.session == nil).Chosen() {
 					a.beginPatchImport()
 				}
-				if m.Item(tr("Apply mailbox patch…")).Disabled(a.actionBusy || a.session == nil).Chosen() {
+				if m.Item(tr("Apply mailbox patch")).Disabled(a.actionBusy || a.session == nil).Chosen() {
 					a.beginMailboxPatchImport()
 				}
 				m.Separator()
-				if m.Item(tr("Commit with a description…")).Disabled(a.actionBusy || !hasStagedFiles(a.snapshot.Files)).Chosen() {
+				if m.Item(tr("Commit with a description")).Disabled(a.actionBusy || !hasStagedFiles(a.snapshot.Files)).Chosen() {
 					a.showCommitForm = true
 				}
-				if m.Item(tr("Commit (amend last)…")).Disabled(!a.canCommit()).Chosen() {
+				if m.Item(tr("Commit (amend last)")).Disabled(!a.canCommit()).Chosen() {
 					a.commitAmend = true
 					a.beginCommit()
 				}
@@ -890,17 +890,19 @@ func (a *app) commitBox(c *ui.Context) {
 		card.Border(1, theme.Accent)
 	}
 	card.Children(func() {
-		ui.TextInput(c, &a.commitSummary).Grow(1).MinWidth(0).
+		summaryInput := ui.TextInput(c, &a.commitSummary).Grow(1).MinWidth(0).
 			Label(tr("Commit message")).
-			Placeholder(tr("Commit message")).
-			Tooltip(trf("Ctrl+Enter commits on '%s'", on))
+			Placeholder(tr("Commit message"))
+		richTooltip(c, summaryInput, richTip{Title: tr("Commit message"), Body: trf("Commits on '%s'", on), Shortcut: "Ctrl+Enter"})
+		flatIconButton(c, "Write a longer commit message", "Open the commit form with a description", expandIcon, 14, 5,
+			a.actionBusy, func() { a.showCommitForm = true })
 		commit := ui.PrimaryButton(c, "").Label(tr("Commit")).Shrink(0).
-			Gap(6).Tooltip(tr("Commit the staged changes (Ctrl+Enter)")).
-			Disabled(!a.canCommit())
+			Gap(6).Disabled(!a.canCommit())
 		commit.Children(func() {
 			ui.Icon(c, commitIcon).FontSize(13).TextColor(theme.AccentText)
 			ui.Text(c, tr("Commit"))
 		})
+		richTooltip(c, commit, richTip{Title: tr("Commit the staged changes"), Shortcut: "Ctrl+Enter"})
 		if commit.Clicked() {
 			a.beginCommit()
 		}
@@ -1098,7 +1100,7 @@ func (a *app) changeFileRow(row ui.ListRow, change changeRow, index int, guides 
 					// the staged context, next to the operation's recovery actions.
 					if recovery, ok := a.latestFileRecovery(file.Path, true); ok {
 						rowIconButton(row.Context, trf("Restore unresolved %s", file.Path),
-							"Restore the original conflict markers and index stages 1/2/3…", softResetIcon, func() {
+							"Restore the original conflict markers and index stages 1/2/3", softResetIcon, func() {
 								a.confirmRestoreFileRecovery(recovery)
 							})
 					}
@@ -1112,7 +1114,7 @@ func (a *app) changeFileRow(row ui.ListRow, change changeRow, index int, guides 
 					rowIconButton(row.Context, trf("Stage %s", file.Path), "Stage this file", stageIcon, func() {
 						a.beginStageFile(file, true)
 					})
-					rowIconButton(row.Context, trf("Discard %s", file.Path), "Discard changes…", undoIcon, func() {
+					rowIconButton(row.Context, trf("Discard %s", file.Path), "Discard changes", undoIcon, func() {
 						a.confirmDiscardFile(file)
 					})
 				}

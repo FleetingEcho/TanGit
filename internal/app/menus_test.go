@@ -175,15 +175,15 @@ var commitMenuGroups = func() map[string]string {
 		"Copy": {"Copy commit hash", "Copy short hash", "Copy subject", "Copy commit message",
 			"Copy author", "Copy web URL", "Copy patch"},
 		"Rewrite history": {"Mark as base commit for rebase", "Cancel marked base commit", "Open Rebase TODO",
-			"Edit commit (pause rebase)…", "Reword commit…", "Drop commit…", "Amend with staged changes…",
-			"Create fixup commit from staged changes…", "Apply fixups from this commit through HEAD…",
-			"Squash into older commit…", "Fixup into older commit…", "Move commit toward HEAD",
+			"Edit commit (pause rebase)", "Reword commit", "Drop commit", "Amend with staged changes",
+			"Create fixup commit from staged changes", "Apply fixups from this commit through HEAD",
+			"Squash into older commit", "Fixup into older commit", "Move commit toward HEAD",
 			"Move commit toward older history"},
-		"Reset": {"Undo latest commit and keep changes staged…", "Undo latest commit and keep changes unstaged…",
-			"Soft reset to this commit…", "Mixed reset to this commit…", "Hard reset to this commit…"},
-		"Create": {"Create a tag here…", "Create a branch here…", "Create worktree here…", "Export as mailbox patch…"},
+		"Reset": {"Undo latest commit and keep changes staged", "Undo latest commit and keep changes unstaged",
+			"Soft reset to this commit", "Mixed reset to this commit", "Hard reset to this commit"},
+		"Create": {"Create a tag here", "Create a branch here", "Create worktree here", "Export as mailbox patch"},
 		"Bisect": {"Mark commit good (bisect)", "Mark commit bad (bisect)", "Skip commit (bisect)",
-			"Start bisect from this commit…"},
+			"Start bisect from this commit"},
 		"Compare": {"Compare commit with HEAD", "Compare first parent with commit"},
 	}
 	out := map[string]string{}
@@ -235,18 +235,18 @@ func TestFileRowContextMenu(t *testing.T) {
 	h.app.selectedFile = 0
 
 	h.rightClick(t, "one.txt")
-	h.requireMenuLabels(t, "Open in built-in editor", "Unstage", "Blame", "Find file histories", "Discard changes…", "Copy relative path", "Copy absolute path")
+	h.requireMenuLabels(t, "Open in built-in editor", "Unstage", "Blame", "Find file histories", "Discard changes", "Copy relative path", "Copy absolute path")
 	if slices.Contains(h.texts(), "Stage") {
 		t.Errorf("a staged file offers Stage in its menu: %q", h.texts())
 	}
 	h.press(t, ui.KeyEscape)
 
 	h.rightClick(t, "two.txt")
-	h.requireMenuLabels(t, "Open in built-in editor", "Stage", "Find file histories", "Discard changes…", "Copy relative path", "Copy absolute path")
+	h.requireMenuLabels(t, "Open in built-in editor", "Stage", "Find file histories", "Discard changes", "Copy relative path", "Copy absolute path")
 
 	// The menu acts on the row clicked, not on the row selected: the details
 	// pane follows it, and the discard confirmation it opens names it.
-	h.chooseMenuItem(t, "Discard changes…")
+	h.chooseMenuItem(t, "Discard changes")
 	change, ok := h.app.selectedChange()
 	if !ok || change.file.Path != "two.txt" {
 		t.Fatalf("the menu should select the row clicked, selectedFile=%d", h.app.selectedFile)
@@ -279,7 +279,7 @@ func TestFileMenusOfferBothPaths(t *testing.T) {
 	h.press(t, sectionKeys[sectionHistory])
 	h.waitFor(t, "the commit files", func() bool { return len(h.app.commitFiles) > 0 })
 	h.rightClick(t, "one.txt")
-	h.requireMenuLabels(t, "Open in built-in editor", "View file changes…", "Copy relative path", "Copy absolute path")
+	h.requireMenuLabels(t, "Open in built-in editor", "View file changes", "Copy relative path", "Copy absolute path")
 	h.chooseMenuItem(t, "Copy relative path")
 	if got := h.tester.Clipboard(); got != "one.txt" {
 		t.Fatalf("the commit file menu copied %q", got)
@@ -291,13 +291,13 @@ func TestBranchRowContextMenu(t *testing.T) {
 	h.press(t, sectionKeys[sectionBranches])
 
 	h.rightClick(t, "feature")
-	h.requireMenuLabels(t, "Checkout", "Force checkout…", "Merge into current…", "Rebase current onto this…", "Rename…", "New branch here…", "Copy branch name", "Delete branch…")
+	h.requireMenuLabels(t, "Checkout", "Force checkout", "Merge into current", "Rebase current onto this", "Rename", "New branch here", "Copy branch name", "Delete branch")
 	h.press(t, ui.KeyEscape)
 
 	// The checked-out branch has no Checkout, Merge or Delete.
 	h.rightClick(t, "main (local)")
-	h.requireMenuLabels(t, "Rename…", "Copy branch name")
-	for _, label := range []string{"Checkout", "Merge into current…", "Delete branch…"} {
+	h.requireMenuLabels(t, "Rename", "Copy branch name")
+	for _, label := range []string{"Checkout", "Merge into current", "Delete branch"} {
 		if slices.Contains(h.texts(), label) {
 			t.Errorf("the current branch offers %q: %q", label, h.texts())
 		}
@@ -308,7 +308,7 @@ func TestBranchRowContextMenu(t *testing.T) {
 	// the branch selected.
 	h.app.selectedBranch = 0
 	h.rightClick(t, "feature")
-	h.chooseMenuItem(t, "New branch here…")
+	h.chooseMenuItem(t, "New branch here")
 	if !h.app.showBranchForm || h.app.newBranchBase != "feature" {
 		t.Fatalf("New branch here… opened %v from %q", h.app.showBranchForm, h.app.newBranchBase)
 	}
@@ -411,7 +411,7 @@ func TestCommitWithDescriptionRequiresStagedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	item, ok := h.tester.Access("Commit with a description…")
+	item, ok := h.tester.Access("Commit with a description")
 	if !ok || !item.Disabled {
 		t.Fatalf("description commit is enabled without staged files: %+v, found=%v", item, ok)
 	}
@@ -423,11 +423,11 @@ func TestCommitWithDescriptionRequiresStagedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	item, ok = h.tester.Access("Commit with a description…")
+	item, ok = h.tester.Access("Commit with a description")
 	if !ok || item.Disabled {
 		t.Fatalf("description commit is disabled with staged files: %+v, found=%v", item, ok)
 	}
-	h.chooseMenuItem(t, "Commit with a description…")
+	h.chooseMenuItem(t, "Commit with a description")
 	if !h.app.showCommitForm {
 		t.Fatal("the enabled description action did not open its form")
 	}
@@ -439,7 +439,7 @@ func TestShortcutsAreSilentWhileAFormIsOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	h.chooseMenuItem(t, "Commit with a description…")
+	h.chooseMenuItem(t, "Commit with a description")
 	if !h.app.showCommitForm {
 		t.Fatal("the commit form did not open")
 	}

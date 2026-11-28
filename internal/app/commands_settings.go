@@ -15,7 +15,7 @@ func (a *app) commandsSettings(c *ui.Context) {
 	theme := c.Theme()
 	settingsSection(c, func() {
 		settingsGroup(c, commandIcon, "Custom commands", "Your own keys for shell commands in this repository", func() {
-			flatIconButton(c, "Add command…", "Add a custom command", plusIcon, 15, 5,
+			flatIconButton(c, "Add command", "Add a custom command", plusIcon, 15, 5,
 				a.settingsUI.customCommandFormOpen, func() { a.openCustomCommandForm(-1) })
 		})
 		a.customCommandForm(c)
@@ -39,7 +39,7 @@ func (a *app) commandsSettings(c *ui.Context) {
 				ui.Text(c, tr("Run a command from the palette with !, then save it, or add one here.")).
 					TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).TextAlign(ui.Center).MaxWidth(380)
 				ui.Row(c).Gap(8).Children(func() {
-					iconTextButton(c, "Add command…", "Add a custom command", plusIcon, false, func() { a.openCustomCommandForm(-1) })
+					iconTextButton(c, "Add command", "Add a custom command", plusIcon, false, func() { a.openCustomCommandForm(-1) })
 				})
 			})
 		}

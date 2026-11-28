@@ -324,7 +324,7 @@ func TestCommandMenusShareTheBottomIsland(t *testing.T) {
 		t.Fatalf("open Pull requests: %v", err)
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Create pull request…"); err != nil {
+	if err := h.tester.Click("Create pull request"); err != nil {
 		t.Fatalf("choose Create pull request: %v", err)
 	}
 	h.waitFor(t, "hosting preflight", func() bool { return h.app.showPRForm })

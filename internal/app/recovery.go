@@ -141,10 +141,10 @@ func (a *app) recoveryBody(c *ui.Context) {
 				ui.Text(c, time.Unix(snapshot.CreatedAt, 0).Format("2006-01-02 15:04")).
 					TextColor(theme.TextMuted).FontSize(theme.FontSize - 2)
 			})
-			iconButton(c, tr("Restore")+" "+snapshot.ID, "Restore saved work while keeping this entry…", revertIcon, a.actionBusy, func() {
+			iconButton(c, tr("Restore")+" "+snapshot.ID, "Restore saved work while keeping this entry", revertIcon, a.actionBusy, func() {
 				a.confirmRestoreWorkSnapshot(snapshot)
 			})
-			iconButton(c, "Delete "+snapshot.ID, "Delete this recovery entry…", trashIcon, a.actionBusy, func() {
+			iconButton(c, "Delete "+snapshot.ID, "Delete this recovery entry", trashIcon, a.actionBusy, func() {
 				a.confirmDeleteWorkSnapshot(snapshot)
 			})
 		})
@@ -240,9 +240,9 @@ func (a *app) fileRecoveryList(c *ui.Context) {
 								TextColor(secondaryRowColor(theme, row)).FontSize(theme.FontSize - 2)
 						})
 						if fileRecoveryCanRestore(record) {
-							label := tr("Restore unresolved…")
+							label := tr("Restore unresolved")
 							if record.Status == repository.FileRecoveryInterrupted {
-								label = tr("Retry…")
+								label = tr("Retry")
 							}
 							button := compactTextButton(ui.Button(row.Context, label)).
 								Label(label).Tooltip(tr("Restore this saved state; newer changes to the same file stop the compare-and-swap")).

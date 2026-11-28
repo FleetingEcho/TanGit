@@ -15,7 +15,7 @@ var assistTranslations = []struct {
 	{"Suggestion source:", "建议来源：", "建議來源：", "提案ソース：", "Origen de la sugerencia:", "Source de la suggestion :"},
 	{"Preview region substitutions on a clone. Accept writes Result only and saves V2 recovery.", "在克隆上预览各区域替换。接受只写入 Result，并保存 V2 recovery。", "在複本上預覽各區域替換。接受僅寫入 Result，並儲存 V2 recovery。", "クローン上で領域の置換をプレビューします。Accept は Result のみを書き込み、V2 recovery を保存します。", "Previsualiza sustituciones por región en un clon. Accept escribe solo Result y guarda la recuperación V2.", "Prévisualise les substitutions par région sur un clone. Accept écrit uniquement Result et enregistre la récupération V2."},
 	{"Conflicted path:", "冲突路径：", "衝突路徑：", "競合パス：", "Ruta en conflicto:", "Chemin en conflit :"},
-	{"Requesting suggestions…", "正在请求建议…", "正在請求建議…", "提案を要求しています…", "Solicitando sugerencias…", "Demande de suggestions…"},
+	{"Requesting suggestions…", "正在请求建议", "正在請求建議", "提案を要求しています", "Solicitando sugerencias", "Demande de suggestions"},
 	{"The source Result and Git state are read-only while the helper runs.", "helper 运行期间，源 Result 和 Git 状态保持只读。", "helper 執行期間，來源 Result 與 Git 狀態保持唯讀。", "ヘルパーの実行中、ソース Result と Git の状態は読み取り専用です。", "El Result de origen y el estado de Git son de solo lectura mientras se ejecuta el helper.", "Le Result source et l’état Git restent en lecture seule pendant l’exécution de l’helper."},
 	{"Suggestions unavailable", "建议不可用", "建議不可用", "提案を利用できません", "Sugerencias no disponibles", "Suggestions indisponibles"},
 	{"No suggestions yet", "还没有建议", "尚無建議", "提案はまだありません", "Aún no hay sugerencias", "Aucune suggestion pour le moment"},

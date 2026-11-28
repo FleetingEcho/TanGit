@@ -1609,7 +1609,7 @@ func TestScreenshot(t *testing.T) {
 		a.settingsUI.page = settingsPageEditor
 		a.openSettings()
 		tt.Frame()
-		if err := tt.Click("Add editor…"); err != nil {
+		if err := tt.Click("Add editor"); err != nil {
 			t.Fatal(err)
 		}
 		a.settingsUI.customEditorFormName = "Fleet"

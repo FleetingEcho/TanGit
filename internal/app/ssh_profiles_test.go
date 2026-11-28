@@ -330,7 +330,7 @@ func TestSettingsRailOpensSSHProfileForm(t *testing.T) {
 	if !tester.HasText("No SSH profiles yet") {
 		t.Fatalf("SSH profile page is not visible: %q", tester.Texts())
 	}
-	if err := tester.Click("Add SSH profile…"); err != nil {
+	if err := tester.Click("Add SSH profile"); err != nil {
 		t.Fatalf("open Add SSH profile form: %v", err)
 	}
 	tester.Frame()

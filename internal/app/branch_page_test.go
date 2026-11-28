@@ -26,7 +26,7 @@ func TestBranchHeaderOmitsMaximizeButKeepsRename(t *testing.T) {
 			t.Fatalf("branch header still offers %q", removed)
 		}
 	}
-	if err := h.tester.Click("Rename…"); err != nil {
+	if err := h.tester.Click("Rename"); err != nil {
 		t.Fatalf("the remaining rename control is unavailable: %v", err)
 	}
 	h.tester.Frame()
@@ -111,7 +111,7 @@ func TestExpandedBranchEscapeCancelsFormsBeforeRestoring(t *testing.T) {
 	h.app.branchFullscreen = true
 	h.tester.Frame()
 	h.settle(t)
-	if err := h.tester.Click("Rename…"); err != nil {
+	if err := h.tester.Click("Rename"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()

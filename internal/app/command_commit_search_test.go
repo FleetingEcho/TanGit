@@ -85,22 +85,22 @@ func TestPastedHashFindsACommitBeyondTheLoadedHistory(t *testing.T) {
 	for _, action := range actions {
 		have[action.Label] = true
 	}
-	for _, label := range []string{"Show in History", "Copy commit hash", "Checkout to this commit (detached)…", "Cherry-pick onto current branch…",
-		"Revert commit…", "Create a tag here…", "Create a branch here…", "Export as mailbox patch…", "Compare commit with HEAD", "Start bisect from this commit…"} {
+	for _, label := range []string{"Show in History", "Copy commit hash", "Checkout to this commit (detached)", "Cherry-pick onto current branch",
+		"Revert commit", "Create a tag here", "Create a branch here", "Export as mailbox patch", "Compare commit with HEAD", "Start bisect from this commit"} {
 		if !have[label] {
 			t.Errorf("action %q is missing: %v", label, have)
 		}
 	}
 	// A commit outside the checked-out branch's loaded history keeps no
 	// rebase or reset actions, as the context menu does for another branch.
-	for _, label := range []string{"Drop commit…", "Soft reset to this commit…", "Reword commit…"} {
+	for _, label := range []string{"Drop commit", "Soft reset to this commit", "Reword commit"} {
 		if have[label] {
 			t.Errorf("history-rewriting action %q offered for a commit outside the loaded history", label)
 		}
 	}
 	// Typing filters the actions; Escape steps back before it closes.
 	s.palette.query = "revert"
-	if got := s.commandPaletteCandidates(); len(got) != 1 || got[0].Label != "Revert commit…" {
+	if got := s.commandPaletteCandidates(); len(got) != 1 || got[0].Label != "Revert commit" {
 		t.Fatalf("filtering the actions = %+v", got)
 	}
 	s.closeCommitActions()
@@ -117,7 +117,7 @@ func TestLoadedCommitsOfTheCurrentBranchOfferHistoryActions(t *testing.T) {
 	for _, action := range s.commandPaletteCandidates() {
 		have[action.Label] = true
 	}
-	for _, label := range []string{"Edit commit (pause rebase)…", "Reword commit…", "Squash into older commit…", "Drop commit…", "Hard reset to this commit…", "Mark as base commit for rebase"} {
+	for _, label := range []string{"Edit commit (pause rebase)", "Reword commit", "Squash into older commit", "Drop commit", "Hard reset to this commit", "Mark as base commit for rebase"} {
 		if !have[label] {
 			t.Errorf("a loaded commit lacks %q", label)
 		}

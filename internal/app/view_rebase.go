@@ -210,10 +210,10 @@ func (a *app) rebaseOperationButtons(c *ui.Context) {
 			a.actionBusy || conflicts > 0 || !planReadable || a.location.IsRemote(), a.confirmContinueOperation)
 	}
 	if a.operationCan(repository.OperationActionSkip) {
-		iconTextButtonState(c, "Skip…", "Skip the current Git todo step", skipIcon, false, a.actionBusy || !planReadable, a.confirmSkipOperation)
+		iconTextButtonState(c, "Skip", "Skip the current Git todo step", skipIcon, false, a.actionBusy || !planReadable, a.confirmSkipOperation)
 	}
 	if a.operationCan(repository.OperationActionAbort) {
-		iconTextButton(c, "Abort…", "Abort through the Operation driver", abortIcon, a.actionBusy, a.confirmAbortOperation)
+		iconTextButton(c, "Abort", "Abort through the Operation driver", abortIcon, a.actionBusy, a.confirmAbortOperation)
 	}
 }
 

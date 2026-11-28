@@ -131,7 +131,7 @@ func TestCustomPatchCollectsPreviewsExportsAndApplies(t *testing.T) {
 	destination := filepath.Join(t.TempDir(), "custom.patch")
 	dialog := &saveDialog{path: destination, done: make(chan struct{})}
 	stubSaveDialog(t, dialog)
-	if err := h.tester.Click("Export .patch…"); err != nil {
+	if err := h.tester.Click("Export .patch"); err != nil {
 		t.Fatal(err)
 	}
 	<-dialog.done

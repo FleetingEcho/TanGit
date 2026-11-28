@@ -123,7 +123,7 @@ func TestLanguageSelectorTranslatesTheInterface(t *testing.T) {
 				t.Fatalf("the language menu chose %q, want %q", got, choice.Code)
 			}
 			catalog := i18n.Translations[choice.Code]
-			for _, english := range []string{"Settings", "Appearance", "Language", "Theme", "Home background", "Choose image…"} {
+			for _, english := range []string{"Settings", "Appearance", "Language", "Theme", "Home background", "Choose image"} {
 				want := catalog[english]
 				if !slices.Contains(h.texts(), want) {
 					t.Fatalf("the %s interface does not show %q for %q: %q", choice.Name, want, english, h.texts())
@@ -155,7 +155,7 @@ func TestLanguageSelectorTranslatesTheInterface(t *testing.T) {
 
 func TestDetachedCommitCheckoutLabelIsTranslated(t *testing.T) {
 	t.Cleanup(func() { currentLanguage = i18n.DefaultLanguage })
-	const english = "Checkout to this commit (detached)…"
+	const english = "Checkout to this commit (detached)"
 	for _, choice := range i18n.Choices {
 		if choice.Code == i18n.DefaultLanguage {
 			continue

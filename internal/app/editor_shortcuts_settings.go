@@ -167,7 +167,7 @@ func (a *app) editorShortcutSettings(c *ui.Context) {
 			}
 		})
 		filter := ui.SearchField(c, &a.code.shortcutQuery).Label(tr("Filter editor shortcuts")).
-			Placeholder(tr("Filter editor shortcuts…")).Grow(1)
+			Placeholder(tr("Filter editor shortcuts")).Grow(1)
 		if filter.Changed() {
 			a.code.shortcutRecording = ""
 			a.code.shortcutError = ""
@@ -260,7 +260,7 @@ func (a *app) editorShortcutRecorder(c *ui.Context, action editorShortcutAction,
 		Label(editorShortcutRecordLabel(action, slot)).Tooltip(tr("Escape cancels; Backspace clears this shortcut"))
 	input.Children(func() {
 		ui.Icon(c, keyboardIcon).FontSize(12).TextColor(theme.Accent)
-		ui.Text(c, tr("Press a shortcut…")).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).Grow(1).SingleLine().Ellipsis("…").TextAlign(ui.End)
+		ui.Text(c, tr("Press a shortcut")).FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).Grow(1).SingleLine().Ellipsis("…").TextAlign(ui.End)
 	})
 	input.HandleInput(func(event ui.InputEvent) bool {
 		return a.editorShortcutCaptureEvent(c, action, slot, event)

@@ -94,7 +94,7 @@ func (a *app) submoduleRowMenu(m *ui.Menu, row ui.ListRow) {
 		a.syncSubmodules(nil)
 	}
 	m.Separator()
-	if m.Item(tr("Delete submodule…")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Delete submodule")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
 		a.selectSubmoduleRow(row.Index)
 		a.confirmDeleteSubmodule(submodule)
 	}
@@ -130,7 +130,7 @@ func (a *app) submodulesView(c *ui.Context) {
 		a.collapsibleContentPaneSplit(c, &a.filePaneWidth, &a.workspacePaneCollapsed[sectionSubmodules],
 			"Expand list pane", func() {
 				islandCard(c, ui.Column(c).Grow(1).Gap(8).Padding(12)).Children(func() {
-					paneTitleAction(c, submodulesIcon, "Configured submodules", "Add submodule…",
+					paneTitleAction(c, submodulesIcon, "Configured submodules", "Add submodule",
 						"Vendor another repository", a.actionBusy, func() { a.showSubmoduleForm = true }, func() {
 							paneCollapseButton(c, &a.workspacePaneCollapsed[sectionSubmodules], "Collapse list pane")
 						})
@@ -180,7 +180,7 @@ func (a *app) submodulesView(c *ui.Context) {
 						if ui.Button(c, tr("Update to remote")).Disabled(a.actionBusy).Clicked() {
 							a.updateSubmodules([]string{submodule.Path}, false, true)
 						}
-						if ui.Button(c, tr("Delete…")).Disabled(a.actionBusy).Clicked() {
+						if ui.Button(c, tr("Delete")).Disabled(a.actionBusy).Clicked() {
 							a.confirmDeleteSelectedSubmodule()
 						}
 					})

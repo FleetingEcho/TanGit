@@ -350,7 +350,7 @@ func (a *app) branchRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) {
 			a.confirmPushFollowTags()
 		}
 		m.Separator()
-		if m.Item(tr("Create pull request…")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Chosen() {
+		if m.Item(tr("Create pull request")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Chosen() {
 			a.openCreatePullRequestForm()
 		}
 		if m.Item(tr("Open pull request in browser")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Chosen() {
@@ -360,10 +360,10 @@ func (a *app) branchRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) {
 			a.openPullRequestChecks()
 		}
 
-		if m.Item(tr("Force push with lease…")).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Force push with lease")).Disabled(a.actionBusy).Chosen() {
 			a.confirmForcePushWithLease()
 		}
-		if m.Item(tr("Move unpushed commits to new branch…")).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Move unpushed commits to new branch")).Disabled(a.actionBusy).Chosen() {
 			a.openMoveCommitsForm()
 		}
 	}
@@ -372,15 +372,15 @@ func (a *app) branchRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) {
 			a.selectBranchRow(row.Index)
 			a.checkoutBranch(branch.Name)
 		}
-		if m.Item(tr("Force checkout…")).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Force checkout")).Disabled(a.actionBusy).Chosen() {
 			a.selectBranchRow(row.Index)
 			a.confirmForceCheckoutBranch(branch)
 		}
-		if m.Item(tr("Merge into current…")).Shortcut(ui.Shift, ui.KeyM).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Merge into current")).Shortcut(ui.Shift, ui.KeyM).Disabled(a.actionBusy).Chosen() {
 			a.selectBranchRow(row.Index)
 			a.confirmMergeBranch(branch)
 		}
-		if m.Item(tr("Rebase current onto this…")).Disabled(a.actionBusy || a.snapshot.Branch == "").Chosen() {
+		if m.Item(tr("Rebase current onto this")).Disabled(a.actionBusy || a.snapshot.Branch == "").Chosen() {
 			a.selectBranchRow(row.Index)
 			a.confirmRebaseOntoBranch(branch)
 		}
@@ -401,12 +401,12 @@ func (a *app) branchRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) {
 		}
 	}
 	m.Separator()
-	if m.Item(tr("Rename…")).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Rename")).Disabled(a.actionBusy).Chosen() {
 		a.selectBranchRow(row.Index)
 		a.renameBranch = branch.Name
 		a.showRenameForm = true
 	}
-	if m.Item(tr("New branch here…")).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("New branch here")).Disabled(a.actionBusy).Chosen() {
 		a.selectBranchRow(row.Index)
 		a.openBranchForm(branch.Name)
 	}
@@ -416,7 +416,7 @@ func (a *app) branchRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) {
 	}
 	if !branch.Head {
 		m.Separator()
-		if m.Item(tr("Delete branch…")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Delete branch")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
 			a.selectBranchRow(row.Index)
 			a.confirmDeleteBranch(branch)
 		}
@@ -520,9 +520,9 @@ func (a *app) branchListView(c *ui.Context) {
 					tr("Delete branches whose upstream is gone"), trashIcon, 14, 6,
 					a.actionBusy, a.confirmDeleteStaleBranches)
 			}
-			rowIconButton(c, "New branch…", "Create a branch from a local branch",
+			rowIconButton(c, "New branch", "Create a branch from a local branch",
 				stageIcon, func() { a.openBranchForm("") })
-			flatIconButton(c, tr("Sync stack…"), tr("Preview frozen per-branch updates and preview-OID-leased publishes"), fetchIcon, 14, 6,
+			flatIconButton(c, tr("Sync stack"), tr("Preview frozen per-branch updates and preview-OID-leased publishes"), fetchIcon, 14, 6,
 				a.actionBusy || len(a.snapshot.Branches) == 0, a.openStackSync)
 			paneCollapseButton(c, &a.workspacePaneCollapsed[sectionBranches], "Collapse list pane")
 		})
@@ -591,7 +591,7 @@ func (a *app) branchHeaderView(c *ui.Context, branch repository.Branch) {
 	theme := c.Theme()
 	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 		ui.Text(c, branchDisplay(branch)).FontSize(18).Bold().Grow(1).SingleLine().Tooltip(branchDisplay(branch))
-		iconButton(c, "Rename…", "Rename…", editIcon, a.actionBusy, func() {
+		iconButton(c, "Rename", "Rename", editIcon, a.actionBusy, func() {
 			a.showRenameForm = true
 			a.renameBranch = branch.Name
 		})
@@ -603,16 +603,16 @@ func (a *app) branchHeaderView(c *ui.Context, branch repository.Branch) {
 					a.beginPullBranch(branch)
 				})
 			}
-			iconButton(c, "Rebase onto this…", "Rebase onto this…", rebaseIcon, a.actionBusy, func() {
+			iconButton(c, "Rebase onto this", "Rebase onto this", rebaseIcon, a.actionBusy, func() {
 				a.confirmRebaseOntoBranch(branch)
 			})
-			iconButton(c, "Merge into current…", "Merge into current…", mergeIcon, a.actionBusy, func() {
+			iconButton(c, "Merge into current", "Merge into current", mergeIcon, a.actionBusy, func() {
 				a.confirmMergeSelectedBranch()
 			})
 			primaryIconButton(c, "Checkout", "Checkout", branchIcon, a.actionBusy, func() {
 				a.checkoutBranch(branch.Name)
 			})
-			iconButton(c, "Delete…", "Delete…", trashIcon, a.actionBusy, func() {
+			iconButton(c, "Delete", "Delete", trashIcon, a.actionBusy, func() {
 				a.confirmDeleteSelectedBranch()
 			})
 		})

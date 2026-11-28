@@ -675,8 +675,8 @@ func TestFileHistoryDrawer(t *testing.T) {
 	h.waitFor(t, "the commit files", func() bool { return len(h.app.commitFiles) > 0 })
 
 	h.rightClick(t, "one.txt")
-	h.requireMenuLabels(t, "View file changes…")
-	h.chooseMenuItem(t, "View file changes…")
+	h.requireMenuLabels(t, "View file changes")
+	h.chooseMenuItem(t, "View file changes")
 	if !h.app.fileHistoryOpen {
 		t.Fatal("the file history drawer did not open")
 	}
@@ -715,7 +715,7 @@ func TestGraphFileHistoryShowsFullLogAndKeepsTheSelectedCommit(t *testing.T) {
 	origin := h.app.visibleCommits()[h.app.selectedCommit]
 
 	h.rightClick(t, "one.txt")
-	h.chooseMenuItem(t, "View file changes…")
+	h.chooseMenuItem(t, "View file changes")
 	h.waitFor(t, "the selected commit's file history", func() bool {
 		return h.app.fileHistoryOpen && !h.app.fileHistoryLoading && h.app.fileHistoryDiffState != nil
 	})
@@ -1367,7 +1367,7 @@ func TestEveryDiscardPathAsksFirst(t *testing.T) {
 	// wears that icon, and it asks before running.
 	h.app.selectedFile = 0
 	h.rightClick(t, "both.txt")
-	h.chooseMenuItem(t, "Discard changes…")
+	h.chooseMenuItem(t, "Discard changes")
 	if h.app.confirm == nil {
 		t.Fatal("the staged row's menu discarded without asking")
 	}
@@ -1409,7 +1409,7 @@ func TestEveryDiscardPathAsksFirst(t *testing.T) {
 		t.Fatalf("open the details pane's menu: %v", err)
 	}
 	h.tester.Frame()
-	if err := h.tester.Click("Discard changes…"); err != nil {
+	if err := h.tester.Click("Discard changes"); err != nil {
 		t.Fatalf("discard from the details pane: %v", err)
 	}
 	h.tester.Frame()

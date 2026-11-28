@@ -35,7 +35,7 @@ func TestPickerRemoteActionsFollowThePathForm(t *testing.T) {
 	for _, stacked := range []bool{false, true} {
 		a.pickerStacked = stacked
 		tt.Frame()
-		browse, found := tt.Find("Browse files…")
+		browse, found := tt.Find("Browse files")
 		if !found {
 			t.Fatal("the repository path action is missing")
 		}
@@ -68,7 +68,7 @@ func TestPickerShowsOnlyTheLoadingPageWhileOpening(t *testing.T) {
 	}
 	tt.Frame()
 	texts := strings.Join(tt.Texts(), " ")
-	for _, gone := range []string{"Open a workspace.", "Browse files…", "Recent repositories"} {
+	for _, gone := range []string{"Open a workspace.", "Browse files", "Recent repositories"} {
 		if strings.Contains(texts, gone) {
 			t.Fatalf("the picker still shows %q while opening: %v", gone, tt.Texts())
 		}

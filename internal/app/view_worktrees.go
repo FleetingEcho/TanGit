@@ -532,22 +532,22 @@ func (a *app) worktreeRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) 
 			a.selectWorktreeRow(row.Index)
 			a.fetchSelectedWorktree()
 		}
-		if m.Item(tr("Pull worktree…")).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Pull worktree")).Disabled(a.actionBusy).Chosen() {
 			a.selectWorktreeRow(row.Index)
 			a.confirmPullSelectedWorktree()
 		}
 	}
 	if !worktree.Current && !worktree.Main {
 		m.Separator()
-		if !worktree.Missing && m.Item(tr("Move worktree…")).Disabled(a.actionBusy).Chosen() {
+		if !worktree.Missing && m.Item(tr("Move worktree")).Disabled(a.actionBusy).Chosen() {
 			a.selectWorktreeRow(row.Index)
 			a.openSelectedWorktreeMoveForm()
 		}
-		if m.Item(tr("Remove worktree…")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Remove worktree")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
 			a.selectWorktreeRow(row.Index)
 			a.confirmDeleteWorktree(worktree)
 		}
-		if m.Item(tr("Force remove worktree…")).Shortcut(ui.Shift, ui.KeyD).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Force remove worktree")).Shortcut(ui.Shift, ui.KeyD).Disabled(a.actionBusy).Chosen() {
 			a.selectWorktreeRow(row.Index)
 			a.confirmRemoveWorktree(worktree, true)
 		}
@@ -685,7 +685,7 @@ func (a *app) worktreePruneFormModal(c *ui.Context) {
 					a.showWorktreePruneForm = false
 					a.worktreePruneToken++
 				}
-				if ui.PrimaryButton(c, tr("Prune shown records…")).Disabled(a.actionBusy || a.worktreePruneLoading || len(a.worktreePrunePreview) == 0).Clicked() {
+				if ui.PrimaryButton(c, tr("Prune shown records")).Disabled(a.actionBusy || a.worktreePruneLoading || len(a.worktreePrunePreview) == 0).Clicked() {
 					a.beginPruneWorktrees()
 				}
 			})
@@ -698,7 +698,7 @@ func (a *app) worktreesView(c *ui.Context) {
 		a.collapsibleContentPaneSplit(c, &a.filePaneWidth, &a.workspacePaneCollapsed[sectionWorktrees],
 			"Expand list pane", func() {
 				islandCard(c, ui.Column(c).Grow(1).Gap(8).Padding(12)).Children(func() {
-					paneTitleAction(c, worktreesIcon, "Linked worktrees", "New worktree…",
+					paneTitleAction(c, worktreesIcon, "Linked worktrees", "New worktree",
 						"Check out another branch beside this one", a.actionBusy, func() {
 							a.showWorktreeForm = true
 							a.worktreeBase = "HEAD"
@@ -706,9 +706,9 @@ func (a *app) worktreesView(c *ui.Context) {
 							paneCollapseButton(c, &a.workspacePaneCollapsed[sectionWorktrees], "Collapse list pane")
 						})
 					ui.Row(c).Gap(6).Children(func() {
-						flatIconButton(c, "New temporary worktree…", "Create a temporary detached worktree", historyIcon, 14, 4, a.actionBusy, a.beginTemporaryWorktree)
-						flatIconButton(c, "Repair worktree metadata…", "Repair links after moving the repository or its worktrees", settingsIcon, 14, 4, a.actionBusy, a.repairWorktrees)
-						flatIconButton(c, "Prune stale worktree records…", "Preview and prune stale administrative records", trashIcon, 14, 4, a.actionBusy, a.confirmPruneWorktrees)
+						flatIconButton(c, "New temporary worktree", "Create a temporary detached worktree", historyIcon, 14, 4, a.actionBusy, a.beginTemporaryWorktree)
+						flatIconButton(c, "Repair worktree metadata", "Repair links after moving the repository or its worktrees", settingsIcon, 14, 4, a.actionBusy, a.repairWorktrees)
+						flatIconButton(c, "Prune stale worktree records", "Preview and prune stale administrative records", trashIcon, 14, 4, a.actionBusy, a.confirmPruneWorktrees)
 					})
 					if len(a.snapshot.Worktrees) == 0 {
 						ui.Column(c).Grow(1).Center().Children(func() {
@@ -782,14 +782,14 @@ func (a *app) worktreesView(c *ui.Context) {
 							}
 						}
 						if !worktree.Main {
-							lockLabel, lockTooltip, lockGlyph := "Lock worktree…", "Protect this worktree from pruning, moving, or removal (L)", lockIcon
+							lockLabel, lockTooltip, lockGlyph := "Lock worktree", "Protect this worktree from pruning, moving, or removal (L)", lockIcon
 							if worktree.Locked {
 								lockLabel, lockTooltip, lockGlyph = "Unlock worktree", "Allow this worktree to be pruned, moved, or removed (L)", unlockIcon
 							}
 							flatIconButton(c, lockLabel, lockTooltip, lockGlyph, 14, 4, a.actionBusy, a.toggleSelectedWorktreeLock)
 						}
 						if !worktree.Current && !worktree.Main {
-							flatIconButton(c, "Remove worktree…", "Remove this worktree after confirmation (D)", trashIcon, 14, 4, a.actionBusy, a.confirmDeleteSelectedWorktree)
+							flatIconButton(c, "Remove worktree", "Remove this worktree after confirmation (D)", trashIcon, 14, 4, a.actionBusy, a.confirmDeleteSelectedWorktree)
 						}
 					})
 					ui.Text(c, worktree.Path).TextColor(theme.TextMuted).Selectable()
@@ -798,7 +798,7 @@ func (a *app) worktreesView(c *ui.Context) {
 						flatIconButton(c, "Open worktree terminal", "Open a terminal in this worktree", terminalIcon, 14, 4, a.actionBusy || worktree.Missing, a.openSelectedWorktreeTerminal)
 						flatIconButton(c, "Compare worktree", "Compare the current worktree with this worktree's HEAD", compareIcon, 14, 4, a.actionBusy || worktree.Head == "", a.compareSelectedWorktree)
 						if !worktree.Current && !worktree.Main && !worktree.Missing {
-							flatIconButton(c, "Move worktree…", "Move this worktree to another path", moveWorktreeIcon, 14, 4, a.actionBusy, a.openSelectedWorktreeMoveForm)
+							flatIconButton(c, "Move worktree", "Move this worktree to another path", moveWorktreeIcon, 14, 4, a.actionBusy, a.openSelectedWorktreeMoveForm)
 						}
 					})
 					if worktree.Current || worktree.Main {

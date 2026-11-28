@@ -13,7 +13,7 @@ func TestStashSelectedLinesUsesOnlyTheirIndependentChanges(t *testing.T) {
 	h.tester.Frame()
 	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1})
 	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 5, End: 5})
-	if err := h.tester.Click("Stash selected lines…"); err != nil {
+	if err := h.tester.Click("Stash selected lines"); err != nil {
 		t.Fatal(err)
 	}
 	if !h.app.showStashForm || h.app.stashPatch == "" {

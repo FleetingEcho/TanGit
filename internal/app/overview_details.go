@@ -129,7 +129,7 @@ func (a *app) overviewCommitPreview(c *ui.Context, o *overviewState, detail *ove
 					a.overviewSearchChanged(o)
 				})
 			}
-			flatIconButton(c, "Download patch", "Save this commit as a .patch file…", downloadIcon, 16, 5, false,
+			flatIconButton(c, "Download patch", "Save this commit as a .patch file", downloadIcon, 16, 5, false,
 				func() { a.downloadOverviewPatch(row) })
 			if row.Issue != "" {
 				quickAction(tr("Same issue"), trf("Search every followed repository for %s", row.Issue), func() {

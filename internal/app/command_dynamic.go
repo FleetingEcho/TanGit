@@ -456,9 +456,9 @@ func branchActions(branch repository.Branch) []commandAction {
 		return actions
 	}
 	return append(actions,
-		commandAction{Label: "Merge into the current branch…", Run: func(ctx commandContext) { ctx.App.confirmMergeBranch(branch) }},
-		commandAction{Label: "Rebase the current branch onto this…", Run: func(ctx commandContext) { ctx.App.confirmRebaseOntoBranch(branch) }},
-		commandAction{Label: "Delete this branch…", Run: func(ctx commandContext) { ctx.App.confirmDeleteBranch(branch) }},
+		commandAction{Label: "Merge into the current branch", Run: func(ctx commandContext) { ctx.App.confirmMergeBranch(branch) }},
+		commandAction{Label: "Rebase the current branch onto this", Run: func(ctx commandContext) { ctx.App.confirmRebaseOntoBranch(branch) }},
+		commandAction{Label: "Delete this branch", Run: func(ctx commandContext) { ctx.App.confirmDeleteBranch(branch) }},
 	)
 }
 
@@ -466,9 +466,9 @@ func branchActions(branch repository.Branch) []commandAction {
 func commitActions(commit repository.Commit) []commandAction {
 	return []commandAction{
 		{Label: "Check out this commit", Run: func(ctx commandContext) { ctx.App.confirmCheckoutCommit(commit) }},
-		{Label: "Cherry-pick this commit…", Run: func(ctx commandContext) { ctx.App.confirmCommitActionFor(commit, false) }},
-		{Label: "Revert this commit…", Run: func(ctx commandContext) { ctx.App.confirmCommitActionFor(commit, true) }},
-		{Label: "Create a branch here…", Run: func(ctx commandContext) { ctx.App.openCommitBranchForm(commit) }},
+		{Label: "Cherry-pick this commit", Run: func(ctx commandContext) { ctx.App.confirmCommitActionFor(commit, false) }},
+		{Label: "Revert this commit", Run: func(ctx commandContext) { ctx.App.confirmCommitActionFor(commit, true) }},
+		{Label: "Create a branch here", Run: func(ctx commandContext) { ctx.App.openCommitBranchForm(commit) }},
 		{Label: "Copy commit hash", Run: func(ctx commandContext) { ctx.App.notifyCopied(ctx.App.services, "commit hash", commit.Hash) }},
 		{Label: "Copy commit subject", Run: func(ctx commandContext) { ctx.App.notifyCopied(ctx.App.services, "commit subject", commit.Subject) }},
 	}

@@ -625,7 +625,7 @@ func buildStaticCommandSpecs() []commandSpec {
 		{ID: commandOpenPull, Label: "Pull from the upstream branch", Keywords: []string{"pull", "update", "integrate"}, Group: commandGroupRepository, Chord: "p", Icon: commandIconPull, Resolve: repositoryState, Run: func(ctx commandContext) { ctx.App.confirmPull() }},
 		{ID: commandOpenPush, Label: "Push to the remote", Keywords: []string{"push", "publish", "upload"}, Group: commandGroupRepository, Chord: "Shift+P", Icon: commandIconPush, Resolve: repositoryState, Run: func(ctx commandContext) { ctx.App.confirmPush() }},
 		{ID: commandOpenPerformance, Label: "Optimize repository performance", Keywords: []string{"performance", "speed", "fast", "fsmonitor", "untracked cache", "commit-graph", "maintenance", "large repository"}, Group: commandGroupRepository, Icon: commandIconSettings, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openRepositoryPerformance() }},
-		{ID: commandOpenHostingAccess, Label: "Config PR/MR host", Detail: "The token is kept in your system keychain, not in settings.", Keywords: []string{"pull request", "merge request", "github", "gitlab", "token", "host", "server", "connect", "pr", "mr"}, Group: commandGroupApplication, Icon: commandIconSettings, Resolve: appState, Run: func(ctx commandContext) { ctx.App.openHostingAccess() }},
+		{ID: commandOpenHostingAccess, Label: "Git hosting settings", Detail: "The token is kept in your system keychain, not in settings.", Keywords: []string{"pull request", "merge request", "github", "gitlab", "token", "host", "server", "connect", "pr", "mr", "remote", "web", "address", "url", "browser", "origin"}, Group: commandGroupApplication, Icon: commandIconSettings, Resolve: appState, Run: func(ctx commandContext) { ctx.App.openHostingAccess() }},
 		{ID: commandOpenRefresh, Label: "Refresh the repository", Keywords: []string{"reload", "refresh", "status"}, Group: commandGroupRepository, Chord: "F5", Icon: commandIconRefresh, Resolve: repositoryState, Run: func(ctx commandContext) { ctx.App.beginRefresh() }},
 		{ID: commandOpenTerminal, Label: "Toggle Terminal", Keywords: []string{"terminal", "shell", "console"}, Group: commandGroupApplication, Chord: "Ctrl+`", Icon: commandIconTerminal, Resolve: readyAppState, Run: func(ctx commandContext) { ctx.App.toggleTerminalPanel() }},
 		{ID: commandOpenLog, Label: "Open Command Log", Keywords: []string{"commands", "output", "errors", "git log"}, Group: commandGroupApplication, Chord: "Ctrl+L", Icon: commandIconLog, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openCommandLog() }},
@@ -650,14 +650,14 @@ func buildStaticCommandSpecs() []commandSpec {
 			},
 			Run: func(ctx commandContext) { ctx.App.openHistoryChanges(nil) }},
 		{ID: "history/search-code-changes", Label: historyChangesLabel, Keywords: []string{"git log", "pickaxe", "diff", "history", "code"}, Group: commandGroupHistory, Glyph: searchIcon, Resolve: historyChangesCommandState, Run: func(ctx commandContext) { ctx.App.openHistoryChanges(nil) }},
-		{ID: "history/search-file-history", Label: "Search file history…", Detail: "Find a file and open its history (type ^ in the palette)", Keywords: []string{"file history", "log", "blame", "history", "file"}, Group: commandGroupHistory, Glyph: historyIcon, KeepOpen: true, Resolve: repositoryStateAllowBusy,
+		{ID: "history/search-file-history", Label: "Search file history", Detail: "Find a file and open its history (type ^ in the palette)", Keywords: []string{"file history", "log", "blame", "history", "file"}, Group: commandGroupHistory, Glyph: historyIcon, KeepOpen: true, Resolve: repositoryStateAllowBusy,
 			Run: func(ctx commandContext) {
 				ctx.Shell.palette.query = "^"
 				ctx.Shell.palette.selected = 0
 				ctx.Shell.palette.actionIndex = 0
 			}},
 		{ID: commandOpenPRChecks, Label: "Open Pull Request Checks", Keywords: []string{"checks", "ci", "pull request", "github", "view", "merge request", "gitlab"}, Group: commandGroupBranches, Icon: commandIconActivity, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openPullRequestChecks() }},
-		{ID: "branches/pr-create", Label: "Create pull request…", Detail: "Open a pull or merge request for the current branch (gh for GitHub, glab for GitLab)", Keywords: []string{"pull request", "merge request", "pr", "mr", "github", "gitlab", "new"}, Group: commandGroupBranches, Icon: commandIconDefault, Glyph: externalLinkIcon, Resolve: pullRequestCommandState, Run: func(ctx commandContext) { ctx.App.openCreatePullRequestForm() }},
+		{ID: "branches/pr-create", Label: "Create pull request", Detail: "Open a pull or merge request for the current branch (gh for GitHub, glab for GitLab)", Keywords: []string{"pull request", "merge request", "pr", "mr", "github", "gitlab", "new"}, Group: commandGroupBranches, Icon: commandIconDefault, Glyph: externalLinkIcon, Resolve: pullRequestCommandState, Run: func(ctx commandContext) { ctx.App.openCreatePullRequestForm() }},
 		{ID: "branches/pr-open", Label: "Open pull request in browser", Detail: "Show the current branch's pull or merge request on the web", Keywords: []string{"pull request", "merge request", "pr", "mr", "github", "gitlab", "browser", "web"}, Group: commandGroupBranches, Icon: commandIconDefault, Glyph: externalLinkIcon, Resolve: pullRequestCommandState, Run: func(ctx commandContext) { ctx.App.confirmOpenPullRequest() }},
 		{ID: "remotes/web-address", Label: "Set remote web address", Detail: "Tell pull requests and the browser where this repository lives on the web", Keywords: []string{"remote", "web", "url", "address", "origin", "browser", "pull request"}, Group: commandGroupRemotes, Icon: commandIconDefault, Glyph: externalLinkIcon, Resolve: remoteWebAddressCommandState, Run: func(ctx commandContext) {
 			if remote, ok := ctx.App.webRemote(); ok {
@@ -671,7 +671,7 @@ func buildStaticCommandSpecs() []commandSpec {
 		state.ContextScore = 0
 		return state
 	}, Run: func(ctx commandContext) { ctx.Shell.openActivityCenterView(activityViewContributors) }})
-	specs = append(specs, commandSpec{ID: "commands/run", Label: "Run a shell command…", Detail: "Run a one-off command in the repository root; type ! in the palette to run one directly", Keywords: []string{"execute", "shell", "terminal", "command line", "run"}, Group: commandGroupApplication, Chord: ":", Glyph: terminalIcon, Resolve: func(ctx commandContext) commandState {
+	specs = append(specs, commandSpec{ID: "commands/run", Label: "Run a shell command", Detail: "Run a one-off command in the repository root; type ! in the palette to run one directly", Keywords: []string{"execute", "shell", "terminal", "command line", "run"}, Group: commandGroupApplication, Chord: ":", Glyph: terminalIcon, Resolve: func(ctx commandContext) commandState {
 		state := localCommandState(ctx)
 		state.ContextScore = 0
 		return state
@@ -710,12 +710,12 @@ func buildStaticCommandSpecs() []commandSpec {
 			return state
 		}, Run: func(ctx commandContext) { ctx.App.toggleDiffWhitespace() }},
 	)
-	specs = append(specs, commandSpec{ID: "commands/customize", Label: "Customize commands…", Detail: "Add, edit or remove custom shell commands", Keywords: []string{"custom commands", "settings"}, Group: commandGroupApplication, Glyph: settingsIcon, Resolve: func(ctx commandContext) commandState {
+	specs = append(specs, commandSpec{ID: "commands/customize", Label: "Customize commands", Detail: "Add, edit or remove custom shell commands", Keywords: []string{"custom commands", "settings"}, Group: commandGroupApplication, Glyph: settingsIcon, Resolve: func(ctx commandContext) commandState {
 		state := appState(ctx)
 		state.ContextScore = 0
 		return state
 	}, Run: func(ctx commandContext) { ctx.App.openSettingsSection(settingsPageCommands) }})
-	specs = append(specs, commandSpec{ID: "theme/customize", Label: "Customize theme…", Detail: "Build your own theme with a color picker", Keywords: []string{"theme", "appearance", "color", "custom", "palette"}, Group: commandGroupApplication, Glyph: themeIcon, Resolve: func(ctx commandContext) commandState {
+	specs = append(specs, commandSpec{ID: "theme/customize", Label: "Customize theme", Detail: "Build your own theme with a color picker", Keywords: []string{"theme", "appearance", "color", "custom", "palette"}, Group: commandGroupApplication, Glyph: themeIcon, Resolve: func(ctx commandContext) commandState {
 		state := appState(ctx)
 		state.ContextScore = 0
 		return state

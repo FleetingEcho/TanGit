@@ -45,7 +45,7 @@ type languageServerFormattingTarget struct {
 func (a *app) codeDocumentContextMenu(menu *ui.Menu, document *codeDocument) {
 	disabled := document == nil || document.state == nil || document.state.Buffer == nil ||
 		document.readOnly || document.state.ReadOnly || document.formatting
-	if menu.Item(tr("Quick Fix…")).Disabled(disabled).Chosen() {
+	if menu.Item(tr("Quick Fix")).Disabled(disabled).Chosen() {
 		a.requestLanguageCodeActions(document)
 	}
 	if menu.Item(tr("Rename Symbol")).Shortcut(0, ui.KeyF2).Disabled(disabled || a.location.IsRemote()).Chosen() {

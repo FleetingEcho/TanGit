@@ -815,11 +815,11 @@ func (a *app) terminalButton(c *ui.Context) {
 	}
 	clicked := button.
 		Label(tr("Toggle terminal")).
-		Tooltip(tr("Terminal (Ctrl+`)")).
 		Clicked()
 	button.Children(func() {
 		ui.Icon(c, terminalIcon).FontSize(14)
 	})
+	richTooltip(c, button, richTip{Title: tr("Terminal"), Shortcut: "Ctrl+`"})
 	if clicked {
 		a.toggleTerminalPanel()
 	}

@@ -99,7 +99,7 @@ func (a *app) exportPatchFormModal(c *ui.Context) {
 				ui.Row(c).Gap(8).AlignItems(ui.End).Children(func() {
 					ui.TextInput(c, &a.exportPatchDir).Label(tr("Target folder")).
 						Placeholder(tr("Local output folder")).Grow(1)
-					if ui.Button(c, tr("Browse…")).Clicked() {
+					if ui.Button(c, tr("Browse")).Clicked() {
 						a.chooseExportPatchFolder()
 					}
 				})
@@ -182,6 +182,6 @@ func (a *app) confirmMailboxPatchImport(name string, content []byte) {
 // mailboxPatchToolbarButton exposes mailbox import from Changes, next to
 // the ordinary .patch/.diff workflow.
 func (a *app) mailboxPatchToolbarButton(c *ui.Context) {
-	flatIconButton(c, "Apply mailbox patch…", "Apply mailbox patches with a three-way fallback", patchImportIcon, 15, 5,
+	flatIconButton(c, "Apply mailbox patch", "Apply mailbox patches with a three-way fallback", patchImportIcon, 15, 5,
 		a.actionBusy, a.beginMailboxPatchImport)
 }

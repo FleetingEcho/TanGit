@@ -84,6 +84,19 @@ func (s *gitSession) headHasCommit() bool {
 	return err == nil
 }
 
+// historyReadable reports whether a history read of branch (every branch when it
+// is empty) has a commit to start from. A branch that Git names but has not
+// created yet, as in a repository with no commits, would otherwise fail with
+// "bad revision" instead of reading as an empty history.
+func (s *gitSession) historyReadable(branch string) bool {
+	if branch == "" {
+		return s.headHasCommit()
+	}
+	ref := s.qualifyCommitFilterBranch(branch) + "^{commit}"
+	_, err := s.cmd.New([]string{"git", "rev-parse", "--verify", "--quiet", ref}).RunWithOutput()
+	return err == nil
+}
+
 // localBranches reads the local branches with their upstream, ahead and
 // behind counts. The extra base-branch work is left out: the window does not
 // show it, and it needs a UI to report progress to.

@@ -15,10 +15,10 @@ func TestRepositoryCreationFormsAreModal(t *testing.T) {
 		open    string
 		shown   func(*app) bool
 	}{
-		{"remote", sectionRemotes, "Add remote…", func(a *app) bool { return a.showRemoteForm }},
-		{"tag", sectionTags, "Create tag…", func(a *app) bool { return a.showTagForm }},
-		{"worktree", sectionWorktrees, "New worktree…", func(a *app) bool { return a.showWorktreeForm }},
-		{"submodule", sectionSubmodules, "Add submodule…", func(a *app) bool { return a.showSubmoduleForm }},
+		{"remote", sectionRemotes, "Add remote", func(a *app) bool { return a.showRemoteForm }},
+		{"tag", sectionTags, "Create tag", func(a *app) bool { return a.showTagForm }},
+		{"worktree", sectionWorktrees, "New worktree", func(a *app) bool { return a.showWorktreeForm }},
+		{"submodule", sectionSubmodules, "Add submodule", func(a *app) bool { return a.showSubmoduleForm }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

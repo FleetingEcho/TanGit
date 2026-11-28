@@ -26,7 +26,7 @@ func (a *app) commitFileMenu(m *ui.Menu, commit *repository.Commit, file reposit
 		a.openGitFileBlameInBuiltInEditor(root, file.Path)
 	}
 	m.Separator()
-	if m.Item(tr("View file changes…")).Chosen() {
+	if m.Item(tr("View file changes")).Chosen() {
 		if commit == nil {
 			a.openFileHistory(file.Path)
 		} else {
@@ -37,7 +37,7 @@ func (a *app) commitFileMenu(m *ui.Menu, commit *repository.Commit, file reposit
 		Disabled(a.actionBusy || a.session == nil).Chosen() {
 		a.beginAddCustomPatchFile(*commit, file, nil)
 	}
-	if commit != nil && m.Item(tr("Restore this historical file…")).Shortcut(ui.Shift, ui.KeyR).
+	if commit != nil && m.Item(tr("Restore this historical file")).Shortcut(ui.Shift, ui.KeyR).
 		Disabled(a.actionBusy || a.session == nil).Chosen() {
 		a.confirmRestoreCommitFile(*commit, file)
 	}

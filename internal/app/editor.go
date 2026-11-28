@@ -421,10 +421,11 @@ func codeEditorRemoteRelativePath(root, name string) (string, bool) {
 // Editor selection belongs in Settings, not in the launch action.
 func (a *app) editorLaunchButton(c *ui.Context, label, tooltip, path string, line int) {
 	button := compactIconButton(ui.Button(c, ""))
-	button.Label(tr(label)).Tooltip(tr(tooltip) + "\n" + tr("Configure your editor in Settings → Editor."))
+	button.Label(tr(label))
 	button.Children(func() {
 		ui.Icon(c, fileCodeIcon).FontSize(14)
 	})
+	richTooltip(c, button, richTip{Title: tr(tooltip), Body: tr("Configure your editor in Settings → Editor.")})
 	if button.Clicked() {
 		a.launchEditor(path, line)
 	}
@@ -478,7 +479,7 @@ func (a *app) repositoryExternalEditorMenu(m *ui.Menu) {
 		}
 	}
 	m.Separator()
-	if m.Item(tr("Customize editor…")).Chosen() {
+	if m.Item(tr("Customize editor")).Chosen() {
 		a.settingsUI.page = settingsPageEditor
 		a.openSettings()
 	}

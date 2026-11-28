@@ -192,10 +192,10 @@ func (a *app) codeRepositoryRootRow(c *ui.Context, theme *ui.Theme) {
 		ui.Text(c, label).Grow(1).SingleLine()
 	})
 	root.PopoverMenu(func(m *ui.Menu) {
-		if m.Item(tr("New File…")).Disabled(a.code.fileOperationBusy).Chosen() {
+		if m.Item(tr("New File")).Disabled(a.code.fileOperationBusy).Chosen() {
 			a.openCodeFileForm(codeFileFormNewFile, folder, "")
 		}
-		if m.Item(tr("New Folder…")).Disabled(a.code.fileOperationBusy).Chosen() {
+		if m.Item(tr("New Folder")).Disabled(a.code.fileOperationBusy).Chosen() {
 			a.openCodeFileForm(codeFileFormNewFolder, folder, "")
 		}
 		a.remoteTransferRootMenu(m)
@@ -243,10 +243,10 @@ func (a *app) codeEditorActionsButton(c *ui.Context) {
 		button.Background(theme.SurfaceHover)
 	}
 	button.PopoverMenuButton(func(m *ui.Menu) {
-		if m.Item(tr("New File…")).Disabled(a.code.fileOperationBusy).Chosen() {
+		if m.Item(tr("New File")).Disabled(a.code.fileOperationBusy).Chosen() {
 			a.openCodeFileForm(codeFileFormNewFile, a.selectedCodeDirectory(), "")
 		}
-		if m.Item(tr("New Folder…")).Disabled(a.code.fileOperationBusy).Chosen() {
+		if m.Item(tr("New Folder")).Disabled(a.code.fileOperationBusy).Chosen() {
 			a.openCodeFileForm(codeFileFormNewFolder, a.selectedCodeDirectory(), "")
 		}
 	})
@@ -256,7 +256,7 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 	theme := c.Theme()
 	ui.Row(c).AlignItems(ui.Center).Children(func() {
 		input := ui.SearchField(c, &a.code.searchQuery).Bind(&a.code.searchFocus).
-			Label(tr("Search in files")).Placeholder(tr("Search in files…")).Grow(1)
+			Label(tr("Search in files")).Placeholder(tr("Search in files")).Grow(1)
 		if input.Changed() {
 			a.codeSearchQueryChanged()
 		}
@@ -299,7 +299,7 @@ func (a *app) codeSearchSidebar(c *ui.Context) {
 		ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
 			ui.Icon(c, replaceAllIcon).FontSize(14).TextColor(theme.TextMuted)
 			input := ui.TextInput(c, &a.code.searchReplaceQuery).Bind(&a.code.searchReplaceFocus).
-				Label(tr("Replace in files")).Placeholder(tr("Replace with…")).Grow(1)
+				Label(tr("Replace in files")).Placeholder(tr("Replace with")).Grow(1)
 			if input.Submitted() {
 				a.requestCodeSearchReplaceAll()
 			}
@@ -719,14 +719,16 @@ func (a *app) codeEditorPane(c *ui.Context) {
 			ui.Text(c, location).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Grow(1).SingleLine().Tooltip(location)
 			if len(a.code.back) > 0 || len(a.code.forward) > 0 {
 				back := compactIconButton(ui.Button(c, "")).Label(tr("Navigate back")).
-					Tooltip(tr("Navigate back") + " (Alt+Left)").Disabled(len(a.code.back) == 0)
+					Disabled(len(a.code.back) == 0)
 				back.Children(func() { ui.Text(c, "←").FontSize(theme.FontSize + 1) })
+				richTooltip(c, back, richTip{Title: tr("Navigate back"), Shortcut: "Alt+Left"})
 				if back.Clicked() {
 					a.navigateCodeHistory(true)
 				}
 				forward := compactIconButton(ui.Button(c, "")).Label(tr("Navigate forward")).
-					Tooltip(tr("Navigate forward") + " (Alt+Right)").Disabled(len(a.code.forward) == 0)
+					Disabled(len(a.code.forward) == 0)
 				forward.Children(func() { ui.Text(c, "→").FontSize(theme.FontSize + 1) })
+				richTooltip(c, forward, richTip{Title: tr("Navigate forward"), Shortcut: "Alt+Right"})
 				if forward.Clicked() {
 					a.navigateCodeHistory(false)
 				}

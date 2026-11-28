@@ -47,7 +47,7 @@ func (a *app) codeWorkspaceFolderModal(c *ui.Context) {
 						TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 				}
 				ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-					if ui.Button(c, tr("Browse…")).Clicked() {
+					if ui.Button(c, tr("Browse")).Clicked() {
 						a.browseCodeSearchFolder()
 					}
 					ui.Spacer(c)

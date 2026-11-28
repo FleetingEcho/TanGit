@@ -362,9 +362,9 @@ func TestSSHBrowserContextMenuCreatesInDisplayedFolder(t *testing.T) {
 				t.Fatal(err)
 			}
 			tester.Frame()
-			menuLabel := "New File…"
+			menuLabel := "New File"
 			if directory {
-				menuLabel = "New Folder…"
+				menuLabel = "New Folder"
 			}
 			if err := tester.Click(menuLabel); err != nil {
 				t.Fatal(err)

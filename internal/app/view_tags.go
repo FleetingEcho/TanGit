@@ -137,7 +137,7 @@ func (a *app) tagRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) {
 	}
 	item := rows[row.Index]
 	tag := item.tag
-	if m.Item(tr("Push tag…")).Shortcut(ui.Shift, ui.KeyP).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Chosen() {
+	if m.Item(tr("Push tag")).Shortcut(ui.Shift, ui.KeyP).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Chosen() {
 		a.selectedTag, a.selectedTagRow = item.source, row.Index
 		if a.tagRemote == "" && len(a.snapshot.Remotes) > 0 {
 			a.tagRemote = a.snapshot.Remotes[0].Name
@@ -149,11 +149,11 @@ func (a *app) tagRowMenu(m *ui.Menu, row ui.ListRow, services ui.Services) {
 		a.notifyCopied(services, "tag name", tag.Name)
 	}
 	m.Separator()
-	if m.Item(tr("Delete tag…")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Delete tag")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
 		a.selectedTag, a.selectedTagRow = item.source, row.Index
 		a.confirmDeleteTag(tag)
 	}
-	if m.Item(tr("Delete remote tag…")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Chosen() {
+	if m.Item(tr("Delete remote tag")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0).Chosen() {
 		a.openDeleteRemoteTag(tag)
 	}
 }
@@ -191,7 +191,7 @@ func (a *app) tagsView(c *ui.Context) {
 		a.collapsibleContentPaneSplit(c, &a.filePaneWidth, &a.workspacePaneCollapsed[sectionTags],
 			"Expand list pane", func() {
 				islandCard(c, ui.Column(c).Grow(1).Gap(8).Padding(12)).Children(func() {
-					paneTitleAction(c, tagsIcon, "Repository tags", "Create tag…", "Tag a commit",
+					paneTitleAction(c, tagsIcon, "Repository tags", "Create tag", "Tag a commit",
 						a.actionBusy, func() {
 							a.showTagForm = true
 							a.tagRef = "HEAD"
@@ -249,19 +249,19 @@ func (a *app) tagsView(c *ui.Context) {
 						ui.Text(c, tag.Message).TextColor(theme.TextMuted)
 					}
 					ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
-						primaryIconButton(c, "Push tag…", "Push tag…", pushIcon, a.actionBusy || len(a.snapshot.Remotes) == 0, func() {
+						primaryIconButton(c, "Push tag", "Push tag", pushIcon, a.actionBusy || len(a.snapshot.Remotes) == 0, func() {
 							a.showTagPushForm = true
 							if a.tagRemote == "" && len(a.snapshot.Remotes) > 0 {
 								a.tagRemote = a.snapshot.Remotes[0].Name
 							}
 						})
-						iconButton(c, "Delete tag…", "Delete tag…", trashIcon, a.actionBusy, func() {
+						iconButton(c, "Delete tag", "Delete tag", trashIcon, a.actionBusy, func() {
 							a.confirmDeleteSelectedTag()
 						})
-						iconButton(c, "Delete remote tag…", "Delete remote tag…", deleteRemoteTagIcon, a.actionBusy || len(a.snapshot.Remotes) == 0, func() {
+						iconButton(c, "Delete remote tag", "Delete remote tag", deleteRemoteTagIcon, a.actionBusy || len(a.snapshot.Remotes) == 0, func() {
 							a.openDeleteRemoteTag(tag)
 						})
-						iconButton(c, "Push all tags…", "Push all tags…", pushAllTagsIcon, a.actionBusy || len(a.snapshot.Remotes) == 0, func() {
+						iconButton(c, "Push all tags", "Push all tags", pushAllTagsIcon, a.actionBusy || len(a.snapshot.Remotes) == 0, func() {
 							a.beginPushAllTags()
 						})
 					})

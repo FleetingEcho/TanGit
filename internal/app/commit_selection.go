@@ -111,21 +111,21 @@ func (a *app) commitBatchMenu(m *ui.Menu) {
 	if len(selected) == 0 {
 		return
 	}
-	if m.Item(tr("Cherry-pick selected commits…")).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Cherry-pick selected commits")).Disabled(a.actionBusy).Chosen() {
 		a.confirmBatchCommits("", true)
 	}
-	if m.Item(tr("Export selected commits as mailbox patches…")).Disabled(a.actionBusy).Chosen() {
+	if m.Item(tr("Export selected commits as mailbox patches")).Disabled(a.actionBusy).Chosen() {
 		a.openExportPatchForm(selected)
 	}
 	for _, entry := range []struct {
 		label  string
 		action repository.CommitRangeAction
 	}{
-		{"Squash selected commits…", repository.RangeSquash},
-		{"Fixup selected commits…", repository.RangeFixup},
-		{"Move selected commits toward HEAD…", repository.RangeMoveNewer},
-		{"Move selected commits toward older history…", repository.RangeMoveOlder},
-		{"Drop selected commits…", repository.RangeDrop},
+		{"Squash selected commits", repository.RangeSquash},
+		{"Fixup selected commits", repository.RangeFixup},
+		{"Move selected commits toward HEAD", repository.RangeMoveNewer},
+		{"Move selected commits toward older history", repository.RangeMoveOlder},
+		{"Drop selected commits", repository.RangeDrop},
 	} {
 		if m.Item(tr(entry.label)).Disabled(a.actionBusy || len(selected) < 2).Chosen() {
 			a.confirmBatchCommits(entry.action, false)
@@ -145,14 +145,14 @@ func (a *app) confirmBatchCommits(action repository.CommitRangeAction, cherry bo
 	for _, commit := range selected {
 		lines = append(lines, commit.ShortHash+" "+commit.Subject)
 	}
-	label := "Cherry-pick selected commits…"
+	label := "Cherry-pick selected commits"
 	if !cherry {
 		label = map[repository.CommitRangeAction]string{
-			repository.RangeSquash:    "Squash selected commits…",
-			repository.RangeFixup:     "Fixup selected commits…",
-			repository.RangeDrop:      "Drop selected commits…",
-			repository.RangeMoveNewer: "Move selected commits toward HEAD…",
-			repository.RangeMoveOlder: "Move selected commits toward older history…",
+			repository.RangeSquash:    "Squash selected commits",
+			repository.RangeFixup:     "Fixup selected commits",
+			repository.RangeDrop:      "Drop selected commits",
+			repository.RangeMoveNewer: "Move selected commits toward HEAD",
+			repository.RangeMoveOlder: "Move selected commits toward older history",
 		}[action]
 	}
 	detail := tr("Rewriting requires consecutive commits on the current branch. Squash and fixup keep the oldest selected commit; fixup keeps only its message. Later commits receive new hashes.")

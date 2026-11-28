@@ -67,7 +67,7 @@ func TestRemoteWebMenuKeyboardAndPersistence(t *testing.T) {
 	h.tester.Frame()
 
 	h.rightClick(t, "origin")
-	h.requireMenuLabels(t, "Open in browser", "Copy web URL", "Edit web URL…")
+	h.requireMenuLabels(t, "Open in browser", "Copy web URL", "Edit web URL")
 	h.chooseMenuItem(t, "Copy web URL")
 	const derived = "https://example.com/team/project"
 	if got := h.tester.Clipboard(); got != derived {
@@ -149,7 +149,7 @@ func TestRemoteWebManualOverrideForUnknownTransport(t *testing.T) {
 	}
 
 	h.rightClick(t, "origin")
-	h.chooseMenuItem(t, "Edit web URL…")
+	h.chooseMenuItem(t, "Edit web URL")
 	h.tester.Frame()
 	if err := h.tester.Click("Remote web URL"); err != nil {
 		t.Fatal(err)
@@ -216,7 +216,7 @@ func TestRemoteWebOverrideFollowsRenameAndRemoval(t *testing.T) {
 
 func TestRemoteWebHelpIncludesActions(t *testing.T) {
 	commands := keyboardCommands()
-	for _, label := range []string{"Open the remote in a browser", "Copy the remote's web URL", "Edit the remote's web URL…"} {
+	for _, label := range []string{"Open the remote in a browser", "Copy the remote's web URL", "Edit the remote's web URL"} {
 		if !slices.ContainsFunc(commands, func(command keyboardCommand) bool {
 			return command.group == "Remotes" && command.label == label
 		}) {

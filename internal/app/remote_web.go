@@ -2,8 +2,8 @@ package app
 
 import (
 	"context"
+	"net/http"
 	"net/url"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -162,53 +162,84 @@ func (a *app) remoteWebAddress(remote repository.Remote) string {
 }
 
 func (a *app) openRemoteWebURL(services ui.Services, remote repository.Remote) {
-	if webURL := a.remoteWebAddress(remote); webURL != "" {
-		services.OpenURL(webURL)
+	a.openWebPage(services, a.remoteWebAddress(remote))
+}
+
+// remoteWebProbe reports whether the web host answers at all. It is a variable
+// so tests never touch the network.
+var remoteWebProbe = probeRemoteWeb
+
+const remoteWebProbeTTL = 5 * time.Minute
+
+// probeRemoteWeb treats any HTTP response, including a login redirect, 401 or
+// 404, as reachable: a private repository answers that way. Only a failure to
+// connect (DNS, refused, TLS, timeout) means the address is wrong or offline.
+func probeRemoteWeb(ctx context.Context, webURL string) error {
+	client := &http.Client{
+		Timeout:       4 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodHead, webURL, nil)
+	if err != nil {
+		return err
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+	return response.Body.Close()
+}
+
+// openWebPage opens a remote's web page after checking the host answers. An
+// address that does not answer raises a notification that leads to Git hosting
+// settings, where it can be corrected, instead of opening a browser error page.
+func (a *app) openWebPage(services ui.Services, webURL string) {
+	if webURL == "" {
+		return
+	}
+	open := func() { services.OpenURL(webURL) }
+	parsed, err := url.Parse(webURL)
+	if err != nil || parsed.Hostname() == "" {
+		open()
+		return
+	}
+	host := parsed.Host
+	if checked, ok := a.webReachable[host]; ok && time.Since(checked) < remoteWebProbeTTL {
+		open()
+		return
+	}
+	probe := remoteWebProbe
+	go func() {
+		defer a.recoverBackground()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		err := probe(ctx, webURL)
+		a.update(func() {
+			if err == nil {
+				if a.webReachable == nil {
+					a.webReachable = make(map[string]time.Time)
+				}
+				a.webReachable[host] = time.Now()
+				open()
+				return
+			}
+			a.notifyToast(appToast{
+				kind:        "error",
+				title:       trf("Cannot reach %s", host),
+				description: trf("Check the web address in “%s”, then try again.", tr("Git hosting settings")) + " " + safeError(err),
+				action:      "Git hosting settings",
+				onAction:    a.openHostingAccess,
+				moreActions: []appToastAction{{label: "Open anyway", onAction: open}},
+				timeout:     12 * time.Second,
+			})
+		})
+	}()
 }
 
 func (a *app) copyRemoteWebURL(services ui.Services, remote repository.Remote) {
 	if webURL := a.remoteWebAddress(remote); webURL != "" {
 		a.notifyCopied(services, "web URL", webURL)
 	}
-}
-
-// openRecentRemoteWebURL opens the web address form for a repository of Home's
-// list, which is not open: the form edits its origin remote, starting from the
-// saved address, else from what origin's URL derives to once Git has been asked.
-func (a *app) openRecentRemoteWebURL(path string) {
-	a.remoteWebHomePath = path
-	a.remoteWebOriginalName = "origin"
-	a.remoteWebURL = ""
-	if remotes := a.settings.RemoteWebURLs[a.remoteWebRepositoryKey()]; remotes != nil {
-		if webURL, ok := normalizeRemoteWebURL(remotes["origin"]); ok {
-			a.remoteWebURL = webURL
-		}
-	}
-	a.remoteWebURLError = ""
-	a.showRemoteCheckoutForm = false
-	a.showRemoteWebURLForm = true
-	if a.remoteWebURL != "" {
-		return
-	}
-	go func() {
-		defer a.recoverBackground()
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		output, err := exec.CommandContext(ctx, "git", "-C", path, "config", "--get", "remote.origin.url").Output()
-		if err != nil {
-			return
-		}
-		derived := deriveRemoteWebURL(string(output))
-		if derived == "" {
-			return
-		}
-		a.update(func() {
-			if a.showRemoteWebURLForm && a.remoteWebHomePath == path && a.remoteWebURL == "" {
-				a.remoteWebURL = derived
-			}
-		})
-	}()
 }
 
 // webRemote is the remote the status bar's web address button edits: origin,

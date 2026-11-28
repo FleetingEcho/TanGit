@@ -416,7 +416,14 @@ func (a *app) historyChangesResults(c *ui.Context) {
 				}
 				ui.Row(c).Gap(5).AlignItems(ui.Center).MinWidth(0).Children(func() {
 					ui.Icon(c, fileIcon).FontSize(12).TextColor(theme.TextMuted)
-					ui.Text(c, location).SingleLine().Tooltip(strings.Join(hit.Files, "\n")).TextColor(theme.TextMuted)
+					locationText := ui.Text(c, location).SingleLine().TextColor(theme.TextMuted)
+					files := hit.Files
+					tip := richTip{Title: trf("%d files", len(files)), Mono: files, Font: a.settings.BufferFont}
+					if len(files) > 12 {
+						tip.Mono = files[:12]
+						tip.Body = trf("and %d more", len(files)-12)
+					}
+					richTooltip(c, locationText, tip)
 				})
 				if hit.Commit.AuthorName != "" || len(hit.Commit.Tags) > 0 {
 					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {

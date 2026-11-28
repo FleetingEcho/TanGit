@@ -31,7 +31,7 @@ func (a *app) agentTaskFormModal(c *ui.Context) {
 						if ui.Button(c, tr("Apply")).Disabled(a.agents.templateChoice == agentManualProfile).Clicked() {
 							a.applySelectedAgentTemplate()
 						}
-						flatIconButton(c, "Delete selected workspace template…", "Delete the reusable profile without changing existing tasks", trashIcon, 14, 4,
+						flatIconButton(c, "Delete selected workspace template", "Delete the reusable profile without changing existing tasks", trashIcon, 14, 4,
 							a.agents.templateChoice == agentManualProfile || a.agents.templatesBusy, a.confirmDeleteAgentTemplate)
 					})
 					ui.Row(c).Gap(8).AlignItems(ui.End).Children(func() {
@@ -107,7 +107,7 @@ func (a *app) agentsView(c *ui.Context) {
 		a.collapsibleContentPaneSplit(c, &a.filePaneWidth, &a.workspacePaneCollapsed[sectionAgents],
 			"Expand task list", func() {
 				islandCard(c, ui.Column(c).Grow(1).Gap(8).Padding(12)).Children(func() {
-					paneTitleAction(c, fileBracesIcon, "Agent tasks", "New Agent Task…",
+					paneTitleAction(c, fileBracesIcon, "Agent tasks", "New Agent Task",
 						"Isolated coding-agent work with a durable task identity", a.actionBusy, a.beginNewAgentTask, func() {
 							paneCollapseButton(c, &a.workspacePaneCollapsed[sectionAgents], "Collapse list pane")
 						})

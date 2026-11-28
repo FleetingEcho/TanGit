@@ -14,7 +14,7 @@ func init() {
 		"Allow creating a Git repository":                                             {"允许创建 Git 仓库", "允許建立 Git 儲存庫", "Git リポジトリの作成を許可", "Permitir crear un repositorio Git", "Autoriser la création d’un dépôt Git"},
 		"This folder is empty":                                                        {"此文件夹为空", "此資料夾為空", "このフォルダーは空です", "Esta carpeta está vacía", "Ce dossier est vide"},
 		"This folder is managed by Git":                                               {"此文件夹由 Git 管理", "此資料夾由 Git 管理", "このフォルダーは Git で管理されています", "Esta carpeta está gestionada por Git", "Ce dossier est géré par Git"},
-		"Loading remote folder…":                                                      {"正在加载远程文件夹…", "正在載入遠端資料夾…", "リモートフォルダーを読み込み中…", "Cargando carpeta remota…", "Chargement du dossier distant…"},
+		"Loading remote folder…":                                                      {"正在加载远程文件夹", "正在載入遠端資料夾", "リモートフォルダーを読み込み中", "Cargando carpeta remota", "Chargement du dossier distant"},
 		"Browse remote folder %s":                                                     {"浏览远程文件夹 %s", "瀏覽遠端資料夾 %s", "リモートフォルダー %s を参照", "Explorar carpeta remota %s", "Parcourir le dossier distant %s"},
 	}
 	catalogs := []map[string]string{ZhHans, zhHant, japanese, spanish, french}

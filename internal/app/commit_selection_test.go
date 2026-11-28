@@ -22,8 +22,8 @@ func TestBatchContextMenuConfirmsAndRunsSelection(t *testing.T) {
 				t.Fatal("selection was not retained")
 			}
 			h.rightClick(t, "Second commit")
-			h.requireMenuLabels(t, "Cherry-pick selected commits…", "Squash selected commits…", "Fixup selected commits…", "Drop selected commits…", "Move selected commits toward HEAD…", "Move selected commits toward older history…")
-			h.chooseMenuItem(t, "Squash selected commits…")
+			h.requireMenuLabels(t, "Cherry-pick selected commits", "Squash selected commits", "Fixup selected commits", "Drop selected commits", "Move selected commits toward HEAD", "Move selected commits toward older history")
+			h.chooseMenuItem(t, "Squash selected commits")
 			if h.app.confirm == nil || calls.has("batch-edit:squash") {
 				t.Fatal("batch action bypassed confirmation")
 			}
@@ -48,7 +48,7 @@ func TestBatchMenuButtonAndClearSelection(t *testing.T) {
 	if err := h.tester.Click("Batch actions"); err != nil {
 		t.Fatal(err)
 	}
-	h.requireMenuLabels(t, "Cherry-pick selected commits…", "Squash selected commits…")
+	h.requireMenuLabels(t, "Cherry-pick selected commits", "Squash selected commits")
 	h.tester.Key(0, ui.KeyEscape)
 	h.tester.Frame()
 	if err := h.tester.Click("Clear selection"); err != nil {
@@ -183,7 +183,7 @@ func TestForcePushWithLeaseConfirmAndCancel(t *testing.T) {
 	h.app.workspaceTab = sectionBranches
 	h.tester.Frame()
 	h.rightClick(t, "main (local)")
-	h.chooseMenuItem(t, "Force push with lease…")
+	h.chooseMenuItem(t, "Force push with lease")
 	if h.app.confirm == nil || calls.has("force-push-with-lease") {
 		t.Fatal("force push bypassed confirmation")
 	}
@@ -208,8 +208,8 @@ func TestForcePushOnCurrentBranchContextMenu(t *testing.T) {
 		t.Fatal("the header still shows the rare push-options menu")
 	}
 	h.rightClick(t, "main (local)")
-	h.requireMenuLabels(t, "Force push with lease…")
-	h.chooseMenuItem(t, "Force push with lease…")
+	h.requireMenuLabels(t, "Force push with lease")
+	h.chooseMenuItem(t, "Force push with lease")
 	if h.app.confirm == nil {
 		t.Fatal("current branch menu did not ask for confirmation")
 	}

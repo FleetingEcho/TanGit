@@ -507,7 +507,7 @@ func TestDiscardSelectedLinesConfirmsThenReversesOnlyThem(t *testing.T) {
 	h.app.startLineSelection()
 	h.tester.Frame()
 	clickDiffLine(t, h, editor.DiffLineRange{Side: editor.DiffNew, Start: 1, End: 1})
-	if err := h.tester.Click("Discard selected lines…"); err != nil {
+	if err := h.tester.Click("Discard selected lines"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()

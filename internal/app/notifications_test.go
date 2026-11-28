@@ -509,7 +509,7 @@ func TestBranchMenuSyncsAndForcesCheckout(t *testing.T) {
 	// Another branch can be checked out over the work in the way, once the
 	// confirmation says what it discards.
 	h.rightClick(t, "feature")
-	h.chooseMenuItem(t, "Force checkout…")
+	h.chooseMenuItem(t, "Force checkout")
 	if h.app.confirm == nil {
 		t.Fatal("Force checkout asked no confirmation")
 	}
@@ -519,7 +519,7 @@ func TestBranchMenuSyncsAndForcesCheckout(t *testing.T) {
 	// Rebase asks too, because it rewrites the current branch's commits.
 	h.app.confirm = nil
 	h.rightClick(t, "feature")
-	h.chooseMenuItem(t, "Rebase current onto this…")
+	h.chooseMenuItem(t, "Rebase current onto this")
 	if h.app.confirm == nil {
 		t.Fatal("Rebase asked no confirmation")
 	}
@@ -532,7 +532,7 @@ func TestConfirmCancelRunsNothing(t *testing.T) {
 	h.app.selectedFile = 1
 
 	h.rightClick(t, "two.txt")
-	h.chooseMenuItem(t, "Discard changes…")
+	h.chooseMenuItem(t, "Discard changes")
 	if h.app.confirm == nil {
 		t.Fatal("Discard asked no confirmation")
 	}
@@ -546,7 +546,7 @@ func TestConfirmCancelRunsNothing(t *testing.T) {
 
 	// Answering it runs the action.
 	h.rightClick(t, "two.txt")
-	h.chooseMenuItem(t, "Discard changes…")
+	h.chooseMenuItem(t, "Discard changes")
 	if err := h.tester.Click("Discard"); err != nil {
 		t.Fatal(err)
 	}

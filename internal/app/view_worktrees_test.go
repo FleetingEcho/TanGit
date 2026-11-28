@@ -84,9 +84,9 @@ func TestWorktreeMaintenanceActionsReachSession(t *testing.T) {
 	h.app.openTab = func(string, openPolicy) {}
 	h.tester.Frame()
 	for _, label := range []string{
-		"New temporary worktree…", "Repair worktree metadata…", "Prune stale worktree records…",
+		"New temporary worktree", "Repair worktree metadata", "Prune stale worktree records",
 		"Open worktree", "Open worktree in new tab", "Open worktree in editor", "Open worktree terminal", "Compare worktree",
-		"Move worktree…", "Lock worktree…", "Remove worktree…",
+		"Move worktree", "Lock worktree", "Remove worktree",
 	} {
 		bounds, found := h.tester.Find(label)
 		if !found {

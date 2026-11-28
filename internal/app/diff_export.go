@@ -32,7 +32,7 @@ func (a *app) patchDialogDefaultPath(name string) string {
 // while the pane shows no diff.
 func (a *app) exportDiffButton(c *ui.Context) {
 	shown, ok := a.activeDiff()
-	iconButton(c, "Save diff", "Save this diff to a file…", downloadIcon,
+	iconButton(c, "Save diff", "Save this diff to a file", downloadIcon,
 		!ok || shown.patch == "", a.exportDiff)
 }
 
@@ -61,7 +61,7 @@ func (a *app) exportDiff() {
 func (a *app) exportCompareDiffButton(c *ui.Context) {
 	disabled := a.compare.appliedFrom == "" || len(a.compare.files) == 0 ||
 		a.compare.filesLoading || a.compare.wholeDiffLoading
-	iconButton(c, "Save comparison diff", "Download every change between these refs as a patch…",
+	iconButton(c, "Save comparison diff", "Download every change between these refs as a patch",
 		downloadIcon, disabled, a.exportCompareDiff)
 }
 

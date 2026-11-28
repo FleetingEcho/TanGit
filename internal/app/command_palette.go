@@ -786,7 +786,7 @@ func (s *shell) commandPaletteRow(c *ui.Context, candidate commandCandidate, sel
 		strings.HasPrefix(string(candidate.ID), "files/select/")
 	if candidate.Group == commandGroupCustom && candidate.Detail != "" {
 		// The whole command, which the row may have cut short.
-		row.Tooltip(candidate.Label + "\n" + candidate.Detail)
+		richTooltip(c, row, richTip{Title: candidate.Label, Mono: []string{candidate.Detail}})
 	} else if filePath && c.Preferences().ReduceMotion {
 		row.Tooltip(candidate.Label)
 	}

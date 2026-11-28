@@ -561,15 +561,26 @@ func (a *app) setRequestPartVisible(id string, visible bool) {
 // openRequestLink opens a link written in a request's Markdown. Relative links
 // (uploads, "/group/project/-/issues/3") resolve against the request's server.
 func (a *app) requestHostingAccount() (hostingAccount, bool) {
+	if account, bound := a.boundHostingAccount(); bound {
+		return account, true
+	}
 	item, ok := a.selectedChangeRequest()
 	if !ok {
 		return hostingAccount{}, false
 	}
 	host := hostingHostname(item.URL)
-	for _, account := range a.settings.HostingAccounts {
+	var matched *hostingAccount
+	for index := range a.settings.HostingAccounts {
+		account := &a.settings.HostingAccounts[index]
 		if hostingHostname(account.URL) == host || slices.Contains(account.Aliases, host) {
-			return account, true
+			if matched != nil {
+				return hostingAccount{}, false
+			}
+			matched = account
 		}
+	}
+	if matched != nil {
+		return *matched, true
 	}
 	return hostingAccount{}, false
 }
@@ -736,8 +747,8 @@ func (a *app) changeRequestsView(c *ui.Context) {
 				}
 				if a.changeRequests.err != "" {
 					ui.Column(c).Grow(1).Center().Gap(10).Padding(24).Children(func() {
-						ui.Text(c, tr("Check your PR/MR host configuration, then click Refresh to try again.")).TextColor(theme.TextMuted).TextAlign(ui.Center)
-						if ui.Button(c, tr("Config PR/MR host")).Clicked() {
+						ui.Text(c, tr("Check your Git hosting settings, then click Refresh to try again.")).TextColor(theme.TextMuted).TextAlign(ui.Center)
+						if ui.Button(c, tr("Git hosting settings")).Clicked() {
 							a.openHostingAccess()
 						}
 					})
@@ -1433,7 +1444,7 @@ func (a *app) changeRequestFiles(c *ui.Context, detail forge.Detail, maximized b
 				input.Children(func() {
 					ui.Icon(c, searchIcon).FontSize(14).TextColor(theme.TextMuted)
 					edit = ui.TextInputBase(c, &a.changeRequests.fileQuery).Grow(1).MinWidth(0).Bind(searchHandle).
-						AutoFocus().Label(tr("Find a file")).Placeholder(tr("Find a file…"))
+						AutoFocus().Label(tr("Find a file")).Placeholder(tr("Find a file"))
 					if strings.TrimSpace(a.changeRequests.fileQuery) != "" {
 						ui.Text(c, fmt.Sprintf("%d / %d", len(shown), len(detail.Files))).
 							TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)

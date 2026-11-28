@@ -314,11 +314,11 @@ func (a *app) diffLineButton(c *ui.Context) {
 		a.beginLineAction()
 	}
 	if a.diffKind != "Staged" {
-		if compact(ui.Button(c, tr("Stash")+"…")).Label(tr("Stash selected lines…")).
+		if compact(ui.Button(c, tr("Stash")+"…")).Label(tr("Stash selected lines")).
 			Tooltip(tr("Save only the selected lines in a stash")).Disabled(a.actionBusy).Clicked() {
 			a.openLineStash()
 		}
-		if compact(ui.Button(c, tr("Discard")+"…")).Label(tr("Discard selected lines…")).
+		if compact(ui.Button(c, tr("Discard")+"…")).Label(tr("Discard selected lines")).
 			Tooltip(tr("Remove only the selected lines from the working tree after confirmation")).Disabled(a.actionBusy).Clicked() {
 			a.confirmDiscardSelectedLines()
 		}
@@ -543,7 +543,7 @@ func (a *app) fileRowMenu(m *ui.Menu, index int, services ui.Services) {
 		a.setFileReviewed(file, !a.review.files[file.Path])
 	}
 	m.Separator()
-	if !file.HasMergeConflicts && m.Item(tr("Send file to worktree…")).Disabled(a.actionBusy || len(courierDestinations(a.snapshot)) == 0).Chosen() {
+	if !file.HasMergeConflicts && m.Item(tr("Send file to worktree")).Disabled(a.actionBusy || len(courierDestinations(a.snapshot)) == 0).Chosen() {
 		a.beginWorkingTreeCourier(file, nil, trf("File · %s", file.Path))
 	}
 	m.Separator()
@@ -583,10 +583,10 @@ func (a *app) fileRowMenu(m *ui.Menu, index int, services ui.Services) {
 			}
 			m.Separator()
 		}
-		if m.Item(tr("Stash selected file…")).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Stash selected file")).Disabled(a.actionBusy).Chosen() {
 			a.openSelectedFileStash(file)
 		}
-		if m.Item(tr("Discard changes…")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Discard changes")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
 			a.confirmDiscardFile(file)
 		}
 	}
@@ -618,27 +618,31 @@ func (a *app) repositoryPath(path string) string {
 	return filepath.Join(a.snapshot.Root, path)
 }
 
-func (a *app) commitForm(c *ui.Context) {
+// commitFormModal is the larger commit editor: a summary line and a free-form
+// description, opened from the commit box's maximize button or the More menu.
+// It shares the box's summary, so what was typed there carries over and back.
+func (a *app) commitFormModal(c *ui.Context) {
+	if a.workspaceTab != sectionChanges {
+		return
+	}
 	theme := c.Theme()
-	islandCard(c, ui.Column(c).Grow(1).Gap(14).Padding(20)).Children(func() {
-		ui.Text(c, tr("Create commit")).FontSize(20).Bold()
-		summary := ui.TextInput(c, &a.commitSummary).Label(tr("Summary")).Placeholder(tr("Describe the change")).AutoFocus()
-		summary.DescribeShortcut(ui.ShortcutDescriptor{ID: "changes/commit-staged", Label: tr("Commit the staged changes")}, 0, ui.KeyEnter)
-		summary.OnSubmit(a.beginCommit)
-		ui.TextArea(c, &a.commitBody).Label(tr("Description")).Placeholder(tr("Optional details")).Height(150)
-		ui.Checkbox(c, &a.commitAmend, tr("Amend the latest commit"))
-		ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
-			if ui.Button(c, tr("Cancel")).Disabled(a.actionBusy).Clicked() {
-				a.showCommitForm = false
-			}
-			if ui.PrimaryButton(c, tr("Commit")).Disabled(!a.canCommit()).Clicked() {
-				a.beginCommit()
-			}
+	a.repositoryFormModal(c, &a.showCommitForm, 680, "Create commit",
+		"A summary line and an optional description.", commitIcon, func() {
+			summary := ui.TextInput(c, &a.commitSummary).Label(tr("Summary")).Placeholder(tr("Describe the change")).AutoFocus()
+			summary.DescribeShortcut(ui.ShortcutDescriptor{ID: "changes/commit-staged", Label: tr("Commit the staged changes")}, 0, ui.KeyEnter)
+			summary.OnSubmit(a.beginCommit)
+			ui.TextArea(c, &a.commitBody).Label(tr("Description")).Placeholder(tr("Optional details")).Height(240)
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				ui.Text(c, tr("Esc closes this form")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+				ui.Spacer(c).Grow(1)
+				if ui.Button(c, tr("Cancel")).Disabled(a.actionBusy).Clicked() {
+					a.showCommitForm = false
+				}
+				if ui.PrimaryButton(c, tr("Commit")).Disabled(!a.canCommit()).Clicked() {
+					a.beginCommit()
+				}
+			})
 		})
-		ui.Row(c).Children(func() {
-			ui.Text(c, tr("Esc closes this form")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-		})
-	})
 }
 
 func (a *app) fileDetailsView(c *ui.Context) {
@@ -857,10 +861,10 @@ func (a *app) fileActionsMenu(c *ui.Context, theme *ui.Theme, file repository.Fi
 			}
 			m.Separator()
 		}
-		if m.Item(tr("Stash selected file…")).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Stash selected file")).Disabled(a.actionBusy).Chosen() {
 			a.openSelectedFileStash(file)
 		}
-		if m.Item(tr("Discard changes…")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
+		if m.Item(tr("Discard changes")).Shortcut(0, ui.KeyD).Disabled(a.actionBusy).Chosen() {
 			a.confirmDiscardSelected()
 		}
 	})

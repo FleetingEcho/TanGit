@@ -908,7 +908,7 @@ func TestViewOpensRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if err := tt.Click("Commit with a description…"); err != nil {
+	if err := tt.Click("Commit with a description"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -936,18 +936,18 @@ func TestViewOpensRepository(t *testing.T) {
 	if err := tt.Click("feature"); err != nil {
 		t.Fatal(err)
 	}
-	for _, action := range []string{"Checkout", "Merge into current…", "Rename…", "Delete…"} {
+	for _, action := range []string{"Checkout", "Merge into current", "Rename", "Delete"} {
 		if !tt.HasText(action) {
 			t.Fatalf("branch action %q not shown in texts %q", action, tt.Texts())
 		}
 	}
-	if err := tt.Click("Rename…"); err != nil {
+	if err := tt.Click("Rename"); err != nil {
 		t.Fatal(err)
 	}
 	if !tt.HasText("New branch name") || !tt.HasText("Cancel rename") {
 		t.Fatalf("branch actions not shown in texts %q", tt.Texts())
 	}
-	if err := tt.Click("New branch…"); err != nil {
+	if err := tt.Click("New branch"); err != nil {
 		t.Fatal(err)
 	}
 	if !tt.HasText("Branch name") || !tt.HasText("From branch") || !tt.HasText("Create branch") {
@@ -959,12 +959,12 @@ func TestViewOpensRepository(t *testing.T) {
 	if err := tt.Click("Remotes"); err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"origin", "git@example.com:team/project.git", "Remote branches", "Checkout as local…"} {
+	for _, text := range []string{"origin", "git@example.com:team/project.git", "Remote branches", "Checkout as local"} {
 		if !tt.HasText(text) {
 			t.Fatalf("remote text %q not shown in texts %q", text, tt.Texts())
 		}
 	}
-	if err := tt.Click("Add remote…"); err != nil {
+	if err := tt.Click("Add remote"); err != nil {
 		t.Fatal(err)
 	}
 	if !tt.HasText("Remote name") || !tt.HasText("Remote URL") {
@@ -976,12 +976,12 @@ func TestViewOpensRepository(t *testing.T) {
 	if err := tt.Click("Stash"); err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"Saved work", "WIP: native stash", "Apply", "Pop…", "Drop…"} {
+	for _, text := range []string{"Saved work", "WIP: native stash", "Apply", "Pop", "Drop"} {
 		if !tt.HasText(text) {
 			t.Fatalf("stash text %q not shown in texts %q", text, tt.Texts())
 		}
 	}
-	if err := tt.Click("Stash changes…"); err != nil {
+	if err := tt.Click("Stash changes"); err != nil {
 		t.Fatal(err)
 	}
 	if !tt.HasText("Stash message") || !tt.HasText("Include untracked") {
@@ -993,12 +993,12 @@ func TestViewOpensRepository(t *testing.T) {
 	if err := tt.Click("Tags"); err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"Repository tags", "v1.0.0", "First native release", "Push tag…", "Delete tag…"} {
+	for _, text := range []string{"Repository tags", "v1.0.0", "First native release", "Push tag", "Delete tag"} {
 		if !tt.HasText(text) {
 			t.Fatalf("tag text %q not shown in texts %q", text, tt.Texts())
 		}
 	}
-	if err := tt.Click("Create tag…"); err != nil {
+	if err := tt.Click("Create tag"); err != nil {
 		t.Fatal(err)
 	}
 	if !tt.HasText("Tag name") || !tt.HasText("Target ref") || !tt.HasText("Annotated") {
@@ -1016,10 +1016,10 @@ func TestViewOpensRepository(t *testing.T) {
 	if err := tt.Click("feature-tree"); err != nil {
 		t.Fatal(err)
 	}
-	if !tt.HasText("Open worktree") || !tt.HasText("Remove worktree…") {
+	if !tt.HasText("Open worktree") || !tt.HasText("Remove worktree") {
 		t.Fatalf("worktree actions not shown in texts %q", tt.Texts())
 	}
-	if err := tt.Click("New worktree…"); err != nil {
+	if err := tt.Click("New worktree"); err != nil {
 		t.Fatal(err)
 	}
 	if !tt.HasText("Worktree path") || !tt.HasText("Base ref") || !tt.HasText("Detached HEAD") {
@@ -1031,12 +1031,12 @@ func TestViewOpensRepository(t *testing.T) {
 	if err := tt.Click("Submodules"); err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"Configured submodules", "library", "vendor/library", "Initialize / update", "Delete…"} {
+	for _, text := range []string{"Configured submodules", "library", "vendor/library", "Initialize / update", "Delete"} {
 		if !tt.HasText(text) {
 			t.Fatalf("submodule text %q not shown in texts %q", text, tt.Texts())
 		}
 	}
-	if err := tt.Click("Add submodule…"); err != nil {
+	if err := tt.Click("Add submodule"); err != nil {
 		t.Fatal(err)
 	}
 	if !tt.HasText("Submodule name") || !tt.HasText("Checkout path") || !tt.HasText("Repository URL") {
@@ -1131,7 +1131,7 @@ func TestViewShowsConflictRecoveryControls(t *testing.T) {
 	tt.Frame()
 
 	for _, text := range []string{
-		"MERGE", "Continue", "Abort…", "Conflict", "Conflict 1 of 1",
+		"MERGE", "Continue", "Abort", "Conflict", "Conflict 1 of 1",
 		"Use current", "Use incoming", "Mark resolved", "Open file in editor",
 	} {
 		if !tt.HasText(text) {

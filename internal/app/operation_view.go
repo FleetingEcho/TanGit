@@ -71,11 +71,11 @@ func (a *app) operationControls(c *ui.Context) {
 				})
 		}
 		if a.operationCan(repository.OperationActionSkip) {
-			iconTextButtonState(c, "Skip…", "Skip the stopped step and continue the remaining operation", skipIcon, false,
+			iconTextButtonState(c, "Skip", "Skip the stopped step and continue the remaining operation", skipIcon, false,
 				a.actionBusy, a.confirmSkipOperation)
 		}
 		if a.operationCan(repository.OperationActionAbort) {
-			iconTextButton(c, "Abort…", "Abort the interrupted operation", abortIcon, a.actionBusy,
+			iconTextButton(c, "Abort", "Abort the interrupted operation", abortIcon, a.actionBusy,
 				a.confirmAbortOperation)
 		}
 	})

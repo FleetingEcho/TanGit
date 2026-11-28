@@ -187,12 +187,11 @@ func (a *app) pullRequestMenuButton(c *ui.Context) {
 		button.Background(theme.SurfaceHover)
 	}
 	button.PopoverMenuButton(func(m *ui.Menu) {
-		remote, hasRemote := a.webRemote()
-		if m.Item(tr("Set remote web address")).Disabled(!hasRemote).Chosen() {
-			a.openEditRemoteWebURL(remote)
+		if m.Item(tr("Git hosting settings")).Chosen() {
+			a.openHostingAccess()
 		}
 		m.Separator()
-		if m.Item(tr("Create pull request…")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0 || a.snapshot.Branch == "").Chosen() {
+		if m.Item(tr("Create pull request")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0 || a.snapshot.Branch == "").Chosen() {
 			a.openCreatePullRequestForm()
 		}
 		if m.Item(tr("Open pull request in browser")).Disabled(a.actionBusy || len(a.snapshot.Remotes) == 0 || a.snapshot.Branch == "").Chosen() {

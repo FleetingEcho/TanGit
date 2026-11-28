@@ -193,7 +193,7 @@ func TestActiveRebaseMovesOperationActionsOutOfHeader(t *testing.T) {
 					"Fetch", "Pull", "Push", "Refresh", "Open in editor", "Theme", "Settings")
 				header := requireRect(t, h.tester, "Repository header")
 				card := requireRect(t, h.tester, "Operation context")
-				for _, label := range []string{"Continue", "Skip…", "Abort…"} {
+				for _, label := range []string{"Continue", "Skip", "Abort"} {
 					button := requireRect(t, h.tester, label)
 					requireRectInside(t, label, button, card)
 					if button.Y < header.Y+header.H {

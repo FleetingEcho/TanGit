@@ -97,7 +97,7 @@ func TestEditorShortcutRecorderKeepsPromptOnOneLine(t *testing.T) {
 			if !found {
 				t.Fatal("shortcut recorder is missing")
 			}
-			prompt, found := h.tester.Find(tr("Press a shortcut…"))
+			prompt, found := h.tester.Find(tr("Press a shortcut"))
 			if !found {
 				t.Fatalf("recording prompt is not visible at width %d", width)
 			}

@@ -74,7 +74,7 @@ func settingsPageGlyph(page int) *ui.SVG {
 var settingsSearchCatalog = []settingsSearchOption{
 	{settingsPageAppearance, "Language", "Language of the interface"},
 	{settingsPageAppearance, "Theme", "Palettes for the whole window"},
-	{settingsPageAppearance, "Customize theme…", "Build your own theme with a color picker"},
+	{settingsPageAppearance, "Customize theme", "Build your own theme with a color picker"},
 	{settingsPageAppearance, "Accent color", "Buttons and highlights"},
 	{settingsPageAppearance, "Home background", "An image behind the repository picker"},
 	{settingsPageAppearance, "Background opacity", "How strongly the Home image shows"},
@@ -104,7 +104,7 @@ var settingsSearchCatalog = []settingsSearchOption{
 
 	{settingsPageEditor, "Editor command", "Fills in {{filename}} and {{line}}"},
 	{settingsPageEditor, "Presets", "Choose the editor buttons' destination"},
-	{settingsPageEditor, "Add editor…", "Add a custom external editor"},
+	{settingsPageEditor, "Add editor", "Add a custom external editor"},
 	{settingsPageEditor, "Line numbers", "Absolute, relative, or hidden"},
 	{settingsPageEditor, "Whitespace", "Choose which spaces and tabs are visible"},
 	{settingsPageEditor, "Wrap long lines", "Built-in editor preferences"},

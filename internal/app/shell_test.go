@@ -922,7 +922,7 @@ func TestShellTabColorRemembersAcrossOpens(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if err := tt.Click("Tab color…"); err != nil {
+	if err := tt.Click("Tab color"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -952,7 +952,7 @@ func TestShellTabColorRemembersAcrossOpens(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if err := tt.Click("Tab color…"); err != nil {
+	if err := tt.Click("Tab color"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()

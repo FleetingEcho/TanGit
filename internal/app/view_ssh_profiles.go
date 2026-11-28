@@ -18,7 +18,7 @@ func (a *app) sshProfileSettings(c *ui.Context) {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 			ui.Text(c, tr("Passwords and key passphrases use the system keychain when available.")).
 				TextColor(c.Theme().TextMuted).FontSize(c.Theme().FontSize - 1).Grow(1)
-			iconTextButton(c, "Add SSH profile…", "Create an SSH connection profile", plusIcon, false, func() {
+			iconTextButton(c, "Add SSH profile", "Create an SSH connection profile", plusIcon, false, func() {
 				a.openSSHProfileForm("")
 			})
 		})
@@ -229,7 +229,7 @@ func (a *app) sshWorkspaceProfiles(c *ui.Context) {
 	theme := c.Theme()
 	ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 		ui.Text(c, tr("SSH profiles")).Bold().Grow(1)
-		iconTextButton(c, "New SSH profile…", "Create a profile without leaving Home", plusIcon, false, func() {
+		iconTextButton(c, "New SSH profile", "Create a profile without leaving Home", plusIcon, false, func() {
 			a.openSSHProfileForm("")
 		})
 	})
@@ -395,10 +395,10 @@ func (a *app) sshBrowserFolderRow(c *ui.Context, name, label, target string, bus
 
 func (a *app) sshBrowserContextMenu(m *ui.Menu) {
 	disabled := a.ssh.workspaceResolving || a.ssh.browser.Listing.Root == "" || a.ssh.workspaceRoot != a.ssh.browser.Listing.Root
-	if m.Item(tr("New Folder…")).Disabled(disabled).Chosen() {
+	if m.Item(tr("New Folder")).Disabled(disabled).Chosen() {
 		a.beginSSHBrowserCreate(true)
 	}
-	if m.Item(tr("New File…")).Disabled(disabled).Chosen() {
+	if m.Item(tr("New File")).Disabled(disabled).Chosen() {
 		a.beginSSHBrowserCreate(false)
 	}
 }
@@ -408,9 +408,9 @@ func (a *app) sshBrowserCreateForm(c *ui.Context) {
 		return
 	}
 	ui.Column(c).Gap(6).Children(func() {
-		title := "New File…"
+		title := "New File"
 		if a.ssh.browser.CreateDirectory {
-			title = "New Folder…"
+			title = "New Folder"
 		}
 		ui.Text(c, tr(title)).Bold()
 		ui.Text(c, a.ssh.browser.CreateRoot).SingleLine().Tooltip(a.ssh.browser.CreateRoot)

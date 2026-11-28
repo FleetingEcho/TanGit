@@ -256,11 +256,13 @@ func stackSyncPlanBranchView(c *ui.Context, branch repository.StackSyncBranch) {
 				ui.Badge(c, tr("Current"))
 			}
 		})
-		ui.Text(c, stackSyncActionLabel(branch)).TextColor(theme.Text).SingleLine().
-			Tooltip("local " + branch.LocalOID + "\ntarget " + branch.TargetOID)
+		action := ui.Text(c, stackSyncActionLabel(branch)).TextColor(theme.Text).SingleLine()
+		richTooltip(c, action, richTip{Title: tr("Local and target commits"),
+			Mono: []string{"local " + branch.LocalOID, "target " + branch.TargetOID}})
 		ui.Row(c).Gap(10).Children(func() {
-			ui.Text(c, trf("%s → %s", stackSyncShortOID(branch.LocalOID), stackSyncShortOID(branch.TargetOID))).
-				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).Tooltip(branch.LocalOID + "\n" + branch.TargetOID)
+			oids := ui.Text(c, trf("%s → %s", stackSyncShortOID(branch.LocalOID), stackSyncShortOID(branch.TargetOID))).
+				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+			richTooltip(c, oids, richTip{Title: tr("Local → target"), Mono: []string{branch.LocalOID, branch.TargetOID}})
 			if branch.Parent != "" {
 				ui.Text(c, trf("parent %s", branch.Parent)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).
 					SingleLine().Tooltip(branch.ParentOID)
@@ -271,8 +273,9 @@ func stackSyncPlanBranchView(c *ui.Context, branch repository.StackSyncBranch) {
 			}
 		})
 		if branch.Upstream.Ref != "" {
-			ui.Text(c, trf("upstream %s/%s · %s", branch.Upstream.Remote, branch.Upstream.RemoteBranch, stackSyncShortOID(branch.Upstream.OID))).
-				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).SingleLine().Tooltip(branch.Upstream.Ref + "\n" + branch.Upstream.OID)
+			upstream := ui.Text(c, trf("upstream %s/%s · %s", branch.Upstream.Remote, branch.Upstream.RemoteBranch, stackSyncShortOID(branch.Upstream.OID))).
+				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).SingleLine()
+			richTooltip(c, upstream, richTip{Title: tr("Upstream"), Mono: []string{branch.Upstream.Ref, branch.Upstream.OID}})
 		}
 		if branch.WorktreePath != "" {
 			operation := ""
@@ -333,7 +336,8 @@ func stackSyncResultBranchesView(c *ui.Context, result repository.StackSyncResul
 			} else if branch.Skipped {
 				title += " · " + tr("skipped")
 			}
-			ui.Text(c, title).Bold().SingleLine().Tooltip(branch.OldOID + "\n" + branch.NewOID)
+			titleText := ui.Text(c, title).Bold().SingleLine()
+			richTooltip(c, titleText, richTip{Title: tr("Before → after"), Mono: []string{branch.OldOID, branch.NewOID}})
 			if branch.Driver != "" {
 				ui.Text(c, branch.Driver).TextColor(theme.Accent).FontSize(theme.FontSize - 1)
 			}

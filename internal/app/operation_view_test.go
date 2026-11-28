@@ -124,8 +124,8 @@ func TestGuidedOperationRecoveryUsesDurableRecord(t *testing.T) {
 		wantAction       string
 		wantConfirmation string
 	}{
-		{name: "ready", status: repository.FileRecoveryReady, wantStatus: "Ready", wantAction: "Restore unresolved…", wantConfirmation: "Restore Unresolved Conflict"},
-		{name: "interrupted", status: repository.FileRecoveryInterrupted, wantStatus: "Interrupted", wantAction: "Retry…", wantConfirmation: "Retry File Recovery"},
+		{name: "ready", status: repository.FileRecoveryReady, wantStatus: "Ready", wantAction: "Restore unresolved", wantConfirmation: "Restore Unresolved Conflict"},
+		{name: "interrupted", status: repository.FileRecoveryInterrupted, wantStatus: "Interrupted", wantAction: "Retry", wantConfirmation: "Retry File Recovery"},
 		{name: "no record", wantStatus: "No recovery is available for the selected file."},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -148,7 +148,7 @@ func TestGuidedOperationRecoveryUsesDurableRecord(t *testing.T) {
 				t.Fatalf("recovery status %q is missing: %q", test.wantStatus, tt.Texts())
 			}
 			if test.wantAction == "" {
-				for _, unavailable := range []string{"Restore unresolved…", "Retry…"} {
+				for _, unavailable := range []string{"Restore unresolved", "Retry"} {
 					if tt.HasText(unavailable) {
 						t.Errorf("no-record guidance renders fake action %q", unavailable)
 					}
@@ -188,7 +188,7 @@ func TestGuidedOperationFitsNarrowPanesAndThemes(t *testing.T) {
 				if width < 360 {
 					contextText = "a-very-long-guided-topic-name"
 				}
-				for _, want := range []string{"Guided conflict resolution", contextText, "File: src/conflict.txt", "Hunk 2 of 2", "Retry…"} {
+				for _, want := range []string{"Guided conflict resolution", contextText, "File: src/conflict.txt", "Hunk 2 of 2", "Retry"} {
 					element, found := tt.Find(want)
 					if !found || element.X < 0 || element.X+element.W > float32(width)+0.5 || element.H <= 0 {
 						t.Errorf("%q is clipped at %d: %+v, found=%v", want, width, element, found)

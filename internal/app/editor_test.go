@@ -45,7 +45,7 @@ func TestEditorButtonOpensTheRepositoryWithTheChosenEditor(t *testing.T) {
 		t.Fatalf("the header has no editor button: %v", err)
 	}
 	h.tester.Frame()
-	for _, unwanted := range []string{"VS Code", "Zed", "Neovim", "Custom command…"} {
+	for _, unwanted := range []string{"VS Code", "Zed", "Neovim", "Custom command"} {
 		if slices.Contains(h.texts(), unwanted) {
 			t.Fatalf("clicking the launch action opened an editor chooser: %q", h.texts())
 		}
@@ -109,7 +109,7 @@ func TestCodeExternalEditorMenuOpensRepositoryWithoutChangingDefault(t *testing.
 				t.Fatalf("the Editor header has no external-editor menu: %v", err)
 			}
 			h.tester.Frame()
-			h.requireMenuLabels(t, "VS Code", "Zed", "Customize editor…")
+			h.requireMenuLabels(t, "VS Code", "Zed", "Customize editor")
 			h.chooseMenuItem(t, test.name)
 
 			want := []launchedEditor{{command: test.command, path: "/work/project"}}
@@ -161,7 +161,7 @@ func TestCodeExternalEditorMenuCustomizesEditorSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	h.chooseMenuItem(t, "Customize editor…")
+	h.chooseMenuItem(t, "Customize editor")
 
 	if !h.app.settingsUI.open || h.app.settingsUI.page != settingsPageEditor || !h.tester.HasText("Built-in Code or an external program") {
 		t.Fatalf("customization did not open Editor settings: open=%v page=%d texts=%q",
@@ -180,7 +180,7 @@ func TestSettingsAddCustomEditorToExternalMenu(t *testing.T) {
 	h.app.openSettings()
 	h.tester.Frame()
 
-	if err := h.tester.Click("Add editor…"); err != nil {
+	if err := h.tester.Click("Add editor"); err != nil {
 		t.Fatalf("the presets have no add-editor action: %v", err)
 	}
 	h.tester.Frame()
@@ -215,7 +215,7 @@ func TestSettingsAddCustomEditorToExternalMenu(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
-	h.requireMenuLabels(t, "VS Code", "Zed", "Fleet", "Customize editor…")
+	h.requireMenuLabels(t, "VS Code", "Zed", "Fleet", "Customize editor")
 	h.chooseMenuItem(t, "Fleet")
 
 	want := []launchedEditor{{command: editor.Command, path: "/work/project"}}

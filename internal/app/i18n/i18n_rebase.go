@@ -51,7 +51,7 @@ var rebaseWorkspaceTranslations = []struct {
 	{"The complete plan is compared before anything is replaced.", "替换前会比较完整计划。", "替換前會比較完整計畫。", "置き換える前に計画全体を比較します。", "El plan completo se compara antes de sustituir nada.", "Le plan complet est comparé avant tout remplacement."},
 	{"Close rebase plan", "关闭 rebase 计划", "關閉 rebase 計畫", "リベース計画を閉じる", "Cerrar el plan de rebase", "Fermer le plan de rebasage"},
 	{"Loading Git's rebase todo", "正在加载 Git 的 rebase todo", "正在載入 Git 的 rebase todo", "Git のリベース TODO を読み込み中", "Cargando el TODO de rebase de Git", "Chargement du TODO de rebasage Git"},
-	{"Loading Git's rebase todo…", "正在加载 Git 的 rebase todo…", "正在載入 Git 的 rebase todo…", "Git のリベース TODO を読み込み中…", "Cargando el TODO de rebase de Git…", "Chargement du TODO de rebasage Git…"},
+	{"Loading Git's rebase todo…", "正在加载 Git 的 rebase todo", "正在載入 Git 的 rebase todo", "Git のリベース TODO を読み込み中", "Cargando el TODO de rebase de Git", "Chargement du TODO de rebasage Git"},
 	{"Active todo · whole-file CAS", "活动 todo · 整文件 CAS", "活動 todo · 整檔 CAS", "アクティブ TODO · ファイル全体 CAS", "TODO activo · CAS de archivo completo", "TODO actif · CAS du fichier entier"},
 	{"Draft · captured from Git", "草稿 · 从 Git 捕获", "草稿 · 從 Git 擷取", "下書き · Git から取得", "Borrador · capturado de Git", "Brouillon · capturé depuis Git"},
 	{"Complete Git rebase todo", "完整的 Git rebase todo", "完整的 Git rebase todo", "Git リベース TODO 全体", "TODO completo del rebase de Git", "TODO complet du rebasage Git"},

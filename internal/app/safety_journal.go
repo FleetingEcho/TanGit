@@ -254,7 +254,7 @@ func (a *app) safetyJournalBody(c *ui.Context) {
 					a.confirmUndoOperation(record)
 				})
 			}
-			iconButton(c, tr("Delete")+" "+record.ID, "Delete this safety journal entry…", trashIcon,
+			iconButton(c, tr("Delete")+" "+record.ID, "Delete this safety journal entry", trashIcon,
 				a.actionBusy || !record.CanDelete(), func() { a.confirmDeleteOperation(record) })
 		})
 	}

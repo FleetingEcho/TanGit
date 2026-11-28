@@ -66,7 +66,7 @@ func TestBackgroundFetchSelectorAcceptsAndPersistsCustomMinutes(t *testing.T) {
 			t.Errorf("the selector lost preset %q", label)
 		}
 	}
-	if err := h.tester.Click("Custom…"); err != nil {
+	if err := h.tester.Click("Custom"); err != nil {
 		t.Fatal(err)
 	}
 	h.tester.Frame()
@@ -106,7 +106,7 @@ func TestBackgroundFetchSelectorAcceptsAndPersistsCustomMinutes(t *testing.T) {
 	h.app.openSettingsSection(settingsPageBehavior)
 	h.tester.Frame()
 	showBackgroundFetchInterval(t, h)
-	if h.app.settingsUI.autoFetchChoice != backgroundFetchCustomChoice || !h.tester.HasText("Custom…") {
+	if h.app.settingsUI.autoFetchChoice != backgroundFetchCustomChoice || !h.tester.HasText("Custom") {
 		t.Fatal("an existing custom interval was not restored as Custom")
 	}
 	if err := h.tester.Click("Background fetch interval"); err != nil {

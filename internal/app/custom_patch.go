@@ -761,7 +761,7 @@ func (a *app) customPatchEntriesFooter(c *ui.Context) {
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Wrap().Children(func() {
 			ui.Text(c, tr("History commits")).Bold().Grow(1)
 			ui.Text(c, tr("Single-source changes only; preview the patch and destination before rewriting.")).TextColor(theme.TextMuted).FontSize(theme.FontSize - 2)
-			button := ui.Button(c, tr("History actions…"))
+			button := ui.Button(c, tr("History actions"))
 			button.PopoverMenuButton(func(m *ui.Menu) { a.customPatchHistoryMenu(m) })
 			button.Disabled(a.actionBusy || len(a.customPatch.entries) == 0)
 		})
@@ -769,7 +769,7 @@ func (a *app) customPatchEntriesFooter(c *ui.Context) {
 			if ui.Button(c, tr("Clear Builder")).Disabled(a.actionBusy).Clicked() {
 				a.clearCustomPatch()
 			}
-			if ui.Button(c, tr("Send to worktree…")).Disabled(a.actionBusy || len(a.customPatch.entries) == 0 || len(courierDestinations(a.snapshot)) == 0).Clicked() {
+			if ui.Button(c, tr("Send to worktree")).Disabled(a.actionBusy || len(a.customPatch.entries) == 0 || len(courierDestinations(a.snapshot)) == 0).Clicked() {
 				a.beginCustomPatchCourier()
 			}
 			if ui.PrimaryButton(c, tr("Preview Custom Patch")).Disabled(a.actionBusy || len(a.customPatch.entries) == 0).Clicked() {
@@ -838,10 +838,10 @@ func (a *app) customPatchPreviewFooter(c *ui.Context) {
 		if ui.Button(c, tr("Back to Builder")).Disabled(a.actionBusy).Clicked() {
 			a.backToCustomPatchBuilder()
 		}
-		if ui.Button(c, tr("Send to worktree…")).Disabled(a.actionBusy || a.customPatch.previewLoad || a.customPatch.preview == nil || len(courierDestinations(a.snapshot)) == 0).Clicked() {
+		if ui.Button(c, tr("Send to worktree")).Disabled(a.actionBusy || a.customPatch.previewLoad || a.customPatch.preview == nil || len(courierDestinations(a.snapshot)) == 0).Clicked() {
 			a.beginCustomPatchPreviewCourier()
 		}
-		if ui.Button(c, tr("Export .patch…")).Disabled(a.actionBusy || a.customPatch.previewLoad || a.customPatch.preview == nil).Clicked() {
+		if ui.Button(c, tr("Export .patch")).Disabled(a.actionBusy || a.customPatch.previewLoad || a.customPatch.preview == nil).Clicked() {
 			a.exportCustomPatch()
 		}
 		if a.customPatch.preview != nil && a.customPatch.preview.Clean {

@@ -107,7 +107,7 @@ func TestKeyboardJKMovesSelectedFileAndUsesItsMenu(t *testing.T) {
 	}
 	h.tester.Key(ui.Shift, ui.KeyF10)
 	h.tester.Frame()
-	h.requireMenuLabels(t, "Stage", "Discard changes…")
+	h.requireMenuLabels(t, "Stage", "Discard changes")
 	h.tester.Key(0, ui.KeyEscape)
 	h.tester.Frame()
 	h.tester.Key(0, ui.KeySpace)

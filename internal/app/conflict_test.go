@@ -1220,7 +1220,7 @@ func TestAConflictedFileMenuHoldsTheResolutionActions(t *testing.T) {
 			t.Fatalf("the menu is missing %q: %q", label, h.texts())
 		}
 	}
-	for _, label := range []string{"Stage", "Unstage", "Blame", "Discard changes…"} {
+	for _, label := range []string{"Stage", "Unstage", "Blame", "Discard changes"} {
 		if slices.Contains(h.texts(), label) {
 			t.Fatalf("the conflicted file's menu offers %q: %q", label, h.texts())
 		}

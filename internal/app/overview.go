@@ -1353,7 +1353,7 @@ func (a *app) overviewToolbar(c *ui.Context, o *overviewState) {
 					o.query = overviewToggleUnpushed(o.query)
 					a.overviewSearchChanged(o)
 				})
-			flatIconButton(c, "Export commits", "Save the loaded commits as a Markdown or CSV file…", overviewExportIcon, 15, 4,
+			flatIconButton(c, "Export commits", "Save the loaded commits as a Markdown or CSV file", overviewExportIcon, 15, 4,
 				len(o.commits) == 0, func() { a.exportOverview(o) })
 			if strings.TrimSpace(o.query) != "" {
 				iconButton(c, "Clear search", "Clear search", closeIcon, false, func() {
@@ -1688,7 +1688,7 @@ func (a *app) overviewSetupModal(c *ui.Context, o *overviewState) {
 					}
 					ui.Divider(c)
 					ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
-						iconTextButtonState(c, "Add folder…", "Add a repository that is not in the recent list", initRepoIcon,
+						iconTextButtonState(c, "Add folder", "Add a repository that is not in the recent list", initRepoIcon,
 							false, setup.checking || setup.resolving, a.addOverviewFolder)
 						if setup.checking {
 							ui.Spinner(c).Label(tr("Checking folder…"))

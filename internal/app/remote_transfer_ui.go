@@ -301,9 +301,9 @@ func (a *app) remoteTransferExplorerMenu(menu *ui.Menu, item fileTreeRow) {
 		return
 	}
 	menu.Separator()
-	label := "Download…"
+	label := "Download"
 	if item.isDirectory() {
-		label = "Download as ZIP…"
+		label = "Download as ZIP"
 	}
 	if menu.Item(tr(label)).Chosen() {
 		a.beginRemoteDownload(item.path, item.isDirectory())
@@ -315,7 +315,7 @@ func (a *app) remoteTransferRootMenu(menu *ui.Menu) {
 		return
 	}
 	menu.Separator()
-	if menu.Item(tr("Download repository as ZIP…")).Chosen() {
+	if menu.Item(tr("Download repository as ZIP")).Chosen() {
 		a.beginRemoteDownload("", true)
 	}
 }
