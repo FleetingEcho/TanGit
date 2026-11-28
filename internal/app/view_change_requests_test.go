@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -27,6 +28,7 @@ type changeRequestListSession struct {
 	fakeSession
 	tool   string
 	output string
+	err    error
 	calls  [][]string
 }
 
@@ -79,13 +81,53 @@ func (s *changeRequestListSession) PullRequestTool(context.Context) (string, err
 
 func (s *changeRequestListSession) RunHostingCommand(_ context.Context, _ string, args []string) (string, error) {
 	s.calls = append(s.calls, append([]string(nil), args...))
-	if len(args) > 1 && args[0] == "api" {
+	if s.tool == "gh" && len(args) > 1 && args[0] == "api" {
 		if args[1] == "repos/{owner}/{repo}/pulls/42" {
 			return `{"body":"Details","mergeable_state":"clean"}`, nil
 		}
 		return `[]`, nil
 	}
-	return s.output, nil
+	return s.output, s.err
+}
+
+func TestChangeRequestFailureUsesNotificationAndRefresh(t *testing.T) {
+	h := menuTestApp(t)
+	session := &changeRequestListSession{
+		fakeSession: fakeSession{snapshot: repository.Snapshot{Branch: "feature"}},
+		tool:        "glab",
+		err:         errors.New("glab: host is not configured"),
+	}
+	h.app.session = session
+	h.app.state = stateReady
+	h.app.setWorkspaceTab(sectionPullRequests)
+	h.waitFor(t, "the pull request failure", func() bool {
+		return h.app.changeRequests.loaded && h.app.changeRequests.err != ""
+	})
+	h.tester.Frame()
+
+	const guidance = "Check your PR/MR host configuration, then click Refresh to try again."
+	if !h.tester.HasText("Git action failed") || !h.tester.HasText("glab: host is not configured") {
+		t.Fatalf("failure did not produce an error notification: %q", h.texts())
+	}
+	if !h.tester.HasText(guidance) || h.tester.HasText("Retry") {
+		t.Fatalf("error pane should contain only configuration guidance: %q", h.texts())
+	}
+	if _, ok := h.tester.Find("Config PR/MR host"); !ok {
+		t.Fatalf("error pane has no host configuration action: %q", h.texts())
+	}
+
+	before := len(session.calls)
+	session.err = nil
+	session.output = `[{"iid":7,"title":"Ready","state":"opened","web_url":"https://gitlab.example.com/group/project/-/merge_requests/7","source_branch":"feature","target_branch":"main"}]`
+	if err := h.tester.Click("Refresh pull requests"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor(t, "the refreshed pull request list", func() bool {
+		return h.app.changeRequests.err == "" && len(h.app.changeRequests.items) == 1
+	})
+	if len(session.calls) <= before {
+		t.Fatal("Refresh did not retry the host request")
+	}
 }
 
 func TestPullRequestsSectionLoadsGitHubAndPublishesSelection(t *testing.T) {

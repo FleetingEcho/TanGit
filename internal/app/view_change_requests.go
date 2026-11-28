@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"html"
 	"net/url"
@@ -238,6 +239,11 @@ func (a *app) loadMoreChangeRequests() {
 	}()
 }
 
+func (a *app) failChangeRequests(err error) {
+	a.changeRequests.err = changeRequestErrorMessage(err)
+	a.notifyError(err)
+}
+
 func (a *app) refreshChangeRequests() {
 	if a.session == nil || a.changeRequests.loading {
 		return
@@ -245,7 +251,7 @@ func (a *app) refreshChangeRequests() {
 	runner, ok := a.session.(forgeCommandSession)
 	if !ok {
 		a.changeRequests.loaded = true
-		a.changeRequests.err = "This repository session cannot access hosting requests."
+		a.failChangeRequests(errors.New("This repository session cannot access hosting requests."))
 		return
 	}
 	if a.repositoryDetailsLoading {
@@ -291,7 +297,7 @@ func (a *app) refreshChangeRequests() {
 			a.changeRequests.loading = false
 			a.changeRequests.loaded = true
 			if err != nil {
-				a.changeRequests.err = changeRequestErrorMessage(err)
+				a.failChangeRequests(err)
 				return
 			}
 			a.changeRequests.items = items
@@ -729,16 +735,11 @@ func (a *app) changeRequestsView(c *ui.Context) {
 					return
 				}
 				if a.changeRequests.err != "" {
-					ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
-						ui.Text(c, a.changeRequests.err).TextColor(theme.Danger).TextAlign(ui.Center)
-						ui.Row(c).Gap(8).Children(func() {
-							if ui.Button(c, tr("Retry")).Clicked() {
-								a.refreshChangeRequests()
-							}
-							if ui.Button(c, tr("Connect host")).Clicked() {
-								a.openHostingAccess()
-							}
-						})
+					ui.Column(c).Grow(1).Center().Gap(10).Padding(24).Children(func() {
+						ui.Text(c, tr("Check your PR/MR host configuration, then click Refresh to try again.")).TextColor(theme.TextMuted).TextAlign(ui.Center)
+						if ui.Button(c, tr("Config PR/MR host")).Clicked() {
+							a.openHostingAccess()
+						}
 					})
 					return
 				}
