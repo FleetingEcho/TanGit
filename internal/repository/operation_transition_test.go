@@ -118,3 +118,21 @@ func TestUndoMergeAbortRestoresConflictAndIndex(t *testing.T) {
 		t.Fatalf("abort Undo restored %q, want original conflict %q (%v)", got, conflicted, err)
 	}
 }
+
+func TestMergeAbortKeepsRecoveryWhenSafetyJournalIsOff(t *testing.T) {
+	fixture := newTransitionMergeFixture(t)
+	SetSafetyJournalEnabled(false)
+	state, err := fixture.session.(*gitSession).OperationState(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.session.(OperationSession).DriveOperation(context.Background(), OperationDriveOptions{
+		Action: OperationActionAbort, ExpectedFingerprint: state.Fingerprint,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	record := operationWithSummary(t, fixture.session, "Abort merge")
+	if record.Kind != OperationTransition || !record.CanUndo() {
+		t.Fatalf("Abort recovery = %+v", record)
+	}
+}

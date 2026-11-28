@@ -95,9 +95,52 @@ func TestHistoryChangesStoppingKeepsPartialResults(t *testing.T) {
 	}
 }
 
+func TestParseHistoryChangesPalettePreservesSpaces(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want repository.HistoryChangeQuery
+	}{
+		{
+			name: "single word",
+			text: "changed:parseDate",
+			want: repository.HistoryChangeQuery{Text: "parseDate"},
+		},
+		{
+			name: "space after colon",
+			text: "changed: test",
+			want: repository.HistoryChangeQuery{Text: "test"},
+		},
+		{
+			name: "unquoted words and filters",
+			text: `changed: timeout = 30 branch:main path:"a folder"`,
+			want: repository.HistoryChangeQuery{Text: "timeout = 30", Ref: "main", Path: "a folder"},
+		},
+		{
+			name: "quoted words and filters",
+			text: `changed:"timeout = 30" branch:main path:"a folder"`,
+			want: repository.HistoryChangeQuery{Text: "timeout = 30", Ref: "main", Path: "a folder"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, ok := parseHistoryChangesPalette(test.text)
+			if !ok || got != test.want {
+				t.Fatalf("parseHistoryChangesPalette(%q) = %+v, %v; want %+v, true", test.text, got, ok, test.want)
+			}
+		})
+	}
+}
+
 func TestHistoryChangesPalettePrefillsTheSearch(t *testing.T) {
 	h := menuTestApp(t)
-	h.app.session = historyChangesTestSession{fakeSession: h.app.session.(fakeSession)}
+	calls := make(chan repository.HistoryChangeQuery, 1)
+	h.app.session = historyChangesTestSession{
+		fakeSession: h.app.session.(fakeSession), calls: calls,
+		search: func(context.Context, func(repository.HistoryChangePage)) (repository.HistoryChangePage, error) {
+			return repository.HistoryChangePage{}, nil
+		},
+	}
 	s := newShell(nil)
 	s.tabs = []*tab{{app: h.app}}
 	s.active = 0
@@ -122,9 +165,13 @@ func TestHistoryChangesPalettePrefillsTheSearch(t *testing.T) {
 		t.Fatalf("palette invocation: %+v", result)
 	}
 	search := h.app.historyChanges
-	if !search.open || search.started || search.draft.Text != "timeout = 30" || search.draft.Ref != "main" || search.draft.Path != "a folder" {
-		t.Fatalf("unexpected search form: %+v", search.draft)
+	if !search.open || !search.started || search.draft.Text != "timeout = 30" || search.draft.Ref != "main" || search.draft.Path != "a folder" {
+		t.Fatalf("unexpected search state: open=%v started=%v query=%+v", search.open, search.started, search.draft)
 	}
+	if query := <-calls; query != search.draft {
+		t.Fatalf("palette submitted %+v; want %+v", query, search.draft)
+	}
+	h.waitFor(t, "palette code search", func() bool { return !h.app.historyChanges.loading })
 }
 
 func TestHistoryChangesFiltersOpenSeparatelyAndApply(t *testing.T) {

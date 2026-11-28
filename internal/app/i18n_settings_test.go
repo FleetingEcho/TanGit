@@ -45,7 +45,9 @@ func TestLanguageDefaultsToEnglish(t *testing.T) {
 }
 
 var (
-	formatDirective = regexp.MustCompile(`%(\[[0-9]+\])?[+#0 -]*[0-9]*(\.[0-9]+)?[a-zA-Z]`)
+	// Palette hints such as "% PR/MR" contain a literal percent, not a fmt
+	// directive with a space flag. Catalog format strings do not use "% s".
+	formatDirective = regexp.MustCompile(`%(\[[0-9]+\])?[+#0-]*[0-9]*(\.[0-9]+)?[a-zA-Z]`)
 	argumentIndex   = regexp.MustCompile(`\[[0-9]+\]`)
 )
 

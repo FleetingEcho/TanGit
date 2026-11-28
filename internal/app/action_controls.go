@@ -250,6 +250,11 @@ func (a *app) conflictToolbarRow(c *ui.Context) (ui.Element, bool, bool) {
 	tiny := paneWidth <= 0 || paneWidth < conflictTinyPaneWidth
 	if compact {
 		row.Gap(6)
+	} else {
+		// Each group is a title above its controls. Centering the separators and
+		// the trailing button on that whole height lifts them above the controls
+		// beside them, so the full toolbar lines everything up on the control row.
+		row.AlignItems(ui.End)
 	}
 	return row, compact, tiny
 }

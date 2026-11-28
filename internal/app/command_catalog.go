@@ -320,7 +320,7 @@ func utf8DecodeRuneInString(value string) (rune, int) {
 }
 
 // commandQueryMode splits a leading palette mode character from the query:
-// '>' commands only, '@' branches, '#' commits, '/' files and '!' a shell
+// '>' commands only, '%' pull/merge requests, '@' branches, '#' commits, '/' files and '!' a shell
 // command line. Everything else is the default mode.
 func commandQueryMode(query string) (byte, string) {
 	query = strings.TrimLeftFunc(query, unicode.IsSpace)
@@ -328,7 +328,7 @@ func commandQueryMode(query string) (byte, string) {
 		return 0, ""
 	}
 	switch query[0] {
-	case '>', '@', '#', '/', '!', '~', '^':
+	case '>', '@', '#', '/', '!', '~', '^', '%':
 		rest := query[1:]
 		if query[0] != '!' {
 			rest = strings.TrimSpace(rest)
@@ -566,23 +566,24 @@ func (c *commandCatalog) InvokeAction(ctx commandContext, id commandID, action i
 }
 
 const (
-	commandOpenSettings    commandID = "settings/open"
-	commandOpenHelp        commandID = "keybindings/open"
-	commandOpenFetch       commandID = "repository/fetch"
-	commandOpenPull        commandID = "repository/pull"
-	commandOpenPush        commandID = "repository/push"
-	commandOpenRefresh     commandID = "repository/refresh"
-	commandOpenTerminal    commandID = "terminal/toggle"
-	commandOpenLog         commandID = "command-log/open"
-	commandCommitStaged    commandID = "changes/commit-staged"
-	commandContinue        commandID = "operation/continue"
-	commandOpenRecovery    commandID = "recovery/open"
-	commandOpenPRChecks    commandID = "branches/pr-checks"
-	commandOpenPerformance commandID = "repository/performance"
-	commandOpenCockpit     commandID = "workspace/overview"
-	commandOpenChanges     commandID = "workspace/changes"
-	commandOpenAgents      commandID = "workspace/agents"
-	commandNextUnreviewed  commandID = "git/Changes/Go to the next unreviewed file"
+	commandOpenSettings      commandID = "settings/open"
+	commandOpenHelp          commandID = "keybindings/open"
+	commandOpenFetch         commandID = "repository/fetch"
+	commandOpenPull          commandID = "repository/pull"
+	commandOpenPush          commandID = "repository/push"
+	commandOpenRefresh       commandID = "repository/refresh"
+	commandOpenTerminal      commandID = "terminal/toggle"
+	commandOpenLog           commandID = "command-log/open"
+	commandCommitStaged      commandID = "changes/commit-staged"
+	commandContinue          commandID = "operation/continue"
+	commandOpenRecovery      commandID = "recovery/open"
+	commandOpenPRChecks      commandID = "branches/pr-checks"
+	commandOpenPerformance   commandID = "repository/performance"
+	commandOpenHostingAccess commandID = "application/hosting-access"
+	commandOpenCockpit       commandID = "workspace/overview"
+	commandOpenChanges       commandID = "workspace/changes"
+	commandOpenAgents        commandID = "workspace/agents"
+	commandNextUnreviewed    commandID = "git/Changes/Go to the next unreviewed file"
 )
 
 var (
@@ -624,6 +625,7 @@ func buildStaticCommandSpecs() []commandSpec {
 		{ID: commandOpenPull, Label: "Pull from the upstream branch", Keywords: []string{"pull", "update", "integrate"}, Group: commandGroupRepository, Chord: "p", Icon: commandIconPull, Resolve: repositoryState, Run: func(ctx commandContext) { ctx.App.confirmPull() }},
 		{ID: commandOpenPush, Label: "Push to the remote", Keywords: []string{"push", "publish", "upload"}, Group: commandGroupRepository, Chord: "Shift+P", Icon: commandIconPush, Resolve: repositoryState, Run: func(ctx commandContext) { ctx.App.confirmPush() }},
 		{ID: commandOpenPerformance, Label: "Optimize repository performance", Keywords: []string{"performance", "speed", "fast", "fsmonitor", "untracked cache", "commit-graph", "maintenance", "large repository"}, Group: commandGroupRepository, Icon: commandIconSettings, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openRepositoryPerformance() }},
+		{ID: commandOpenHostingAccess, Label: "Config PR/MR host", Detail: "The token is kept in your system keychain, not in settings.", Keywords: []string{"pull request", "merge request", "github", "gitlab", "token", "host", "server", "connect", "pr", "mr"}, Group: commandGroupApplication, Icon: commandIconSettings, Resolve: appState, Run: func(ctx commandContext) { ctx.App.openHostingAccess() }},
 		{ID: commandOpenRefresh, Label: "Refresh the repository", Keywords: []string{"reload", "refresh", "status"}, Group: commandGroupRepository, Chord: "F5", Icon: commandIconRefresh, Resolve: repositoryState, Run: func(ctx commandContext) { ctx.App.beginRefresh() }},
 		{ID: commandOpenTerminal, Label: "Toggle Terminal", Keywords: []string{"terminal", "shell", "console"}, Group: commandGroupApplication, Chord: "Ctrl+`", Icon: commandIconTerminal, Resolve: readyAppState, Run: func(ctx commandContext) { ctx.App.toggleTerminalPanel() }},
 		{ID: commandOpenLog, Label: "Open Command Log", Keywords: []string{"commands", "output", "errors", "git log"}, Group: commandGroupApplication, Chord: "Ctrl+L", Icon: commandIconLog, Resolve: repositoryStateAllowBusy, Run: func(ctx commandContext) { ctx.App.openCommandLog() }},
@@ -743,7 +745,7 @@ func buildStaticCommandSpecs() []commandSpec {
 			continue
 		}
 		specs = append(specs, commandSpec{
-			ID: id, Label: "Open " + workspaceSections[section], Format: "Open %s", FormatArgs: []string{workspaceSections[section]}, TranslateArgs: true, Keywords: []string{workspaceSectionIDs[section], workspaceSections[section], "section", "navigate"}, Group: commandGroupNavigation, Icon: commandIconNavigation,
+			ID: id, Label: "Open " + workspaceSections[section], Format: "Open %s", FormatArgs: []string{workspaceSections[section]}, TranslateArgs: true, Keywords: sectionKeywords(section), Group: commandGroupNavigation, Icon: commandIconNavigation,
 			Resolve: workspaceState(section), Run: func(ctx commandContext) { ctx.App.setWorkspaceTab(section) },
 		})
 	}
@@ -1193,4 +1195,14 @@ func (spec commandSpec) formattedLabel() string {
 		args[index] = arg
 	}
 	return fmt.Sprintf(tr(spec.Format), args...)
+}
+
+// sectionKeywords are the words that find a section's "Open …" command; the
+// PR/MR page also answers to the full names and to the hosting vocabulary.
+func sectionKeywords(section int) []string {
+	words := []string{workspaceSectionIDs[section], workspaceSections[section], "section", "navigate"}
+	if section == sectionPullRequests {
+		words = append(words, "pull request", "pull requests", "merge request", "merge requests", "pr", "mr", "github", "gitlab", "review")
+	}
+	return words
 }

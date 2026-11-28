@@ -64,6 +64,7 @@ func requireWorktreeSession(session repository.Session) repository.WorktreeSessi
 // before the work that needs the provider starts, because the addresses come
 // from settings.
 func (a *app) applyHostingHints(session repository.Session) {
+	a.applyHostingAccess(session)
 	hinter, ok := session.(interface{ SetHostingHints([]string) })
 	if !ok {
 		return

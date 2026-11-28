@@ -32,6 +32,20 @@ func (a *app) notifyRepositorySuccess(message string, previous map[string]bool) 
 	a.notify("success", message, "")
 }
 
+// notifyUndoable confirms a change the journal records and puts Undo on the
+// notice. The button asks for the latest change when pressed, not for a record
+// found now: the list on screen does not hold the new record yet. With the
+// journal off nothing was recorded, so there is nothing to offer.
+func (a *app) notifyUndoable(title string) {
+	if !repository.SafetyJournalEnabled() {
+		return
+	}
+	a.pendingToasts = append(a.pendingToasts, appToast{
+		kind: "success", title: title, action: tr("Undo") + " (Ctrl+Z)", timeout: 6 * time.Second,
+		onAction: a.confirmUndo,
+	})
+}
+
 func (a *app) confirmUndoOperationID(id string) {
 	for _, record := range a.snapshot.Operations {
 		if record.ID == id {
@@ -46,16 +60,34 @@ func (a *app) confirmUndoOperation(record repository.OperationRecord) {
 	if a.actionBusy || a.session == nil || !record.CanUndo() {
 		return
 	}
+	detail := tr("lazygitGo will first verify that HEAD, the branch and the working tree still match the operation. Newer work stops Undo before anything is overwritten.")
+	switch record.UndoKind {
+	case repository.UndoRestoreIndex:
+		detail = tr("Only the staging is reverted; your files are not changed. Undo stops if the index or HEAD changed since.")
+	case repository.UndoRestoreFile, repository.UndoRestoreRef:
+		detail = tr("Only this one change is reverted. Undo stops if it was changed again since.")
+	}
 	a.askConfirm(confirmRequest{
 		title:        "Undo Repository Operation",
 		message:      trf("Undo %s?", record.Summary),
-		detail:       tr("lazygitGo will first verify that HEAD, the branch and the working tree still match the operation. Newer work stops Undo before anything is overwritten."),
+		detail:       detail,
 		confirmLabel: "Undo",
 		run: func() {
 			id := record.ID
 			a.beginRepositoryActionMessage(trf("Undid %s", record.Summary), "", func(ctx context.Context, session repository.Session) error {
 				return session.UndoOperation(ctx, id)
-			}, nil)
+			}, func() {
+				// The journal marks it undone; show that now rather than when the
+				// details next load, so an immediate second Ctrl+Z moves on to the
+				// change before it instead of offering this one again.
+				operations := slices.Clone(a.snapshot.Operations)
+				for i := range operations {
+					if operations[i].ID == id && operations[i].UndoneAt == 0 {
+						operations[i].UndoneAt = time.Now().Unix()
+					}
+				}
+				a.snapshot.Operations = operations
+			})
 		},
 	})
 }

@@ -337,6 +337,8 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 		TerminalDock:              terminalDockRight,
 		HiddenHeaderActions:       []string{"pull", "theme"},
 		HiddenStatusActions:       []string{"activity", "command-log"},
+
+		PullRequestsPlacementMigrated: true,
 		RemoteWebURLs: map[string]map[string]string{
 			"/work/project": {"origin": "https://example.com/team/project"},
 		},

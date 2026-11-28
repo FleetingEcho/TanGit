@@ -304,7 +304,7 @@ func TestChangesKeepsFoldControlsWhenAllMatchingFilesAreHidden(t *testing.T) {
 	}
 }
 
-func TestChangesHeaderTitleKeepsFileListExpanded(t *testing.T) {
+func TestChangesHeaderTitleTogglesFileList(t *testing.T) {
 	a := newApp(nil)
 	tt := ui.NewTester(func(c *ui.Context) {
 		a.changeHeaderRow(c, "Changes", folderIcon, 66, a.changesExpanded, changeSectionChanges)
@@ -316,22 +316,15 @@ func TestChangesHeaderTitleKeepsFileListExpanded(t *testing.T) {
 	}
 	tt.ClickAt(title.X+title.W/2, title.Y+title.H/2)
 	tt.Frame()
-	if !a.changesExpanded {
-		t.Fatal("clicking the Changes title hid the file list")
-	}
-	if err := tt.Click("Collapse Changes"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
 	if a.changesExpanded {
-		t.Fatal("the chevron did not collapse the file list")
+		t.Fatal("clicking the Changes title did not hide the file list")
 	}
 	if err := tt.Click("Expand Changes"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
 	if !a.changesExpanded {
-		t.Fatal("the chevron did not restore the file list")
+		t.Fatal("the header did not restore the file list")
 	}
 }
 
@@ -550,11 +543,17 @@ func TestChangesHeaderStageAllIcons(t *testing.T) {
 	if err := h.tester.Click("Stage all changes"); err != nil {
 		t.Fatal(err)
 	}
+	if !h.app.changesExpanded {
+		t.Fatal("clicking the Stage all icon collapsed its section")
+	}
 	h.waitFor(t, "every file to be staged", func() bool { return calls.has("stage-all") })
 	h.settle(t)
 
 	if err := h.tester.Click("Unstage all changes"); err != nil {
 		t.Fatal(err)
+	}
+	if !h.app.stagedExpanded {
+		t.Fatal("clicking the Unstage all icon collapsed its section")
 	}
 	h.waitFor(t, "every file to be unstaged", func() bool { return calls.has("unstage-all") })
 }
@@ -571,14 +570,19 @@ func TestCtrlEnterCommitsTheInlineMessage(t *testing.T) {
 	}
 }
 
-// The commit card says which branch the message lands on, and its Commit
-// button commits the inline message as Ctrl+Enter does.
+// The commit card keeps its input and action on one line; the branch detail is
+// available from the input tooltip instead of consuming another row.
 func TestCommitCardButtonCommitsTheInlineMessage(t *testing.T) {
 	h, calls := changesTestApp(t, sectionedFiles())
 	h.app.commitSummary = "ship the changes"
 	h.tester.Frame()
-	if !slices.Contains(h.texts(), "Commit on main") {
-		t.Fatalf("the card does not name the branch: %q", h.texts())
+	if slices.Contains(h.texts(), "Commit on main") {
+		t.Fatalf("the branch detail still consumes a second row: %q", h.texts())
+	}
+	input := requireRect(t, h.tester, "Commit message")
+	button := requireRect(t, h.tester, "Commit")
+	if input.Y >= button.Y+button.H || button.Y >= input.Y+input.H {
+		t.Fatalf("commit input and button are not on one row: input=%+v button=%+v", input, button)
 	}
 	if err := h.tester.Click("Commit"); err != nil {
 		t.Fatalf("click Commit: %v", err)
@@ -587,6 +591,29 @@ func TestCommitCardButtonCommitsTheInlineMessage(t *testing.T) {
 	h.settle(t)
 	if h.app.commitSummary != "" {
 		t.Fatalf("the message survived the commit: %q", h.app.commitSummary)
+	}
+}
+
+func TestCommitCardFitsNarrowPaneOnOneRow(t *testing.T) {
+	for _, width := range []int{240, 320} {
+		t.Run(fmt.Sprintf("width=%d", width), func(t *testing.T) {
+			a := newApp(fakeOpener{})
+			a.snapshot.Branch = "main"
+			a.snapshot.Files = []repository.File{{Path: "staged.txt", Status: "M ", Staged: true}}
+			a.commitSummary = "ship"
+			tt := ui.NewTester(a.commitBox, width, 90)
+			tt.Frame()
+			input := requireRect(t, tt, "Commit message")
+			button := requireRect(t, tt, "Commit")
+			for label, bounds := range map[string]ui.Rect{"input": input, "button": button} {
+				if bounds.X < 0 || bounds.X+bounds.W > float32(width)+0.5 {
+					t.Errorf("%s escapes %d DIP: %+v", label, width, bounds)
+				}
+			}
+			if input.X+input.W > button.X+0.5 || input.Y >= button.Y+button.H || button.Y >= input.Y+input.H {
+				t.Errorf("controls are not a non-overlapping row at %d DIP: input=%+v button=%+v", width, input, button)
+			}
+		})
 	}
 }
 
@@ -1112,8 +1139,8 @@ func TestFileHistoryPagesOlderCommits(t *testing.T) {
 		t.Fatalf("the file history skipped %s, want %s", got, want)
 	}
 	h.tester.Frame()
-	if !slices.Contains(h.texts(), "Beginning of file history") {
-		t.Fatalf("the drawer does not show the end of the history: %q", h.texts())
+	if slices.Contains(h.texts(), "Beginning of file history") {
+		t.Fatalf("the drawer still shows an end-of-history note: %q", h.texts())
 	}
 }
 
@@ -1409,12 +1436,11 @@ func TestOnlyExpandedMergeSectionFillsRemainingHeight(t *testing.T) {
 	if !ok {
 		t.Fatalf("the sections have no body: %q", h.texts())
 	}
-	// Find the titles inside the sections, not the sidebar's identical
-	// "Changes" label or the filter controls above the body.
-	sectionTitle := func(title string) (ui.Rect, bool) {
+	// Each non-action part of a section header is one accessible fold button.
+	sectionHeader := func(title string) (ui.Rect, bool) {
 		for _, info := range h.tester.AccessAll() {
 			bounds := info.Bounds
-			if info.Role == ui.RoleText && info.Name == title &&
+			if (info.Name == "Collapse "+title || info.Name == "Expand "+title) &&
 				bounds.X >= body.X && bounds.X+bounds.W <= body.X+body.W &&
 				bounds.Y >= body.Y && bounds.Y+bounds.H <= body.Y+body.H {
 				return bounds, true
@@ -1422,17 +1448,14 @@ func TestOnlyExpandedMergeSectionFillsRemainingHeight(t *testing.T) {
 		}
 		return ui.Rect{}, false
 	}
-	mergeHeader, mergeOK := sectionTitle("Merge Changes")
-	stagedHeader, stagedOK := sectionTitle("Staged Changes")
-	changesHeader, changesOK := sectionTitle("Changes")
+	mergeHeader, mergeOK := sectionHeader("Merge Changes")
+	stagedHeader, stagedOK := sectionHeader("Staged Changes")
+	changesHeader, changesOK := sectionHeader("Changes")
 	if !mergeOK || !stagedOK || !changesOK {
 		t.Fatalf("a folded header disappeared: merge=%v staged=%v changes=%v", mergeOK, stagedOK, changesOK)
 	}
-	// A title's rectangle is not its row's height. Each header has five DIPs
-	// of vertical padding and controls at least 22 DIPs high. The distance to
-	// Staged includes Merge and one 10-DIP gap, so derive that same distance
-	// from the body after subtracting both folded rows and the other gap.
-	headerHeight := func(title ui.Rect) float32 { return max(title.H, 22) + 10 }
+	// The toggle sits inside the 32-DIP header with a one-DIP inset per edge.
+	headerHeight := func(header ui.Rect) float32 { return header.H + 2 }
 	stagedHeight := headerHeight(stagedHeader)
 	changesHeight := headerHeight(changesHeader)
 	got := stagedHeader.Y - mergeHeader.Y
@@ -1841,5 +1864,49 @@ func TestFileHistoryKeepsAnEntryCommitTheFileLogOmits(t *testing.T) {
 	row, ok := h.tester.AccessByRole(ui.RoleListItem, origin.Subject)
 	if !ok || !row.Selected {
 		t.Fatalf("the entry commit is not the selected row: found=%v %+v", ok, row)
+	}
+}
+
+// A conflict list and the staged files under it are separated by a line that
+// drags, also while Changes is folded, and a short conflict list leaves the
+// rest of the room to the staged files rather than a blank band.
+func TestMergeAndStagedHaveADividerWhileChangesIsFolded(t *testing.T) {
+	files := []repository.File{
+		{Path: "one.txt", Status: "A ", Staged: true, Tracked: true},
+		{Path: "two.txt", Status: "M ", Staged: true, Tracked: true},
+		{Path: "three.txt", Status: "M ", Staged: true, Tracked: true},
+		{Path: "conflict.txt", Status: "UU", Unstaged: true, HasMergeConflicts: true},
+	}
+	h, _ := changesTestApp(t, files)
+	h.app.changesExpanded = false
+	h.app.mergeExpanded = true
+	h.app.stagedExpanded = true
+	for range 3 {
+		h.tester.Frame()
+	}
+	count := func(texts []string) int {
+		n := 0
+		for _, text := range texts {
+			if text == "Drag to resize" {
+				n++
+			}
+		}
+		return n
+	}
+	// The same panel without a conflict is the baseline of other dividers.
+	base, _ := changesTestApp(t, files[:3])
+	base.app.changesExpanded = false
+	base.app.stagedExpanded = true
+	for range 3 {
+		base.tester.Frame()
+	}
+	if count(h.texts()) <= count(base.texts()) {
+		t.Fatalf("no divider between Merge Changes and Staged Changes (%d vs %d without the conflict)", count(h.texts()), count(base.texts()))
+	}
+	body, _ := h.tester.Find("Changes sections")
+	mergeHeader, _ := h.tester.Find("Merge Changes")
+	stagedHeader, _ := h.tester.Find("Staged Changes")
+	if span := stagedHeader.Y - mergeHeader.Y; span > body.H*0.5 {
+		t.Fatalf("a single conflict takes %.1f of %.1f DIPs and leaves the staged files a sliver", span, body.H)
 	}
 }

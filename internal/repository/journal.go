@@ -52,8 +52,11 @@ type OperationRecord struct {
 	// Partial marks a changed workspace after a failed or conflict-stopped
 	// action. Exact before and after recovery points support a revalidated
 	// Undo without assuming that a non-zero Git exit means that nothing ran.
-	Partial              bool              `json:"partial,omitempty"`
-	CreatedAt            int64             `json:"created_at"`
+	Partial   bool  `json:"partial,omitempty"`
+	CreatedAt int64 `json:"created_at"`
+	// Sequence orders records made within the same second, so "the latest
+	// change" never depends on their random IDs.
+	Sequence             int64             `json:"sequence,omitempty"`
 	FinishedAt           int64             `json:"finished_at,omitempty"`
 	UndoneAt             int64             `json:"undone_at,omitempty"`
 	UndoStartedAt        int64             `json:"undo_started_at,omitempty"`
@@ -71,12 +74,27 @@ type OperationRecord struct {
 	WorkspaceGuardAfter  string            `json:"workspace_guard_after,omitempty"`
 	StashAfter           string            `json:"stash_after,omitempty"`
 	ObjectID             string            `json:"object_id,omitempty"`
-	RefName              string            `json:"ref_name,omitempty"`
-	Message              string            `json:"message,omitempty"`
-	UndoKind             string            `json:"undo_kind,omitempty"`
-	Snapshot             *WorkSnapshot     `json:"snapshot,omitempty"`
-	AfterSnapshot        *WorkSnapshot     `json:"after_snapshot,omitempty"`
-	Error                string            `json:"error,omitempty"`
+	// IndexBefore and IndexAfter are the index trees around a staging action;
+	// IndexBefore stays pinned at RefName until the record is pruned.
+	IndexBefore string `json:"index_before,omitempty"`
+	IndexAfter  string `json:"index_after,omitempty"`
+	// FilePath, FileExisted and FileAfter describe a single-file change: the
+	// copy it replaced is kept beside the record as <id>.before.
+	FilePath    string `json:"file_path,omitempty"`
+	FileExisted bool   `json:"file_existed,omitempty"`
+	FileAfter   string `json:"file_after,omitempty"`
+	FileMode    uint32 `json:"file_mode,omitempty"`
+	// RefFull, RefBefore and RefAfter describe a single-ref change; an empty
+	// object means the ref did not exist at that point.
+	RefFull       string        `json:"ref_full,omitempty"`
+	RefBefore     string        `json:"ref_before,omitempty"`
+	RefAfter      string        `json:"ref_after,omitempty"`
+	RefName       string        `json:"ref_name,omitempty"`
+	Message       string        `json:"message,omitempty"`
+	UndoKind      string        `json:"undo_kind,omitempty"`
+	Snapshot      *WorkSnapshot `json:"snapshot,omitempty"`
+	AfterSnapshot *WorkSnapshot `json:"after_snapshot,omitempty"`
+	Error         string        `json:"error,omitempty"`
 	// RebasePaused is the legacy active-rebase marker used by edit-stops and
 	// conflict pauses. Its undo is finalized only after the rebase returns to
 	// the branch, not against the temporary detached HEAD.
@@ -269,7 +287,7 @@ func (s *gitSession) beginOperation(kind, summary string, undoKind string, snaps
 	record := OperationRecord{
 		Version: journalVersion, ID: hex.EncodeToString(random[:]), Kind: kind,
 		Summary: RedactSecrets(strings.TrimSpace(summary)), Status: OperationPending,
-		CreatedAt: time.Now().Unix(), Worktree: s.git.RepoPaths.WorktreePath(),
+		CreatedAt: time.Now().Unix(), Sequence: time.Now().UnixNano(), Worktree: s.git.RepoPaths.WorktreePath(),
 		Branch: branch, HeadBefore: head, BeforeState: state,
 		UndoKind: undoKind, Snapshot: snapshot,
 	}
@@ -446,6 +464,9 @@ func (s *gitSession) Operations(ctx context.Context) ([]OperationRecord, error) 
 	}
 	sort.Slice(records, func(i, j int) bool {
 		if records[i].CreatedAt == records[j].CreatedAt {
+			if records[i].Sequence != records[j].Sequence {
+				return records[i].Sequence > records[j].Sequence
+			}
 			return records[i].ID > records[j].ID
 		}
 		return records[i].CreatedAt > records[j].CreatedAt
@@ -474,6 +495,7 @@ func (s *gitSession) DeleteOperation(ctx context.Context, id string) error {
 	if err == nil && !record.CanDelete() {
 		return fmt.Errorf("finish the active operation before deleting its safety journal entry")
 	}
+	_ = s.fileService().Remove(s.beforeFilePath(id))
 	if err := s.fileService().Remove(name); err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -514,6 +536,14 @@ func (s *gitSession) validateJournalPin(ref, object string) error {
 }
 
 func (s *gitSession) requireUnchangedOperation(record OperationRecord) error {
+	switch record.UndoKind {
+	case UndoRestoreIndex:
+		return s.requireUnchangedIndex(record)
+	case UndoRestoreFile:
+		return s.requireUnchangedFile(record)
+	case UndoRestoreRef:
+		return s.requireUnchangedRef(record)
+	}
 	if record.Worktree != s.git.RepoPaths.WorktreePath() {
 		return fmt.Errorf("operation belongs to a different worktree")
 	}
@@ -852,6 +882,21 @@ func (s *gitSession) UndoOperation(ctx context.Context, id string) error {
 		if err != nil {
 			return fmt.Errorf("restore dropped stash: %w: %s", err, strings.TrimSpace(output))
 		}
+	case UndoRestoreIndex:
+		if err := s.undoIndexOperation(record); err != nil {
+			return s.failJournalOperation(record, err)
+		}
+		return s.markOperationUndone(record)
+	case UndoRestoreFile:
+		if err := s.undoFileOperation(record); err != nil {
+			return s.failJournalOperation(record, err)
+		}
+		return s.markOperationUndone(record)
+	case UndoRestoreRef:
+		if err := s.undoRefOperation(record); err != nil {
+			return s.failJournalOperation(record, err)
+		}
+		return s.markOperationUndone(record)
 	case UndoReversePatch:
 		patchName := s.joinPath(s.journalDir(), record.ID+".patch")
 		data, err := s.fileService().ReadFile(patchName)

@@ -198,6 +198,11 @@ func (a *app) openRepository(ctx context.Context, path string, generation uint64
 		}
 		a.repositoryDetailsLoading = false
 		defer func() {
+			if a.changeRequests.waitingDetails {
+				a.changeRequests.waitingDetails = false
+				a.changeRequests.loading = false
+				a.refreshChangeRequests()
+			}
 			if a.refreshPending {
 				a.requestQuietRefresh()
 			}
@@ -372,6 +377,7 @@ func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 	// reads its diff, so nothing here reads the old repository's rows.
 	a.changeRows = nil
 	a.selectedFile = -1
+	a.resolvedConflicts = nil
 	// The commit list starts at the page the snapshot carries; more pages
 	// exist only when that page filled.
 	a.resetCommitPaging(snapshot)
@@ -472,6 +478,7 @@ func (a *app) resetRepositoryState(snapshot repository.Snapshot) {
 	a.stackSync.reset()
 	a.performance.reset()
 	a.resetComparison()
+	a.resetChangeRequests()
 	a.resetCustomPatch()
 	a.resetChangeCourier()
 }

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -493,7 +494,9 @@ func TestLinkedWorktreeBadgeSurvivesRestart(t *testing.T) {
 		t.Fatalf("worktree badge is not on the line beneath its path: path=%+v badge=%+v", path, badge)
 	}
 	owner, found := tt.Find("Main worktree · project")
-	if !found || owner.Y != badge.Y || owner.X < badge.X+badge.W {
+	// The badge is a rounded pill whose text is centred in its padding, so it may
+	// sit a pixel off the neighbouring plain text while sharing its line.
+	if !found || math.Abs(float64(owner.Y-badge.Y)) > 1 || owner.X < badge.X+badge.W {
 		t.Fatalf("worktree card does not identify its owning repository cleanly: path=%+v owner=%+v badge=%+v texts=%v", path, owner, badge, tt.Texts())
 	}
 	if tt.HasText("Main worktree: /work/project") {
@@ -600,7 +603,8 @@ func TestRecentCardLongIdentityBadgeStaysInsideCard(t *testing.T) {
 	if !cardFound || !badgeFound {
 		t.Fatalf("long identity badge is missing: %v", tt.Texts())
 	}
-	if badge.W > 240 || badge.X < card.X || badge.X+badge.W > card.X+card.W {
+	// The identity pill is capped at 300px and must stay inside its card.
+	if badge.W > 300 || badge.X < card.X || badge.X+badge.W > card.X+card.W {
 		t.Fatalf("long identity badge escaped its card: card=%+v badge=%+v", card, badge)
 	}
 }

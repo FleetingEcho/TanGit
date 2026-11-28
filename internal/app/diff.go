@@ -146,6 +146,7 @@ func (a *app) liveDiffs() []*editor.DiffState {
 		a.conflictDiffState,
 		a.compare.diffState,
 		a.agents.review.diffState,
+		a.changeRequests.diffState,
 	}
 }
 

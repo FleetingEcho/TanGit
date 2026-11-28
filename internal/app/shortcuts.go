@@ -258,8 +258,8 @@ func (a *app) registerShortcuts(c *ui.Context) {
 	a.onShortcut(c, 0, ui.KeySlash, shortcut("search/focus-active", "/", tr("Search the active panel")), a.focusActiveSearch)
 	if !a.editorOnlyWorkspace() {
 		a.onShortcut(c, ui.Shift, ui.KeySemicolon, shortcut("commands/prompt", ":", tr("Run a one-off shell command")), a.openCommandPrompt)
-		a.onShortcut(c, ui.Ctrl, ui.KeyZ, shortcut("repository/undo", "Ctrl+Z", tr("Undo the latest eligible Git operation")), a.confirmUndo)
-		a.onShortcut(c, ui.Ctrl|ui.Shift, ui.KeyZ, shortcut("repository/redo", "Ctrl+Shift+Z", tr("Redo the latest undone Git operation")), a.confirmRedo)
+		a.onWindowShortcut(c, ui.Ctrl, ui.KeyZ, shortcut("repository/undo", "Ctrl+Z", tr("Undo the latest eligible Git operation")), a.confirmUndo)
+		a.onWindowShortcut(c, ui.Ctrl|ui.Shift, ui.KeyZ, shortcut("repository/redo", "Ctrl+Shift+Z", tr("Redo the latest undone Git operation")), a.confirmRedo)
 	}
 	// The digits number the sections that show, so 1 is always the first
 	// sidebar row even after some are hidden.

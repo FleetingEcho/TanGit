@@ -181,7 +181,7 @@ func assertHeaderControlsFit(t *testing.T, tester *ui.Tester, labels ...string) 
 	}
 }
 
-func TestActiveRebaseHeaderKeepsApplicationActionsInsideTheirParent(t *testing.T) {
+func TestActiveRebaseMovesOperationActionsOutOfHeader(t *testing.T) {
 	h, _ := operationTestApp(t, richRebaseOperation())
 	for _, dark := range []bool{false, true} {
 		h.tester.SetDark(dark)
@@ -190,8 +190,16 @@ func TestActiveRebaseHeaderKeepsApplicationActionsInsideTheirParent(t *testing.T
 				h.tester.SetSize(width, 640)
 				h.tester.Frame()
 				assertHeaderControlsFit(t, h.tester,
-					"Continue", "Skip…", "Abort…", "Fetch", "Pull", "Push", "Refresh", "Open in editor", "Theme", "Settings")
+					"Fetch", "Pull", "Push", "Refresh", "Open in editor", "Theme", "Settings")
 				header := requireRect(t, h.tester, "Repository header")
+				card := requireRect(t, h.tester, "Operation context")
+				for _, label := range []string{"Continue", "Skip…", "Abort…"} {
+					button := requireRect(t, h.tester, label)
+					requireRectInside(t, label, button, card)
+					if button.Y < header.Y+header.H {
+						t.Errorf("operation action %q remained in the header: button=%+v header=%+v", label, button, header)
+					}
+				}
 				branch := requireRect(t, h.tester, "main")
 				requireRectInside(t, "active-operation branch", branch, header)
 				if width >= 960 {

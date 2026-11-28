@@ -42,10 +42,10 @@ func keyboardCommands() []keyboardCommand {
 		}},
 		{"Changes", "a", "Stage or unstage all changes", 0, ui.KeyA, func(a *app) {
 			if hasStagedFiles(a.snapshot.Files) {
-				a.beginRepositoryActionMessage(tr("Unstaged all changes"), "", func(ctx context.Context, s repository.Session) error { return requireChangesSession(s).UnstageAll(ctx) }, nil)
+				a.beginRepositoryAction("", func(ctx context.Context, s repository.Session) error { return requireChangesSession(s).UnstageAll(ctx) }, func() { a.notifyUndoable(tr("Unstaged all changes")) })
 				return
 			}
-			a.beginRepositoryActionMessage(tr("Staged all changes"), "", func(ctx context.Context, s repository.Session) error { return requireChangesSession(s).StageAll(ctx) }, nil)
+			a.beginRepositoryAction("", func(ctx context.Context, s repository.Session) error { return requireChangesSession(s).StageAll(ctx) }, func() { a.notifyUndoable(tr("Staged all changes")) })
 		}},
 		{"Changes", "s", "Stash changes…", 0, ui.KeyS, (*app).openStashForm},
 		{"Changes", "f", "Fetch from the remotes", 0, ui.KeyF, (*app).beginFetch},

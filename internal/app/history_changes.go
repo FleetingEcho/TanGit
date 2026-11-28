@@ -48,15 +48,22 @@ func parseHistoryChangesPalette(text string) (repository.HistoryChangeQuery, boo
 	if len(words) == 0 || !strings.HasPrefix(strings.ToLower(words[0]), "changed:") {
 		return repository.HistoryChangeQuery{}, false
 	}
-	query := repository.HistoryChangeQuery{Text: words[0][len("changed:"):]}
+	query := repository.HistoryChangeQuery{}
+	var textWords []string
+	if word := words[0][len("changed:"):]; word != "" {
+		textWords = append(textWords, word)
+	}
 	for _, word := range words[1:] {
 		switch lower := strings.ToLower(word); {
 		case strings.HasPrefix(lower, "branch:"):
 			query.Ref = word[len("branch:"):]
 		case strings.HasPrefix(lower, "path:"):
 			query.Path = word[len("path:"):]
+		default:
+			textWords = append(textWords, word)
 		}
 	}
+	query.Text = strings.Join(textWords, " ")
 	return query, true
 }
 
@@ -96,6 +103,24 @@ func (a *app) closeHistoryChanges() {
 func (a *app) resetHistoryChanges() {
 	a.closeHistoryChanges()
 	a.historyChanges = historyChangesState{token: a.historyChanges.token + 1}
+}
+
+// clearHistoryChanges empties the text and the results and leaves the dialog
+// open, with the scope (path, branch, dates) as it was.
+func (a *app) clearHistoryChanges() {
+	search := &a.historyChanges
+	if search.cancel != nil {
+		search.cancel()
+		search.cancel = nil
+	}
+	search.token++
+	search.draft.Text = ""
+	search.applied = repository.HistoryChangeQuery{}
+	search.page = repository.HistoryChangePage{}
+	search.previous = nil
+	search.started, search.loading = false, false
+	search.err, search.stopped = "", ""
+	search.focusPending = true
 }
 
 func (a *app) startHistoryChanges() {
@@ -260,6 +285,12 @@ func (a *app) historyChangesScope(c *ui.Context) {
 			}
 		}
 		ui.Spacer(c).Grow(1)
+		if draft.Text != "" || search.started {
+			iconButton(c, "Clear search", "Clear the text and the results", closeIcon, false, a.clearHistoryChanges)
+		}
+		if search.started {
+			iconButton(c, "Search again", "Run the search again, for commits made since", refreshIcon, search.loading, a.startHistoryChanges)
+		}
 		active := draft.AllBranches || draft.Path != "" || draft.Regex ||
 			(draft.Ref != "" && draft.Ref != "HEAD") || !draft.Since.IsZero() || !draft.Until.IsZero()
 		button := compactIconButton(ui.ButtonBase(c)).Label(tr("Search filters")).Tooltip(tr("Search filters")).

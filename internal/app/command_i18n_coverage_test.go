@@ -105,6 +105,7 @@ func paletteStrings(t *testing.T) map[string]bool {
 // translationSameInLanguage lists words that are the same in a language.
 var translationSameInLanguage = map[string]bool{
 	"Navigation|fr": true, "Stash|es": true, "Stash|fr": true, "Application|fr": true,
+	"Branches|fr": true, "Pull requests|es": true, "Pull requests|fr": true,
 }
 
 // Every string the palette shows has a translation in each language, so a

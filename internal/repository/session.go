@@ -42,6 +42,10 @@ type File struct {
 	Added             bool
 	Deleted           bool
 	HasMergeConflicts bool
+	// Resolved marks a placeholder the app adds to its Changes rows for a file
+	// whose conflict was just resolved. Git never reports it: a file resolved to
+	// HEAD's content leaves the status, so the row is the only trace of it.
+	Resolved bool
 	// HasInlineMergeConflicts says Git wrote the conflict into the file as
 	// markers. A conflict where one side deleted the file has none: Git
 	// leaves the surviving side in the working tree instead.
@@ -477,8 +481,13 @@ type gitSession struct {
 	deferCommitStats atomic.Bool
 	hostingHintsMu   sync.Mutex
 	hostingHints     []string
-	git              *commands.GitCommand
-	commandLog       *CommandLog
+	// hostingEnv carries the user's saved hosting-CLI credentials for local
+	// repositories only. It is never sent to an SSH host.
+	hostingEnv []string
+	// hostingProvider is the provider of a host the user connected in the app.
+	hostingProvider PullRequestProvider
+	git             *commands.GitCommand
+	commandLog      *CommandLog
 	// detailsMu guards the quiet-refresh Details cache: the lists only change
 	// when refs, the bisect state, the safety journal or the worktree list do,
 	// so an unchanged fingerprint lets SnapshotQuiet reuse them verbatim.
@@ -1306,20 +1315,24 @@ func (s *gitSession) Stage(ctx context.Context, file File) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := s.git.WorkingTree.StageFiles(fileNames(file), nil); err != nil {
-		return fmt.Errorf("stage file: %w", err)
-	}
-	return nil
+	return s.mutateIndex(ctx, OperationStage, "Stage "+file.Path, func() error {
+		if err := s.git.WorkingTree.StageFiles(fileNames(file), nil); err != nil {
+			return fmt.Errorf("stage file: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) Unstage(ctx context.Context, file File) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := s.git.WorkingTree.UnStageFile(fileNames(file), file.Tracked); err != nil {
-		return fmt.Errorf("unstage file: %w", err)
-	}
-	return nil
+	return s.mutateIndex(ctx, OperationUnstage, "Unstage "+file.Path, func() error {
+		if err := s.git.WorkingTree.UnStageFile(fileNames(file), file.Tracked); err != nil {
+			return fmt.Errorf("unstage file: %w", err)
+		}
+		return nil
+	})
 }
 
 // ApplyCachedPatch is retained for callers of the original selected-line
@@ -1378,20 +1391,24 @@ func (s *gitSession) StageAll(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := s.git.WorkingTree.StageAll(false); err != nil {
-		return fmt.Errorf("stage all files: %w", err)
-	}
-	return nil
+	return s.mutateIndex(ctx, OperationStage, "Stage all changes", func() error {
+		if err := s.git.WorkingTree.StageAll(false); err != nil {
+			return fmt.Errorf("stage all files: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) UnstageAll(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := s.git.WorkingTree.UnstageAll(); err != nil {
-		return fmt.Errorf("unstage all files: %w", err)
-	}
-	return nil
+	return s.mutateIndex(ctx, OperationUnstage, "Unstage all changes", func() error {
+		if err := s.git.WorkingTree.UnstageAll(); err != nil {
+			return fmt.Errorf("unstage all files: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) Commit(ctx context.Context, summary string, description string, amend bool) error {
@@ -1438,8 +1455,10 @@ func (s *gitSession) Commit(ctx context.Context, summary string, description str
 func (s *gitSession) discardFile(ctx context.Context, file File) error {
 	if !file.Tracked {
 		if file.Staged {
-			if err := s.Unstage(ctx, file); err != nil {
-				return err
+			// The caller holds the mutation lock and has its own recovery
+			// point, so this must not go through the journaled Unstage.
+			if err := s.git.WorkingTree.UnStageFile(fileNames(file), file.Tracked); err != nil {
+				return fmt.Errorf("unstage file: %w", err)
 			}
 		}
 		path, err := s.worktreeFilePath(s.git.RepoPaths.WorktreePath(), file.Path)
@@ -2872,30 +2891,36 @@ func (s *gitSession) CreateTag(ctx context.Context, name string, ref string, mes
 	if name == "" {
 		return fmt.Errorf("tag name is required")
 	}
-	var err error
 	if annotated {
 		message = strings.TrimSpace(message)
 		if message == "" {
 			return fmt.Errorf("annotated tag message is required")
 		}
-		err = s.git.Tag.CreateAnnotatedObj(name, ref, message, false).Run()
-	} else {
-		err = s.git.Tag.CreateLightweightObj(name, ref, false).Run()
 	}
-	if err != nil {
-		return fmt.Errorf("create tag: %w", err)
-	}
-	return nil
+	return s.mutateRef(ctx, OperationTagCreate, "Create tag "+name, "refs/tags/"+name, func() error {
+		var err error
+		if annotated {
+			err = s.git.Tag.CreateAnnotatedObj(name, ref, message, false).Run()
+		} else {
+			err = s.git.Tag.CreateLightweightObj(name, ref, false).Run()
+		}
+		if err != nil {
+			return fmt.Errorf("create tag: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) DeleteTag(ctx context.Context, name string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := s.git.Tag.LocalDelete([]string{name}); err != nil {
-		return fmt.Errorf("delete tag: %w", err)
-	}
-	return nil
+	return s.mutateRef(ctx, OperationTagDelete, "Delete tag "+name, "refs/tags/"+name, func() error {
+		if err := s.git.Tag.LocalDelete([]string{name}); err != nil {
+			return fmt.Errorf("delete tag: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) PushTag(ctx context.Context, remote string, name string) error {
@@ -3475,10 +3500,12 @@ func (s *gitSession) IgnoreFile(ctx context.Context, file File) error {
 		return fmt.Errorf("ignore untracked, unstaged file: %s is tracked or staged", file.Path)
 	}
 	filename := s.joinPath(s.git.RepoPaths.WorktreePath(), ".gitignore")
-	if err := s.appendIgnoreRule(filename, file.Path); err != nil {
-		return fmt.Errorf("ignore file: %w", err)
-	}
-	return nil
+	return s.mutateFile(ctx, OperationIgnore, "Ignore "+file.Path, filename, func() error {
+		if err := s.appendIgnoreRule(filename, file.Path); err != nil {
+			return fmt.Errorf("ignore file: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) ExcludeFile(ctx context.Context, file File) error {
@@ -3492,10 +3519,13 @@ func (s *gitSession) ExcludeFile(ctx context.Context, file File) error {
 	if err := s.fileService().MkdirAll(infoDir, 0o755); err != nil {
 		return fmt.Errorf("exclude file: %w", err)
 	}
-	if err := s.appendIgnoreRule(s.joinPath(infoDir, "exclude"), file.Path); err != nil {
-		return fmt.Errorf("exclude file: %w", err)
-	}
-	return nil
+	exclude := s.joinPath(infoDir, "exclude")
+	return s.mutateFile(ctx, OperationExclude, "Exclude "+file.Path, exclude, func() error {
+		if err := s.appendIgnoreRule(exclude, file.Path); err != nil {
+			return fmt.Errorf("exclude file: %w", err)
+		}
+		return nil
+	})
 }
 
 func (s *gitSession) currentBranch() (*models.Branch, error) {

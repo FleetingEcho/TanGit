@@ -1147,7 +1147,7 @@ func toolbarActionIcon(id string) *ui.SVG {
 	case "settings":
 		return settingsIcon
 	case "pull-requests":
-		return externalLinkIcon
+		return pullRequestIcon
 	case "activity":
 		return historyIcon
 	case "terminal":

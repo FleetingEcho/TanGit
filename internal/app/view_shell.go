@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-
-	"github.com/FleetingEcho/lazygitGo/internal/repository"
 )
 
 // The workspace sections, in tab order; the indices match a.workspaceTab and
@@ -29,12 +27,14 @@ const (
 	sectionReflog
 	sectionCompare
 	sectionOverview
+	sectionPullRequests
 	workspaceSectionCount
 )
 
 var workspaceSections = []string{
 	"Editor", "Changes", "History", "Graph", "Branches", "Remotes", "Stash", "Tags",
 	"Worktrees", "Agent tasks", "Submodules", "Reflog", "Compare refs", "Overview",
+	"PR/MR",
 }
 
 // workspaceSectionIDs are the stable names of the sections the settings
@@ -43,6 +43,7 @@ var workspaceSections = []string{
 var workspaceSectionIDs = []string{
 	"code", "changes", "history", "graph", "branches", "remotes", "stash", "tags",
 	"worktrees", "agents", "submodules", "reflog", "compare", "overview",
+	"pull-requests",
 }
 
 // defaultVisibleSections shows every workspace section on a fresh install
@@ -120,6 +121,7 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	}
 	a.branchFullscreenView(c, overlayTopInset)
 	a.diffFullscreenView(c, overlayTopInset)
+	a.requestDiffFullscreen(c, overlayTopInset)
 	a.commitActionModals(c)
 	a.rebasePlanModal(c)
 	a.branchFormModal(c)
@@ -153,6 +155,9 @@ func (a *app) bodyView(c *ui.Context, topInset float32) {
 	a.pullRequestFormModal(c)
 	a.pullRequestChecksModal(c)
 	a.sshWorkspaceModal(c)
+	a.hostingAccessModal(c)
+	a.changeRequestFilterModal(c)
+	a.changeRequestDisplayOptions(c)
 	a.patchPreviewModal(c)
 	a.customPatchModal(c)
 	a.customPatchHistoryModal(c)
@@ -393,9 +398,6 @@ func (a *app) headerViewWithID(c *ui.Context, keyboardID string) {
 		a.openExternalURL = c.Services().OpenURL
 	}
 	header := a.keyboardPane(c, keyboardID, islandCard(c, ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(6, 14)).Focusable()).Label(tr("Repository header"))
-	headerWidth := a.measuredActionGroupWidth(c, header)
-	compactOperation := !a.editorOnlyWorkspace() && a.snapshot.Operation != "" &&
-		(headerWidth <= 0 || headerWidth < 800)
 	header.Children(func() {
 		if keyboardID == "fullscreen-toolbar" {
 			// The full-window diff offers the way back where the eye starts.
@@ -405,11 +407,9 @@ func (a *app) headerViewWithID(c *ui.Context, keyboardID string) {
 		if base == "." || base == string(filepath.Separator) || base == "" {
 			base = a.snapshot.Root
 		}
-		if !compactOperation {
-			ui.Text(c, base).FontSize(16).Bold().Tooltip(a.snapshot.Root)
-		}
+		ui.Text(c, base).FontSize(16).Bold().Tooltip(a.snapshot.Root)
 		if !a.editorOnlyWorkspace() {
-			if !compactOperation && a.openedLinkedWorktree() {
+			if a.openedLinkedWorktree() {
 				ui.Badge(c, tr("Linked worktree")).Tooltip(a.snapshot.Root)
 				if ownerPath := a.openedMainWorktreePath(); ownerPath != "" {
 					owner := tr("Main worktree") + " · " + repoName(ownerPath)
@@ -436,73 +436,33 @@ func (a *app) headerViewWithID(c *ui.Context, keyboardID string) {
 				branch = tr("Worktree")
 			}
 			ui.Text(c, tr("●")).TextColor(theme.Success)
-			branchView := ui.Text(c, branch).Bold().Tooltip(branchTooltip)
-			if compactOperation {
-				if branchTooltip == "" {
-					branchView.Tooltip(branch)
-				}
-				branchView.SingleLine().MaxWidth(120).MinWidth(0)
+			ui.Text(c, branch).Bold().Tooltip(branchTooltip)
+			if a.snapshot.ChangeCount() == 0 {
+				ui.Badge(c, tr("Clean"))
+			} else {
+				ui.Badge(c, trf("%d changed", a.snapshot.ChangeCount()))
 			}
-			if !compactOperation {
-				if a.snapshot.ChangeCount() == 0 {
-					ui.Badge(c, tr("Clean"))
-				} else {
-					ui.Badge(c, trf("%d changed", a.snapshot.ChangeCount()))
+			if a.snapshot.Operation != "" {
+				ui.Badge(c, strings.ToUpper(a.snapshot.Operation))
+			}
+			for _, b := range a.snapshot.Branches {
+				if !b.Head {
+					continue
 				}
-				if a.snapshot.Operation != "" {
-					ui.Badge(c, strings.ToUpper(a.snapshot.Operation))
+				ahead, behind, known := aheadBehind(b)
+				if !known {
+					continue
 				}
-				for _, b := range a.snapshot.Branches {
-					if !b.Head {
-						continue
-					}
-					ahead, behind, known := aheadBehind(b)
-					if !known {
-						continue
-					}
-					if n, show := count(ahead); show {
-						aheadCountView(c, n, b, theme.Success, theme.FontSize-1)
-					}
-					if n, show := count(behind); show {
-						behindCountView(c, n, b, theme.Warning, theme.FontSize-1)
-					}
+				if n, show := count(ahead); show {
+					aheadCountView(c, n, b, theme.Success, theme.FontSize-1)
+				}
+				if n, show := count(behind); show {
+					behindCountView(c, n, b, theme.Warning, theme.FontSize-1)
 				}
 			}
 		}
 
 		ui.Row(c).Grow(1).Justify(ui.End).Gap(6).Children(func() {
-			if !a.editorOnlyWorkspace() && a.snapshot.Operation != "" {
-				conflicts := conflictedFileCount(a.snapshot.Files)
-				continueTooltip := tr("Continue the interrupted operation")
-				if conflicts > 0 {
-					continueTooltip = trf("Resolve conflicts before continuing (%d remaining)", conflicts)
-				}
-				if a.operationCan(repository.OperationActionContinue) {
-					if a.location.IsRemote() {
-						continueTooltip = tr("Continue checks use fully trusted local commands and are disabled for SSH workspaces")
-					}
-					iconTextButtonState(c, "Continue", continueTooltip, continueIcon, false,
-						a.actionBusy || conflicts > 0 || a.location.IsRemote(), func() {
-							if a.actionBusy || hasConflictedFiles(a.snapshot.Files) {
-								return
-							}
-							a.confirmContinueOperation()
-						})
-				}
-				if a.operationCan(repository.OperationActionSkip) {
-					iconTextButtonState(c, "Skip…", "Skip the stopped step and continue the remaining operation", skipIcon, false,
-						a.actionBusy, a.confirmSkipOperation)
-				}
-				if a.operationCan(repository.OperationActionAbort) {
-					iconTextButton(c, "Abort…", "Abort the interrupted operation", abortIcon, false,
-						func() {
-							if a.actionBusy {
-								return
-							}
-							a.confirmAbortOperation()
-						})
-				}
-			}
 			// The command palette leads the toolbar, then repository, workspace and
 			// application actions.
 			editorOnly := a.editorOnlyWorkspace()
@@ -694,7 +654,10 @@ func (a *app) navView(c *ui.Context) {
 					iconColor = theme.AccentText
 				}
 				ui.Icon(row.Context, sectionIcons[section]).FontSize(14).TextColor(iconColor)
-				ui.Text(row.Context, tr(workspaceSections[section])).Grow(1).SingleLine()
+				name := ui.Text(row.Context, tr(workspaceSections[section])).Grow(1).SingleLine()
+				if section == sectionPullRequests {
+					name.Tooltip(tr("Pull request or merge request"))
+				}
 				if count := a.sectionCount(section); count > 0 {
 					ui.Badge(row.Context, fmt.Sprintf("%d", count))
 				}
@@ -727,6 +690,9 @@ func (a *app) setWorkspaceTab(tab int) {
 	if tab == sectionOverview && previous != sectionOverview {
 		a.prepareCockpit()
 	}
+	if tab == sectionPullRequests && !a.changeRequests.loaded && !a.changeRequests.loading {
+		a.refreshChangeRequests()
+	}
 	a.syncNavSelection()
 	a.showCommitForm = false
 	if isCommitSection(tab) {
@@ -744,8 +710,9 @@ func isCommitSection(tab int) bool {
 	return tab == sectionHistory || tab == sectionGraph
 }
 
-// sectionCount is the badge a sidebar section shows, 0 for none. History has
-// none: its count is on the list's own header, where the filter changes it.
+// sectionCount is the badge a sidebar section shows, 0 for none. History and
+// PR/MR keep their counts on their list headers, where filters and paging give
+// the number its proper context.
 func (a *app) sectionCount(section int) int {
 	switch section {
 	case sectionChanges:
@@ -820,6 +787,8 @@ func (a *app) workspaceContentView(c *ui.Context) {
 		a.comparePage(c)
 	case sectionOverview:
 		a.cockpitView(c)
+	case sectionPullRequests:
+		a.changeRequestsView(c)
 	}
 }
 

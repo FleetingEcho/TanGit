@@ -154,6 +154,9 @@ type appSettings struct {
 	// Overview section once: shown, and first in the sidebar. After that the
 	// user's own choices to hide or move it are kept.
 	OverviewPlacementMigrated bool `json:"overviewPlacementMigrated,omitempty"`
+	// PullRequestsPlacementMigrated shows the cross-provider review page once
+	// when upgrading an existing profile, while preserving later user choices.
+	PullRequestsPlacementMigrated bool `json:"pullRequestsPlacementMigrated,omitempty"`
 	// TerminalDock is the default edge for a new terminal dock. Toolbar moves
 	// remain local to their repository tab and do not rewrite this preference.
 	TerminalDock string `json:"terminalDock"`
@@ -176,6 +179,12 @@ type appSettings struct {
 	// SSHProfiles contains connection settings only. Passwords and private-key
 	// passphrases live under SecretRef accounts in the system keychain instead.
 	SSHProfiles []sshworkspace.Profile `json:"sshProfiles,omitempty"`
+	// HostingAccounts name the GitHub/GitLab servers the user connected in the
+	// Pull Requests page. Tokens live in the system keychain, never here.
+	HostingAccounts []hostingAccount `json:"hostingAccounts,omitempty"`
+	// HiddenRequestParts lists the parts of a pull/merge request the user
+	// turned off in the Pull Requests page. Empty shows everything.
+	HiddenRequestParts []string `json:"hiddenRequestParts,omitempty"`
 }
 
 type languageServerSettings struct {
@@ -253,6 +262,8 @@ func defaultSettings() appSettings {
 		OverviewPlacementMigrated:   true,
 		TerminalDock:                terminalDockBottom,
 		ConflictActionStyle:         conflictActionStyleIcons,
+
+		PullRequestsPlacementMigrated: true,
 	}
 }
 
@@ -359,6 +370,12 @@ func normalizeSettings(s appSettings) appSettings {
 		s.OpenRepositoriesOnOverview = true
 		s.OverviewPlacementMigrated = true
 	}
+	if !s.PullRequestsPlacementMigrated {
+		if len(s.VisibleSections) > 0 && !slices.Contains(s.VisibleSections, "pull-requests") {
+			s.VisibleSections = append(slices.Clone(s.VisibleSections), "pull-requests")
+		}
+		s.PullRequestsPlacementMigrated = true
+	}
 	if !slices.Contains(workspaceSectionIDs, s.StartSection) {
 		s.StartSection = ""
 	}
@@ -371,6 +388,7 @@ func normalizeSettings(s appSettings) appSettings {
 	s.ShellHistory = normalizeCommandList(s.ShellHistory, 50)
 	s.RemoteWebURLs = normalizeRemoteWebURLs(s.RemoteWebURLs)
 	s.SSHProfiles = normalizeSSHProfiles(s.SSHProfiles)
+	s.HostingAccounts = normalizeHostingAccounts(s.HostingAccounts)
 	return s
 }
 

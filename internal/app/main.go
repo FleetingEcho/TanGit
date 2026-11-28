@@ -50,6 +50,8 @@ type repositoryOpener interface {
 }
 
 type app struct {
+	// undoHintTimerFor is the journal record whose hint expiry is already scheduled.
+	undoHintTimerFor string
 	// Keyboard state belongs to the UI thread; only stable handles survive builds.
 	keyboardDiffCanSelect      bool
 	keyboardDiffCanMutateHunks bool
@@ -388,6 +390,9 @@ type app struct {
 	// Changes and a commit can be expanded independently.
 	fileTreeCollapsed map[string]bool
 	mergeExpanded     bool
+	// resolvedConflicts are the files resolved during the running operation,
+	// shown in Merge Changes as Resolved until the operation ends.
+	resolvedConflicts map[string]repository.File
 	stagedExpanded    bool
 	changesExpanded   bool
 	// changesTopHeight is the room the merge and staged lists take above the
@@ -408,6 +413,8 @@ type app struct {
 	navPaneCollapsed bool
 	workspaceTab     int
 	cockpit          cockpitUIState
+	changeRequests   changeRequestsUIState
+	hostingAccess    hostingAccessUIState
 	// code owns the repository explorer, persistent editor documents and
 	// workspace search independently of the diff-specific file editor.
 	code codeState
@@ -1093,6 +1100,22 @@ func newApp(opener repositoryOpener) *app {
 			return tr(workspaceSections[section])
 		}
 		return ""
+	}
+	a.changeRequests.selected = -1
+	a.changeRequests.list.Selected = &a.changeRequests.selected
+	a.changeRequests.list.Key = func(row int) any {
+		if row < 0 || row >= len(a.changeRequests.items) {
+			return row
+		}
+		item := a.changeRequests.items[row]
+		return fmt.Sprintf("%s:%d", item.Provider, item.Number)
+	}
+	a.changeRequests.list.Label = func(row int) string {
+		if row < 0 || row >= len(a.changeRequests.items) {
+			return ""
+		}
+		item := a.changeRequests.items[row]
+		return fmt.Sprintf("#%d %s", item.Number, item.Title)
 	}
 	a.fileList.Selected = &a.changesSelected
 	a.stagedList.Selected = &a.stagedSelected

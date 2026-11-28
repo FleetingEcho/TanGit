@@ -113,6 +113,36 @@ func TestGitLabMergeRequestCommands(t *testing.T) {
 	}
 }
 
+func TestSelfHostedGitLabRemoteSelectsGlab(t *testing.T) {
+	_, session, calls := newHostingSession(t, "git@gitlab.internal.example:team/project.git")
+	tool, err := session.PullRequestTool(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tool != "glab" {
+		t.Fatalf("tool = %q, want glab", tool)
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("provider detection executed hosting commands: %v", *calls)
+	}
+}
+
+func TestHostingProviderUsesRemoteHostNotRepositoryPath(t *testing.T) {
+	tests := []struct {
+		remote string
+		want   PullRequestProvider
+	}{
+		{remote: "ssh://git@gitlab.internal.example:2222/team/project.git", want: PullRequestGitLab},
+		{remote: "https://github.enterprise.example/team/project.git", want: PullRequestGitHub},
+		{remote: "https://code.example/team/gitlab.com-mirror.git", want: ""},
+	}
+	for _, test := range tests {
+		if got := pullRequestProviderForURLs([]string{test.remote}); got != test.want {
+			t.Errorf("provider for %q = %q, want %q", test.remote, got, test.want)
+		}
+	}
+}
+
 func TestUnsupportedHostFailsWithoutExecuting(t *testing.T) {
 	_, session, calls := newHostingSession(t, "git@code.example:team/project.git")
 	if _, err := session.PullRequestTool(context.Background()); err == nil {

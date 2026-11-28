@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -183,4 +184,115 @@ func TestRealAppUndoCommitThroughSafetyJournal(t *testing.T) {
 		t.Fatalf("Undo restored the wrong symbolic link: %q, %v", target, err)
 	}
 
+}
+
+func TestRealAppCtrlZAfterAbortRestoresConflictWithSafetyJournalOff(t *testing.T) {
+	previousJournal := repository.SafetyJournalEnabled()
+	repository.SetSafetyJournalEnabled(false)
+	t.Cleanup(func() { repository.SetSafetyJournalEnabled(previousJournal) })
+
+	dir, session := newFileRecoveryConflict(t, conflictVersions{
+		name: "conflict.txt",
+		base: []byte("base\n"), current: []byte("current\n"), incoming: []byte("incoming\n"),
+	})
+	originalIndex := runGitIn(t, dir, "ls-files", "--stage", "-z", "--", "conflict.txt")
+	h := newFileRecoveryApp(t, dir, session)
+	h.waitFor(t, "active merge operation", func() bool {
+		return h.app.snapshot.OperationState != nil && h.app.snapshot.OperationState.Type == repository.OperationTypeMerge
+	})
+	h.tester.Frame()
+	if err := h.tester.Click("Abort…"); err != nil {
+		t.Fatalf("open Abort confirmation: %v; texts=%q", err, h.texts())
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Abort"); err != nil {
+		t.Fatalf("confirm Abort: %v; texts=%q", err, h.texts())
+	}
+	h.waitFor(t, "merge abort", func() bool {
+		return !h.app.actionBusy && h.app.actionError == "" && h.app.snapshot.OperationState == nil && !hasConflictedFiles(h.app.snapshot.Files)
+	})
+
+	var abortRecord repository.OperationRecord
+	h.waitFor(t, "published Abort recovery", func() bool {
+		for _, record := range h.app.snapshot.Operations {
+			if record.Kind == repository.OperationTransition && record.Summary == "Abort merge" && record.CanUndo() {
+				abortRecord = record
+				return true
+			}
+		}
+		return false
+	})
+	if abortRecord.ID == "" {
+		t.Fatalf("Abort did not retain an undoable operation transition with the safety journal off: %+v", h.app.snapshot.Operations)
+	}
+
+	h.tester.Key(ui.Ctrl, ui.KeyZ)
+	h.waitFor(t, "Ctrl+Z confirmation", func() bool { return h.app.confirm != nil })
+	h.tester.Frame()
+	if h.app.confirm == nil || h.app.confirm.message != "Undo Abort merge?" {
+		t.Fatalf("Ctrl+Z selected reflog replay instead of Abort recovery: %#v", h.app.confirm)
+	}
+	if err := h.tester.Click("Undo"); err != nil {
+		t.Fatalf("confirm Abort Undo: %v; texts=%q", err, h.texts())
+	}
+	h.waitFor(t, "restored unresolved merge", func() bool {
+		return !h.app.actionBusy && h.app.actionError == "" && h.app.snapshot.OperationState != nil &&
+			h.app.snapshot.OperationState.Type == repository.OperationTypeMerge && hasConflictedFiles(h.app.snapshot.Files)
+	})
+	if got := runGitIn(t, dir, "ls-files", "--stage", "-z", "--", "conflict.txt"); got != originalIndex {
+		t.Fatalf("Ctrl+Z restored index = %q, want original conflict stages %q", got, originalIndex)
+	}
+}
+
+// After an Abort the Changes list is empty and holds nothing to focus, yet the
+// empty state must name the Ctrl+Z that takes the Abort back, and Ctrl+Z must
+// still work from there. The hint is only for the first minute.
+func TestRealAppEmptyChangesHintsCtrlZAfterAbortAndExpires(t *testing.T) {
+	previous := repository.SafetyJournalEnabled()
+	repository.SetSafetyJournalEnabled(true)
+	t.Cleanup(func() { repository.SetSafetyJournalEnabled(previous) })
+
+	dir, session := newFileRecoveryConflict(t, conflictVersions{
+		name: "conflict.txt",
+		base: []byte("base\n"), current: []byte("current\n"), incoming: []byte("incoming\n"),
+	})
+	h := newFileRecoveryApp(t, dir, session)
+	h.waitFor(t, "active merge operation", func() bool {
+		return h.app.snapshot.OperationState != nil
+	})
+	h.tester.Frame()
+	if err := h.tester.Click("Abort…"); err != nil {
+		t.Fatalf("open Abort confirmation: %v; texts=%q", err, h.texts())
+	}
+	h.tester.Frame()
+	if err := h.tester.Click("Abort"); err != nil {
+		t.Fatalf("confirm Abort: %v; texts=%q", err, h.texts())
+	}
+	h.waitFor(t, "the Abort hint", func() bool {
+		if h.app.actionBusy || h.app.snapshot.OperationState != nil || len(h.app.snapshot.Files) != 0 {
+			return false
+		}
+		h.tester.Frame()
+		return slices.Contains(h.texts(), "Undo Abort merge") && slices.Contains(h.texts(), "Ctrl+Z")
+	})
+
+	h.tester.Key(ui.Ctrl, ui.KeyZ)
+	h.waitFor(t, "Ctrl+Z confirmation from the empty list", func() bool { return h.app.confirm != nil })
+	if h.app.confirm.message != "Undo Abort merge?" {
+		t.Fatalf("Ctrl+Z offered %q", h.app.confirm.message)
+	}
+	h.app.confirm = nil
+
+	// Past the window the hint goes; Ctrl+Z itself does not.
+	for i, record := range h.app.snapshot.Operations {
+		h.app.snapshot.Operations[i].FinishedAt = record.FinishedAt - int64(undoHintWindow.Seconds()) - 5
+	}
+	h.tester.Frame()
+	h.tester.Frame()
+	if slices.Contains(h.texts(), "Undo Abort merge") {
+		t.Fatalf("the hint outlived its minute: %q", h.texts())
+	}
+	if _, ok := h.app.latestUndoableRecord(); !ok {
+		t.Fatal("Abort stopped being undoable when its hint expired")
+	}
 }

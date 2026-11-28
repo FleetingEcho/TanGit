@@ -2,6 +2,7 @@ package app
 
 import (
 	"hash/fnv"
+	"net/url"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -151,4 +152,18 @@ func authorLabel(name, email string) string {
 		return name
 	}
 	return strings.TrimSpace(email)
+}
+
+// urlAvatar shows a person's photo from an address the hosting server already
+// gave (a request's author, a comment's writer), with the same cache and
+// initial fallback as commit authors. rawURL may be empty.
+func (a *app) urlAvatar(c *ui.Context, name, rawURL string, size float32) {
+	var bitmap *ui.Bitmap
+	if parsed, err := url.Parse(rawURL); err == nil && parsed.Host != "" && a.authorAvatars != nil {
+		origin := parsed.Scheme + "://" + strings.ToLower(parsed.Host)
+		if direct := normalizeAvatarURL(origin, rawURL); direct != "" {
+			bitmap = a.authorAvatars.lookup(avatarSource{origin: origin, direct: direct}, c.Services().Invalidate)
+		}
+	}
+	drawAuthorAvatar(c, name, "", size, bitmap)
 }

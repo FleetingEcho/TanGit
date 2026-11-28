@@ -302,6 +302,45 @@ func TestRealAppConflictHunksThenStagedRestoreOriginalUnresolved(t *testing.T) {
 	}
 }
 
+func TestRealAppUnstageResolvedConflictRestoresOriginalUnresolvedState(t *testing.T) {
+	dir, session := newFileRecoveryConflict(t, conflictVersions{
+		name: "conflict.txt",
+		base: []byte("base\n"), current: []byte("current\n"), incoming: []byte("incoming\n"),
+	})
+	path := "conflict.txt"
+	originalFile := readRecoveryFile(t, dir, path)
+	originalIndex := runGitIn(t, dir, "ls-files", "--stage", "-z", "--", path)
+	h := newFileRecoveryApp(t, dir, session)
+	h.app.confirm = nil
+	if err := h.tester.Click("Use incoming " + path); err != nil {
+		t.Fatalf("whole-file Use incoming entry: %v; texts=%q", err, h.texts())
+	}
+	h.confirmAttentionForTest(t)
+	h.waitFor(t, "resolved conflict staged with recovery", func() bool {
+		return !h.app.actionBusy && h.app.actionError == "" && !hasConflictedFiles(h.app.snapshot.Files) && len(h.app.snapshot.FileRecoveries) == 1
+	})
+	h.tester.Frame()
+	if err := h.tester.Click("Unstage " + path); err != nil {
+		t.Fatalf("unstage resolved conflict: %v; texts=%q", err, h.texts())
+	}
+	h.tester.Frame()
+	if h.app.confirm == nil {
+		t.Fatal("unstaging a resolved conflict did not offer to restore its unresolved state")
+	}
+	if err := h.tester.Click("Restore unresolved"); err != nil {
+		t.Fatalf("confirm Restore unresolved: %v; texts=%q", err, h.texts())
+	}
+	h.waitFor(t, "unstage restores original conflict", func() bool {
+		return !h.app.actionBusy && h.app.actionError == "" && hasConflictedFiles(h.app.snapshot.Files)
+	})
+	if got := readRecoveryFile(t, dir, path); !bytes.Equal(got, originalFile) {
+		t.Fatalf("restored markers = %q, want %q", got, originalFile)
+	}
+	if got := runGitIn(t, dir, "ls-files", "--stage", "-z", "--", path); got != originalIndex {
+		t.Fatalf("restored unmerged index = %q, want %q", got, originalIndex)
+	}
+}
+
 func TestRealAppFileRecoveryAfterStateChangedPreservesNewWork(t *testing.T) {
 	dir, session := newFileRecoveryConflict(t, conflictVersions{
 		name: "conflict.txt", base: []byte("base\n"), current: []byte("current\n"), incoming: []byte("incoming\n"),

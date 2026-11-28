@@ -36,6 +36,9 @@ const (
 type avatarSource struct {
 	origin, project, email, hash string
 	github                       bool
+	// direct is a picture address already known, as a merge request lists its
+	// author's; no account lookup is needed then.
+	direct string
 }
 
 // Custom remote hosts are tried as GitLab instances. An unsupported server
@@ -75,6 +78,9 @@ func avatarCommitHash(hash string) bool {
 }
 
 func (s avatarSource) key() string {
+	if s.direct != "" {
+		return s.origin + "\x00url:" + s.direct
+	}
 	identity := s.email
 	if identity == "" {
 		identity = s.project + "/" + s.hash
@@ -259,6 +265,17 @@ func (s *authorAvatarStore) load(source avatarSource, key string, entry *avatarE
 }
 
 func (s *authorAvatarStore) fetch(ctx context.Context, source avatarSource) (*ui.Bitmap, []byte) {
+	if source.direct != "" {
+		data, err := s.get(ctx, source.direct, avatarImageLimit)
+		if err != nil {
+			return nil, nil
+		}
+		bitmap, encoded, err := decodeAuthorAvatar(data)
+		if err != nil {
+			return nil, nil
+		}
+		return bitmap, encoded
+	}
 	apiURL, endpoint, tool, host := source.endpoint()
 	body, err := s.get(ctx, apiURL, 512<<10)
 	if err != nil && ctx.Err() == nil && s.api != nil {

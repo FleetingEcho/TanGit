@@ -3,7 +3,9 @@ package app
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -26,6 +28,9 @@ type changeRow struct {
 	// merge says the row is in the merge-changes section; a conflicted file
 	// is resolved there rather than staged or unstaged like an ordinary one.
 	merge bool
+	// resolved marks the placeholder of a conflict resolved during the current
+	// operation; it stays in the merge section but offers no actions.
+	resolved bool
 }
 
 func (r changeRow) isHeader() bool    { return r.header != "" }
@@ -110,8 +115,8 @@ func buildChangeRows(files []repository.File, search string, ignoreUntracked, me
 		if !pathMatches(query, file.Path) && !pathMatches(query, file.PreviousPath) {
 			continue
 		}
-		if file.HasMergeConflicts {
-			merge = append(merge, changeRow{file: file, merge: true})
+		if file.HasMergeConflicts || file.Resolved {
+			merge = append(merge, changeRow{file: file, merge: true, resolved: file.Resolved})
 			continue
 		}
 		if file.Staged {
@@ -188,20 +193,60 @@ func buildChangeTreeRows(files []repository.File, search string, ignoreUntracked
 // untracked setting and folded sections.
 func (a *app) changeRowsFrom(files []repository.File) []changeRow {
 	files = a.visibleReviewFiles(files)
+	files = a.withResolvedConflicts(files)
 	if a.fileTreeMode {
 		return buildChangeTreeRows(files, a.fileSearch, a.ignoreUntracked, a.mergeExpanded, a.stagedExpanded, a.changesExpanded, a.fileTreeCollapsed)
 	}
 	return buildChangeRows(files, a.fileSearch, a.ignoreUntracked, a.mergeExpanded, a.stagedExpanded, a.changesExpanded)
 }
 
+// withResolvedConflicts adds a placeholder for each conflict resolved during
+// the running operation, so a file that left Git's status (resolved to HEAD's
+// content) does not simply vanish. The placeholders end with the operation, or
+// when Git reports the file as conflicted again.
+func (a *app) withResolvedConflicts(files []repository.File) []repository.File {
+	if len(a.resolvedConflicts) == 0 {
+		return files
+	}
+	if a.snapshot.OperationState == nil {
+		a.resolvedConflicts = nil
+		return files
+	}
+	conflicted := make(map[string]bool, len(files))
+	for _, file := range a.snapshot.Files {
+		if file.HasMergeConflicts {
+			conflicted[file.Path] = true
+		}
+	}
+	out := make([]repository.File, 0, len(files)+len(a.resolvedConflicts))
+	out = append(out, files...)
+	for path, file := range a.resolvedConflicts {
+		if conflicted[path] {
+			delete(a.resolvedConflicts, path)
+			continue
+		}
+		out = append(out, file)
+	}
+	sort.SliceStable(out[len(files):], func(i, j int) bool { return out[len(files)+i].Path < out[len(files)+j].Path })
+	return out
+}
+
+// markConflictResolved remembers a file whose conflict was just resolved.
+func (a *app) markConflictResolved(file repository.File) {
+	if a.resolvedConflicts == nil {
+		a.resolvedConflicts = map[string]repository.File{}
+	}
+	a.resolvedConflicts[file.Path] = repository.File{Path: file.Path, PreviousPath: file.PreviousPath, Resolved: true}
+}
+
 // selectedChange is the file row the Changes list has chosen, false when the
-// choice is a section header or nothing.
+// choice is a section header, a resolved placeholder or nothing.
 func (a *app) selectedChange() (changeRow, bool) {
 	if a.selectedFile < 0 || a.selectedFile >= len(a.changeRows) {
 		return changeRow{}, false
 	}
 	change := a.changeRows[a.selectedFile]
-	if !change.isFile() {
+	if !change.isFile() || change.resolved {
 		return changeRow{}, false
 	}
 	return change, true
@@ -226,7 +271,7 @@ func changeDirectoryIndex(rows []changeRow, path string) int {
 // firstChangeFile is the row of the first file in rows, -1 when there is none.
 func firstChangeFile(rows []changeRow) int {
 	for i, row := range rows {
-		if row.isFile() {
+		if row.isFile() && !row.resolved {
 			return i
 		}
 	}
@@ -239,7 +284,7 @@ func firstChangeFile(rows []changeRow) int {
 func changeRowIndex(rows []changeRow, path string, staged bool) int {
 	other := -1
 	for i, row := range rows {
-		if !row.isFile() || row.file.Path != path {
+		if !row.isFile() || row.resolved || row.file.Path != path {
 			continue
 		}
 		if row.staged == staged {
@@ -374,12 +419,30 @@ func (a *app) filesView(c *ui.Context) {
 		if len(a.snapshot.Files) == 0 {
 			ui.Column(c).Grow(1).Center().Children(func() {
 				ui.Text(c, tr("Working tree clean")).TextColor(theme.TextMuted)
+				// The change that emptied this list can usually be taken back; say so
+				// here, but only just after it happened. Ctrl+Z keeps working later.
+				if record, ok := a.latestUndoableRecord(); ok {
+					if remaining := undoHintWindow - time.Since(time.Unix(record.FinishedAt, 0)); record.FinishedAt != 0 && remaining > 0 {
+						if a.undoHintTimerFor != record.ID {
+							a.undoHintTimerFor = record.ID
+							time.AfterFunc(remaining+100*time.Millisecond, c.Services().Invalidate)
+						}
+						ui.Row(c).AlignItems(ui.Center).Gap(6).Padding(8, 0, 0, 0).Children(func() {
+							ui.Badge(c, tr("Ctrl+Z")).Background(theme.Accent.Alpha(0.14)).TextColor(theme.Accent)
+							ui.Text(c, trf("Undo %s", record.Summary)).SingleLine().
+								Tooltip(record.Summary).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
+						})
+					}
+				}
 			})
 			return
 		}
 		a.changeSectionsBody(c, sections)
 	})
 }
+
+// undoHintWindow is how long after a change the empty list offers its Undo hint.
+const undoHintWindow = time.Minute
 
 // changeSectionsBody lays out the sections under the filter: the merge and
 // staged lists above the changes, each with a line the user drags to give its
@@ -423,8 +486,19 @@ func (a *app) changeSectionsBody(c *ui.Context, sections changeSections) {
 		box := ui.Box(c).Grow(1).Label(tr("Changes sections"))
 		box.Children(func() {
 			ui.Column(c).Fill().Gap(10).Children(func() {
-				a.mergeSectionView(c, sections, mergeShown)
-				a.stagedSectionView(c, sections, !mergeShown && stagedShown)
+				if mergeShown && sections.mergeBase >= 0 {
+					// Merge and staged keep the line between them that the
+					// expanded Changes layout has, so a conflict list can be
+					// resized against the staged files rather than pushing
+					// them to the bottom with nothing between.
+					top := ui.Box(c).Grow(1)
+					top.Children(func() {
+						a.mergeSectionSplit(c, sections, top.Bounds().H, 12)
+					})
+				} else {
+					a.mergeSectionView(c, sections, mergeShown)
+					a.stagedSectionView(c, sections, !mergeShown && stagedShown)
+				}
 				a.changesSectionView(c, sections, false)
 			})
 		})
@@ -456,9 +530,12 @@ func (a *app) changeSectionsBody(c *ui.Context, sections changeSections) {
 		// the user put it after.
 		wasAuto := a.changesTopAuto
 		before := a.changesTopHeight
-		paneSplitVertical(c, &a.changesTopHeight, func() {
+		// All three sections live inside the Changes island card. Use the
+		// in-card splitter so the divider's masked ends inherit the card instead
+		// of painting two dark backdrop blocks at its left and right edges.
+		paneSplitVerticalInCard(c, &a.changesTopHeight, func() {
 			if sections.mergeBase >= 0 {
-				a.mergeSectionSplit(c, sections)
+				a.mergeSectionSplit(c, sections, a.changesTopHeight, 3)
 				return
 			}
 			ui.Column(c).Fill().Gap(10).Children(func() {
@@ -482,7 +559,10 @@ func (a *app) changeSectionsBody(c *ui.Context, sections changeSections) {
 // mergeSectionSplit puts the merge changes above the staged ones with a line
 // between them, so each keeps its own height and scrolls on its own. The line
 // is only there while a merge has conflicts to show.
-func (a *app) mergeSectionSplit(c *ui.Context, sections changeSections) {
+//
+// maxRows is how many conflicts the section shows before it scrolls: a folded
+// Changes section leaves the room, so the conflicts take more of it.
+func (a *app) mergeSectionSplit(c *ui.Context, sections changeSections, available float32, maxRows int) {
 	// The staged section keeps its header and, while it shows files, its first
 	// row: the line stops above them whether it sits at its automatic height
 	// or where the user dragged it, so neither drag nor a shorter window cuts
@@ -491,16 +571,20 @@ func (a *app) mergeSectionSplit(c *ui.Context, sections changeSections) {
 	if a.stagedExpanded && len(sections.staged) > 0 {
 		stagedMin += changeSectionGap + changeRowHeight
 	}
-	maxMerge := a.changesTopHeight - changeDividerHeight - stagedMin
+	maxMerge := available - changeDividerHeight - stagedMin
+	if available <= 0 {
+		// The first frame has no measured pane yet; do not clamp to nothing.
+		maxMerge = 1e6
+	}
 	if maxMerge < changeHeaderHeight {
 		maxMerge = changeHeaderHeight
 	}
 	if a.mergeAuto {
-		a.mergeHeight = min(changeSectionHeight(c.Theme(), len(sections.merge), 3, a.mergeExpanded), maxMerge)
+		a.mergeHeight = min(changeSectionHeight(c.Theme(), len(sections.merge), maxRows, a.mergeExpanded), maxMerge)
 	}
 	wasAuto := a.mergeAuto
 	before := a.mergeHeight
-	paneSplitVertical(c, &a.mergeHeight, func() {
+	paneSplitVerticalInCard(c, &a.mergeHeight, func() {
 		a.mergeSectionView(c, sections, true)
 	}, func() {
 		a.stagedSectionView(c, sections, true)
@@ -691,19 +775,25 @@ func (a *app) changeSectionView(c *ui.Context, title string, icon *ui.SVG, count
 func (a *app) conflictBanner(c *ui.Context) {
 	theme := c.Theme()
 	conflicts := conflictedFileCount(a.snapshot.Files)
-	ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(8, 10).
+	panel := ui.Column(c).FillWidth().MinWidth(0).
 		Background(theme.Danger.Alpha(0.12)).Border(1, theme.Danger.Alpha(0.5)).
-		Radius(theme.Radius).Children(func() {
-		ui.Icon(c, conflictIcon).FontSize(16).TextColor(theme.Danger)
-		ui.Column(c).Gap(1).Grow(1).Children(func() {
-			ui.Textf(c, tr("%d conflict%s to resolve"), conflicts, plural(conflicts)).
-				Bold().TextColor(theme.Danger)
-			ui.Text(c, tr("Pick a side, then Continue.")).
-				TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).SingleLine().
-				Tooltip(tr("Continue stays disabled until every conflict is staged"))
+		Radius(theme.Radius).Label(tr("Operation context"))
+	panel.Children(func() {
+		ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Gap(10).Padding(8, 10).Children(func() {
+			ui.Icon(c, conflictIcon).FontSize(16).TextColor(theme.Danger)
+			ui.Column(c).Gap(1).Grow(1).MinWidth(0).Children(func() {
+				ui.Textf(c, tr("%d conflict%s to resolve"), conflicts, plural(conflicts)).
+					Bold().TextColor(theme.Danger)
+				ui.Text(c, tr("Pick a side, then Continue.")).
+					TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).SingleLine().
+					Tooltip(tr("Continue stays disabled until every conflict is staged"))
+			})
+			if a.snapshot.Operation != "" {
+				ui.Badge(c, strings.ToUpper(a.snapshot.Operation))
+			}
 		})
 		if a.snapshot.Operation != "" {
-			ui.Badge(c, strings.ToUpper(a.snapshot.Operation))
+			a.operationControls(c)
 		}
 	})
 }
@@ -785,44 +875,35 @@ func (a *app) changesHeader(c *ui.Context) {
 	})
 }
 
-// commitBox is the commit message and its button in one card, under the
-// panel's title: the message, then the branch it lands on and the Commit
-// button on one line.
+// commitBox keeps the commit message and action on one line. The destination
+// branch stays in the input tooltip instead of spending a second row on text.
 func (a *app) commitBox(c *ui.Context) {
 	theme := c.Theme()
 	on := a.snapshot.Branch
 	if on == "" {
 		on = "HEAD"
 	}
-	card := ui.Column(c).Padding(10).Gap(8).
+	card := ui.Row(c).AlignItems(ui.Center).Padding(8).Gap(8).
 		Background(theme.Surface).Border(1, theme.Border).
 		Radius(theme.Radius + 2)
 	if card.FocusWithin() {
 		card.Border(1, theme.Accent)
 	}
 	card.Children(func() {
-		ui.TextInputBase(c, &a.commitSummary).
-			Padding(4, 2).Grow(1).
+		ui.TextInput(c, &a.commitSummary).Grow(1).MinWidth(0).
 			Label(tr("Commit message")).
 			Placeholder(tr("Commit message")).
 			Tooltip(trf("Ctrl+Enter commits on '%s'", on))
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Row(c).AlignItems(ui.Center).Gap(5).Grow(1).Children(func() {
-				ui.Icon(c, branchIcon).FontSize(12).TextColor(theme.TextMuted)
-				ui.Text(c, trf("Commit on %s", on)).TextColor(theme.TextMuted).
-					FontSize(theme.FontSize - 2).SingleLine().Tooltip(on)
-			})
-			commit := ui.PrimaryButton(c, "").Label(tr("Commit")).
-				Gap(6).Tooltip(tr("Commit the staged changes (Ctrl+Enter)")).
-				Disabled(!a.canCommit())
-			commit.Children(func() {
-				ui.Icon(c, commitIcon).FontSize(13).TextColor(theme.AccentText)
-				ui.Text(c, tr("Commit"))
-			})
-			if commit.Clicked() {
-				a.beginCommit()
-			}
+		commit := ui.PrimaryButton(c, "").Label(tr("Commit")).Shrink(0).
+			Gap(6).Tooltip(tr("Commit the staged changes (Ctrl+Enter)")).
+			Disabled(!a.canCommit())
+		commit.Children(func() {
+			ui.Icon(c, commitIcon).FontSize(13).TextColor(theme.AccentText)
+			ui.Text(c, tr("Commit"))
 		})
+		if commit.Clicked() {
+			a.beginCommit()
+		}
 	})
 }
 
@@ -865,11 +946,20 @@ func (a *app) changeHeaderRow(c *ui.Context, title string, icon *ui.SVG, count i
 	if !open {
 		arrow, toggleLabel = "▸", trf("Expand %s", tr(title))
 	}
-	ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(5, 8).
+	ui.Row(c).Height(32).Shrink(0).AlignItems(ui.Center).
 		Background(theme.Surface).Radius(theme.Radius).Children(func() {
-		toggle := ui.ButtonBase(c).Size(16, 22).Padding(0).Center().Label(toggleLabel).Tooltip(toggleLabel)
+		toggle := ui.ButtonBase(c).Grow(1).Gap(8).AlignItems(ui.Center).Padding(5, 8).
+			Label(toggleLabel).Tooltip(toggleLabel)
 		toggle.Children(func() {
 			ui.Text(c, arrow).TextColor(theme.TextMuted)
+			iconColor := theme.Accent
+			if section == changeSectionMerge {
+				iconColor = theme.Danger
+			}
+			ui.Icon(c, icon).FontSize(14).TextColor(iconColor)
+			ui.Text(c, tr(title)).Bold()
+			ui.Spacer(c).Grow(1)
+			ui.Badge(c, fmt.Sprintf("%d", count))
 		})
 		toggle.OnClick(func() {
 			switch section {
@@ -881,16 +971,6 @@ func (a *app) changeHeaderRow(c *ui.Context, title string, icon *ui.SVG, count i
 				a.changesExpanded = !a.changesExpanded
 			}
 		})
-		iconColor := theme.Accent
-		if section == changeSectionMerge {
-			iconColor = theme.Danger
-		}
-		// The title, icon and badge are informational. Only the chevron
-		// collapses the section.
-		ui.Icon(c, icon).FontSize(14).TextColor(iconColor)
-		ui.Text(c, tr(title)).Bold()
-		ui.Spacer(c).Grow(1)
-		ui.Badge(c, fmt.Sprintf("%d", count))
 		// The merge changes are resolved file by file, so their header has
 		// no action on them all. Each other section carries the action on
 		// its own files, as Source Control does: the staged list offers to
@@ -899,25 +979,31 @@ func (a *app) changeHeaderRow(c *ui.Context, title string, icon *ui.SVG, count i
 		if section == changeSectionMerge {
 			return
 		}
-		if section == changeSectionStaged {
-			flatIconButton(c, "Stash staged changes", "Stash the staged files, leaving the rest in the tree", stashIcon, 14, 4,
-				a.actionBusy || !hasStagedFiles(a.snapshot.Files), a.stashStagedChanges)
-			flatIconButton(c, "Unstage all changes", "Unstage every file", unstageIcon, 14, 4,
-				a.actionBusy || !hasStagedFiles(a.snapshot.Files), func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(5, 8, 5, 0).Children(func() {
+			if section == changeSectionStaged {
+				flatIconButton(c, "Stash staged changes", "Stash the staged files, leaving the rest in the tree", stashIcon, 14, 4,
+					a.actionBusy || !hasStagedFiles(a.snapshot.Files), a.stashStagedChanges)
+				unstageAllTooltip := "Unstage every file"
+				if a.hasRestorableFileRecovery() {
+					unstageAllTooltip = "Restore resolved conflicts individually before unstaging all files"
+				}
+				flatIconButton(c, "Unstage all changes", unstageAllTooltip, unstageIcon, 14, 4,
+					a.actionBusy || !hasStagedFiles(a.snapshot.Files) || a.hasRestorableFileRecovery(), func() {
+						a.beginRepositoryAction("", func(ctx context.Context, session repository.Session) error {
+							return requireChangesSession(session).UnstageAll(ctx)
+						}, func() { a.notifyUndoable(tr("Unstaged all changes")) })
+					})
+				return
+			}
+			flatIconButton(c, "Stage all changes", "Stage every change", stageIcon, 14, 4,
+				a.actionBusy || !hasUnstagedFiles(a.snapshot.Files), func() {
 					a.beginRepositoryAction("", func(ctx context.Context, session repository.Session) error {
-						return requireChangesSession(session).UnstageAll(ctx)
-					}, nil)
+						return requireChangesSession(session).StageAll(ctx)
+					}, func() { a.notifyUndoable(tr("Staged all changes")) })
 				})
-			return
-		}
-		flatIconButton(c, "Stage all changes", "Stage every change", stageIcon, 14, 4,
-			a.actionBusy || !hasUnstagedFiles(a.snapshot.Files), func() {
-				a.beginRepositoryAction("", func(ctx context.Context, session repository.Session) error {
-					return requireChangesSession(session).StageAll(ctx)
-				}, nil)
-			})
-		flatIconButton(c, "Discard all changes", "Discard every change", undoIcon, 14, 4,
-			a.actionBusy || count == 0, a.confirmDiscardAllChanges)
+			flatIconButton(c, "Discard all changes", "Discard every change", undoIcon, 14, 4,
+				a.actionBusy || count == 0, a.confirmDiscardAllChanges)
+		})
 	})
 }
 
@@ -945,6 +1031,15 @@ func (a *app) changeFileRow(row ui.ListRow, change changeRow, index int, guides 
 	// The row's actions show on the pointer's row, or the chosen one, so the
 	// path keeps its room at rest, as in VS Code's Source Control view.
 	reveal := element.Hovered() || row.Selected()
+	if change.resolved {
+		element.Children(func() {
+			fileTypeMark(row.Context, file.Path, 13, row.Selected())
+			ui.Text(row.Context, displayPathFor(a.fileTreeMode, file.Path)).Grow(1).SingleLine().
+				TextColor(secondaryRowColor(theme, row)).Tooltip(file.Path)
+			ui.Badge(row.Context, tr("Resolved")).Background(theme.Success).TextColor(theme.Background)
+		})
+		return
+	}
 	element.Children(func() {
 		fileTypeMark(row.Context, file.Path, 13, row.Selected())
 		displayPath := file.Path
@@ -1029,6 +1124,16 @@ func (a *app) changeFileRow(row ui.ListRow, change changeRow, index int, guides 
 	element.PopoverMenu(func(m *ui.Menu) { a.fileRowMenu(m, index, services) })
 }
 
+// displayPathFor is the path a file row shows: the file's name in tree mode,
+// where its folders are rows of their own.
+func displayPathFor(tree bool, path string) string {
+	if !tree {
+		return path
+	}
+	parts := strings.Split(path, "/")
+	return parts[len(parts)-1]
+}
+
 // changeStatusLetter is the one letter a change wears at the row's end. The
 // section already says whether the change is staged, so the side's letter of
 // Git's two-character code is enough; a file Git does not track yet reads as
@@ -1081,7 +1186,7 @@ func (a *app) resolveConflictFile(file repository.File, current bool) {
 			return runFileRecoveryMutation(ctx, session, file.Path, func() error {
 				return requireChangesSession(session).ResolveConflict(ctx, file, current)
 			})
-		}, nil)
+		}, func() { a.markConflictResolved(file) })
 	})
 }
 
@@ -1089,6 +1194,12 @@ func (a *app) resolveConflictFile(file repository.File, current bool) {
 func (a *app) beginStageFile(file repository.File, stage bool) {
 	if a.actionBusy || a.session == nil {
 		return
+	}
+	if !stage {
+		if recovery, ok := a.latestFileRecovery(file.Path, true); ok {
+			a.confirmRestoreFileRecovery(recovery)
+			return
+		}
 	}
 	var mutationSerial uint64
 	if stage && file.HasMergeConflicts {
@@ -1107,7 +1218,16 @@ func (a *app) beginStageFile(file repository.File, stage bool) {
 			return requireChangesSession(session).Stage(ctx, file)
 		}
 		return requireChangesSession(session).Unstage(ctx, file)
-	}, nil)
+	}, func() {
+		if stage && file.HasMergeConflicts {
+			a.markConflictResolved(file)
+		}
+		if stage {
+			a.notifyUndoable(trf("Staged %s", file.Path))
+		} else {
+			a.notifyUndoable(trf("Unstaged %s", file.Path))
+		}
+	})
 }
 
 // iconButton is a compact panel button showing an icon, with an accessible

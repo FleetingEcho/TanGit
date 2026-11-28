@@ -815,7 +815,18 @@ func (s *gitSession) ApplyPatch(ctx context.Context, preview PatchPreview) error
 	// Index-only stage/unstage historically needs no recovery: its working
 	// tree is untouched. Combined application has no old wrapper semantics to
 	// preserve, but uses the same checked command and CAS boundary.
-	if request.Target == PatchIndex || (request.Target == PatchBoth && !request.Reverse) {
+	if request.Target == PatchIndex {
+		// Staging or unstaging a selection changes only the index, so it is
+		// recorded like staging a whole file and Ctrl+Z puts it back.
+		kind, summary := OperationStage, "Stage selected changes"
+		if request.Reverse {
+			kind, summary = OperationUnstage, "Unstage selected changes"
+		}
+		return s.mutateIndexLocked(ctx, kind, summary, func() error {
+			return s.applyCheckedPatch(source, request)
+		})
+	}
+	if request.Target == PatchBoth && !request.Reverse {
 		return s.applyCheckedPatch(source, request)
 	}
 	if request.Reverse {

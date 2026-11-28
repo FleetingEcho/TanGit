@@ -78,24 +78,25 @@ func TestCancelingPushDuringDiscoveryDoesNotReopenConfirmation(t *testing.T) {
 	}
 }
 
-func TestHeaderTextButtonsShareTheIconButtonHeight(t *testing.T) {
+func TestOperationTextButtonsLiveInChangesCard(t *testing.T) {
 	h, _ := menuTestAppWithCalls(t)
 	h.app.snapshot.Operation = "merge"
-	h.tester.Frame()
-	icon, found := h.tester.Find("Fetch")
-	if !found {
-		t.Fatal("header icon button is missing")
+	h.app.snapshot.OperationState = &repository.OperationState{
+		Type: repository.OperationTypeMerge,
+		Actions: []repository.OperationAction{
+			repository.OperationActionContinue,
+			repository.OperationActionAbort,
+		},
 	}
+	h.app.workspaceTab = sectionChanges
+	h.tester.Frame()
+	header := requireRect(t, h.tester, "Repository header")
+	card := requireRect(t, h.tester, "Operation context")
 	for _, label := range []string{"Continue", "Abort…"} {
-		button, found := h.tester.Find(label)
-		if !found {
-			t.Fatalf("header action %q is missing", label)
-		}
-		if button.H != icon.H {
-			t.Errorf("%s height = %.1f, icon height = %.1f", label, button.H, icon.H)
-		}
-		if button.X+button.W > icon.X {
-			t.Errorf("%s ends at %.1f, after the icon group starts at %.1f", label, button.X+button.W, icon.X)
+		button := requireRect(t, h.tester, label)
+		requireRectInside(t, label, button, card)
+		if button.Y < header.Y+header.H {
+			t.Errorf("operation action %q remained in the repository header: button=%+v header=%+v", label, button, header)
 		}
 	}
 }

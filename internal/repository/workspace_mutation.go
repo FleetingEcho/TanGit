@@ -66,9 +66,11 @@ func (s *gitSession) runWorkspaceMutation(ctx context.Context, kind, summary str
 	if len(captures) > 1 {
 		return fmt.Errorf("%s: multiple recovery captures", kind)
 	}
-	if !SafetyJournalEnabled() {
-		// The user turned the safety journal off: run the action itself, with
-		// no recovery point, journal entry or pruning.
+	if !SafetyJournalEnabled() && kind != OperationTransition {
+		// The user turned the safety journal off: ordinary actions run without a
+		// recovery point. Operation transitions are the exception: Git's reflog
+		// cannot reconstruct unmerged index stages or operation metadata after an
+		// Abort, Continue or Skip, so those transitions always keep an exact point.
 		return mutate()
 	}
 	capture := func(ctx context.Context) (WorkSnapshot, error) {

@@ -60,10 +60,12 @@ type commandPaletteState struct {
 	historyPos   int
 	// filesChangedOnly limits the / list to changed files.
 	filesChangedOnly bool
-	historyDraft     string
-	actionIndex      int
-	notice           string
-	revealSelection  bool
+	// hintsOpen unfolds the list of mode characters; it starts folded.
+	hintsOpen       bool
+	historyDraft    string
+	actionIndex     int
+	notice          string
+	revealSelection bool
 	// topID is the first candidate of the last frame. When results arrive late
 	// or re-rank and the first one changes, the list returns to the top.
 	topID commandID
@@ -645,7 +647,12 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 						if mode == 'a' {
 							headerLabel = "Actions"
 						}
-						ui.Text(c, tr(headerLabel)).Bold().Grow(1)
+						hintsShown := strings.TrimSpace(s.palette.query) == "" && mode != 'a'
+						if hintsShown {
+							paletteModeToggle(c, &s.palette.hintsOpen, tr(headerLabel))
+						} else {
+							ui.Text(c, tr(headerLabel)).Bold().Grow(1)
+						}
 						if mode == '/' {
 							// On: only the changed files. Off: any file, opened in the Editor.
 							toggle := func() {
@@ -664,11 +671,13 @@ func (s *shell) commandPaletteView(c *ui.Context) {
 								ui.Text(c, tr(label)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
 							}
 							ui.Badge(c, fmt.Sprintf("%d", len(candidates)))
-						} else if mode != 'a' {
-							ui.Text(c, tr("> commands · @ branches · # commits · / files · ^ file history · ~ repos · ! shell")).TextColor(theme.TextMuted).
-								FontSize(theme.FontSize - 1)
 						}
 					})
+					if strings.TrimSpace(s.palette.query) == "" && mode != 'a' && !s.paletteShowsShellOutput() {
+						if s.palette.hintsOpen {
+							paletteModeGrid(c)
+						}
+					}
 					ui.Divider(c)
 					ui.Scroll(c).Grow(1).TrackScroll(&s.palette.scroll).Children(func() {
 						if len(candidates) == 0 {
@@ -936,6 +945,8 @@ func commandModeLabel(mode byte) string {
 		return "Recent repositories"
 	case '^':
 		return "File history"
+	case '%':
+		return "Pull requests"
 	case 'a':
 		return "Commit actions"
 	case '!':
@@ -1078,7 +1089,7 @@ func searchPlaceholder(actions bool) string {
 	if actions {
 		return tr("Filter the actions")
 	}
-	return tr("Search commands — paste a commit hash, or type > @ # / ~ !")
+	return tr("Search commands — paste a commit hash, or type > @ # / ^ % ~ !")
 }
 
 // paletteTitle names what the window does in the current mode, so a query that
@@ -1100,8 +1111,133 @@ func paletteTitle(query string, actions bool) string {
 		return tr("Switch Repository")
 	case '^':
 		return tr("Search file history")
+	case '%':
+		return tr("Search pull requests")
 	case '!':
 		return tr("Run Shell Command")
 	}
 	return tr("Command Palette")
+}
+
+// paletteFilterTable lays a mode's filter words out for its tooltip: the word
+// stands out from what it filters.
+func paletteFilterTable(c *ui.Context, rows [][2]string) {
+	theme := c.Theme()
+	ui.Column(c).Gap(3).Children(func() {
+		for _, row := range rows {
+			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, row[0]).Bold().TextColor(theme.Accent).Width(138).SingleLine()
+				ui.Text(c, tr(row[1])).TextColor(theme.TextMuted).SingleLine()
+			})
+		}
+	})
+}
+
+// paletteRequestFilters is the filter words of the % mode.
+func paletteRequestFilters(c *ui.Context) {
+	theme := c.Theme()
+	ui.Text(c, tr("To search the host, pick “Search the host for …” and add filters as words:")).Bold()
+	paletteFilterTable(c, [][2]string{
+		{"@user  author:", "Author"}, {"assignee:", "Assignee"}, {"reviewer:", "Reviewer"},
+		{"source:  target:", "Branches"}, {"label:", "Label"},
+		{"after:  before:", "Dates, YYYY-MM-DD"}, {"draft:yes  draft:no", "Drafts"},
+	})
+	ui.Text(c, tr("Other words search titles and descriptions.")).TextColor(theme.TextMuted)
+}
+
+// paletteCommitFilters is the filter words of the # mode.
+func paletteCommitFilters(c *ui.Context) {
+	paletteFilterTable(c, [][2]string{
+		{"#author:", "Author"}, {"#branch:", "Branch"},
+		{"#changed:", "Commits that added or removed this code"}, {"path:  branch:", "Narrow #changed:"},
+	})
+}
+
+type paletteMode struct {
+	prefix, label, description, example string
+}
+
+var paletteModes = []paletteMode{
+	{">", "Commands", "Run a command by name, with nothing else mixed in.", ">fetch"},
+	{"@", "Branches", "Find a local or remote branch. Enter checks it out.", "@main"},
+	{"#", "Commits", "Search commits by message or hash, or add filters as words:", "#changed:parseDate"},
+	{"/", "Files", "Find a file of the repository and open it in the Editor.", "/main.go"},
+	{"^", "File history", "Find a file and open its history.", "^main.go"},
+	{"~", "Recent repositories", "Switch to a repository you opened before.", "~lazygit"},
+	{"!", "Shell command", "Run a shell command here. {{branch}}, {{commit}} and {{file}} stand for your selection.", "!git status"},
+	{"%", "Pull requests", "Lists the requests already loaded on the PR/MR page.", "%@alice"},
+}
+
+// paletteModeToggle folds the mode characters (paletteModeGrid) that sit under
+// the empty search box. Each
+// has its own info badge whose tooltip says what it finds and shows a query to
+// try, so the one-line hint is not all a user has to go by.
+func paletteModeToggle(c *ui.Context, open *bool, title string) {
+	theme := c.Theme()
+	icon := chevronRightIcon
+	if *open {
+		icon = chevronDownIcon
+	}
+	toggle := ui.ButtonBase(c.Key("mode-hints")).Grow(1).Gap(4).Padding(2, 4).Radius(theme.Radius).
+		Label(tr("Search prefixes")).Tooltip(tr("Show or hide the characters that narrow the search")).Expanded(*open)
+	clicked := toggle.Clicked()
+	toggle.Children(func() {
+		ui.Icon(c, icon).FontSize(14).TextColor(theme.TextMuted)
+		ui.Text(c, title).Bold().Grow(1)
+	})
+	if clicked {
+		*open = !*open
+	}
+}
+
+func paletteModeGrid(c *ui.Context) {
+	half := (len(paletteModes) + 1) / 2
+	ui.Column(c).Gap(6).FillWidth().Children(func() {
+		for start := 0; start < len(paletteModes); start += half {
+			end := min(start+half, len(paletteModes))
+			c.Key("mode-row:" + paletteModes[start].prefix)
+			ui.Row(c).FillWidth().Gap(8).Children(func() {
+				for _, mode := range paletteModes[start:end] {
+					c.Key("mode:" + mode.prefix)
+					paletteModeHint(c, mode)
+				}
+			})
+		}
+	})
+}
+
+func paletteModeHint(c *ui.Context, mode paletteMode) {
+	theme := c.Theme()
+	item := ui.Row(c).Grow(1).Basis(0).Gap(5).AlignItems(ui.Center).Padding(2, 4).Radius(theme.Radius).
+		Description(tr(mode.description))
+	item.Children(func() {
+		ui.Text(c, mode.prefix).Bold().TextColor(theme.Accent)
+		ui.Text(c, tr(mode.label)).TextColor(theme.TextMuted).FontSize(theme.FontSize - 1).SingleLine()
+	})
+	{
+		ui.TooltipBase(c, item, func(tip ui.Element) {
+			tip.Padding(9, 11).Radius(6).Background(theme.Surface).Border(1, theme.Border).MaxWidth(320).
+				Shadow(0, 2, 8, 0, ui.RGBA(0, 0, 0, 0.2)).Margin(0, 0, 6, 0).
+				Children(func() {
+					ui.Column(c).Gap(6).Children(func() {
+						ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+							ui.Text(c, mode.prefix).Bold().TextColor(theme.Accent)
+							ui.Text(c, tr(mode.label)).Bold()
+						})
+						ui.Text(c, tr(mode.description)).TextColor(theme.TextMuted)
+						switch mode.prefix {
+						case "%":
+							paletteRequestFilters(c)
+						case "#":
+							paletteCommitFilters(c)
+						}
+						ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+							ui.Text(c, tr("Try")).TextColor(theme.TextMuted)
+							ui.Text(c, mode.example).Bold().TextColor(theme.Accent).Padding(1, 6).Radius(4).
+								Background(theme.Accent.Alpha(0.1))
+						})
+					})
+				})
+		})
+	}
 }

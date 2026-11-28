@@ -2,9 +2,11 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -29,8 +31,108 @@ var ErrPullRequestMissing = errors.New("no pull request exists for this branch")
 var runLocalHostingCommand = func(ctx context.Context, directory, program string, arguments []string) (string, error) {
 	cmd := exec.CommandContext(ctx, program, arguments...)
 	cmd.Dir = directory
+	if extra, ok := ctx.Value(hostingEnvironmentKey{}).([]string); ok && len(extra) > 0 {
+		cmd.Env = hostingCommandEnvironment(os.Environ(), extra)
+	}
 	output, err := cmd.CombinedOutput()
 	return string(output), err
+}
+
+type hostingEnvironmentKey struct{}
+
+// hostingCredentialVariables are removed from the inherited environment when
+// the user supplies credentials in the app, so an old shell token or a forced
+// host cannot silently override the project they chose.
+var hostingCredentialVariables = []string{
+	"GITLAB_TOKEN", "GITLAB_ACCESS_TOKEN", "OAUTH_TOKEN", "GITLAB_HOST", "GITLAB_URI", "GL_HOST", "GITLAB_REPO",
+	"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST", "GH_REPO",
+}
+
+func hostingCommandEnvironment(base, extra []string) []string {
+	blocked := make(map[string]bool, len(hostingCredentialVariables))
+	for _, name := range hostingCredentialVariables {
+		blocked[name] = true
+	}
+	result := make([]string, 0, len(base)+len(extra))
+	for _, entry := range base {
+		name, _, _ := strings.Cut(entry, "=")
+		if !blocked[name] {
+			result = append(result, entry)
+		}
+	}
+	return append(result, extra...)
+}
+
+// hostingSecretValues returns the token values in env, for redaction.
+func hostingSecretValues(env []string) []string {
+	var secrets []string
+	for _, entry := range env {
+		name, value, _ := strings.Cut(entry, "=")
+		if value != "" && strings.HasSuffix(name, "TOKEN") {
+			secrets = append(secrets, value)
+		}
+	}
+	return secrets
+}
+
+func redactHostingSecrets(text string, secrets []string) string {
+	for _, secret := range secrets {
+		text = strings.ReplaceAll(text, secret, "[redacted]")
+	}
+	return text
+}
+
+// SetHostingEnvironment installs credentials (KEY=VALUE) for the hosting CLI.
+// They apply to local repositories only: an SSH workspace runs the CLI on the
+// remote machine and keeps using that machine's own authentication.
+func (s *gitSession) SetHostingEnvironment(provider PullRequestProvider, env []string) {
+	s.hostingHintsMu.Lock()
+	s.hostingProvider = provider
+	s.hostingEnv = append([]string(nil), env...)
+	s.hostingHintsMu.Unlock()
+}
+
+// CheckHostingAccess verifies credentials before they are saved by asking the
+// provider who the token belongs to. It runs the CLI locally.
+func CheckHostingAccess(ctx context.Context, provider PullRequestProvider, env []string) (string, error) {
+	tool := pullRequestTool(provider)
+	if tool == "" {
+		return "", errors.New("unsupported hosting provider")
+	}
+	secrets := hostingSecretValues(env)
+	ctx = context.WithValue(ctx, hostingEnvironmentKey{}, append([]string(nil), env...))
+	output, err := runLocalHostingCommand(ctx, "", tool, []string{"api", "user"})
+	output = redactHostingSecrets(strings.TrimSpace(output), secrets)
+	if errors.Is(err, exec.ErrNotFound) {
+		return "", fmt.Errorf("%w: install %s first", ErrPullRequestSetup, tool)
+	}
+	if err != nil {
+		return "", fmt.Errorf("%s: %s", tool, redactHostingSecrets(RedactSecrets(firstUsefulLine(output, err.Error())), secrets))
+	}
+	var identity struct {
+		Username string `json:"username"`
+		Login    string `json:"login"`
+	}
+	if json.Unmarshal([]byte(output), &identity) != nil {
+		return "", fmt.Errorf("%s: unexpected response from the server", tool)
+	}
+	if identity.Username != "" {
+		return identity.Username, nil
+	}
+	return identity.Login, nil
+}
+
+// firstUsefulLine skips the CLI's bare "ERROR" banner and blank lines.
+func firstUsefulLine(texts ...string) string {
+	for _, text := range texts {
+		for _, line := range strings.Split(text, "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" && !strings.EqualFold(line, "error") {
+				return line
+			}
+		}
+	}
+	return "request failed"
 }
 
 // PullRequestProvider finds a supported host from the configured remote URLs.
@@ -38,6 +140,13 @@ var runLocalHostingCommand = func(ctx context.Context, directory, program string
 func (s *gitSession) pullRequestProvider() PullRequestProvider {
 	if provider := s.pullRequestProviderFromRemotes(); provider != "" {
 		return provider
+	}
+	// A host the user connected with a token is a stated fact about its provider.
+	s.hostingHintsMu.Lock()
+	connected := s.hostingProvider
+	s.hostingHintsMu.Unlock()
+	if connected != "" {
+		return connected
 	}
 	// A company host such as git.corp.example names neither provider. The web
 	// address the user set for the remote does, when it is a gitlab or github host.
@@ -83,28 +192,51 @@ func pullRequestProviderForHosts(addresses []string) PullRequestProvider {
 		if err != nil {
 			continue
 		}
-		host := strings.ToLower(parsed.Hostname())
-		switch {
-		case strings.Contains(host, "github"):
-			return PullRequestGitHub
-		case strings.Contains(host, "gitlab"):
-			return PullRequestGitLab
+		if provider := pullRequestProviderForHost(parsed.Hostname()); provider != "" {
+			return provider
 		}
 	}
 	return ""
 }
 
 func pullRequestProviderForURLs(urls []string) PullRequestProvider {
-	for _, url := range urls {
-		lower := strings.ToLower(url)
-		if strings.Contains(lower, "github.com") {
-			return PullRequestGitHub
-		}
-		if strings.Contains(lower, "gitlab.com") {
-			return PullRequestGitLab
+	for _, remoteURL := range urls {
+		if provider := pullRequestProviderForHost(remoteURLHost(remoteURL)); provider != "" {
+			return provider
 		}
 	}
 	return ""
+}
+
+func pullRequestProviderForHost(host string) PullRequestProvider {
+	host = strings.ToLower(strings.TrimSpace(host))
+	switch {
+	case strings.Contains(host, "github"):
+		return PullRequestGitHub
+	case strings.Contains(host, "gitlab"):
+		return PullRequestGitLab
+	default:
+		return ""
+	}
+}
+
+// remoteURLHost extracts only the network host, so repository paths cannot
+// accidentally select a provider. It accepts ordinary URLs and Git's common
+// scp-like [user@]host:path syntax.
+func remoteURLHost(remoteURL string) string {
+	remoteURL = strings.TrimSpace(remoteURL)
+	if parsed, err := url.Parse(remoteURL); err == nil && parsed.Hostname() != "" {
+		return parsed.Hostname()
+	}
+	at := strings.LastIndex(remoteURL, "@")
+	if at < 0 {
+		return ""
+	}
+	host, path, ok := strings.Cut(remoteURL[at+1:], ":")
+	if !ok || host == "" || path == "" || strings.ContainsAny(host, "/\\") {
+		return ""
+	}
+	return host
 }
 
 func pullRequestTool(provider PullRequestProvider) string {
@@ -143,12 +275,28 @@ func (s *gitSession) runHosting(ctx context.Context, program string, arguments [
 	var output string
 	var err error
 	complete := s.commandLog.Begin(program + " " + strings.Join(arguments, " "))
+	var secrets []string
+	if s.sshClient == nil {
+		s.hostingHintsMu.Lock()
+		env := append([]string(nil), s.hostingEnv...)
+		s.hostingHintsMu.Unlock()
+		if len(env) > 0 {
+			ctx = context.WithValue(ctx, hostingEnvironmentKey{}, env)
+			secrets = hostingSecretValues(env)
+		}
+	}
 	if s.sshClient != nil {
 		result, runErr := s.sshClient.Run(ctx, s.git.RepoPaths.WorktreePath(), program, arguments...)
 		output = string(result.Output)
 		err = runErr
 	} else {
 		output, err = runLocalHostingCommand(ctx, s.git.RepoPaths.WorktreePath(), program, arguments)
+	}
+	output = redactHostingSecrets(output, secrets)
+	if err != nil && len(secrets) > 0 {
+		if message := err.Error(); redactHostingSecrets(message, secrets) != message {
+			err = errors.New(redactHostingSecrets(message, secrets))
+		}
 	}
 	complete(output, err != nil)
 	if err != nil {
@@ -168,6 +316,20 @@ func (s *gitSession) runHosting(ctx context.Context, program string, arguments [
 		return output, fmt.Errorf("%s: %w%s", program, err, commandOutputSummary(output))
 	}
 	return output, nil
+}
+
+// RunHostingCommand is the transport seam used by the provider-neutral forge
+// module. It retains this session's local/SSH execution, command logging,
+// cancellation and sanitized error classification without exposing gitSession.
+func (s *gitSession) RunHostingCommand(ctx context.Context, program string, arguments []string) (string, error) {
+	tool, err := s.PullRequestTool(ctx)
+	if err != nil {
+		return "", err
+	}
+	if program != tool {
+		return "", fmt.Errorf("hosting command %q does not match repository provider", program)
+	}
+	return s.runHosting(ctx, program, arguments)
 }
 
 // CheckPullRequestReady verifies the hosting CLI exists and is authenticated

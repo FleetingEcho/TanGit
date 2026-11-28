@@ -12,9 +12,10 @@ var safetyJournalOn atomic.Bool
 //
 // With it off, stash, apply, discard, checkout, merge, commit, revert, branch
 // deletion and similar actions just run: nothing is saved for Undo, and the
-// action is not listed in the Safety Journal. History rewrites that are hard to
-// redo by hand (rebase, reset, patch import and editing) keep their recovery
-// point regardless.
+// action is not listed in the Safety Journal. History rewrites and operation
+// transitions that Git's reflog cannot faithfully reconstruct (rebase, reset,
+// patch import/editing, Continue, Skip and Abort) keep their recovery point
+// regardless.
 func SetSafetyJournalEnabled(enabled bool) {
 	safetyJournalOn.Store(enabled)
 }

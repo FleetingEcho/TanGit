@@ -479,9 +479,7 @@ func (a *app) recentRowView(c *ui.Context, i int, height float32, showTime bool,
 				}
 				if !repo.EditorOnly && identity != "" {
 					ui.Row(c).AlignItems(ui.Center).Gap(5).Children(func() {
-						ui.Icon(c, branchIcon).FontSize(12).TextColor(theme.TextMuted)
-						ui.Text(c, identity).MinWidth(0).MaxWidth(240).SingleLine().FontSize(theme.FontSize - 1).
-							TextColor(theme.TextMuted).Tooltip(identity)
+						a.branchBadge(c, identity, repo.Worktree)
 						if ownerPath := strings.TrimSpace(repo.RepositoryPath); repo.Worktree && ownerPath != "" {
 							ui.Text(c, tr("Main worktree")+" · "+repoName(ownerPath)).
 								MinWidth(0).SingleLine().FontSize(theme.FontSize - 1).TextColor(theme.TextMuted).
@@ -589,6 +587,9 @@ func (a *app) recentRowMenu(m *ui.Menu, repo recentRepository, services ui.Servi
 	}
 	if !repo.EditorOnly && m.Item(tr("Set remote web address")).Chosen() {
 		a.openRecentRemoteWebURL(repo.Path)
+	}
+	if !repo.EditorOnly && m.Item(tr("Config PR/MR host")).Chosen() {
+		a.openHostingAccess()
 	}
 	if m.Item(tr("Remove from list")).Chosen() {
 		// The menu must not rewrite the list this build is reading;

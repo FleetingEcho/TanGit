@@ -195,7 +195,16 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 			specs = append(specs, commandSpec{
 				ID: "history/search-typed-code-changes", Label: historyChangesLabel, Detail: query.Text, Group: commandGroupHistory,
 				Prefix: '#', Glyph: searchIcon, NoFilter: true, Resolve: historyChangesCommandState,
-				Run: func(ctx commandContext) { ctx.App.openHistoryChanges(&query) },
+				Run: func(ctx commandContext) {
+					// Like resuming a remembered search: close the palette, show the
+					// query in the dialog, and run it.
+					ctx.Shell.closeCommandPalette(true)
+					held := ctx.App.historyChangesHolds(query)
+					ctx.App.openHistoryChanges(&query)
+					if !held {
+						ctx.App.startHistoryChanges()
+					}
+				},
 			})
 			break
 		}
@@ -213,6 +222,8 @@ func (s *shell) dynamicCommandSpecs(ctx commandContext) []commandSpec {
 			break
 		}
 		specs = append(specs, s.commitSearchSpecs(a, strings.TrimSpace(rest), '#')...)
+	case '%':
+		specs = append(specs, changeRequestPaletteSpecs(a, rest)...)
 	case '^':
 		// Every file, fuzzy-ranked like the Editor's quick open; choosing one
 		// opens the file history drawer for it.
@@ -499,4 +510,62 @@ func firstWord(line string) string {
 		return ""
 	}
 	return fields[0]
+}
+
+// changeRequestPaletteSpecs lists the loaded pull or merge requests for the %
+// mode and offers to search the host for text the loaded page may not hold.
+func changeRequestPaletteSpecs(a *app, rest string) []commandSpec {
+	state := &a.changeRequests
+	if a.session == nil {
+		return nil
+	}
+	if !state.loaded && !state.loading {
+		a.refreshChangeRequests()
+	}
+	var specs []commandSpec
+	if rest != "" {
+		specs = append(specs, commandSpec{
+			ID: "requests/search-host", Label: tr("Search the host for") + " “" + rest + "”", Detail: "Filter the PR/MR page by this text",
+			Group: commandGroupNavigation, Prefix: '%', Glyph: searchIcon, NoFilter: true, Resolve: repositoryStateAllowBusy,
+			Run: func(ctx commandContext) {
+				ctx.App.changeRequests.search = rest
+				ctx.App.setWorkspaceTab(sectionPullRequests)
+				ctx.App.chooseChangeRequestFilter()
+			},
+		})
+	}
+	for index, item := range state.items {
+		index, item := index, item
+		detail := item.Author
+		if item.SourceBranch != "" {
+			detail += " · " + item.SourceBranch + " → " + item.TargetBranch
+		}
+		keywords := append([]string{item.Author, item.SourceBranch, item.TargetBranch, string(item.State), "pr", "mr"}, item.Labels...)
+		keywords = append(keywords, fmt.Sprintf("#%d", item.Number), fmt.Sprintf("%d", item.Number))
+		badges := []commandBadge{{Text: string(item.State), Muted: true}}
+		if item.Draft {
+			badges = append(badges, commandBadge{Text: "Draft", Muted: true})
+		}
+		specs = append(specs, commandSpec{
+			ID: commandID("requests/open/" + changeRequestKey(item)), Label: fmt.Sprintf("#%d %s", item.Number, item.Title), Detail: detail,
+			Keywords: keywords, Badges: badges, Group: commandGroupNavigation, Prefix: '%', Glyph: sectionIcons[sectionPullRequests],
+			Resolve: repositoryStateAllowBusy,
+			Run: func(ctx commandContext) {
+				ctx.App.setWorkspaceTab(sectionPullRequests)
+				if index < len(ctx.App.changeRequests.items) {
+					ctx.App.changeRequests.selected = index
+					ctx.App.loadSelectedChangeRequestDetail(false)
+				}
+			},
+		})
+	}
+	if len(specs) == 0 && (state.loading || !state.loaded) {
+		specs = append(specs, commandSpec{
+			ID: "requests/loading", Label: "Reading the pull requests…", Group: commandGroupNavigation, Prefix: '%', Glyph: searchIcon, NoFilter: true,
+			Resolve: func(commandContext) commandState {
+				return commandState{Visible: true, DisabledReason: "The list is being read"}
+			},
+		})
+	}
+	return specs
 }

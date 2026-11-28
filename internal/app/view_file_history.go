@@ -652,9 +652,6 @@ func (a *app) fileHistoryCommitsView(c *ui.Context) {
 					ui.Text(c, a.fileHistoryMoreError).TextColor(theme.TextMuted).
 						FontSize(theme.FontSize - 2).SingleLine().Tooltip(a.fileHistoryMoreError)
 				})
-			case !a.fileHistoryMore:
-				ui.Text(c, tr("Beginning of file history")).TextColor(theme.TextMuted).
-					FontSize(theme.FontSize - 1)
 			}
 		}
 	})

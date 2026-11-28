@@ -211,7 +211,7 @@ func (a *app) fileRecoveryList(c *ui.Context) {
 		})
 		ui.Text(c, tr("Restores saved marker bytes, deletions, executable modes, and exact unmerged index stages.")).
 			TextColor(theme.TextMuted).FontSize(theme.FontSize - 1)
-		height := float32(min(len(records), 3)) * 76
+		height := float32(min(len(records), 3)) * 84
 		list := a.keyboardList(c, &a.fileRecoveryRows, len(records)).Height(height)
 		list.Rows(func(row ui.ListRow) {
 			record := records[row.Index]
@@ -222,38 +222,41 @@ func (a *app) fileRecoveryList(c *ui.Context) {
 			} else if record.Status == repository.FileRecoveryRestored {
 				statusColor = theme.Success
 			}
-			ui.Column(row.Context).FillWidth().Gap(3).Padding(5, 7).
-				Border(1, theme.Border.Alpha(0.65)).Radius(theme.Radius).Children(func() {
-				ui.Row(row.Context).AlignItems(ui.Center).Gap(7).Children(func() {
-					ui.Icon(row.Context, softResetIcon).FontSize(14).TextColor(statusColor)
-					ui.Text(row.Context, record.Path).SingleLine().Tooltip(record.Path).Grow(1)
-					ui.Badge(row.Context, status).Background(statusColor.Alpha(0.14)).TextColor(statusColor).
-						Tooltip(tr(statusTip))
-				})
-				ui.Row(row.Context).AlignItems(ui.Center).Gap(7).Children(func() {
-					ui.Column(row.Context).Gap(1).Grow(1).Children(func() {
-						ui.Text(row.Context, fileRecoveryStageSummary(record)).SingleLine().
-							TextColor(secondaryRowColor(theme, row)).FontSize(theme.FontSize - 1)
-						ui.Text(row.Context, time.Unix(record.UpdatedAt, 0).Format("2006-01-02 15:04")).
-							TextColor(secondaryRowColor(theme, row)).FontSize(theme.FontSize - 2)
+			// The outer column is the gap between cards; the card is the bordered one.
+			ui.Column(row.Context).FillWidth().Padding(3, 0).Children(func() {
+				ui.Column(row.Context).FillWidth().Gap(3).Padding(5, 7).
+					Border(1, theme.Border.Alpha(0.65)).Radius(theme.Radius).Children(func() {
+					ui.Row(row.Context).AlignItems(ui.Center).Gap(7).Children(func() {
+						ui.Icon(row.Context, softResetIcon).FontSize(14).TextColor(statusColor)
+						ui.Text(row.Context, record.Path).SingleLine().Tooltip(record.Path).Grow(1)
+						ui.Badge(row.Context, status).Background(statusColor.Alpha(0.14)).TextColor(statusColor).
+							Tooltip(tr(statusTip))
 					})
-					if fileRecoveryCanRestore(record) {
-						label := tr("Restore unresolved…")
-						if record.Status == repository.FileRecoveryInterrupted {
-							label = tr("Retry…")
+					ui.Row(row.Context).AlignItems(ui.Center).Gap(7).Children(func() {
+						ui.Column(row.Context).Gap(1).Grow(1).Children(func() {
+							ui.Text(row.Context, fileRecoveryStageSummary(record)).SingleLine().
+								TextColor(secondaryRowColor(theme, row)).FontSize(theme.FontSize - 1)
+							ui.Text(row.Context, time.Unix(record.UpdatedAt, 0).Format("2006-01-02 15:04")).
+								TextColor(secondaryRowColor(theme, row)).FontSize(theme.FontSize - 2)
+						})
+						if fileRecoveryCanRestore(record) {
+							label := tr("Restore unresolved…")
+							if record.Status == repository.FileRecoveryInterrupted {
+								label = tr("Retry…")
+							}
+							button := compactTextButton(ui.Button(row.Context, label)).
+								Label(label).Tooltip(tr("Restore this saved state; newer changes to the same file stop the compare-and-swap")).
+								Disabled(a.actionBusy)
+							if button.Clicked() {
+								a.confirmRestoreFileRecovery(record)
+							}
 						}
-						button := compactTextButton(ui.Button(row.Context, label)).
-							Label(label).Tooltip(tr("Restore this saved state; newer changes to the same file stop the compare-and-swap")).
-							Disabled(a.actionBusy)
-						if button.Clicked() {
-							a.confirmRestoreFileRecovery(record)
-						}
+					})
+					if record.Error != "" && record.Status == repository.FileRecoveryInterrupted {
+						ui.Text(row.Context, record.Error).SingleLine().Tooltip(record.Error).
+							TextColor(theme.Danger).FontSize(theme.FontSize - 2)
 					}
 				})
-				if record.Error != "" && record.Status == repository.FileRecoveryInterrupted {
-					ui.Text(row.Context, record.Error).SingleLine().Tooltip(record.Error).
-						TextColor(theme.Danger).FontSize(theme.FontSize - 2)
-				}
 			})
 		})
 	})
