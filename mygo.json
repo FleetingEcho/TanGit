@@ -2,7 +2,7 @@
   "name": "lazygitGo",
   "slug": "lazygitgo",
   "identifier": "dev.tangit.desktop",
-  "version": "1.27.2",
+  "version": "1.28.0",
   "main": "./cmd/lazygitGo",
   "out": "build",
   "updates": {
