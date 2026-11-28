@@ -1450,14 +1450,14 @@ func TestOnlyExpandedMergeSectionFillsRemainingHeight(t *testing.T) {
 	}
 	mergeHeader, mergeOK := sectionHeader("Merge Changes")
 	stagedHeader, stagedOK := sectionHeader("Staged Changes")
-	changesHeader, changesOK := sectionHeader("Changes")
+	_, changesOK := sectionHeader("Changes")
 	if !mergeOK || !stagedOK || !changesOK {
 		t.Fatalf("a folded header disappeared: merge=%v staged=%v changes=%v", mergeOK, stagedOK, changesOK)
 	}
-	// The toggle sits inside the 32-DIP header with a one-DIP inset per edge.
-	headerHeight := func(header ui.Rect) float32 { return header.H + 2 }
-	stagedHeight := headerHeight(stagedHeader)
-	changesHeight := headerHeight(changesHeader)
+	// Each section header row is a fixed 32 DIPs. The toggle inside it is as
+	// tall as its text, which depends on the font, so it must not be measured.
+	const headerRowHeight = float32(32)
+	stagedHeight, changesHeight := headerRowHeight, headerRowHeight
 	got := stagedHeader.Y - mergeHeader.Y
 	want := body.H - stagedHeight - changesHeight - 10
 	if got < want-1.5 || got > want+1.5 {

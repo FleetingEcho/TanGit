@@ -185,10 +185,12 @@ func TestRecentRepositoryWorktreeIconKeepsFirstCardDropdownOpen(t *testing.T) {
 	if !a.homeWorktrees.menuOpen || a.homeWorktrees.source != "/work/project" {
 		t.Fatalf("first card's dropdown was replaced: state=%+v menu=%v", a.homeWorktrees, tt.Menu())
 	}
+	// Discovery runs off the UI goroutine, so wait for its result before
+	// reading what it opened.
+	updated.waitForUpdate(t)
 	if !slices.Equal(opener.opened, []string{"/work/project"}) {
 		t.Fatalf("clicking one card discovered repositories %v", opener.opened)
 	}
-	updated.waitForUpdate(t)
 	tt.Frame()
 	tt.Frame()
 	if got := tt.Menu(); !slices.Contains(got, "project · Main worktree") || !slices.Contains(got, "feature · feature") {
