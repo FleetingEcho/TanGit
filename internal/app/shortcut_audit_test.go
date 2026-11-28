@@ -67,10 +67,11 @@ func TestCommitFormSubmitUsesVerifiedActionMetadata(t *testing.T) {
 	h, calls := menuTestAppWithCalls(t)
 	h.app.attachRepositoryCommandLog(repository.NewCommandLog())
 	h.app.showCommitForm = true
+	h.app.workspaceTab = sectionChanges
 	h.tester = ui.NewTester(func(c *ui.Context) {
 		h.app.installShortcutObserver(c)
-		h.app.commitForm(c)
-	}, 480, 260)
+		h.app.commitFormModal(c)
+	}, 900, 640)
 	if err := h.tester.Click("Summary"); err != nil {
 		t.Fatalf("focus commit summary: %v; texts=%q", err, h.tester.Texts())
 	}

@@ -52,8 +52,9 @@ command layer, wrapped in a native window with visual tools where they help.
 
 ### Commit exactly what you mean
 
+- **Commit box with a description.** The maximize button beside the commit message opens a larger form with a summary and a description.
 - **Line-level staging.** Click a diff line number to start a selection and Shift-click for a range. Press `m` for **Select changes**: stage, unstage or discard the current hunk or the lines you picked.
-- **Unified, side-by-side, image and media diffs**, patch export, and **Apply patch…** for external `.patch` / `.diff` files (`Ctrl+I`).
+- **Unified, side-by-side, image and media diffs**, patch export, and **Apply patch** for external `.patch` / `.diff` files (`Ctrl+I`).
 - **Custom Patch.** Collect changes from commits and historical files, then export them, apply them to the working tree, or move them to another commit or the index.
 - **Change Courier** previews a patch and copies it to another worktree as unstaged changes, with no history rewrite.
 
@@ -62,7 +63,9 @@ command layer, wrapped in a native window with visual tools where they help.
 - **Commit graph and file history** with filtering, blame, and bisect (`b`, `g`, `k`, `R`).
 - **Batch rewrites:** reword, squash, fixup, drop, reorder, edit an older commit (`e`), or rebase `--onto` a marked base.
 - **Rebase TODO** shows Git's real interactive todo list and lets you edit it with compare-and-swap checks.
-- **Sync stack…** previews per-branch merge, rebase and update-ref plans, validates them, then optionally publishes each branch with a lease.
+- **Sync stack** previews per-branch merge, rebase and update-ref plans, validates them, then optionally publishes each branch with a lease.
+- **Edit commit message** is in every commit's menu. It is greyed out, with the reason, when the commit is not on the checked-out branch, an operation is in progress or HEAD is detached.
+- **Undo** reverses more than commits: staging and unstaging, ignore rules, and creating or deleting a tag, each only while nothing else has touched the same file or ref.
 - Manage remotes, tags, stashes, worktrees and submodules. Export or import `format-patch` series.
 
 ### Resolve conflicts where you review diffs
@@ -100,7 +103,9 @@ command layer, wrapped in a native window with visual tools where they help.
 
 ### Automate and collaborate
 
-- Create pull requests and read checks with the GitHub CLI (`gh`) or GitLab CLI (`glab`).
+- **Pull requests and merge requests.** The **PR/MR** page lists, searches and filters them (state, author, labels and more), and opens one with its description, changed files, commits, checks and review sidebar. Comment, reply, comment on a line, resolve threads and approve from the app. It uses the GitHub CLI (`gh`) or GitLab CLI (`glab`), so you can also create pull requests and read checks from the toolbar.
+- **Git hosting settings** (`Ctrl/Cmd+Shift+P`, then "Git hosting settings") hold the server, project, issue links and every remote's web address in one form. The access token is optional: leave it empty and `gh` or `glab` use their own login. A token is kept in your system keychain, never in settings. A repository can use any saved configuration, and a different host is flagged before you pick it. **Test connection** checks the result.
+- **Open on remote** first checks that the web page answers. If it does not, a notification takes you straight to Git hosting settings.
 - **Agent tasks** give each task an isolated branch and worktree, with durable state and review. Drive them from a local `lazygitGo agent …` CLI or RPC. See [Agent workspaces](docs/agent-workspaces.md) and [automation](docs/agent-automation.md).
 - Add **custom commands** with placeholders such as `{{branch}}` and `{{file}}`, and optional shortcuts.
 - **Optimize repository performance** turns on Git's file system monitor, untracked cache, commit-graph and, if you choose, background maintenance. Large repositories get a one-time suggestion.
@@ -187,7 +192,7 @@ panel, and text fields keep normal typing.
 | `Ctrl/Cmd+Shift+P` | Command Palette (`@` `#` `/` `~` `!` modes) |
 | `Ctrl/Cmd+Shift+A` | Activity Center |
 | `Space` | Stage or unstage, including selected diff lines |
-| `c` / `Ctrl+Enter` | Compose / submit a commit |
+| `c` / `Ctrl+Enter` | Compose in the commit form / submit a commit |
 | `p` / `P` | Pull / push |
 | `z` / `Z` | Undo / redo eligible operations |
 | `r` / `e` | Reword / pause a rebase to edit a commit |

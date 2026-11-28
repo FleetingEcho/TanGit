@@ -149,7 +149,9 @@ func TestGuidedOperationRecoveryUsesDurableRecord(t *testing.T) {
 			}
 			if test.wantAction == "" {
 				for _, unavailable := range []string{"Restore unresolved", "Retry"} {
-					if tt.HasText(unavailable) {
+					// The fixed explanation above mentions "Restore unresolved", so look
+					// for the button itself.
+					if _, found := tt.AccessByRole(ui.RoleButton, unavailable); found {
 						t.Errorf("no-record guidance renders fake action %q", unavailable)
 					}
 				}

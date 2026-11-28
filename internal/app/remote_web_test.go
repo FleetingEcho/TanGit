@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"slices"
 	"testing"
 
@@ -61,6 +62,9 @@ func TestNormalizeRemoteWebURLsRejectsUnsafeValues(t *testing.T) {
 }
 
 func TestRemoteWebMenuKeyboardAndPersistence(t *testing.T) {
+	previous := remoteWebProbe
+	remoteWebProbe = func(context.Context, string) error { return nil }
+	t.Cleanup(func() { remoteWebProbe = previous })
 	h := menuTestApp(t)
 	h.app.pathUserData = t.TempDir()
 	h.app.workspaceTab = sectionRemotes
@@ -76,6 +80,7 @@ func TestRemoteWebMenuKeyboardAndPersistence(t *testing.T) {
 
 	h.rightClick(t, "origin")
 	h.chooseMenuItem(t, "Open in browser")
+	h.waitFor(t, "the page to open", func() bool { return len(h.tester.OpenedURLs()) == 1 })
 	if got := h.tester.OpenedURLs(); !slices.Equal(got, []string{derived}) {
 		t.Fatalf("opened URLs = %q, want %q", got, []string{derived})
 	}

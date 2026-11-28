@@ -912,7 +912,7 @@ func TestViewOpensRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if !tt.HasText("Create commit") || !tt.HasText("Amend the latest commit") {
+	if !tt.HasText("Create commit") {
 		t.Fatalf("commit form not shown in texts %q", tt.Texts())
 	}
 	if err := tt.Click("Cancel"); err != nil {

@@ -63,7 +63,7 @@ func TestEditorButtonOpensTheRepositoryWithTheChosenEditor(t *testing.T) {
 	h.tester.Frame()
 	h.tester.Move(button.X+button.W/2, button.Y+button.H/2)
 	h.tester.Advance(time.Second)
-	if !h.tester.HasText("Open this repository in your editor\nConfigure your editor in Settings → Editor.") {
+	if !h.tester.HasText("Open this repository in your editor") || !h.tester.HasText("Configure your editor in Settings → Editor.") {
 		t.Fatal("the editor tooltip does not explain where to configure the editor")
 	}
 }
@@ -180,7 +180,7 @@ func TestSettingsAddCustomEditorToExternalMenu(t *testing.T) {
 	h.app.openSettings()
 	h.tester.Frame()
 
-	if err := h.tester.Click("Add editor"); err != nil {
+	if err := h.tester.Click("Add custom editor"); err != nil {
 		t.Fatalf("the presets have no add-editor action: %v", err)
 	}
 	h.tester.Frame()

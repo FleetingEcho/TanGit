@@ -1065,7 +1065,7 @@ func (a *app) hostingWebAddressDraft() (map[string]string, error) {
 		}
 		webURL, ok := normalizeRemoteWebURL(typed)
 		if !ok {
-			return nil, errors.New(trf("%s: ", remote.name) + tr("Enter a valid HTTP(S) web URL without credentials."))
+			return nil, errors.New(remote.name + ": " + tr("Enter a valid HTTP(S) web URL without credentials."))
 		}
 		changes[remote.name] = webURL
 	}

@@ -908,7 +908,7 @@ func (a *app) editorSettings(c *ui.Context) {
 					a.settingsChanged(c)
 				}
 			}
-			flatIconButton(c, "Add editor", "Add a custom external editor", plusIcon, 14, 4,
+			flatIconButton(c, "Add custom editor", "Add a custom external editor", plusIcon, 14, 4,
 				a.settingsUI.customEditorFormOpen, a.openCustomEditorForm)
 		})
 		a.customEditorForm(c)

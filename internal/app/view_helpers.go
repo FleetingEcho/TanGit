@@ -1066,6 +1066,13 @@ func paneTitleAction(c *ui.Context, icon *ui.SVG, title, actionLabel, tooltip st
 // Escape/outside-click dismissal. The caller builds only its specific body.
 func (a *app) repositoryFormModal(c *ui.Context, open *bool, width float32, title, subtitle string,
 	icon *ui.SVG, body func()) {
+	a.repositoryFormModalWith(c, open, width, title, subtitle, icon, body, nil)
+}
+
+// repositoryFormModalWith is repositoryFormModal with a hook that sees the
+// modal's backdrop, for a shortcut the form needs while it is open.
+func (a *app) repositoryFormModalWith(c *ui.Context, open *bool, width float32, title, subtitle string,
+	icon *ui.SVG, body func(), onBackdrop func(back ui.Element)) {
 	if !*open {
 		return
 	}
@@ -1075,6 +1082,9 @@ func (a *app) repositoryFormModal(c *ui.Context, open *bool, width float32, titl
 			Justify(ui.Center).AlignItems(ui.Center).
 			Background(ui.RGBA(0, 0, 0, 0.35)).Modal()
 		a.registerTerminalModalShortcuts(back)
+		if onBackdrop != nil {
+			onBackdrop(back)
+		}
 		back.Children(func() {
 			panel := ui.Column(c).Width(width).MaxWidthPercent(92).
 				Padding(22).Gap(16).Background(theme.Background).

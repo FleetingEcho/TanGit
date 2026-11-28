@@ -64,7 +64,18 @@ func (h *harness) waitForCall(t *testing.T, calls *callRecorder, call string) {
 // with their button's text, which a click by text would find first.
 func (h *harness) clickButton(t *testing.T, name string) {
 	t.Helper()
-	info, ok := h.tester.AccessByRole(ui.RoleButton, name)
+	// A toolbar button and the submit button of the form it opens can share a
+	// label; the later one belongs to the topmost layer, so prefer it.
+	var info ui.AccessInfo
+	ok := false
+	for _, candidate := range h.tester.AccessAll() {
+		if candidate.Role == ui.RoleButton && candidate.Name == name && candidate.Bounds.W > 0 && candidate.Bounds.H > 0 {
+			info, ok = candidate, true
+		}
+	}
+	if !ok {
+		info, ok = h.tester.AccessByRole(ui.RoleButton, name)
+	}
 	if !ok {
 		t.Fatalf("no button named %q; texts %q", name, h.texts())
 	}

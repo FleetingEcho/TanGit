@@ -626,7 +626,7 @@ func (a *app) commitFormModal(c *ui.Context) {
 		return
 	}
 	theme := c.Theme()
-	a.repositoryFormModal(c, &a.showCommitForm, 680, "Create commit",
+	a.repositoryFormModalWith(c, &a.showCommitForm, 680, "Create commit",
 		"A summary line and an optional description.", commitIcon, func() {
 			summary := ui.TextInput(c, &a.commitSummary).Label(tr("Summary")).Placeholder(tr("Describe the change")).AutoFocus()
 			summary.DescribeShortcut(ui.ShortcutDescriptor{ID: "changes/commit-staged", Label: tr("Commit the staged changes")}, 0, ui.KeyEnter)
@@ -642,6 +642,10 @@ func (a *app) commitFormModal(c *ui.Context) {
 					a.beginCommit()
 				}
 			})
+		}, func(back ui.Element) {
+			if !a.settings.DisableShortcuts && back.OverlayShortcut(ui.Ctrl, ui.KeyEnter) {
+				a.beginCommit()
+			}
 		})
 }
 
