@@ -30,6 +30,9 @@ var (
 	// quitting tells a close made by the quit sequence from the user's, so
 	// only the user's hides the window.
 	quitting bool
+	// quitOnClose is the user's choice to quit, not hide, when the window is
+	// closed. It mirrors the setting, which belongs to no single tab.
+	quitOnClose bool
 )
 
 // setupTray adds the menu bar or notification area icon. It runs once the
@@ -266,7 +269,8 @@ func hideWindowForTray(window trayCloseWindow) {
 }
 
 // hideOnCloseEnabled reports whether a close should hide the window: only
-// while a tray exists to bring it back, and never during a quit.
+// while a tray exists to bring it back, the user has not chosen to quit on
+// close, and never during a quit.
 func hideOnCloseEnabled() bool {
-	return trayReady && !quitting
+	return trayReady && !quitting && !quitOnClose
 }

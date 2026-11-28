@@ -91,6 +91,7 @@ var settingsSearchCatalog = []settingsSearchOption{
 	{settingsPageBehavior, "Show diffs side by side", "Diff reading"},
 	{settingsPageBehavior, "Wrap long diff lines", "Diff reading"},
 	{settingsPageBehavior, "Ignore untracked files", "Changes and file lists"},
+	{settingsPageBehavior, "Keep running in the tray when the window is closed", "Closing the window"},
 	{settingsPageBehavior, "Enable keyboard shortcuts", "Keyboard controls"},
 	{settingsPageBehavior, "Safety journal", "Save a recovery point before actions so they can be undone"},
 	{settingsPageBehavior, "Shortcut notifications", "Show shortcut acknowledgements while keeping Command Log and operation notifications visible."},

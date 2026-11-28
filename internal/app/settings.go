@@ -59,6 +59,9 @@ type appSettings struct {
 	// ConflictActionStyle controls conflict and Changes hunk buttons and their
 	// optional guidance. Older files and unknown values normalize to icons.
 	ConflictActionStyle string `json:"conflictActionStyle"`
+	// QuitOnClose makes the window's close button quit the app. The zero value
+	// keeps the app running in the tray when there is one.
+	QuitOnClose bool `json:"quitOnClose,omitempty"`
 	// DisableShortcuts switches the window's keyboard shortcuts off. The
 	// header icons keep working, so every action stays reachable.
 	DisableShortcuts bool `json:"disableShortcuts"`
@@ -615,6 +618,7 @@ func (a *app) loadSettings() {
 	a.settingsLoaded = true
 	setCodeSearchIndexLimitGiB(a.settings.CodeSearchIndexLimitGiB)
 	currentLanguage = normalizeLanguage(a.settings.Language)
+	quitOnClose = a.settings.QuitOnClose
 	a.diffSplit = a.settings.DiffSplit
 	a.diffWrap = a.settings.DiffWrap
 	a.commitDetailsLayout = a.settings.CommitDetailsLayout
@@ -639,6 +643,7 @@ func (a *app) applySettingsChange() {
 	a.ignoreUntracked = a.settings.IgnoreUntracked
 	a.ensureVisibleSection()
 	currentLanguage = normalizeLanguage(a.settings.Language)
+	quitOnClose = a.settings.QuitOnClose
 	refreshTrayMenu()
 	a.applyDiffOptions()
 	a.saveSettings()

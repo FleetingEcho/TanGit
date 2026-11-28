@@ -146,3 +146,36 @@ func TestCloseToTrayLeavesFullScreenBeforeHiding(t *testing.T) {
 		t.Fatalf("leaving fullscreen did not finish one close-to-tray hide: %+v", full)
 	}
 }
+
+func TestCloseBehaviorSettingDecidesWhetherCloseHides(t *testing.T) {
+	previousReady, previousQuitting, previousQuit := trayReady, quitting, quitOnClose
+	t.Cleanup(func() { trayReady, quitting, quitOnClose = previousReady, previousQuitting, previousQuit })
+	trayReady, quitting = true, false
+
+	quitOnClose = false
+	if !hideOnCloseEnabled() {
+		t.Fatal("closing did not hide the window with a tray and the default setting")
+	}
+	quitOnClose = true
+	if hideOnCloseEnabled() {
+		t.Fatal("closing hid the window although the user chose to quit on close")
+	}
+	quitOnClose, trayReady = false, false
+	if hideOnCloseEnabled() {
+		t.Fatal("closing hid the window with no tray to bring it back")
+	}
+}
+
+func TestCloseBehaviorSettingIsStoredAsQuitOnClose(t *testing.T) {
+	a := newApp(nil)
+	a.pathUserData = t.TempDir()
+	if a.settings.QuitOnClose {
+		t.Fatal("a new install must keep running in the tray")
+	}
+	a.settings.QuitOnClose = true
+	a.saveSettings()
+	if !loadAppSettings(a.pathUserData).QuitOnClose {
+		t.Fatal("the quit-on-close choice was not saved")
+	}
+	t.Cleanup(func() { quitOnClose = false })
+}

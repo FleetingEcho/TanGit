@@ -265,6 +265,7 @@ func (s *shell) loadPreferences() {
 	}
 	s.settingsLoaded = true
 	currentLanguage = normalizeLanguage(s.settings.Language)
+	quitOnClose = s.settings.QuitOnClose
 }
 
 // start fills the window with its first page: the picker, or the repository
@@ -463,6 +464,7 @@ func (s *shell) view(c *ui.Context) {
 	systemDark := c.Theme().Dark
 	s.pullSettings()
 	currentLanguage = normalizeLanguage(s.settings.Language)
+	quitOnClose = s.settings.QuitOnClose
 	c.SetTheme(themeForSettingsCached(s.settings, systemDark))
 	s.refreshTitle()
 	s.registerShortcuts(c)
@@ -1396,7 +1398,7 @@ func (s *shell) appMarkView(c *ui.Context) {
 	button.Label(tr("lazygitGo home")).Tooltip(tr("lazygitGo — open the repository picker"))
 	hovered := button.Hovered()
 	button.Children(func() {
-		ui.Icon(c, appIcon).FontSize(16).TextColor(theme.Accent)
+		appLogo(c, 22)
 	})
 	if hovered {
 		button.Background(theme.SurfaceHover)

@@ -99,9 +99,8 @@ func (a *app) pickerHeaderView(c *ui.Context, hasHistory, wide, split bool) {
 	theme := c.Theme()
 	ui.Row(c).FillWidth().Height(pickerHeaderHeight).Shrink(0).Padding(0, 20).
 		AlignItems(ui.Center).Gap(10).Children(func() {
-		ui.Box(c).Size(40, 40).Radius(11).Center().Shrink(0).
-			Border(1, theme.Accent.Alpha(0.24)).Background(theme.Accent.Alpha(0.16)).Children(func() {
-			ui.Icon(c, appIcon).FontSize(21).TextColor(theme.Accent)
+		ui.Box(c).Size(44, 44).Center().Shrink(0).Children(func() {
+			appLogo(c, 44)
 		})
 		ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
 			ui.Text(c, appName).FontSize(18).Bold().SingleLine()

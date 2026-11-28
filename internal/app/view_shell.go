@@ -242,6 +242,7 @@ func (a *app) crashView(c *ui.Context) {
 // its pages agree on it.
 func (a *app) applySettingsFor(c *ui.Context, systemDark bool) {
 	currentLanguage = normalizeLanguage(a.settings.Language)
+	quitOnClose = a.settings.QuitOnClose
 	c.SetTheme(themeForSettingsCached(a.settings, systemDark))
 	a.applyBufferFonts()
 	a.syncHomeBackground()
@@ -271,9 +272,8 @@ func (a *app) loadingView(c *ui.Context) {
 	ui.Box(c).Fill().Background(theme.Background).Children(func() {
 		a.homeBackgroundView(c)
 		ui.Column(c).Fill().Center().Gap(16).Padding(28).Children(func() {
-			ui.Box(c).Size(64, 64).Radius(18).Center().
-				Background(theme.Accent.Alpha(0.16)).Children(func() {
-				ui.Icon(c, appIcon).FontSize(30).TextColor(theme.Accent)
+			ui.Box(c).Size(80, 80).Center().Children(func() {
+				appLogo(c, 80)
 			})
 			ui.Text(c, tr("Opening repository")).FontSize(22).Bold()
 			if a.path != "" {

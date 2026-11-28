@@ -15,6 +15,7 @@ import (
 func (a *app) settingsChanged(c *ui.Context) {
 	a.saveSettings()
 	currentLanguage = normalizeLanguage(a.settings.Language)
+	quitOnClose = a.settings.QuitOnClose
 	refreshTrayMenu()
 	if c != nil {
 		c.Invalidate()
@@ -727,6 +728,8 @@ func (a *app) behaviorSettings(c *ui.Context) {
 				c.Invalidate()
 			}
 			a.hotkeysSwitch(c)
+			ui.Divider(c)
+			a.closeBehaviorSetting(c)
 			ui.Divider(c)
 			a.safetyJournalSetting(c)
 			ui.Divider(c)
