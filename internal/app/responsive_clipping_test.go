@@ -52,7 +52,10 @@ func assertConflictParentGeometry(t *testing.T, tester *ui.Tester) {
 	content := requireRect(t, tester, "Conflict content")
 	requireRectInside(t, "Conflict toolbar", toolbar, details)
 	requireRectInside(t, "Conflict content", content, details)
-	if content.W < 120 || content.H < 96 {
+	// The toolbar wraps its groups onto rows, so the editor's height depends on
+	// the font: a machine with wider fallback fonts (CI) leaves it about 85 DIPs
+	// where a desktop leaves 100. Anything above this is still a usable editor.
+	if content.W < 120 || content.H < 72 {
 		t.Errorf("conflict editor has no usable room: content=%+v details=%+v toolbar=%+v", content, details, toolbar)
 	}
 	if content.Y < toolbar.Y+toolbar.H-1 {
